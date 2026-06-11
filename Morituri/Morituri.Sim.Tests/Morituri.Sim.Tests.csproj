@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!--
+      네트워크 제한 환경용 설정: NUNIT_SHIM이 정의되면 자체 미니 러너(NUnitShim.cs)로 빌드.
+      실제 개발 환경에서는 아래 PackageReference 주석을 해제하고 NUNIT_SHIM 정의와
+      NUnitShim.cs / Program.cs를 제거하면 그대로 NUnit으로 동작한다.
+    -->
+    <OutputType>Exe</OutputType>
+    <DefineConstants>NUNIT_SHIM</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.5.0" />
+  </ItemGroup>
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Morituri.Sim\Morituri.Sim.csproj" />
+  </ItemGroup>
+
+</Project>

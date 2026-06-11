@@ -1,0 +1,22 @@
+# ── .NET 빌드 산출물 ──
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+
+# ── Visual Studio / Rider IDE ──
+.vs/
+.idea/
+*.user
+*.suo
+
+# ── NuGet ──
+*.nupkg
+packages/
+
+# ── OS ──
+Thumbs.db
+.DS_Store
+
+# ── 임시 오피스 잠금 파일 (.odt 본체는 추적) ──
+.~lock.*#
