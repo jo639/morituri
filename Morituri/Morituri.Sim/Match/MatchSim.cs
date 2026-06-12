@@ -323,7 +323,7 @@ public sealed class MatchSim
         bool selfInner = f.Weapon.Range >= _c.MinLongRange && dist < f.Weapon.Range * _c.InnerRangeRatio;
         float innerMul = selfInner ? 0.45f : 1f;
         float light = inRange ? (0.25f + d.Aggression) * innerMul : 0f; // 사거리 안 기본 공격성 (전 전술 공통 바닥값)
-        float heavy = inRange ? d.Aggression * (0.4f + 0.6f * d.RiskTolerance) * (1f + d.HeavyBias) * innerMul : 0f;
+        float heavy = inRange ? d.Aggression * (0.4f + 0.6f * d.RiskTolerance) * (1f + d.HeavyBias + f.Weapon.HeavyBias) * innerMul : 0f;
         float feint = (dist <= f.Weapon.Range * 1.3f) ? d.FeintRate * 0.8f : 0f;
 
         bool oppHeavyWindup = oppWindup && opp.MotionKind == MotionKind.Heavy;
@@ -359,6 +359,9 @@ public sealed class MatchSim
             float recBoost = 1.8f * (1f + 0.5f * d.CounterWindow);
             light *= recBoost; heavy *= recBoost;
         }
+        // 아머 트레이드: 하이퍼아머 무기는 상대가 커밋(선딜/액티브)했을 때 강공으로 받아친다.
+        // 상대 약공을 몸으로 받고(경직 무효) 내 일격을 꽂는다 — 중량 무기의 본래 게임플랜.
+        if (f.Weapon.HyperArmor && (oppWindup || opp.State == FighterState.Active)) heavy *= 2.6f;
         if (oppGuard) { heavy *= 1.4f; feint *= 1.5f; }               // 가드 깎기 / 흔들기
         if (oppDown) { light *= 1.3f; heavy *= 1.3f; }                // 기본 AI도 추가타 선호 (성격이 가감)
         if (opp.IsExhausted) { light *= 1.8f; heavy *= 2.2f; }        // 지친 적 = 인내형이 기다린 확정 처벌 창 (강공으로 Stagger→다운 노림)
@@ -576,7 +579,7 @@ public sealed class MatchSim
     // ───────────────────────── 히트 판정 (문서[4] 3장 처리 순서) ─────────────────────────
 
     private readonly record struct DefenseSnap(
-        FighterState State, float StateElapsed, bool DownHitConsumed, float Position, bool IsExhausted);
+        FighterState State, float StateElapsed, bool DownHitConsumed, float Position, bool IsExhausted, bool Armored);
 
     /// <summary>
     /// 동시 해결: 양측의 방어 상태를 먼저 캡처한 뒤 상호 적용한다.
@@ -587,8 +590,13 @@ public sealed class MatchSim
     {
         Span<DefenseSnap> snap = stackalloc DefenseSnap[2];
         for (int i = 0; i < 2; i++)
-            snap[i] = new DefenseSnap(_f[i].State, _f[i].StateElapsed, _f[i].DownHitConsumed,
-                                      _f[i].Position, _f[i].IsExhausted);
+        {
+            var f = _f[i];
+            // 하이퍼아머: 중량 무기가 강공 선딜을 커밋한 순간 = 약공에 안 끊기는 상태 (페인트 제외).
+            bool armored = f.Weapon.HyperArmor && f.State == FighterState.Windup
+                        && f.MotionKindNow == MotionKind.Heavy && !f.IsFeintSwing;
+            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Position, f.IsExhausted, armored);
+        }
 
         for (int i = 0; i < 2; i++)
         {
@@ -658,12 +666,17 @@ public sealed class MatchSim
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
 
+        // 하이퍼아머: 방어자가 중량 강공을 커밋 중인데 들어온 게 약공 → 데미지·카운터딜은 받되 경직 무효.
+        // (강공으로 받아쳐야 끊긴다. 약공 스팸으로는 못 막는다 — 중량 무기의 '막을 수 없는 일격' 정체성.)
+        bool armorHeld = ds.Armored && atk.MotionKindNow == MotionKind.Light;
+
         bool wasStaggered = ds.State == FighterState.Stagger;
         bool wasDown = ds.State is FighterState.Down;
-        ApplyDamage(atk, def, damage, isCrit, isCounter, false);
+        ApplyDamage(atk, def, damage, isCrit, isCounter, false, armorHeld);
         atk.CleanHits++;
         if (isCrit) def.LastCritTakenAt = _now;
         if (def.Hp <= 0f) return;
+        if (armorHeld) return; // 경직 무효 — 방어자는 강공 선딜을 그대로 이어간다
 
         // 경직 처리
         if (wasDown) { def.DownHitConsumed = true; return; }
@@ -689,13 +702,13 @@ public sealed class MatchSim
         }
     }
 
-    private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded)
+    private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
     {
         def.Hp -= dmg;
         atk.DamageDealt += dmg;
         def.ConsecHitsTaken++;
         def.NoHitTimer = 0f;
-        Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded));
+        Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
     }
 
     private void ChangeState(FighterRuntime f, FighterState to, float timer = 0f)

@@ -20,10 +20,12 @@ public static class MotionTable
     {
         ["WPN_SWORD"]       = (new("MOT_SWORD_L", MotionKind.Light, 0.30f, 0.10f, 0.8f), new("MOT_SWORD_H", MotionKind.Heavy, 0.55f, 0.12f, 1.6f)),
         ["WPN_SPEAR"]       = (new("MOT_SPEAR_L", MotionKind.Light, 0.35f, 0.10f, 0.8f), new("MOT_SPEAR_H", MotionKind.Heavy, 0.60f, 0.12f, 1.6f)),
-        ["WPN_AXE"]         = (new("MOT_AXE_L",   MotionKind.Light, 0.45f, 0.12f, 0.8f), new("MOT_AXE_H",   MotionKind.Heavy, 0.70f, 0.15f, 1.6f)),
-        ["WPN_GREATSWORD"]  = (new("MOT_GS_L",    MotionKind.Light, 0.45f, 0.14f, 0.8f), new("MOT_GS_H",    MotionKind.Heavy, 0.75f, 0.18f, 1.6f)),
+        // 중량 무기 강공 후딜 ×0.9 (<상대 Stagger 0.9s): 일격이 적중하면 상대가 굳은 동안 내가 먼저
+        // 회복 → 추가타. "한 방 꽂으면 연계"라는 중량 무기 보상(문서[4] 11장)이 프레임상 성립한다.
+        ["WPN_AXE"]         = (new("MOT_AXE_L",   MotionKind.Light, 0.45f, 0.12f, 0.8f), new("MOT_AXE_H",   MotionKind.Heavy, 0.50f, 0.15f, 0.9f)),
+        ["WPN_GREATSWORD"]  = (new("MOT_GS_L",    MotionKind.Light, 0.45f, 0.14f, 0.8f), new("MOT_GS_H",    MotionKind.Heavy, 0.52f, 0.18f, 0.9f)),
         ["WPN_DUALBLADES"]  = (new("MOT_DB_L",    MotionKind.Light, 0.20f, 0.08f, 0.8f), new("MOT_DB_H",    MotionKind.Heavy, 0.40f, 0.10f, 1.6f)),
-        ["WPN_HAMMER"]      = (new("MOT_HAM_L",   MotionKind.Light, 0.50f, 0.12f, 0.8f), new("MOT_HAM_H",   MotionKind.Heavy, 0.80f, 0.15f, 1.6f)),
+        ["WPN_HAMMER"]      = (new("MOT_HAM_L",   MotionKind.Light, 0.50f, 0.12f, 0.8f), new("MOT_HAM_H",   MotionKind.Heavy, 0.55f, 0.15f, 0.9f)),
         ["WPN_WHIP"]        = (new("MOT_WHIP_L",  MotionKind.Light, 0.30f, 0.10f, 0.8f), new("MOT_WHIP_H",  MotionKind.Heavy, 0.50f, 0.12f, 1.6f)),
         ["WPN_SWORDSHIELD"] = (new("MOT_SS_L",    MotionKind.Light, 0.32f, 0.10f, 0.8f), new("MOT_SS_H",    MotionKind.Heavy, 0.58f, 0.12f, 1.6f)),
     };

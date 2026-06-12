@@ -17,18 +17,20 @@ public readonly record struct WeaponDef(
     float PoiseMax,          // 사용자 Poise 최대치
     float GuardCrush,        // 가드 게이지 깎기 계수
     float GuardGaugeBonus,   // 방패검 +0.6, 그 외 0
-    float GuardBypass);      // 채찍 0.1 (가드 우회), 그 외 0
+    float GuardBypass,       // 채찍 0.1 (가드 우회), 그 외 0
+    bool HyperArmor = false, // 중량 무기(도끼/대검/망치): 강공 선딜 중 약공에 안 끊김 (M3-A2)
+    float HeavyBias = 0f);   // 강공 선호 가중 — 중량 무기의 정체성은 약공 견제가 아니라 한 방 (M3-A2)
 
 /// <summary>Phase 1 무기 8종. M1은 하드코딩, M3에서 CSV 임포터가 같은 구조체를 채운다.</summary>
 public static class WeaponTable
 {
-    //                                                  id           base hit  rng   mSpd   rcv   pDmg pMax  crush  gBon  byps
+    //                                                  id           base hit  rng   mSpd   rcv   pDmg pMax  crush  gBon  byps  hyper
     public static readonly WeaponDef Sword       = new("WPN_SWORD",       42f, 1, 1.6f, 1.00f, 0.45f, 18f, 50f, 0.30f, 0f,    0f);
     public static readonly WeaponDef Spear       = new("WPN_SPEAR",       38f, 1, 2.6f, 0.95f, 0.55f, 14f, 40f, 0.25f, 0f,    0f);
-    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f);
-    public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f);
+    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   true, 1.5f);
+    public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f,   true, 1.5f);
     public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  26f, 2, 1.1f, 1.30f, 0.30f, 10f, 35f, 0.15f, 0f,    0f);
-    public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f);
+    public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f,   true, 1.5f);
     public static readonly WeaponDef Whip        = new("WPN_WHIP",        30f, 1, 3.0f, 1.05f, 0.50f,  8f, 35f, 0.10f, 0f,    0.10f);
     public static readonly WeaponDef SwordShield = new("WPN_SWORDSHIELD", 36f, 1, 1.5f, 0.90f, 0.50f, 16f, 55f, 0.25f, 0.60f, 0f);
 
