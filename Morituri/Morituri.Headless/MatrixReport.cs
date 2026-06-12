@@ -30,9 +30,10 @@ internal static class MatrixReport
 
     private enum Act { Light, Heavy, Feint, Guard, Dodge }
 
-    public static void Run(int gamesPerCell, string csvPath)
+    public static void Run(int gamesPerCell, string csvPath, string weaponId = "WPN_SWORD")
     {
-        Console.WriteLine($"=== 상성 매트릭스 배치: 전술 5종 × 검 × 냉철함, 칸당 {gamesPerCell}경기 ===");
+        string wpnShort = weaponId.Replace("WPN_", "");
+        Console.WriteLine($"=== 상성 매트릭스 배치: 전술 5종 × {wpnShort} × 냉철함, 칸당 {gamesPerCell}경기 ===");
         Console.WriteLine("    (시드 홀짝 코너 교대로 선공 편향 상쇄)\n");
 
         var csv = new StringBuilder();
@@ -46,8 +47,8 @@ internal static class MatrixReport
         for (int i = 0; i < 5; i++)
         for (int j = 0; j < 5; j++)
         {
-            var row = new FighterDef(T[i].Name, FighterStats.Baseline, "WPN_SWORD", T[i].Id, "PER_CALM");
-            var col = new FighterDef(T[j].Name, FighterStats.Baseline, "WPN_SWORD", T[j].Id, "PER_CALM");
+            var row = new FighterDef(T[i].Name, FighterStats.Baseline, weaponId, T[i].Id, "PER_CALM");
+            var col = new FighterDef(T[j].Name, FighterStats.Baseline, weaponId, T[j].Id, "PER_CALM");
 
             int winRow = 0, winCol = 0, draw = 0, ko = 0, comebacks = 0, decided = 0;
             double durSum = 0;

@@ -12,7 +12,28 @@ using Morituri.Sim.Match;
 if (args.Length > 0 && args[0] == "matrix")
 {
     int games = args.Length > 1 && int.TryParse(args[1], out int g) ? g : 1000;
-    MatrixReport.Run(games, "matchup_report.csv");
+    string wpn = args.Length > 2 ? (args[2].StartsWith("WPN_") ? args[2] : "WPN_" + args[2].ToUpper()) : "WPN_SWORD";
+    MatrixReport.Run(games, "matchup_report.csv", wpn);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "weaponprobe")
+{
+    Analysis.WeaponProbe(args.Length > 1 && int.TryParse(args[1], out int wg) ? wg : 300);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "sigmatrix")
+{
+    Analysis.SignatureMatrix(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 500);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "sweep")
+{
+    int sgames = args.Length > 1 && int.TryParse(args[1], out int spg) ? spg : 120;
+    string sweepWpn = args.Length > 2 ? (args[2].StartsWith("WPN_") ? args[2] : "WPN_" + args[2].ToUpper()) : "WPN_SWORD";
+    Sweep.Run(sgames, sweepWpn);
     return;
 }
 
