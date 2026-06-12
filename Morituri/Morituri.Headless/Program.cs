@@ -7,6 +7,14 @@ using Morituri.Sim.Match;
 // 사용: dotnet run -- [N]                       배치 통계 (매치업당 N경기, 기본 1000)
 //       dotnet run -- replay [매치업] [시드]     경기 한 판 텍스트 중계
 //                     매치업: berserker(기본) | mirror | cruel | arrogant
+//       dotnet run -- matrix [N]                상성 매트릭스 5×5 + matchup_report.csv (칸당 N경기, 기본 1000)
+
+if (args.Length > 0 && args[0] == "matrix")
+{
+    int games = args.Length > 1 && int.TryParse(args[1], out int g) ? g : 1000;
+    MatrixReport.Run(games, "matchup_report.csv");
+    return;
+}
 
 if (args.Length > 0 && args[0] == "replay")
 {

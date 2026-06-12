@@ -189,7 +189,7 @@ public class FairnessRegressionTests
         // 문서[4] 11장 그림의 구조 검증. M3에서 승리 메커니즘이 진화했다(README #2의 "Exhausted 활용" 레버):
         // 창은 이제 ①거리로 도끼 헛스윙을 유도하고 ②카운터로 처벌하며 ③도끼 난사로 지친 버서커를 추가 처벌한다.
         // 따라서 "카운터가 적중의 과반"이 아니라, 카이팅·카운터·가스아웃 세 메커니즘이 모두 살아있는지를 본다.
-        int axeWhiffs = 0, axeSwings = 0, spearHits = 0, spearCounters = 0, berserkerExhausts = 0;
+        int axeWhiffs = 0, axeSwings = 0, axeCleanHits = 0, spearHits = 0, spearCounters = 0, berserkerExhausts = 0;
         for (ulong seed = 1; seed <= 30; seed++)
         {
             var events = new List<Morituri.Sim.Events.SimEvent>();
@@ -203,8 +203,11 @@ public class FairnessRegressionTests
         {
             var res = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, seed);
             axeWhiffs += res.StatsA.Whiffs; axeSwings += res.StatsA.AttackAttempts;
+            axeCleanHits += res.StatsA.CleanHits;
         }
-        Assert.That((float)axeWhiffs / axeSwings, Is.GreaterThan(0.4), "도끼 헛스윙 유도가 작동해야 함");
+        // M3-A: 카운터 반격이 도끼 선딜을 끊으면(HitStun) 헛스윙 대신 '스윙 무산'으로 기록된다 —
+        // 헛스윙률 단독이 아니라 무효 스윙률(헛스윙+끊김 = 시도−클린히트)로 거리 운영을 검증.
+        Assert.That(1f - (float)axeCleanHits / axeSwings, Is.GreaterThan(0.4), "도끼 스윙 무효화(헛스윙+끊김) 유도가 작동해야 함");
         Assert.That(spearHits, Is.GreaterThan(0));
         Assert.That((float)spearCounters / spearHits, Is.GreaterThan(0.25), "카운터 루프가 살아있어야 함 (적중의 유의미한 비중)");
         Assert.That(berserkerExhausts, Is.GreaterThan(0), "도끼 난사가 버서커를 가스아웃시켜야 함 (M3 처벌 레버)");

@@ -330,12 +330,29 @@ public sealed class MatchSim
 
         // 리치 우위: 상대는 내 사거리 안, 나는 상대 사거리 밖 = 일방 유효타 구간.
         // 창/채찍 "견제"의 기계적 본질 (문서[4] 8장 거리 대역 / 기획서 "창=견제 특화").
-        float oppRange = _f[1 - f.Index].Weapon.Range;
+        var oppRt = _f[1 - f.Index];
+        float oppRange = oppRt.Weapon.Range;
         bool reachAdvantage = inRange && dist > oppRange + 0.1f;
         if (reachAdvantage) { light *= 2.2f; feint *= 1.3f; }
 
+        // 수싸움 프레임 판정 (상성 매트릭스 디버깅으로 도입). 상대 선딜을 인지했을 때 세 갈래:
+        //  · 레이스 승산: (내 인지지연 + 내 약공 선딜) < 상대 잔여 선딜 → 반격이 먼저 닿는다 = 카운터
+        //  · 헛스윙 처벌 가능: 내 응답시간 < 상대 후딜 → 회피로 빼서 후딜을 때린다 = 회피
+        //  · 둘 다 아님(검 약공 등 빠르고 안전한 공격) → 가드가 정답. 이길 수 없는 레이스에
+        //    뛰어들면 항상 먼저 맞고 스윙이 끊기고, 처벌 못 할 공격을 피하면 스태미나만 샌다.
+        bool raceWinnable = false, whiffPunishable = false;
+        if (oppWindup)
+        {
+            var oppMotion = MotionTable.Get(oppRt.Weapon.Id, opp.MotionKind);
+            float oppWindupTotal = CombatMath.MotionTime(oppMotion.WindupBaseSec, oppRt.Weapon, oppRt.Def.Stats, _c);
+            float myStrike = f.PerceptDelaySec
+                + CombatMath.MotionTime(MotionTable.Get(f.Weapon.Id, MotionKind.Light).WindupBaseSec, f.Weapon, f.Def.Stats, _c);
+            raceWinnable = myStrike < oppWindupTotal * 0.9f;
+            whiffPunishable = myStrike < oppRt.Weapon.RecoverySec * oppMotion.RecoveryMult;
+        }
+
         // OpportunityMod — 수싸움의 핵심
-        if (oppWindup) light *= 1f + 1.875f * d.CounterWindow;        // CounterWindow 0.8 → ×2.5
+        if (oppWindup && raceWinnable) light *= 1f + 1.875f * d.CounterWindow; // CounterWindow 0.8 → ×2.5
         if (oppRecovery)
         {
             // 후딜 처벌은 카운터형의 본업 — CounterWindow가 여기에도 기여 (M2 튜닝: 1.8 고정이면 게이트 미달)
@@ -351,8 +368,10 @@ public sealed class MatchSim
         if (f.LastAttack == ActionRequest.AttackLight) light *= 1f + d.RepeatBias;
         if (f.LastAttack == ActionRequest.AttackHeavy) heavy *= 1f + d.RepeatBias;
 
-        // StaminaFit: Reserve 이하로는 쓰지 않는다
-        float reserveAbs = d.StaminaReserve * f.StaminaMax;
+        // StaminaFit: Reserve 이하로는 쓰지 않는다 — 단, 확정 기회(캔슬 불가 상대)엔 규율 면제.
+        // Reserve는 평시 수싸움의 절제이지 황금 기회를 흘려보내는 규칙이 아니다. 이 면제가 없으면
+        // 수비형은 가드로 비축분까지 말라 "기다리던 처벌 창"이 와도 못 때린다 (상성 매트릭스 디버깅).
+        float reserveAbs = oppLocked ? 0f : d.StaminaReserve * f.StaminaMax;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) light = 0f;
         if (f.Stamina - _c.StamCostAttackHeavy < reserveAbs || f.IsExhausted) heavy = 0f;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) feint = 0f;
@@ -373,6 +392,9 @@ public sealed class MatchSim
         float dodge = (f.Stamina < _c.StamCostDodge || f.IsExhausted)
             ? 0f
             : (oppWindup && oppCanReachMe ? (0.35f + 0.6f * (1f - d.RiskTolerance)) * 1.3f : 0.08f);
+        // 회피의 가치는 "회피가 만든 헛스윙을 처벌할 수 있는가"에 달렸다. 후딜 짧은 공격(검 약공)을
+        // 피하는 건 스태미나 낭비(15/회)지만, 후딜 긴 공격(도끼)을 빼는 건 처벌 창 제조다.
+        if (oppWindup && !whiffPunishable) dodge *= 0.6f;
         // 강공은 가드 크러시 위협 — 가드 대신 회피로 흘리는 게 보편적 격투 상식
         if (oppHeavyWindup && oppCanReachMe) { guard *= 0.7f; dodge *= 1.6f; }
         score[(int)ActionRequest.Guard] = guard;
@@ -486,6 +508,7 @@ public sealed class MatchSim
         f.MotionKindNow = kind;
         f.IsFeintSwing = isFeint;
         f.SwingResolved = false;
+        f.LastSwingGuarded = false;
         f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c);
         f.CurrentAction = action;
         if (!isFeint) { f.AttackAttempts++; f.LastAttack = action; }
@@ -579,7 +602,10 @@ public sealed class MatchSim
             if (atk.State == FighterState.Active && atk.StateTimer <= 0f)
             {
                 if (!atk.SwingResolved) RegisterWhiff(atk);
-                ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec);
+                // 후딜 = 무기 기본 × 모션 배율 (약공 0.8 안전 / 강공 1.6 처벌 가능 — T02 RecoveryMult)
+                //       × 가드됨 배율 (막힌 공격은 프레임 불리 — 방어자의 턴)
+                ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
+                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f));
             }
         }
     }
@@ -606,6 +632,7 @@ public sealed class MatchSim
         // 2) 가드 판정
         if (ds.State == FighterState.Guard)
         {
+            atk.LastSwingGuarded = true; // 막힌 칼 = 프레임 불리 (후딜 ×GuardedRecoveryMult)
             float raw = CombatMath.RawDamage(atk.Weapon, motionMult, atk.Def.Stats) * (inner ? _c.InnerRangePenalty : 1f);
             var gr = CombatMath.ResolveGuardHit(raw, atk.Weapon, def.GuardGauge, def.Stamina, _c);
             def.GuardGauge = gr.GuardGaugeAfter;

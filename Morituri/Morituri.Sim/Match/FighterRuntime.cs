@@ -51,6 +51,7 @@ public sealed class FighterRuntime
     public MotionDef Motion;
     public MotionKind MotionKindNow;
     public bool IsFeintSwing, SwingResolved;
+    public bool LastSwingGuarded; // 이번 스윙이 가드됨 → 후딜 ×GuardedRecoveryMult (프레임 불리)
     public float WindupTotalSec;
 
     // --- 전략층 상태 ---
