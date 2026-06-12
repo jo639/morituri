@@ -29,6 +29,13 @@ if (args.Length > 0 && args[0] == "sigmatrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "weaponbalance")
+{
+    string wbTac = args.Length > 2 ? (args[2].StartsWith("TAC_") ? args[2] : "TAC_" + args[2].ToUpper()) : "TAC_BALANCED";
+    Analysis.WeaponBalance(args.Length > 1 && int.TryParse(args[1], out int wbg) ? wbg : 400, wbTac);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "sweep")
 {
     int sgames = args.Length > 1 && int.TryParse(args[1], out int spg) ? spg : 120;

@@ -107,6 +107,41 @@ internal static class Analysis
         Console.WriteLine("\n각 전술이 '제 무기'를 들었을 때의 전술 간 상성 — 실제 플레이어가 필드하는 빌드.");
     }
 
+    /// <summary>무기 파워 서열: 전술·성격(냉철) 고정, 무기 8종 8×8. 순수 무기 강도 분리.</summary>
+    public static void WeaponBalance(int games, string tacticId = "TAC_BALANCED")
+    {
+        Console.WriteLine($"=== 무기 파워 매트릭스: {tacticId[4..]}+냉철함 고정, 무기 8종, 칸당 {games}경기 ===");
+        Console.Write("        ");
+        foreach (var w in AllWeapons) Console.Write($"{Short(w),6}");
+        Console.WriteLine("   평균(파워)");
+
+        var rows = new (string w, float avg)[AllWeapons.Length];
+        for (int i = 0; i < AllWeapons.Length; i++)
+        {
+            var row = new FighterDef("a", FighterStats.Baseline, AllWeapons[i], tacticId, "PER_CALM");
+            Console.Write($"{Short(AllWeapons[i]),6}  ");
+            float sum = 0; int cells = 0;
+            for (int j = 0; j < AllWeapons.Length; j++)
+            {
+                if (i == j) { Console.Write($"{"—",6}"); continue; }
+                var col = new FighterDef("b", FighterStats.Baseline, AllWeapons[j], "TAC_BALANCED", "PER_CALM");
+                var (w, d) = Duel(row, col, games, null);
+                float pct = d > 0 ? 100f * w / d : 50f;
+                sum += pct; cells++;
+                Console.Write($"{pct,6:F1}");
+            }
+            float avg = sum / cells;
+            rows[i] = (Short(AllWeapons[i]), avg);
+            Console.WriteLine($"   {avg,5:F1}");
+        }
+
+        Console.WriteLine("\n무기 파워 서열 (필드 상대 평균 승률):");
+        foreach (var (w, avg) in rows.OrderByDescending(r => r.avg))
+            Console.WriteLine($"   {w,-5} {avg,5:F1}{(avg > 60 ? "  ◀ 과강" : avg < 40 ? "  ◀ 과약" : "")}");
+        float spread = rows.Max(r => r.avg) - rows.Min(r => r.avg);
+        Console.WriteLine($"\n파워 스프레드(최강-최약): {spread:F1}%p  (목표: ≤ 20%p)");
+    }
+
     private static string Short(string wpn) => wpn switch
     {
         "WPN_SWORD" => "검", "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검",
