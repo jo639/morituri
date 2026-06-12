@@ -64,9 +64,11 @@ public class DamageFormulaTests
     [Test]
     public void RawDamage_DualBlades_CountsBothHits()
     {
-        // 26 × 2타 × 0.7 × 1.7 = 61.88
-        float raw = CombatMath.RawDamage(WeaponTable.DualBlades, C.MotionMultLight, Avg);
-        Assert.That(raw, Is.EqualTo(26f * 2f * 0.7f * 1.7f).Within(1e-3));
+        // 핵심: HitCount(2타)가 곱해지는가 — 밸런스 수치(base)와 무관한 공식 검증.
+        var db = WeaponTable.DualBlades;
+        float raw = CombatMath.RawDamage(db, C.MotionMultLight, Avg);
+        Assert.That(raw, Is.EqualTo(db.BaseDamage * db.HitCount * 0.7f * 1.7f).Within(1e-3));
+        Assert.That(db.HitCount, Is.EqualTo(2), "쌍검은 2타여야 함 (連타 정체성)");
     }
 
     [Test]

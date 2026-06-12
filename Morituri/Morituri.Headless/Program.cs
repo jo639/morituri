@@ -29,6 +29,12 @@ if (args.Length > 0 && args[0] == "sigmatrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "buildmatrix")
+{
+    Analysis.WeaponBuildMatrix(args.Length > 1 && int.TryParse(args[1], out int bmg) ? bmg : 500);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "weaponbalance")
 {
     string wbTac = args.Length > 2 ? (args[2].StartsWith("TAC_") ? args[2] : "TAC_" + args[2].ToUpper()) : "TAC_BALANCED";

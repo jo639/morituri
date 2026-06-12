@@ -107,6 +107,52 @@ internal static class Analysis
         Console.WriteLine("\n각 전술이 '제 무기'를 들었을 때의 전술 간 상성 — 실제 플레이어가 필드하는 빌드.");
     }
 
+    // 각 무기의 시그니처 빌드 (무기 → 자연스러운 전술). 성격은 냉철 고정(구조 2축 분리).
+    private static readonly (string Wpn, string Tac, string Short)[] Builds =
+    {
+        ("WPN_SWORD",       "TAC_BALANCED", "검·균형"),
+        ("WPN_SPEAR",       "TAC_COUNTER",  "창·카운터"),
+        ("WPN_AXE",         "TAC_BRAWLER",  "도끼·난전"),
+        ("WPN_GREATSWORD",  "TAC_PRESSURE", "대검·압박"),
+        ("WPN_DUALBLADES",  "TAC_BRAWLER",  "쌍검·난전"),
+        ("WPN_HAMMER",      "TAC_PRESSURE", "망치·압박"),
+        ("WPN_WHIP",        "TAC_ZONER",    "채찍·견제"),
+        ("WPN_SWORDSHIELD", "TAC_DEFENDER", "방패·방어"),
+    };
+
+    /// <summary>무기×빌드 매트릭스 (M3-A2 신규 성공 지표). 각 무기를 '제 빌드'에서 8×8.
+    /// 균형형 고정 측정(WeaponBalance)을 대체 — 무기는 빌드 결합이므로 제 빌드에서 재야 한다.</summary>
+    public static void WeaponBuildMatrix(int games)
+    {
+        Console.WriteLine($"=== 무기×빌드 매트릭스: 각 무기+시그니처 전술+냉철, 칸당 {games}경기 ===");
+        Console.Write("            ");
+        foreach (var b in Builds) Console.Write($"{b.Short,9}");
+        Console.WriteLine("   평균");
+
+        var defs = Builds.Select(b => new FighterDef(b.Short, FighterStats.Baseline, b.Wpn, b.Tac, "PER_CALM")).ToArray();
+        var avgs = new (string s, float a)[Builds.Length];
+        for (int i = 0; i < Builds.Length; i++)
+        {
+            Console.Write($"{Builds[i].Short,-11} ");
+            float sum = 0; int cells = 0;
+            for (int j = 0; j < Builds.Length; j++)
+            {
+                if (i == j) { Console.Write($"{"—",9}"); continue; }
+                var (w, d) = Duel(defs[i], defs[j], games, null);
+                float pct = d > 0 ? 100f * w / d : 50f;
+                sum += pct; cells++;
+                Console.Write($"{pct,8:F1} ");
+            }
+            avgs[i] = (Builds[i].Short, sum / cells);
+            Console.WriteLine($"  {sum / cells,5:F1}");
+        }
+        Console.WriteLine("\n빌드 파워 서열:");
+        foreach (var (s, a) in avgs.OrderByDescending(x => x.a))
+            Console.WriteLine($"   {s,-10} {a,5:F1}{(a > 62 ? "  ◀ 과강(모두 이김 위험)" : a < 38 ? "  ◀ 과약" : "")}");
+        int noCounter = avgs.Count(x => x.a > 62);
+        Console.WriteLine($"\n반격 부재(>62% = 모든 상대에 우위) 빌드: {noCounter}/8  (가위바위보 목표: 0)");
+    }
+
     /// <summary>무기 파워 서열: 전술·성격(냉철) 고정, 무기 8종 8×8. 순수 무기 강도 분리.</summary>
     public static void WeaponBalance(int games, string tacticId = "TAC_BALANCED")
     {
