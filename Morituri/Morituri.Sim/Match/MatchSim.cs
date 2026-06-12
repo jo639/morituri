@@ -36,7 +36,13 @@ public sealed class MatchSim
     private float _now;
     private int _tick;
 
-    public MatchSim(BalanceConstants? constants = null) => _c = constants ?? BalanceConstants.Default;
+    private readonly IReadOnlyDictionary<string, float>? _weaponDmgScale; // 밸런스 스윕용 무기별 데미지 배율 주입
+
+    public MatchSim(BalanceConstants? constants = null, IReadOnlyDictionary<string, float>? weaponDmgScale = null)
+    {
+        _c = constants ?? BalanceConstants.Default;
+        _weaponDmgScale = weaponDmgScale;
+    }
 
     public MatchResult Run(FighterDef a, FighterDef b, ulong seed, List<SimEvent>? events = null)
     {
@@ -73,6 +79,8 @@ public sealed class MatchSim
     private FighterRuntime CreateRuntime(int idx, FighterDef def, float startPos)
     {
         var weapon = WeaponTable.Get(def.WeaponId);
+        if (_weaponDmgScale != null && _weaponDmgScale.TryGetValue(def.WeaponId, out float sc))
+            weapon = weapon with { BaseDamage = weapon.BaseDamage * sc };
         var rt = new FighterRuntime
         {
             Index = idx, Def = def, Weapon = weapon,

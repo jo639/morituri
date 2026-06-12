@@ -29,6 +29,14 @@ if (args.Length > 0 && args[0] == "sigmatrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "weaponsweep")
+{
+    int wsg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 150;
+    int wsi = args.Length > 2 && int.TryParse(args[2], out int a2) ? a2 : 30;
+    WeaponSweep.Run(wsg, wsi);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "buildmatrix")
 {
     Analysis.WeaponBuildMatrix(args.Length > 1 && int.TryParse(args[1], out int bmg) ? bmg : 500);

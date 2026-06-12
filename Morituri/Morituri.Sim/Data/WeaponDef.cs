@@ -25,14 +25,14 @@ public readonly record struct WeaponDef(
 public static class WeaponTable
 {
     //                                                  id           base hit  rng   mSpd   rcv   pDmg pMax  crush  gBon  byps  hyper
-    public static readonly WeaponDef Sword       = new("WPN_SWORD",       42f, 1, 1.6f, 1.00f, 0.45f, 18f, 50f, 0.30f, 0f,    0f);
+    public static readonly WeaponDef Sword       = new("WPN_SWORD",       33f, 1, 1.6f, 1.00f, 0.45f, 18f, 50f, 0.30f, 0f,    0f);
     public static readonly WeaponDef Spear       = new("WPN_SPEAR",       38f, 1, 2.6f, 0.95f, 0.55f, 14f, 40f, 0.25f, 0f,    0f);
     public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   true, 1.5f);
     public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f,   true, 1.5f);
-    public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  20f, 2, 1.1f, 1.10f, 0.42f, 10f, 35f, 0.15f, 0f,    0f);
+    public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  18f, 2, 1.1f, 1.10f, 0.42f, 10f, 35f, 0.15f, 0f,    0f);
     public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f,   true, 1.5f);
     public static readonly WeaponDef Whip        = new("WPN_WHIP",        30f, 1, 3.0f, 1.05f, 0.50f,  8f, 35f, 0.10f, 0f,    0.10f);
-    public static readonly WeaponDef SwordShield = new("WPN_SWORDSHIELD", 36f, 1, 1.5f, 0.90f, 0.50f, 16f, 55f, 0.25f, 0.60f, 0f);
+    public static readonly WeaponDef SwordShield = new("WPN_SWORDSHIELD", 40f, 1, 1.5f, 0.90f, 0.50f, 16f, 55f, 0.25f, 0.60f, 0f);
 
     public static readonly WeaponDef[] All =
         { Sword, Spear, Axe, Greatsword, DualBlades, Hammer, Whip, SwordShield };
