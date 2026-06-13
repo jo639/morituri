@@ -92,7 +92,7 @@
     </select>
     <span id="clock">0.0 / 0.0s</span>
   </div>
-  <div class="hint">자세 색: 가드 🟦 · 경직/넘어짐 회색 · 도발 노랑 · 공격 시 무기 팔이 뻗는다. 가는 가로선 = 무기 사거리(간격 읽기).</div>
+  <div class="hint">위에서 비스듬히 본 원형 핏(2.5D). 자세 색: 가드 🟦 · 경직/넘어짐 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. 선회로 간격을 유지하는지 보세요.</div>
 </div>
 
 <script>
@@ -109,7 +109,7 @@ function load(json){
   duration = frames.length ? frames[frames.length-1].Time : 0;
   buildPopups();
   document.getElementById('meta').textContent =
-    `시드 ${doc.Seed} · 아레나 ${doc.Meta.ArenaWidth}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
+    `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
   const A = doc.Meta.A, B = doc.Meta.B;
   document.getElementById('nameA').textContent = A.Name;
   document.getElementById('nameB').textContent = B.Name;
@@ -163,71 +163,63 @@ function frameAt(time){
   const a=F[lo], b=F[hi], span=b.Time-a.Time;
   return {f:a, g:b, k: span>0 ? (time-a.Time)/span : 0};
 }
-const X = pos => PAD + (pos/doc.Meta.ArenaWidth)*(W-2*PAD);
-const PXM = () => (W-2*PAD)/doc.Meta.ArenaWidth;
+// ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
+const CX = W/2, CY = H*0.58, RX = W/2 - PAD, RY = (W/2 - PAD)*0.34;
+const R = () => doc.Meta.ArenaRadius;
+const proj = (sx, sy) => ({ x: CX + (sx/R())*RX, y: CY + (sy/R())*RY });
+const mPx = () => RX/R();              // 가로 m→px
+const depthN = sy => (sy/R()+1)/2;     // 0 뒤 ~ 1 앞 (원근·정렬)
 
-// ── 막대기 포즈 ──
 function poseColor(state){
   if (state==='Guard') return '#6fa8dc';
   if (state==='Stagger'||state==='HitStun'||state==='Down'||state==='GetUp') return '#9aa3af';
   if (state==='Taunt') return '#ffd24a';
-  return null; // 기본색 사용
+  return null;
 }
-function drawFighter(x, state, facing, baseCol, reach){
+// 막대기: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+function drawFighter(fx, fy, scale, state, facing, baseCol, reach){
   const col = poseColor(state) || baseCol;
-  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3; ctx.lineCap='round';
-  const hip = GROUND-42, sh = GROUND-78, hd = GROUND-90;
+  // 사거리 링 (바닥 타원) — 2D 간격 읽기의 핵심
+  ctx.save(); ctx.globalAlpha=.16; ctx.strokeStyle=col; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0, 0, 7); ctx.stroke(); ctx.restore();
+  // 발 그림자
+  ctx.save(); ctx.globalAlpha=.25; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(fx, fy, 9*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 
-  // 사거리 위스커 (가슴 높이, 상대 방향) — 간격 읽기의 핵심
-  ctx.save(); ctx.globalAlpha=.28; ctx.lineWidth=2; ctx.strokeStyle=col;
-  ctx.beginPath(); ctx.moveTo(x, sh+8); ctx.lineTo(x+facing*reach*PXM(), sh+8); ctx.stroke();
-  ctx.restore();
-
-  if (state==='Down'){ // 바닥에 누움
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(x-facing*18, GROUND-6); ctx.lineTo(x+facing*22, GROUND-6); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x-facing*24, GROUND-9, 9, 0, 7); ctx.fill();
-    return;
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineCap='round';
+  if (state==='Down'){
+    ctx.lineWidth=3*scale;
+    ctx.beginPath(); ctx.moveTo(fx-facing*18*scale, fy-4); ctx.lineTo(fx+facing*22*scale, fy-4); ctx.stroke();
+    ctx.beginPath(); ctx.arc(fx-facing*24*scale, fy-7, 8*scale, 0,7); ctx.fill(); return;
   }
-  let lean = 0, crouch = 0;
-  if (state==='HitStun'||state==='Stagger') lean = -facing*0.35;       // 뒤로 휘청
-  if (state==='Dodge') lean = -facing*0.5;
-  if (state==='GetUp') crouch = 0.5;
-  const cy = v => v + crouch*22;
+  const H0 = 56*scale;
+  const hip = fy - H0*0.42, sh = fy - H0*0.78, hd = fy - H0*0.92;
+  let lean=0, crouch=0;
+  if (state==='HitStun'||state==='Stagger') lean=-facing*0.35;
+  if (state==='Dodge') lean=-facing*0.5;
+  if (state==='GetUp') crouch=0.5;
+  const cy = v => v + crouch*H0*0.25;
+  const sx = fx + lean*14*scale;
+  ctx.lineWidth=3*scale;
+  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(sx, cy(sh)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx-8*scale, fy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx+8*scale, fy); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx+lean*4, cy(hd), 8*scale, 0,7); ctx.fill();
 
-  // 몸통
-  const sx = x + lean*16;
-  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(sx, cy(sh)); ctx.stroke();
-  // 다리
-  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(x-9, GROUND); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(x+9, GROUND); ctx.stroke();
-  // 머리
-  ctx.beginPath(); ctx.arc(sx+lean*4, cy(hd), 9, 0, 7); ctx.fill();
-
-  // 무기 팔 각도 (facing 기준 0 = 상대쪽 수평)
-  let arm; // 라디안, 화면좌표(아래가 +)
+  let arm;
   switch(state){
-    case 'Windup':  arm = -2.3; break;   // 뒤로 치켜듦
-    case 'Active':  arm = 0;    break;   // 상대쪽 수평 (찌름/베기)
-    case 'Recovery':arm = 0.5;  break;   // 뻗었다 처짐
-    case 'Guard':   arm = -1.2; break;   // 앞에 세움
-    case 'Taunt':   arm = -2.0; break;   // 위로 (도발)
-    case 'Stagger': case 'HitStun': arm = -2.6; break;
-    default:        arm = 1.0;           // 늘어뜨림
+    case 'Windup': arm=-2.3; break; case 'Active': arm=0; break;
+    case 'Recovery': arm=0.5; break; case 'Guard': arm=-1.2; break;
+    case 'Taunt': arm=-2.0; break; case 'Stagger': case 'HitStun': arm=-2.6; break;
+    default: arm=1.0;
   }
-  const armLen = (state==='Active') ? 20 : 16;
-  const ax = sx + facing*Math.cos(arm)*armLen;
-  const ay = cy(sh) + Math.sin(arm)*armLen;
-  ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(sx, cy(sh)); ctx.lineTo(ax, ay); ctx.stroke();
-
-  // 무기(블레이드) — Active면 사거리만큼 길게 뻗어 타격 순간이 읽힌다
-  const wl = (state==='Active') ? reach*PXM()*0.7 : 16;
-  ctx.lineWidth=2.5; ctx.strokeStyle=col; ctx.globalAlpha = (state==='Active')?1:.7;
-  ctx.beginPath(); ctx.moveTo(ax, ay);
-  ctx.lineTo(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl); ctx.stroke();
+  const aL=(state==='Active'?20:16)*scale;
+  const ax=sx+facing*Math.cos(arm)*aL, ay=cy(sh)+Math.sin(arm)*aL;
+  ctx.lineWidth=3*scale; ctx.beginPath(); ctx.moveTo(sx,cy(sh)); ctx.lineTo(ax,ay); ctx.stroke();
+  const wl=(state==='Active'? reach*mPx()*0.6 : 15*scale);
+  ctx.lineWidth=2.5*scale; ctx.globalAlpha=(state==='Active')?1:.7;
+  ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl); ctx.stroke();
   ctx.globalAlpha=1;
-
-  // 공격 강조 글로우
   if (state==='Active'){ ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='#fff'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4,0,7); ctx.stroke(); ctx.restore(); }
 }
@@ -235,47 +227,46 @@ function drawFighter(x, state, facing, baseCol, reach){
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 바닥 + 코너존
-  ctx.strokeStyle='#222a35'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(PAD-10,GROUND); ctx.lineTo(W-PAD+10,GROUND); ctx.stroke();
-  ctx.fillStyle='#161b23';
-  const cz = 1.5; ctx.fillRect(X(0)-10, GROUND-2, X(cz)-X(0)+10, 4);
-  ctx.fillRect(X(doc.Meta.ArenaWidth-cz), GROUND-2, X(doc.Meta.ArenaWidth)-X(doc.Meta.ArenaWidth-cz)+10, 4);
+  // 핏 바닥 (타원) + 가장자리 링
+  ctx.fillStyle='#171b22';
+  ctx.beginPath(); ctx.ellipse(CX,CY,RX,RY,0,0,7); ctx.fill();
+  ctx.strokeStyle='#2a3340'; ctx.lineWidth=2; ctx.stroke();
+  const edge=(R()-1.5)/R();
+  ctx.strokeStyle='#222a35'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.ellipse(CX,CY,RX*edge,RY*edge,0,0,7); ctx.stroke();
 
-  const fr = frameAt(t);
-  const f = fr.f, g = fr.g, k = fr.k;
-  const posA = f.PosA + (g.PosA-f.PosA)*k;
-  const posB = f.PosB + (g.PosB-f.PosB)*k;
-  const faceA = posA <= posB ? 1 : -1, faceB = -faceA;
+  const fr=frameAt(t), f=fr.f, g=fr.g, k=fr.k;
+  const ax=f.Ax+(g.Ax-f.Ax)*k, ay=f.Ay+(g.Ay-f.Ay)*k;
+  const bx=f.Bx+(g.Bx-f.Bx)*k, by=f.By+(g.By-f.By)*k;
+  const pa=proj(ax,ay), pb=proj(bx,by);
+  const faceA = ax<=bx?1:-1, faceB=-faceA;
+  const gap=Math.hypot(ax-bx, ay-by);
 
-  // 간격 표시
-  ctx.fillStyle='#5b6470'; ctx.font='11px system-ui'; ctx.textAlign='center';
-  ctx.fillText(`간격 ${Math.abs(posA-posB).toFixed(1)}m`, (X(posA)+X(posB))/2, GROUND-118);
+  // 간격선
+  ctx.save(); ctx.globalAlpha=.4; ctx.strokeStyle='#5b6470'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();
+  ctx.fillStyle='#7b8694'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
 
-  drawFighter(X(posA), f.StateA, faceA, getCSS('--a'), doc.Meta.A.Range);
-  drawFighter(X(posB), f.StateB, faceB, getCSS('--b'), doc.Meta.B.Range);
+  // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에)
+  const A={p:pa, sy:ay, st:f.StateA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0};
+  const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1};
+  for (const u of [A,B].sort((m,n)=>m.sy-n.sy))
+    drawFighter(u.p.x, u.p.y, 0.8+0.4*depthN(u.sy), u.st, u.face, u.col, u.reach);
 
-  // 팝업 (타격·자세·다운)
+  // 팝업 / Decision 핀
+  const sp = who => who===0?pa:pb;
   ctx.textAlign='center';
-  for (const p of popups){
-    const age = t - p.t; if (age < 0 || age > p.life) continue;
-    const a = 1 - age/p.life;
-    const px = X(p.who===0?posA:posB), py = GROUND-100 - (p.rise*(1-a));
-    ctx.globalAlpha = a; ctx.fillStyle = p.col; ctx.font='bold 15px system-ui';
-    ctx.fillText(p.text, px, py); ctx.globalAlpha=1;
-  }
-  // Decision 아이콘 (판단 핀)
-  for (const d of decisions){
-    if (t < d.t || t > d.t + d.dur) continue;
-    const px = X(d.who===0?posA:posB), py = GROUND-138;
-    ctx.fillStyle = d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.9;
-    const txt = '🧠 '+d.tag; ctx.font='bold 12px system-ui';
-    const w = ctx.measureText(txt).width+14;
-    roundRect(px-w/2, py-14, w, 19, 6); ctx.fill();
-    ctx.fillStyle='#0c0f14'; ctx.fillText(txt, px, py); ctx.globalAlpha=1;
-  }
+  for (const p of popups){ const age=t-p.t; if(age<0||age>p.life)continue;
+    const a=1-age/p.life, s=sp(p.who);
+    ctx.globalAlpha=a; ctx.fillStyle=p.col; ctx.font='bold 15px system-ui';
+    ctx.fillText(p.text, s.x, s.y-58-(p.rise*(1-a))); ctx.globalAlpha=1; }
+  for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
+    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.92;
+    const txt='🧠 '+d.tag; ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
+    roundRect(s.x-w/2, s.y-92, w, 19, 6); ctx.fill();
+    ctx.fillStyle='#0c0f14'; ctx.fillText(txt, s.x, s.y-78); ctx.globalAlpha=1; }
 
-  // HUD 바
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
   document.getElementById('scrub').value = duration>0 ? (t/duration*1000)|0 : 0;

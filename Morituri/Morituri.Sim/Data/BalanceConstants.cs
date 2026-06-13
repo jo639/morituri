@@ -85,9 +85,9 @@ public readonly record struct BalanceConstants
     public float TauntDurationSec  { get; init; }
     public float FeintCancelRatio  { get; init; }  // 페인트: 선딜 × 이 비율에서 중단
     public float FeintRecoverySec  { get; init; }
-    public float ArenaWidth        { get; init; }
+    public float ArenaRadius       { get; init; }  // 원형 핏 반지름 (중심 0,0). B: 2D-lite (문서[8])
     public float StartGap          { get; init; }  // 시작 시 두 선수 간 거리
-    public float CornerZone        { get; init; }  // 벽에서 이 거리 이내 = 코너 (판정 패널티)
+    public float CornerZone        { get; init; }  // 경계에서 이 거리 이내 = 가장자리 (판정 패널티)
     public float InnerRangeRatio   { get; init; }  // dist < range×비율 → 안쪽 침투 판정
     public float MinLongRange      { get; init; }  // 이 사거리 이상 무기만 침투 패널티 대상
 
@@ -176,7 +176,7 @@ public readonly record struct BalanceConstants
         TauntDurationSec = 1.5f,
         FeintCancelRatio = 0.5f,
         FeintRecoverySec = 0.25f,
-        ArenaWidth = 16f,
+        ArenaRadius = 8f,   // 지름 16m = 옛 1D 폭과 동일 스케일, 단 원형이라 선회 공간 존재
         StartGap = 4f,
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,

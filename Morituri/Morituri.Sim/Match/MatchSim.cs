@@ -52,8 +52,8 @@ public sealed class MatchSim
     {
         _events = events;
         _rng = new SimRandom(seed);
-        _f[0] = CreateRuntime(0, a, _c.ArenaWidth / 2f - _c.StartGap / 2f);
-        _f[1] = CreateRuntime(1, b, _c.ArenaWidth / 2f + _c.StartGap / 2f);
+        _f[0] = CreateRuntime(0, a, new Vec2(-_c.StartGap / 2f, 0f));
+        _f[1] = CreateRuntime(1, b, new Vec2(_c.StartGap / 2f, 0f));
         _now = 0f; _tick = 0;
 
         int strategyTicks = Math.Max(1, (int)MathF.Round(_c.StrategyTickSec / Dt));
@@ -85,7 +85,7 @@ public sealed class MatchSim
     {
         if (frames == null) return;
         frames.Add(new ReplayFrame(_now,
-            _f[0].Position, _f[1].Position,
+            _f[0].Pos.X, _f[0].Pos.Y, _f[1].Pos.X, _f[1].Pos.Y,
             MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
             _f[0].StaminaPct, _f[1].StaminaPct,
             _f[0].State, _f[1].State));
@@ -93,7 +93,7 @@ public sealed class MatchSim
 
     // ───────────────────────── 초기화 ─────────────────────────
 
-    private FighterRuntime CreateRuntime(int idx, FighterDef def, float startPos)
+    private FighterRuntime CreateRuntime(int idx, FighterDef def, Vec2 startPos)
     {
         var weapon = WeaponTable.Get(def.WeaponId);
         if (_weaponDmgScale != null && _weaponDmgScale.TryGetValue(def.WeaponId, out float sc))
@@ -114,7 +114,8 @@ public sealed class MatchSim
         rt.GuardGauge = rt.GuardGaugeMax;
         rt.MoveSpeed = CombatMath.MoveSpeedMps(def.Stats, _c);
         rt.PerceptDelaySec = CombatMath.PerceptionDelay(def.Stats);
-        rt.Position = startPos;
+        rt.Pos = startPos;
+        rt.CircleSign = idx == 0 ? 1f : -1f;   // 서로 반대로 선회 → 꼬리물기 대칭 회피
         rt.RebuildDirective(0f);
         return rt;
     }
@@ -127,7 +128,7 @@ public sealed class MatchSim
         {
             var f = _f[i];
             _snaps[i][_tick % SnapRing] = new PerceptSnap(
-                f.State, f.MotionKindNow, f.Position, f.HpPct,
+                f.State, f.MotionKindNow, f.Pos, f.HpPct,
                 f.GuardGauge / f.GuardGaugeMax, f.StateElapsed, f.IsExhausted);
         }
     }
@@ -183,8 +184,8 @@ public sealed class MatchSim
         if (f.PoiseRegenBlockTimer <= 0f)
             f.Poise = MathF.Min(f.PoiseMax, f.Poise + f.PoiseMax * _c.PoiseRecoverPctPerSec * Dt);
 
-        // 코너 체류 (판정 패널티)
-        if (f.Position <= _c.CornerZone || f.Position >= _c.ArenaWidth - _c.CornerZone)
+        // 가장자리 체류 (판정 패널티) — 중심에서 멀수록 몰린 것
+        if (f.Pos.Length >= _c.ArenaRadius - _c.CornerZone)
             f.CornerTime += Dt;
     }
 
@@ -322,7 +323,7 @@ public sealed class MatchSim
     private ActionRequest SelectAction(FighterRuntime f, in PerceptSnap opp)
     {
         ref readonly Directive d = ref f.Dir;
-        float dist = MathF.Abs(opp.Position - f.Position);
+        float dist = Vec2.Dist(opp.Pos, f.Pos);
         // 교전 거리 보정: 선호 거리가 자기 유효 공격 거리보다 멀면 영원한 대치가 된다 (거울 매치 KO 0%로 검출).
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
@@ -340,10 +341,18 @@ public sealed class MatchSim
         bool oppGuard = opp.State == FighterState.Guard;
         bool oppDown = opp.State is FighterState.Down or FighterState.GetUp;
 
+        // 경계 근접도 (0 중심 ~ 1 가장자리). B: 원형 핏 — 경계선 후퇴는 막히므로 선회가 답.
+        float edgeProx = MathF.Min(1f, f.Pos.Length / MathF.Max(0.5f, _c.ArenaRadius - 0.5f));
+
         Span<float> score = stackalloc float[9];
         score[(int)ActionRequest.Approach] = gap > d.DistanceTolerance ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.05f;
-        score[(int)ActionRequest.Retreat] = gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f;
-        score[(int)ActionRequest.Strafe] = 0.12f;
+        // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
+        score[(int)ActionRequest.Retreat] = (gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f)
+                                          * (1f - 0.6f * edgeProx);
+        // 선회(B 핵심): 사거리 우위 무기는 자기 스윗스팟을 '유지'하려 선회(견제 카이팅), 그 외엔 근접 시 거리벌리기.
+        bool wantSpace = gap < -d.DistanceTolerance
+                      || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance);
+        score[(int)ActionRequest.Strafe] = 0.10f + (wantSpace ? 0.30f + 0.7f * edgeProx : 0f);
 
         // 자기 약점 거리(inner ×0.6 구간)에서의 공격은 반토막 가치 — 창/채찍은 먼저 거리를 벌리는 게 정답
         bool selfInner = f.Weapon.Range >= _c.MinLongRange && dist < f.Weapon.Range * _c.InnerRangeRatio;
@@ -509,17 +518,15 @@ public sealed class MatchSim
         f.Stamina -= _c.StamCostDodge;
 
         var opp = _f[1 - f.Index];
-        float backDir = MathF.Sign(f.Position - opp.Position); // 상대 반대쪽
-        if (backDir == 0f) backDir = f.Index == 0 ? -1f : 1f;
-        if (!away) backDir = -backDir;
+        Vec2 back = (f.Pos - opp.Pos).Normalized();        // 상대 반대쪽
+        if (back.Length < 1e-6f) back = new Vec2(f.Index == 0 ? -1f : 1f, 0f);
+        if (!away) back = back * -1f;
 
-        float target = f.Position + backDir * _c.DodgeDistance;
-        if (target <= 0.5f || target >= _c.ArenaWidth - 0.5f)
-        {
-            // 코너 통과 롤: 후방 공간 없음 → 상대 등 뒤로 빠져나감 (원형 경기장 측면 이동의 1D 등가)
-            target = opp.Position + (opp.Position - f.Position >= 0f ? 1f : -1f) * 1.6f;
-        }
-        f.Position = Math.Clamp(target, 0.5f, _c.ArenaWidth - 0.5f);
+        Vec2 target = f.Pos + back * _c.DodgeDistance;
+        // 후방이 경계 밖이면 접선 성분을 섞어 측면으로 빠진다 (옛 1D '코너 통과 롤'의 2D 자연 등가 — 핵 불필요)
+        if (target.Length > _c.ArenaRadius - 0.5f)
+            target = f.Pos + (back + back.Perp() * f.CircleSign).Normalized() * _c.DodgeDistance;
+        f.Pos = ClampToArena(target);
         f.CurrentAction = ActionRequest.Dodge;
         ChangeState(f, FighterState.Dodge, _c.DodgeDurationSec);
         return true;
@@ -546,6 +553,13 @@ public sealed class MatchSim
         return true;
     }
 
+    /// <summary>원형 핏 경계 안으로 투영. 선회는 경계에 닿아도 접선으로 미끄러진다(벽-핀 제거 = B의 핵심).</summary>
+    private Vec2 ClampToArena(Vec2 p)
+    {
+        float maxR = _c.ArenaRadius - 0.5f, len = p.Length;
+        return len <= maxR ? p : p * (maxR / len);
+    }
+
     private void FsmAdvance(FighterRuntime f)
     {
         var opp = _f[1 - f.Index];
@@ -554,10 +568,15 @@ public sealed class MatchSim
             case FighterState.Move:
             {
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f);
-                float dir = MathF.Sign(opp.Position - f.Position);
-                if (f.CurrentAction == ActionRequest.Retreat) dir = -dir;
-                if (f.CurrentAction != ActionRequest.Strafe)
-                    f.Position = Math.Clamp(f.Position + dir * speed * Dt, 0.5f, _c.ArenaWidth - 0.5f);
+                Vec2 toOpp = (opp.Pos - f.Pos).Normalized();
+                Vec2 move = f.CurrentAction switch
+                {
+                    // 선회(B): 교전선에 수직 접선 이동 → 등속 추격자로부터 간격 유지(카이팅). 옛 1D 불가 동작.
+                    ActionRequest.Strafe => toOpp.Perp() * f.CircleSign,
+                    ActionRequest.Retreat => toOpp * -1f,
+                    _ => toOpp, // Approach
+                };
+                f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
                 break;
@@ -605,7 +624,7 @@ public sealed class MatchSim
     // ───────────────────────── 히트 판정 (문서[4] 3장 처리 순서) ─────────────────────────
 
     private readonly record struct DefenseSnap(
-        FighterState State, float StateElapsed, bool DownHitConsumed, float Position, bool IsExhausted, bool Armored);
+        FighterState State, float StateElapsed, bool DownHitConsumed, Vec2 Pos, bool IsExhausted, bool Armored);
 
     /// <summary>
     /// 동시 해결: 양측의 방어 상태를 먼저 캡처한 뒤 상호 적용한다.
@@ -621,7 +640,7 @@ public sealed class MatchSim
             // 하이퍼아머: 중량 무기가 강공 선딜을 커밋한 순간 = 약공에 안 끊기는 상태 (페인트 제외).
             bool armored = f.Weapon.HyperArmor && f.State == FighterState.Windup
                         && f.MotionKindNow == MotionKind.Heavy && !f.IsFeintSwing;
-            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Position, f.IsExhausted, armored);
+            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Pos, f.IsExhausted, armored);
         }
 
         for (int i = 0; i < 2; i++)
@@ -646,7 +665,7 @@ public sealed class MatchSim
 
     private void TryResolveHit(FighterRuntime atk, FighterRuntime def, in DefenseSnap ds)
     {
-        float dist = MathF.Abs(atk.Position - ds.Position);
+        float dist = Vec2.Dist(atk.Pos, ds.Pos);
         if (dist > atk.Weapon.Range + 0.05f) return; // 아직 범위 밖 — Active 동안 계속 시도
 
         atk.SwingResolved = true;

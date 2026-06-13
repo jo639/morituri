@@ -10,7 +10,7 @@ namespace Morituri.Headless;
 /// <summary>한 선수의 정적 정보 — 뷰어가 HP바 라벨·사거리 표시에 쓴다.</summary>
 public sealed record ViewerFighter(string Name, string Weapon, string Tactic, string Personality, float Range);
 
-public sealed record ViewerMeta(float ArenaWidth, ViewerFighter A, ViewerFighter B);
+public sealed record ViewerMeta(float ArenaRadius, ViewerFighter A, ViewerFighter B);
 
 /// <summary>
 /// 뷰어 봉투 = 정적 메타 + 연속 프레임(위치/HP/자세) + 이산 이벤트(판단·타격 아이콘) + 결과.
@@ -30,7 +30,7 @@ public static class ViewerExport
         var result = new MatchSim().Run(a, b, seed, events, frames);
 
         var doc = new ViewerDoc(MatchSerializer.SchemaVersion, seed,
-            new ViewerMeta(BalanceConstants.Default.ArenaWidth, Describe(a), Describe(b)),
+            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a), Describe(b)),
             frames, events, result);
 
         var opts = MatchSerializer.CreateEventAwareOptions(writeIndented: false);
