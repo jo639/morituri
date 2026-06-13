@@ -183,16 +183,20 @@ public class FairnessRegressionTests
     {
         // 동일 선수 거울전 — 선공(인덱스 0) 고정 우위가 생기면 동시 해결 페이즈가 깨진 것.
         // (M2에서 순차 히트 적용이 100:0을 만든 전적이 있음)
+        // M3-C: 현재 편향 ~4.8%p (선행 밸런스 작업으로 7.6%p→4.8%p). 밴드를 0.42~0.58로 강화.
+        //   주의: 더 조이지 말 것 — 180초 판정 거울전은 카오스적 초민감이라 갱신/트레이드 순서를 손대면
+        //   편향이 상쇄가 아니라 '재매핑'된다(검증: 순서교대·독립RNG·resolve-both 전부 편향 이동/악화).
+        //   밸런스 데이터 무편향은 배치 도구의 시드별 코너 교대가 담당한다. n=1000 = 상한까지 통계적 여유 ~3.5σ.
         var f = new FighterDef("M", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM");
         int winA = 0, decided = 0;
-        for (ulong seed = 1; seed <= 200; seed++)
+        for (ulong seed = 1; seed <= 1000; seed++)
         {
             var r = new MatchSim().Run(f, f, seed);
             if (r.Winner == 0) { winA++; decided++; }
             else if (r.Winner == 1) decided++;
         }
         float rate = (float)winA / decided;
-        Assert.That(rate, Is.InRange(0.35, 0.65), $"거울전 선공 승률 {rate:P1} — 구조적 편향 한계 초과");
+        Assert.That(rate, Is.InRange(0.42, 0.58), $"거울전 선공 승률 {rate:P1} — 구조적 편향 한계 초과");
     }
 
     [Test]
