@@ -28,6 +28,7 @@ Morituri/Morituri.Headless/viewer.json
 match.json
 highlights.json
 viewer.json
+Morituri/Morituri.Headless/matchup_report.csv
 
 # ── 로컬 프리뷰 설정 (디버그 뷰어 서빙용, 머신별) ──
 .claude/launch.json
