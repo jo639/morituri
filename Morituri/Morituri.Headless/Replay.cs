@@ -75,7 +75,7 @@ internal static class Replay
         Console.WriteLine($"   {b.Name}: 시도 {result.StatsB.AttackAttempts}회 (헛스윙 {result.StatsB.Whiffs}) / 클린히트 {result.StatsB.CleanHits} / 누적딜 {result.StatsB.DamageDealt:F0}");
     }
 
-    private static (FighterDef, FighterDef) Pick(string m)
+    internal static (FighterDef, FighterDef) Pick(string m)
     {
         // "t:COUNTER:PRESSURE" = 전술 매트릭스 진단용 (검+냉철함 고정, 매트릭스 배치와 동일 조건)
         if (m.StartsWith("t:"))

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Morituri.Headless;
 using Morituri.Sim.Data;
 using Morituri.Sim.Match;
+using Morituri.Sim.Serialization;
 
 // MORITURI 헤드리스 배치 러너 (문서[4] 12장 / 문서[1] M3 초도판)
 // 사용: dotnet run -- [N]                       배치 통계 (매치업당 N경기, 기본 1000)
@@ -64,6 +65,26 @@ if (args.Length > 0 && args[0] == "replay")
     ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong s) ? s : 1;
     bool verbose = args.Length > 3 && (args[3] == "v" || args[3] == "verbose");
     Replay.Run(matchup, seed, verbose);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "export")
+{
+    // 경기 한 판을 JSON으로 (M4 뷰어·Phase 3 역사 DB 입력). 매치업 어휘는 replay와 동일.
+    string matchup = args.Length > 1 ? args[1] : "berserker";
+    ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong es) ? es : 1;
+    string outPath = args.Length > 3 ? args[3] : "match.json";
+    var (ea, eb) = Replay.Pick(matchup);
+    File.WriteAllText(outPath, MatchSerializer.Serialize(MatchSerializer.Capture(ea, eb, seed)));
+    Console.WriteLine($"{ea.Name} vs {eb.Name} (시드 {seed}) → {outPath}");
+    return;
+}
+
+if (args.Length > 0 && args[0] == "highlights")
+{
+    int hg = args.Length > 1 && int.TryParse(args[1], out int hgp) ? hgp : 1000;
+    string outPath = args.Length > 2 ? args[2] : "highlights.json";
+    Highlights.Collect(hg, outPath);
     return;
 }
 

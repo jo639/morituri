@@ -20,3 +20,9 @@ Thumbs.db
 
 # ── 임시 오피스 잠금 파일 (.odt 본체는 추적) ──
 .~lock.*#
+
+# ── 시뮬레이션 생성 산출물 (export/highlights 모드 출력) ──
+Morituri/Morituri.Headless/match.json
+Morituri/Morituri.Headless/highlights.json
+match.json
+highlights.json
