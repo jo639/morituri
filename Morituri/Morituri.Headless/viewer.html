@@ -176,6 +176,38 @@ function poseColor(state){
   if (state==='Taunt') return '#ffd24a';
   return null;
 }
+
+// ── 스프라이트 시스템 (M4-b): sprites/sprites.json + PNG 시트가 있으면 실루엣 대신 그림을 그린다.
+//    상태(12종) → 포즈(8종) 매핑. 시트는 오른쪽 향함 기준, 발(바닥)이 앵커. 없으면 실루엣 폴백.
+let sprite = null; // { img, frames:{pose:{x,y,w,h}} }
+const POSE = { Idle:'idle', Move:'walk', Windup:'windup', Active:'strike', Recovery:'strike',
+  Guard:'guard', Dodge:'walk', HitStun:'hurt', Stagger:'hurt', Down:'down', GetUp:'down', Taunt:'taunt' };
+async function loadSprites(){
+  try{
+    const cfg = await (await fetch('sprites/sprites.json?'+Date.now())).json();
+    const img = new Image();
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='sprites/'+cfg.image; });
+    sprite = { img, frames: cfg.frames };
+  }catch(e){ sprite=null; } // 시트 없음 → 실루엣 폴백
+}
+// 바닥 장식 (사거리 링 + 그림자 + 팀색 글로우) — 스프라이트 경로용 (실루엣은 자체 보유)
+function drawGround(fx, fy, scale, reach, col){
+  ctx.save(); ctx.globalAlpha=.20; ctx.fillStyle=col;       // 팀색 글로우 (같은 시트라도 구분)
+  ctx.beginPath(); ctx.ellipse(fx, fy, 16*scale, 6*scale, 0,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.18; ctx.strokeStyle=col; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0,0,7); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
+}
+function drawSprite(fx, fy, scale, state, facing){
+  const fr = sprite.frames[POSE[state]||'idle'] || sprite.frames.idle;
+  if(!fr) return false;
+  const h = 78*scale, w = h*(fr.w/fr.h);
+  ctx.save(); ctx.translate(fx, fy); if(facing<0) ctx.scale(-1,1);
+  ctx.imageSmoothingEnabled=false;                          // 픽셀아트 선명
+  ctx.drawImage(sprite.img, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h); // 발=앵커(바닥 0)
+  ctx.restore(); return true;
+}
 // 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
 function shade(hex, f){ // 색 밝기 조정 (f<1 어둡게)
   const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
@@ -287,8 +319,9 @@ function render(){
   const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
-    unitTag(u.p.x, u.p.y - 64*sc - 16, u.name, u.hp, u.col);
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.face); }
+    else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
+    unitTag(u.p.x, u.p.y - 70*sc - 16, u.name, u.hp, u.col);
   }
 
   // 팝업 / Decision 핀 (HUD 위로)
@@ -341,8 +374,9 @@ stage.ondragover = e=>{ e.preventDefault(); };
 stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f.text().then(load); };
 window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); } };
 
-// 같은 폴더에서 http로 열렸으면 자동 로드 시도 (file://에선 조용히 실패)
-fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{});
+// 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
+loadSprites().finally(()=>
+  fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{}));
 requestAnimationFrame(tick);
 </script>
 </body>
