@@ -100,9 +100,11 @@ public class TriggerEvalTests
     private static TriggerContext Ctx(
         float selfHp = 1f, float oppHp = 1f, int consecHits = 0, bool oppHeavyWindup = false,
         bool oppDown = false, float sinceCrit = 999f, float timeRemain = 1f,
-        float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f)
+        float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f,
+        bool oppStaggered = false)
         => new(selfHp, oppHp, selfHp > oppHp + 0.05f, consecHits, oppHeavyWindup, oppDown,
-               sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit);
+               sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit,
+               OppStaggeredPerceived: oppStaggered);
 
     [Test]
     public void Reckless_FiresAtOrBelow30PctHp()
@@ -113,12 +115,22 @@ public class TriggerEvalTests
     }
 
     [Test]
-    public void Arrogant_TauntCondition_OppHp10Pct()
+    public void Arrogant_TauntsWhenLeadingAndOppStaggered_NotWhenBehindOrThinLead()
     {
+        // M3-B 재설계: 옛 "상대 빈사(HP≤10%)" 트리거는 처벌자가 이미 죽어 역전 0%였다.
+        // 새 트리거 "상대 스태거 + HP 리드 ≥ 5.5%p" — 상대가 살아서 처벌 가능한 시점.
+        // 리드 폭이 도발 자격 경기를 선별해 조건부 역전패율을 5~10% 밴드로 조인다(M3-B 진단).
         var rule = PersonalityTable.Arrogant.Rules[0];
         Assert.That(rule.Interrupt, Is.EqualTo(InterruptAction.Taunt));
-        Assert.That(TriggerEval.Matches(rule, Ctx(oppHp: 0.09f)), Is.True);
-        Assert.That(TriggerEval.Matches(rule, Ctx(oppHp: 0.50f)), Is.False);
+        Assert.That(rule.Cond, Is.EqualTo(TriggerCondition.OppStaggeredWhileAhead));
+        // 충분한 리드(40%p) + 상대 스태거 → 발동
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.80f, oppHp: 0.40f, oppStaggered: true)), Is.True);
+        // 상대가 스태거 아님 → 미발동
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.80f, oppHp: 0.40f, oppStaggered: false)), Is.False);
+        // 열세 → 미발동 (오만함은 앞설 때만 방심)
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.30f, oppHp: 0.80f, oppStaggered: true)), Is.False);
+        // 리드가 얇음(3%p < 5.5%p) → 미발동 (박빙 도발이 만드는 잔여 역전을 차단)
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.50f, oppHp: 0.47f, oppStaggered: true)), Is.False);
     }
 
     [Test]

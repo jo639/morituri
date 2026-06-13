@@ -189,7 +189,8 @@ public sealed class MatchSim
             ReservePct: f.Dir.StaminaReserve,
             SameWhiffCount: f.SameWhiffCount,
             HpDeficitPct: opp.HpPct - f.HpPct,
-            OppExhaustedPerceived: opp.IsExhausted);
+            OppExhaustedPerceived: opp.IsExhausted,
+            OppStaggeredPerceived: opp.State == FighterState.Stagger);
     }
 
     private void StrategyTick(FighterRuntime f)

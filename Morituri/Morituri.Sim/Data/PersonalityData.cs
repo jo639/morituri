@@ -18,6 +18,7 @@ public enum TriggerCondition
     TimeRemainPctBelowAndLosing,  // 남은 시간% ≤ value & HP 열세
     OppGuardGaugeBelowPct,        // 상대 가드 게이지% ≤ value
     OppExhausted,                 // 상대 스태미나 고갈 인지 (취약 상태 — 잔혹함이 노리는 틈)
+    OppStaggeredWhileAhead,       // 상대 스태거 인지 & 내가 우세 (오만함이 방심하는 순간 — 상대는 살아있어 처벌 가능)
     StaminaNearReserve,           // 스태미나 ≤ Reserve + 10%p
     SameAttackWhiffedTwice,       // 같은 공격 연속 빗나감 ≥ value
     HpDeficitPct,                 // HP 열세 차이 ≥ value%p
@@ -56,7 +57,8 @@ public readonly record struct TriggerContext(
     float ReservePct,
     int SameWhiffCount,
     float HpDeficitPct,           // 상대HP% - 자기HP% (양수 = 내가 열세)
-    bool OppExhaustedPerceived = false);
+    bool OppExhaustedPerceived = false,
+    bool OppStaggeredPerceived = false);
 
 public static class TriggerEval
 {
@@ -74,6 +76,11 @@ public static class TriggerEval
         TriggerCondition.TimeRemainPctBelowAndLosing => c.TimeRemainPct * 100f <= r.CondValue + Eps && c.HpDeficitPct > 0f,
         TriggerCondition.OppGuardGaugeBelowPct    => c.OppGuardGaugePct * 100f <= r.CondValue + Eps,
         TriggerCondition.OppExhausted             => c.OppExhaustedPerceived,
+        // 상대 스태거 + HP 리드 ≥ CondValue%p: 도발의 조건부 역전패는 처벌 '크기'가 아니라 '어떤 경기 상태가
+        //   도발 자격을 얻나'(선별)가 결정한다(M3-B 진단: 배수·창 길이·쿨다운 모두 무효과). 리드 폭이 클수록
+        //   넉넉히 앞선 경기만 골라 역전패율이 내려간다. CondValue가 5~10% 밴드를 조이는 유일한 레버.
+        TriggerCondition.OppStaggeredWhileAhead   => c.OppStaggeredPerceived
+                                                     && (c.SelfHpPct - c.OppHpPct) * 100f >= r.CondValue - Eps,
         TriggerCondition.StaminaNearReserve       => c.StaminaPct <= c.ReservePct + 0.10f + Eps,
         TriggerCondition.SameAttackWhiffedTwice   => c.SameWhiffCount >= (int)r.CondValue,
         TriggerCondition.HpDeficitPct             => c.HpDeficitPct * 100f >= r.CondValue - Eps,
@@ -111,7 +118,9 @@ public static class PersonalityTable
 
     public static readonly PersonalityDef Arrogant = new("PER_ARROGANT", 0f, None, new[]
     {
-        new TriggerRule("TRG_ARRO_TAUNT", TriggerCondition.OppHpBelowPct, 10f, TriggerEffectKind.Interrupt,
+        // M3-B 재설계: 빈사(HP≤10%) 트리거는 처벌자가 이미 죽어 역전 0%였다.
+        // "우세 + 상대 스태거"로 이동 — 상대는 살아서 스태거(0.8s) 회복 후 도발(1.5s) 잔여 창에 2배 처벌 가능.
+        new TriggerRule("TRG_ARRO_TAUNT", TriggerCondition.OppStaggeredWhileAhead, 5.5f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.70f, 10f, 1.5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_LAZY", TriggerCondition.SelfHpAbovePctAndWinning, 80f, TriggerEffectKind.Override,
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),

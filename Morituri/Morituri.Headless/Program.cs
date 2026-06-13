@@ -86,9 +86,11 @@ RunMatchup("압박형+잔혹함(검) vs 압박형+겁쟁이(검)",
     new FighterDef("허당", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_COWARD"), n);
 
 // ── 4. 오만함 도발 역전 케이스 (문서[3] 9장 체크 3) ──
-RunMatchup("오만함 챔피언(압박+검) vs 도전자(균형+검) — 도발 후 역전패율 목표 5~10%",
+// near-mirror: 도발(오만함)만이 유일한 차이 → 50:50 기준선에서 도발의 '비용'을 격리 측정.
+// 전술 불균형 매치업은 상성이 도발 효과를 삼켜 역전이 수학적으로 불가능했다 (M3-B 진단).
+RunMatchup("오만함 챔피언(압박+검+오만) vs 도전자(압박+검+냉철) — 도발 후 역전패율 목표 5~10%",
     new FighterDef("챔피언", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_ARROGANT"),
-    new FighterDef("도전자", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM"), n);
+    new FighterDef("도전자", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_CALM"), n);
 
 void RunMatchup(string title, FighterDef a, FighterDef b, int games)
 {
