@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MORITURI 디버그 2D 뷰어 (M4-a)</title>
+<title>MORITURI · 검투장</title>
 <style>
-  :root{ --a:#4ea1ff; --b:#ff6b6b; --bg:#11141a; --panel:#1b2029; --ink:#e7ecf3; --dim:#8a93a3; }
+  :root{ --a:#5b9be0; --b:#e0685f; --bg:#231a12; --panel:#2f2418; --ink:#f0e6d6; --dim:#a89576; }
   *{ box-sizing:border-box; }
   body{ margin:0; background:var(--bg); color:var(--ink);
         font:14px/1.4 system-ui,"Segoe UI","Malgun Gothic",sans-serif; }
@@ -28,7 +28,7 @@
   .winner{ font-size:11px; margin-top:4px; min-height:14px; }
   /* 캔버스 */
   #stage{ position:relative; }
-  canvas{ width:100%; height:auto; background:#0c0f14; border-radius:10px; display:block; }
+  canvas{ width:100%; height:auto; background:#1a130c; border-radius:10px; display:block; }
   #drop{ position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
          align-items:center; justify-content:center; text-align:center; color:var(--dim);
          border:2px dashed #2c3340; border-radius:10px; cursor:pointer; }
@@ -48,7 +48,7 @@
 </head>
 <body>
 <header>
-  <h1>MORITURI · 디버그 2D 뷰어</h1>
+  <h1>⚔ MORITURI · 검투장</h1>
   <span class="hint" id="meta"></span>
 </header>
 
@@ -72,7 +72,7 @@
   </div>
 
   <div id="stage">
-    <canvas id="cv" width="940" height="380"></canvas>
+    <canvas id="cv" width="940" height="440"></canvas>
     <label id="drop">
       <b>viewer.json 을 여기로 끌어다 놓으세요</b>
       <span>또는 클릭해서 파일 선택 · 생성: <code>dotnet run -- viewer arrogant 7</code></span>
@@ -92,7 +92,7 @@
     </select>
     <span id="clock">0.0 / 0.0s</span>
   </div>
-  <div class="hint">위에서 비스듬히 본 원형 핏(2.5D). 자세 색: 가드 🟦 · 경직/넘어짐 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. 선회로 간격을 유지하는지 보세요.</div>
+  <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지.</div>
 </div>
 
 <script>
@@ -176,64 +176,98 @@ function poseColor(state){
   if (state==='Taunt') return '#ffd24a';
   return null;
 }
-// 막대기: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+// 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+function shade(hex, f){ // 색 밝기 조정 (f<1 어둡게)
+  const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  return `rgb(${r*f|0},${g*f|0},${b*f|0})`;
+}
 function drawFighter(fx, fy, scale, state, facing, baseCol, reach){
   const col = poseColor(state) || baseCol;
-  // 사거리 링 (바닥 타원) — 2D 간격 읽기의 핵심
-  ctx.save(); ctx.globalAlpha=.16; ctx.strokeStyle=col; ctx.lineWidth=1.5;
+  const dark = shade(col.startsWith('#')?col:'#888888', 0.62);
+  // 사거리 링 (바닥 타원)
+  ctx.save(); ctx.globalAlpha=.18; ctx.strokeStyle=col; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0, 0, 7); ctx.stroke(); ctx.restore();
   // 발 그림자
-  ctx.save(); ctx.globalAlpha=.25; ctx.fillStyle='#000';
-  ctx.beginPath(); ctx.ellipse(fx, fy, 9*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 
-  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineCap='round';
   if (state==='Down'){
-    ctx.lineWidth=3*scale;
-    ctx.beginPath(); ctx.moveTo(fx-facing*18*scale, fy-4); ctx.lineTo(fx+facing*22*scale, fy-4); ctx.stroke();
-    ctx.beginPath(); ctx.arc(fx-facing*24*scale, fy-7, 8*scale, 0,7); ctx.fill(); return;
+    ctx.fillStyle=col; ctx.strokeStyle=dark; ctx.lineWidth=1.5*scale;
+    ctx.save(); ctx.translate(fx,fy-5*scale); ctx.scale(facing,1);
+    roundRect(-20*scale,-5*scale,34*scale,10*scale,5*scale); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-22*scale,0,7*scale,0,7); ctx.fill(); ctx.stroke(); ctx.restore(); return;
   }
-  const H0 = 56*scale;
-  const hip = fy - H0*0.42, sh = fy - H0*0.78, hd = fy - H0*0.92;
+  const H0 = 58*scale;
   let lean=0, crouch=0;
-  if (state==='HitStun'||state==='Stagger') lean=-facing*0.35;
-  if (state==='Dodge') lean=-facing*0.5;
+  if (state==='HitStun'||state==='Stagger') lean=-facing*0.30;
+  if (state==='Dodge') lean=-facing*0.45;
   if (state==='GetUp') crouch=0.5;
-  const cy = v => v + crouch*H0*0.25;
-  const sx = fx + lean*14*scale;
-  ctx.lineWidth=3*scale;
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(sx, cy(sh)); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx-8*scale, fy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx+8*scale, fy); ctx.stroke();
-  ctx.beginPath(); ctx.arc(sx+lean*4, cy(hd), 8*scale, 0,7); ctx.fill();
+  const cy = v => v + crouch*H0*0.28;
+  const hip = cy(fy - H0*0.42), sh = cy(fy - H0*0.80), hd = cy(fy - H0*0.95);
+  const sx = fx + lean*16*scale;
 
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  // 다리 (두꺼운 선)
+  ctx.strokeStyle=dark; ctx.lineWidth=5*scale;
+  ctx.beginPath(); ctx.moveTo(fx, hip); ctx.lineTo(fx-6*scale, fy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx, hip); ctx.lineTo(fx+6*scale, fy); ctx.stroke();
+  // 몸통 (채워진 캡슐)
+  ctx.strokeStyle=dark; ctx.lineWidth=2*scale; ctx.fillStyle=col;
+  ctx.save();
+  const bw=11*scale, bx0=Math.min(fx,sx)-bw/2, bw2=bw+Math.abs(sx-fx);
+  roundRect(bx0, sh, bw2, hip-sh, bw/2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  // 무기 팔 (몸통보다 먼저 — 뒤로 든 자세)
   let arm;
   switch(state){
     case 'Windup': arm=-2.3; break; case 'Active': arm=0; break;
     case 'Recovery': arm=0.5; break; case 'Guard': arm=-1.2; break;
     case 'Taunt': arm=-2.0; break; case 'Stagger': case 'HitStun': arm=-2.6; break;
-    default: arm=1.0;
+    default: arm=0.9;
   }
-  const aL=(state==='Active'?20:16)*scale;
-  const ax=sx+facing*Math.cos(arm)*aL, ay=cy(sh)+Math.sin(arm)*aL;
-  ctx.lineWidth=3*scale; ctx.beginPath(); ctx.moveTo(sx,cy(sh)); ctx.lineTo(ax,ay); ctx.stroke();
-  const wl=(state==='Active'? reach*mPx()*0.6 : 15*scale);
-  ctx.lineWidth=2.5*scale; ctx.globalAlpha=(state==='Active')?1:.7;
+  const aL=(state==='Active'?22:16)*scale;
+  const ax=sx+facing*Math.cos(arm)*aL, ay=sh+Math.sin(arm)*aL;
+  ctx.strokeStyle=col; ctx.lineWidth=4*scale;
+  ctx.beginPath(); ctx.moveTo(sx,sh+2*scale); ctx.lineTo(ax,ay); ctx.stroke();
+  // 무기 블레이드
+  const wl=(state==='Active'? reach*mPx()*0.6 : 16*scale);
+  ctx.strokeStyle='#d8cdb8'; ctx.lineWidth=2.5*scale; ctx.globalAlpha=(state==='Active')?1:.85;
   ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl); ctx.stroke();
   ctx.globalAlpha=1;
-  if (state==='Active'){ ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='#fff'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4,0,7); ctx.stroke(); ctx.restore(); }
+  // 머리
+  ctx.fillStyle=col; ctx.strokeStyle=dark; ctx.lineWidth=2*scale;
+  ctx.beginPath(); ctx.arc(sx+lean*4, hd, 8.5*scale, 0,7); ctx.fill(); ctx.stroke();
+  // 공격 섬광
+  if (state==='Active'){ ctx.save(); ctx.globalAlpha=.6; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4*scale,0,7); ctx.stroke(); ctx.restore(); }
+}
+
+// 유닛별 플로팅 HUD (머리 위 이름 + 세그먼트 HP바) — TFM 시그니처
+function unitTag(sx, topY, name, hpPct, col){
+  const w=66, x=sx-w/2, y=topY;
+  ctx.textAlign='center'; ctx.font='bold 11px system-ui';
+  ctx.fillStyle='rgba(15,10,6,0.55)'; roundRect(x-3,y-13,w+6,12,3); ctx.fill();
+  ctx.fillStyle='#f4ecdd'; ctx.fillText(name, sx, y-3);
+  ctx.fillStyle='rgba(15,10,6,0.65)'; roundRect(x,y,w,6,2); ctx.fill();
+  ctx.fillStyle=col; roundRect(x, y, Math.max(0,Math.min(1,hpPct))*w, 6, 2); ctx.fill();
+  ctx.strokeStyle='rgba(15,10,6,0.5)'; ctx.lineWidth=1;
+  for(let i=1;i<4;i++){ const segx=x+w*i/4|0; ctx.beginPath(); ctx.moveTo(segx,y); ctx.lineTo(segx,y+6); ctx.stroke(); }
 }
 
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 핏 바닥 (타원) + 가장자리 링
-  ctx.fillStyle='#171b22';
-  ctx.beginPath(); ctx.ellipse(CX,CY,RX,RY,0,0,7); ctx.fill();
-  ctx.strokeStyle='#2a3340'; ctx.lineWidth=2; ctx.stroke();
+  // 모래 핏 바닥 — 따뜻한 콜로세움
+  ctx.save();
+  ctx.fillStyle='#5a4129'; ctx.beginPath(); ctx.ellipse(CX,CY+4,RX+7,RY+7,0,0,7); ctx.fill(); // 흙벽 두께감
+  const grd=ctx.createRadialGradient(CX,CY-RY*0.3,8,CX,CY,RX);
+  grd.addColorStop(0,'#e9cda2'); grd.addColorStop(1,'#c49a6b');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.ellipse(CX,CY,RX,RY,0,0,7); ctx.fill();
+  ctx.strokeStyle='#6e4f31'; ctx.lineWidth=4; ctx.stroke();
   const edge=(R()-1.5)/R();
-  ctx.strokeStyle='#222a35'; ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(110,79,49,0.4)'; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(CX,CY,RX*edge,RY*edge,0,0,7); ctx.stroke();
+  ctx.restore();
 
   const fr=frameAt(t), f=fr.f, g=fr.g, k=fr.k;
   const ax=f.Ax+(g.Ax-f.Ax)*k, ay=f.Ay+(g.Ay-f.Ay)*k;
@@ -243,29 +277,32 @@ function render(){
   const gap=Math.hypot(ax-bx, ay-by);
 
   // 간격선
-  ctx.save(); ctx.globalAlpha=.4; ctx.strokeStyle='#5b6470'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  ctx.save(); ctx.globalAlpha=.35; ctx.strokeStyle='#5a4129'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();
-  ctx.fillStyle='#7b8694'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillStyle='#6e4f31'; ctx.font='11px system-ui'; ctx.textAlign='center';
   ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
 
-  // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에)
-  const A={p:pa, sy:ay, st:f.StateA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0};
-  const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1};
-  for (const u of [A,B].sort((m,n)=>m.sy-n.sy))
-    drawFighter(u.p.x, u.p.y, 0.8+0.4*depthN(u.sy), u.st, u.face, u.col, u.reach);
+  // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
+  const A={p:pa, sy:ay, st:f.StateA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA};
+  const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
+  for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
+    const sc=0.8+0.4*depthN(u.sy);
+    drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
+    unitTag(u.p.x, u.p.y - 64*sc - 16, u.name, u.hp, u.col);
+  }
 
-  // 팝업 / Decision 핀
+  // 팝업 / Decision 핀 (HUD 위로)
   const sp = who => who===0?pa:pb;
   ctx.textAlign='center';
   for (const p of popups){ const age=t-p.t; if(age<0||age>p.life)continue;
     const a=1-age/p.life, s=sp(p.who);
     ctx.globalAlpha=a; ctx.fillStyle=p.col; ctx.font='bold 15px system-ui';
-    ctx.fillText(p.text, s.x, s.y-58-(p.rise*(1-a))); ctx.globalAlpha=1; }
+    ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
-    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.92;
+    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
     const txt='🧠 '+d.tag; ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
-    roundRect(s.x-w/2, s.y-92, w, 19, 6); ctx.fill();
-    ctx.fillStyle='#0c0f14'; ctx.fillText(txt, s.x, s.y-78); ctx.globalAlpha=1; }
+    roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
+    ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
