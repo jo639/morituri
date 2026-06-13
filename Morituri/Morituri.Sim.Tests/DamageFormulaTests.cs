@@ -56,17 +56,20 @@ public class DamageFormulaTests
     [Test]
     public void RawDamage_SwordHeavy_Atk70()
     {
-        // 42 × 1.5 × 1.7 = 107.1
-        float raw = CombatMath.RawDamage(WeaponTable.Sword, C.MotionMultHeavy, Avg);
-        Assert.That(raw, Is.EqualTo(107.1f).Within(1e-3));
+        // 공식 검증: base × HitCount × MotionMult × (1+ATK/100) — 밸런스 수치 무관.
+        var sw = WeaponTable.Sword;
+        float raw = CombatMath.RawDamage(sw, C.MotionMultHeavy, Avg);
+        Assert.That(raw, Is.EqualTo(sw.BaseDamage * sw.HitCount * C.MotionMultHeavy * (1f + Avg.Atk / 100f)).Within(1e-3));
     }
 
     [Test]
     public void RawDamage_DualBlades_CountsBothHits()
     {
-        // 26 × 2타 × 0.7 × 1.7 = 61.88
-        float raw = CombatMath.RawDamage(WeaponTable.DualBlades, C.MotionMultLight, Avg);
-        Assert.That(raw, Is.EqualTo(26f * 2f * 0.7f * 1.7f).Within(1e-3));
+        // 핵심: HitCount(2타)가 곱해지는가 — 밸런스 수치(base)와 무관한 공식 검증.
+        var db = WeaponTable.DualBlades;
+        float raw = CombatMath.RawDamage(db, C.MotionMultLight, Avg);
+        Assert.That(raw, Is.EqualTo(db.BaseDamage * db.HitCount * 0.7f * 1.7f).Within(1e-3));
+        Assert.That(db.HitCount, Is.EqualTo(2), "쌍검은 2타여야 함 (連타 정체성)");
     }
 
     [Test]
@@ -81,10 +84,13 @@ public class DamageFormulaTests
     [Test]
     public void FinalDamage_Baseline_SwordHeavy()
     {
-        // 107.1 × (100/156) = 68.654...
+        // 공식 검증: Raw × Mitigation(승산곡선). 밸런스 수치 무관.
+        var sw = WeaponTable.Sword;
+        float raw = sw.BaseDamage * sw.HitCount * C.MotionMultHeavy * (1f + Avg.Atk / 100f);
+        float mitig = 100f / (100f + Avg.Def * C.DefCurve);
         float dmg = CombatMath.FinalDamage(
-            WeaponTable.Sword, C.MotionMultHeavy, Avg, Avg, CombatMath.HitContext.Clean, C);
-        Assert.That(dmg, Is.EqualTo(107.1f * 100f / 156f).Within(1e-3));
+            sw, C.MotionMultHeavy, Avg, Avg, CombatMath.HitContext.Clean, C);
+        Assert.That(dmg, Is.EqualTo(raw * mitig).Within(1e-3));
     }
 
     [Test]

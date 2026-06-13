@@ -19,7 +19,7 @@ public class GuardAndPoiseTests
         var r = CombatMath.ResolveGuardHit(raw, WeaponTable.Axe, guardGauge: 100f, stamina: 95f, C);
 
         Assert.That(r.GuardGaugeAfter, Is.EqualTo(100f - raw * 0.55f).Within(1e-3)); // GuardCrush 0.55
-        Assert.That(r.StaminaAfter, Is.EqualTo(95f - raw * 0.15f).Within(1e-3));
+        Assert.That(r.StaminaAfter, Is.EqualTo(95f - raw * C.GuardStaminaCostRatio).Within(1e-3));
         Assert.That(r.IsGuardBreak, Is.False);
     }
 

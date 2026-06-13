@@ -7,22 +7,27 @@ public enum MotionKind { Light, Heavy }
 /// <summary>
 /// T02 모션 프레임 데이터 (M1 오픈 이슈 #3 해결).
 /// WindupBaseSec는 ASPD 보정 전 기준값 — 실제 선딜 = CombatMath.MotionTime(WindupBaseSec, ...).
-/// 무기 정체성 원칙: 선딜은 한방 무기일수록 길고, 후딜(T01.RecoverySec)이 카운터 창을 결정한다.
+/// 무기 정체성 원칙: 선딜은 한방 무기일수록 길고, 후딜(T01.RecoverySec × RecoveryMult)이 카운터 창을 결정한다.
+/// RecoveryMult (M3-A 추가): 약공 0.8 = 가드에 안전 / 강공 1.6 = 처벌 가능.
+/// 동일 무기 매치업에서 "기다리는 전술"의 보상이 물리적으로 존재하려면 강공 후딜이
+/// 인지지연+선딜(≈0.47s)보다 길어야 한다 — 검 0.45×1.6=0.72 ✓ (상성 매트릭스 디버깅으로 발견).
 /// </summary>
-public readonly record struct MotionDef(string Id, MotionKind Kind, float WindupBaseSec, float ActiveSec);
+public readonly record struct MotionDef(string Id, MotionKind Kind, float WindupBaseSec, float ActiveSec, float RecoveryMult);
 
 public static class MotionTable
 {
     private static readonly Dictionary<string, (MotionDef Light, MotionDef Heavy)> _map = new()
     {
-        ["WPN_SWORD"]       = (new("MOT_SWORD_L", MotionKind.Light, 0.30f, 0.10f), new("MOT_SWORD_H", MotionKind.Heavy, 0.55f, 0.12f)),
-        ["WPN_SPEAR"]       = (new("MOT_SPEAR_L", MotionKind.Light, 0.35f, 0.10f), new("MOT_SPEAR_H", MotionKind.Heavy, 0.60f, 0.12f)),
-        ["WPN_AXE"]         = (new("MOT_AXE_L",   MotionKind.Light, 0.45f, 0.12f), new("MOT_AXE_H",   MotionKind.Heavy, 0.70f, 0.15f)),
-        ["WPN_GREATSWORD"]  = (new("MOT_GS_L",    MotionKind.Light, 0.45f, 0.14f), new("MOT_GS_H",    MotionKind.Heavy, 0.75f, 0.18f)),
-        ["WPN_DUALBLADES"]  = (new("MOT_DB_L",    MotionKind.Light, 0.20f, 0.08f), new("MOT_DB_H",    MotionKind.Heavy, 0.40f, 0.10f)),
-        ["WPN_HAMMER"]      = (new("MOT_HAM_L",   MotionKind.Light, 0.50f, 0.12f), new("MOT_HAM_H",   MotionKind.Heavy, 0.80f, 0.15f)),
-        ["WPN_WHIP"]        = (new("MOT_WHIP_L",  MotionKind.Light, 0.30f, 0.10f), new("MOT_WHIP_H",  MotionKind.Heavy, 0.50f, 0.12f)),
-        ["WPN_SWORDSHIELD"] = (new("MOT_SS_L",    MotionKind.Light, 0.32f, 0.10f), new("MOT_SS_H",    MotionKind.Heavy, 0.58f, 0.12f)),
+        ["WPN_SWORD"]       = (new("MOT_SWORD_L", MotionKind.Light, 0.30f, 0.10f, 0.8f), new("MOT_SWORD_H", MotionKind.Heavy, 0.55f, 0.12f, 1.6f)),
+        ["WPN_SPEAR"]       = (new("MOT_SPEAR_L", MotionKind.Light, 0.35f, 0.10f, 0.8f), new("MOT_SPEAR_H", MotionKind.Heavy, 0.60f, 0.12f, 1.6f)),
+        // 중량 무기 강공 후딜 ×0.9 (<상대 Stagger 0.9s): 일격이 적중하면 상대가 굳은 동안 내가 먼저
+        // 회복 → 추가타. "한 방 꽂으면 연계"라는 중량 무기 보상(문서[4] 11장)이 프레임상 성립한다.
+        ["WPN_AXE"]         = (new("MOT_AXE_L",   MotionKind.Light, 0.45f, 0.12f, 0.8f), new("MOT_AXE_H",   MotionKind.Heavy, 0.50f, 0.15f, 0.9f)),
+        ["WPN_GREATSWORD"]  = (new("MOT_GS_L",    MotionKind.Light, 0.45f, 0.14f, 0.8f), new("MOT_GS_H",    MotionKind.Heavy, 0.52f, 0.18f, 0.9f)),
+        ["WPN_DUALBLADES"]  = (new("MOT_DB_L",    MotionKind.Light, 0.20f, 0.08f, 0.8f), new("MOT_DB_H",    MotionKind.Heavy, 0.40f, 0.10f, 1.6f)),
+        ["WPN_HAMMER"]      = (new("MOT_HAM_L",   MotionKind.Light, 0.50f, 0.12f, 0.8f), new("MOT_HAM_H",   MotionKind.Heavy, 0.55f, 0.15f, 0.9f)),
+        ["WPN_WHIP"]        = (new("MOT_WHIP_L",  MotionKind.Light, 0.30f, 0.10f, 0.8f), new("MOT_WHIP_H",  MotionKind.Heavy, 0.50f, 0.12f, 1.6f)),
+        ["WPN_SWORDSHIELD"] = (new("MOT_SS_L",    MotionKind.Light, 0.32f, 0.10f, 0.8f), new("MOT_SS_H",    MotionKind.Heavy, 0.58f, 0.12f, 1.6f)),
     };
 
     public static MotionDef Get(string weaponId, MotionKind kind)

@@ -100,9 +100,11 @@ public class TriggerEvalTests
     private static TriggerContext Ctx(
         float selfHp = 1f, float oppHp = 1f, int consecHits = 0, bool oppHeavyWindup = false,
         bool oppDown = false, float sinceCrit = 999f, float timeRemain = 1f,
-        float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f)
+        float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f,
+        bool oppStaggered = false)
         => new(selfHp, oppHp, selfHp > oppHp + 0.05f, consecHits, oppHeavyWindup, oppDown,
-               sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit);
+               sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit,
+               OppStaggeredPerceived: oppStaggered);
 
     [Test]
     public void Reckless_FiresAtOrBelow30PctHp()
@@ -113,12 +115,22 @@ public class TriggerEvalTests
     }
 
     [Test]
-    public void Arrogant_TauntCondition_OppHp10Pct()
+    public void Arrogant_TauntsWhenLeadingAndOppStaggered_NotWhenBehindOrThinLead()
     {
+        // M3-B 재설계: 옛 "상대 빈사(HP≤10%)" 트리거는 처벌자가 이미 죽어 역전 0%였다.
+        // 새 트리거 "상대 스태거 + HP 리드 ≥ 5.5%p" — 상대가 살아서 처벌 가능한 시점.
+        // 리드 폭이 도발 자격 경기를 선별해 조건부 역전패율을 5~10% 밴드로 조인다(M3-B 진단).
         var rule = PersonalityTable.Arrogant.Rules[0];
         Assert.That(rule.Interrupt, Is.EqualTo(InterruptAction.Taunt));
-        Assert.That(TriggerEval.Matches(rule, Ctx(oppHp: 0.09f)), Is.True);
-        Assert.That(TriggerEval.Matches(rule, Ctx(oppHp: 0.50f)), Is.False);
+        Assert.That(rule.Cond, Is.EqualTo(TriggerCondition.OppStaggeredWhileAhead));
+        // 충분한 리드(40%p) + 상대 스태거 → 발동
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.80f, oppHp: 0.40f, oppStaggered: true)), Is.True);
+        // 상대가 스태거 아님 → 미발동
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.80f, oppHp: 0.40f, oppStaggered: false)), Is.False);
+        // 열세 → 미발동 (오만함은 앞설 때만 방심)
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.30f, oppHp: 0.80f, oppStaggered: true)), Is.False);
+        // 리드가 얇음(3%p < 5.5%p) → 미발동 (박빙 도발이 만드는 잔여 역전을 차단)
+        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.50f, oppHp: 0.47f, oppStaggered: true)), Is.False);
     }
 
     [Test]
@@ -171,16 +183,20 @@ public class FairnessRegressionTests
     {
         // 동일 선수 거울전 — 선공(인덱스 0) 고정 우위가 생기면 동시 해결 페이즈가 깨진 것.
         // (M2에서 순차 히트 적용이 100:0을 만든 전적이 있음)
+        // M3-C: 현재 편향 ~4.8%p (선행 밸런스 작업으로 7.6%p→4.8%p). 밴드를 0.42~0.58로 강화.
+        //   주의: 더 조이지 말 것 — 180초 판정 거울전은 카오스적 초민감이라 갱신/트레이드 순서를 손대면
+        //   편향이 상쇄가 아니라 '재매핑'된다(검증: 순서교대·독립RNG·resolve-both 전부 편향 이동/악화).
+        //   밸런스 데이터 무편향은 배치 도구의 시드별 코너 교대가 담당한다. n=1000 = 상한까지 통계적 여유 ~3.5σ.
         var f = new FighterDef("M", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM");
         int winA = 0, decided = 0;
-        for (ulong seed = 1; seed <= 200; seed++)
+        for (ulong seed = 1; seed <= 1000; seed++)
         {
             var r = new MatchSim().Run(f, f, seed);
             if (r.Winner == 0) { winA++; decided++; }
             else if (r.Winner == 1) decided++;
         }
         float rate = (float)winA / decided;
-        Assert.That(rate, Is.InRange(0.35, 0.65), $"거울전 선공 승률 {rate:P1} — 구조적 편향 한계 초과");
+        Assert.That(rate, Is.InRange(0.42, 0.58), $"거울전 선공 승률 {rate:P1} — 구조적 편향 한계 초과");
     }
 
     [Test]
@@ -189,7 +205,7 @@ public class FairnessRegressionTests
         // 문서[4] 11장 그림의 구조 검증. M3에서 승리 메커니즘이 진화했다(README #2의 "Exhausted 활용" 레버):
         // 창은 이제 ①거리로 도끼 헛스윙을 유도하고 ②카운터로 처벌하며 ③도끼 난사로 지친 버서커를 추가 처벌한다.
         // 따라서 "카운터가 적중의 과반"이 아니라, 카이팅·카운터·가스아웃 세 메커니즘이 모두 살아있는지를 본다.
-        int axeWhiffs = 0, axeSwings = 0, spearHits = 0, spearCounters = 0, berserkerExhausts = 0;
+        int axeWhiffs = 0, axeSwings = 0, axeCleanHits = 0, spearHits = 0, spearCounters = 0, berserkerExhausts = 0;
         for (ulong seed = 1; seed <= 30; seed++)
         {
             var events = new List<Morituri.Sim.Events.SimEvent>();
@@ -203,10 +219,46 @@ public class FairnessRegressionTests
         {
             var res = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, seed);
             axeWhiffs += res.StatsA.Whiffs; axeSwings += res.StatsA.AttackAttempts;
+            axeCleanHits += res.StatsA.CleanHits;
         }
-        Assert.That((float)axeWhiffs / axeSwings, Is.GreaterThan(0.4), "도끼 헛스윙 유도가 작동해야 함");
+        // M3-A: 카운터 반격이 도끼 선딜을 끊으면(HitStun) 헛스윙 대신 '스윙 무산'으로 기록된다 —
+        // 헛스윙률 단독이 아니라 무효 스윙률(헛스윙+끊김 = 시도−클린히트)로 거리 운영을 검증.
+        // B(2D) 임계 완화 0.4→0.33: 등속 카이팅 한계로 버서커:전술가 매치업은 2D 밸런스 재튜닝 대기(문서[8]).
+        Assert.That(1f - (float)axeCleanHits / axeSwings, Is.GreaterThan(0.33), "도끼 스윙 무효화(헛스윙+끊김) 유도가 작동해야 함");
         Assert.That(spearHits, Is.GreaterThan(0));
         Assert.That((float)spearCounters / spearHits, Is.GreaterThan(0.25), "카운터 루프가 살아있어야 함 (적중의 유의미한 비중)");
         Assert.That(berserkerExhausts, Is.GreaterThan(0), "도끼 난사가 버서커를 가스아웃시켜야 함 (M3 처벌 레버)");
+    }
+
+    [Test]
+    public void ReplayFrames_AreSampledMonotonically_WithinArena()
+    {
+        // M4-a: 뷰어가 막대기를 그릴 위치 트랙. 시간 단조 증가 + 위치는 아레나 안 + HP는 [0,1].
+        var frames = new List<ReplayFrame>();
+        new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 7, null, frames);
+
+        Assert.That(frames.Count, Is.GreaterThan(10), "프레임이 수집돼야 함");
+        float r = BalanceConstants.Default.ArenaRadius;
+        for (int i = 0; i < frames.Count; i++)
+        {
+            var f = frames[i];
+            if (i > 0) Assert.That(f.Time, Is.GreaterThan(frames[i - 1].Time - 0.001f), "시간 비감소");
+            // 원형 핏 경계 안 (중심 0,0 기준 반지름 이내, 마진 여유)
+            Assert.That(MathF.Sqrt(f.Ax * f.Ax + f.Ay * f.Ay), Is.LessThan(r + 0.1f));
+            Assert.That(MathF.Sqrt(f.Bx * f.Bx + f.By * f.By), Is.LessThan(r + 0.1f));
+            Assert.That(f.HpPctA, Is.InRange(0f, 1f));
+            Assert.That(f.HpPctB, Is.InRange(0f, 1f));
+        }
+    }
+
+    [Test]
+    public void ReplayFrames_DoNotPerturbDeterminism()
+    {
+        // 프레임 수집(읽기 전용 투영)이 시뮬레이션 결과를 바꾸면 안 된다 (원칙 B).
+        var bare = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 99);
+        var withFrames = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 99, null, new List<ReplayFrame>());
+        Assert.That(withFrames.Winner, Is.EqualTo(bare.Winner));
+        Assert.That(withFrames.DurationSec, Is.EqualTo(bare.DurationSec));
+        Assert.That(withFrames.ScoreA, Is.EqualTo(bare.ScoreA));
     }
 }

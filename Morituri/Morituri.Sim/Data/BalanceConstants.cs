@@ -23,6 +23,7 @@ public readonly record struct BalanceConstants
 
     // --- 가드 (문서[4] 4장) ---
     public float GuardStaminaCostRatio { get; init; }  // RawDamage × 이 값만큼 스태미나 소모
+    public float GuardedRecoveryMult   { get; init; }  // 가드시킨 공격의 후딜 배율 (프레임 불리 — 방어자의 턴)
     public float GuardBreakStaggerSec  { get; init; }
     public float GuardGaugeRecoverPctPerSec { get; init; }  // 비가드 상태 초당 Max 대비 회복률
     public float GuardBreakRecoverToPct     { get; init; }  // 게이지 붕괴 후 재사용 가능 회복선
@@ -43,6 +44,7 @@ public readonly record struct BalanceConstants
     public float StamCostSprintPerSec{ get; init; }
     public float StamRegenIdle       { get; init; }
     public float StamRegenMoving     { get; init; }
+    public float KiteStamCostPerSec  { get; init; }  // 존형이 거리 유지(후퇴/선회)로 빠질 때 소모 (B: 카이팅 비용)
     public float ExhaustDurationSec  { get; init; }
     public float ExhaustMoveSpeedMult{ get; init; }
     public float ExhaustDamageTakenMult { get; init; }  // 지친 방어자가 받는 피해 배수 (무너진 몸 = 처벌 강화)
@@ -84,9 +86,9 @@ public readonly record struct BalanceConstants
     public float TauntDurationSec  { get; init; }
     public float FeintCancelRatio  { get; init; }  // 페인트: 선딜 × 이 비율에서 중단
     public float FeintRecoverySec  { get; init; }
-    public float ArenaWidth        { get; init; }
+    public float ArenaRadius       { get; init; }  // 원형 핏 반지름 (중심 0,0). B: 2D-lite (문서[8])
     public float StartGap          { get; init; }  // 시작 시 두 선수 간 거리
-    public float CornerZone        { get; init; }  // 벽에서 이 거리 이내 = 코너 (판정 패널티)
+    public float CornerZone        { get; init; }  // 경계에서 이 거리 이내 = 가장자리 (판정 패널티)
     public float InnerRangeRatio   { get; init; }  // dist < range×비율 → 안쪽 침투 판정
     public float MinLongRange      { get; init; }  // 이 사거리 이상 무기만 침투 패널티 대상
 
@@ -105,7 +107,16 @@ public readonly record struct BalanceConstants
         CritMaxPct = 20f,
         InnerRangePenalty = 0.6f,
 
-        GuardStaminaCostRatio = 0.15f,
+        // M3-A 개정 0.15→0.06: 가드는 공격자보다 경제적이어야 한다. 0.15에서는 블록당 드레인+유지비가
+        // 공격자 스윙 비용과 비등 + 칩딜까지 맞아 "가드 = 천천히 지는 행동"이었고, 방어형이 전 매치업 0%였다.
+        // 가드가 버티면 광공격자가 먼저 지치고 → 지침 처벌 창(×2.2)이 방어형의 승리 플랜이 된다.
+        GuardStaminaCostRatio = 0.06f,
+        // M3-A 신규: 가드시킨 공격은 후딜 ×1.8 (막힌 칼이 튕겨나옴 = 프레임 불리).
+        // 이게 없으면 약공(후딜 0.36s)은 가드에 완전 안전 — 처벌 응답시간이 인지지연 0.16 +
+        // 의사결정 틱 평균 0.1 + 선딜 0.31 ≈ 0.57s라 "약공 스팸"이 무손실 지배 전략이 된다.
+        // 검 약공 가드 시 0.36×1.65=0.59s ≈ 0.57s → 처벌이 '확률적'으로 성립 (틱 정렬 운에 따라 절반쯤).
+        // 1.8(확정 처벌)은 공격 행위 자체를 자살로 만들어 수비 과잉 지배 메타가 됐다 (매트릭스 검증).
+        GuardedRecoveryMult = 1.65f,
         GuardBreakStaggerSec = 1.2f,
         GuardGaugeRecoverPctPerSec = 0.06f,
         GuardBreakRecoverToPct = 0.5f,
@@ -118,15 +129,21 @@ public readonly record struct BalanceConstants
 
         StamCostAttackLight = 8f,
         StamCostAttackHeavy = 18f,
-        StamCostWhiff = 16f,
+        StamCostWhiff = 12f, // M3-A: 16→12 — 가드 프레임불리·헛스윙처벌 회피게이트 등 신규 처벌 경로가
+                             // 추가되며 16은 과잉(버서커:전술가 10:90). 가스아웃 빈도만 낮춰 재수렴.
         StamCostDodge = 15f,
-        StamCostGuardPerSec = 2f,
+        StamCostGuardPerSec = 0.5f, // M3-A: 2→0.5 — 자세 유지는 싸고 막는 행위(블록 드레인)가 비용.
+                                    // 2/s에서는 수비형이 가드 중 Reserve까지 말라 처벌 예산이 굶었다.
         StamCostSprintPerSec = 4f,
         StamRegenIdle = 6f,
         StamRegenMoving = 3f,
-        ExhaustDurationSec = 4.5f,
+        KiteStamCostPerSec = 1.5f,   // B 재튜닝: 카이팅 비용 노브 (0→창78% / 1.5→48% / 5→0%). 정확값은 트위치, 1.5 = 근접 균형
+        ExhaustDurationSec = 3.0f,   // M3-A: 문서[4] 원값으로 복귀 (아래 주석)
         ExhaustMoveSpeedMult = 0.6f,
-        ExhaustDamageTakenMult = 2.2f,
+        // M3-A: 2.2→1.3 — 지침 중처벌(4.5s/×2.2)은 가드 프레임불리·헛스윙 처벌이 없던 시절의
+        // 유일한 처벌 수단이었다. 신규 메커니즘과 중첩되자 저(低)리저브 전술이 연쇄 가스아웃
+        // 사형 루프에 빠짐(버서커 8회 연속 지침, 매트릭스 난전 행 전패). 보조 역할로 격하.
+        ExhaustDamageTakenMult = 1.3f,
         ExhaustPoiseDmgTakenMult = 1.5f,
 
         StaminaMaxBase = 60f,
@@ -161,7 +178,7 @@ public readonly record struct BalanceConstants
         TauntDurationSec = 1.5f,
         FeintCancelRatio = 0.5f,
         FeintRecoverySec = 0.25f,
-        ArenaWidth = 16f,
+        ArenaRadius = 8f,   // 지름 16m = 옛 1D 폭과 동일 스케일, 단 원형이라 선회 공간 존재
         StartGap = 4f,
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,

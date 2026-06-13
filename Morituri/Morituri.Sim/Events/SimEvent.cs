@@ -11,7 +11,7 @@ public abstract record SimEvent(float Time);
 public sealed record StateChanged(float Time, int FighterId, FighterState From, FighterState To) : SimEvent(Time);
 public sealed record AttackSwung(float Time, int FighterId, string MotionId, bool IsFeint) : SimEvent(Time);
 public sealed record HitLanded(float Time, int Attacker, int Defender, float Damage,
-                               bool IsCrit, bool IsCounter, bool IsGuarded) : SimEvent(Time);
+                               bool IsCrit, bool IsCounter, bool IsGuarded, bool IsArmored = false) : SimEvent(Time);
 public sealed record PoiseBroken(float Time, int FighterId) : SimEvent(Time);
 public sealed record GuardBroken(float Time, int FighterId) : SimEvent(Time);
 public sealed record KnockedDown(float Time, int FighterId) : SimEvent(Time);

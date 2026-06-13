@@ -38,7 +38,7 @@ internal static class Replay
 
                 case HitLanded ev:
                     hp[ev.Defender] = MathF.Max(0f, hp[ev.Defender] - ev.Damage);
-                    string tag = ev.IsGuarded ? "🛡 가드" : ev.IsCounter ? "⚡ 카운터" : ev.IsCrit ? "💢 치명타" : "💥 명중";
+                    string tag = ev.IsArmored ? "🪨 몸으로받음" : ev.IsGuarded ? "🛡 가드" : ev.IsCounter ? "⚡ 카운터" : ev.IsCrit ? "💢 치명타" : "💥 명중";
                     Console.WriteLine($"{T(ev.Time)}   {tag}  {name[ev.Attacker]} → {name[ev.Defender]}  -{ev.Damage:F0}  " +
                                       $"[{name[ev.Defender]} {Bar(hp[ev.Defender], hpMax[ev.Defender])} {hp[ev.Defender]:F0}/{hpMax[ev.Defender]:F0}]");
                     break;
@@ -75,7 +75,26 @@ internal static class Replay
         Console.WriteLine($"   {b.Name}: 시도 {result.StatsB.AttackAttempts}회 (헛스윙 {result.StatsB.Whiffs}) / 클린히트 {result.StatsB.CleanHits} / 누적딜 {result.StatsB.DamageDealt:F0}");
     }
 
-    private static (FighterDef, FighterDef) Pick(string m) => m switch
+    internal static (FighterDef, FighterDef) Pick(string m)
+    {
+        // "t:COUNTER:PRESSURE" = 전술 매트릭스 진단용 (검+냉철함 고정, 매트릭스 배치와 동일 조건)
+        if (m.StartsWith("t:"))
+        {
+            var p = m.Split(':');
+            return (new FighterDef(p[1], FighterStats.Baseline, "WPN_SWORD", "TAC_" + p[1], "PER_CALM"),
+                    new FighterDef(p[2], FighterStats.Baseline, "WPN_SWORD", "TAC_" + p[2], "PER_CALM"));
+        }
+        // "w:AXE:SWORD" = 무기 진단용 (균형형+냉철함 고정)
+        if (m.StartsWith("w:"))
+        {
+            var p = m.Split(':');
+            return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], "TAC_BALANCED", "PER_CALM"),
+                    new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], "TAC_BALANCED", "PER_CALM"));
+        }
+        return PickNamed(m);
+    }
+
+    private static (FighterDef, FighterDef) PickNamed(string m) => m switch
     {
         "mirror" => (new FighterDef("A", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM"),
                      new FighterDef("B", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM")),

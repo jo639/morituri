@@ -36,14 +36,24 @@ public sealed class MatchSim
     private float _now;
     private int _tick;
 
-    public MatchSim(BalanceConstants? constants = null) => _c = constants ?? BalanceConstants.Default;
+    private readonly IReadOnlyDictionary<string, float>? _weaponDmgScale; // 밸런스 스윕용 무기별 데미지 배율 주입
 
-    public MatchResult Run(FighterDef a, FighterDef b, ulong seed, List<SimEvent>? events = null)
+    public MatchSim(BalanceConstants? constants = null, IReadOnlyDictionary<string, float>? weaponDmgScale = null)
+    {
+        _c = constants ?? BalanceConstants.Default;
+        _weaponDmgScale = weaponDmgScale;
+    }
+
+    // 뷰어 프레임 샘플링 주기 (15Hz = 4틱마다). 위치는 연속이라 60Hz 전량은 과하고, 15Hz면 보간으로 충분히 매끄럽다.
+    private const int FrameSampleTicks = 4;
+
+    public MatchResult Run(FighterDef a, FighterDef b, ulong seed,
+                           List<SimEvent>? events = null, List<ReplayFrame>? frames = null)
     {
         _events = events;
         _rng = new SimRandom(seed);
-        _f[0] = CreateRuntime(0, a, _c.ArenaWidth / 2f - _c.StartGap / 2f);
-        _f[1] = CreateRuntime(1, b, _c.ArenaWidth / 2f + _c.StartGap / 2f);
+        _f[0] = CreateRuntime(0, a, new Vec2(-_c.StartGap / 2f, 0f));
+        _f[1] = CreateRuntime(1, b, new Vec2(_c.StartGap / 2f, 0f));
         _now = 0f; _tick = 0;
 
         int strategyTicks = Math.Max(1, (int)MathF.Round(_c.StrategyTickSec / Dt));
@@ -63,16 +73,31 @@ public sealed class MatchSim
             for (int i = 0; i < 2; i++) FsmAdvance(_f[i]);
             ResolutionPhase();
 
-            if (_f[0].Hp <= 0f || _f[1].Hp <= 0f) return EndByKo();
+            if (frames != null && _tick % FrameSampleTicks == 0) SampleFrame(frames);
+
+            if (_f[0].Hp <= 0f || _f[1].Hp <= 0f) { SampleFrame(frames); return EndByKo(); }
         }
+        SampleFrame(frames);
         return EndByJudgement();
+    }
+
+    private void SampleFrame(List<ReplayFrame>? frames)
+    {
+        if (frames == null) return;
+        frames.Add(new ReplayFrame(_now,
+            _f[0].Pos.X, _f[0].Pos.Y, _f[1].Pos.X, _f[1].Pos.Y,
+            MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
+            _f[0].StaminaPct, _f[1].StaminaPct,
+            _f[0].State, _f[1].State));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────
 
-    private FighterRuntime CreateRuntime(int idx, FighterDef def, float startPos)
+    private FighterRuntime CreateRuntime(int idx, FighterDef def, Vec2 startPos)
     {
         var weapon = WeaponTable.Get(def.WeaponId);
+        if (_weaponDmgScale != null && _weaponDmgScale.TryGetValue(def.WeaponId, out float sc))
+            weapon = weapon with { BaseDamage = weapon.BaseDamage * sc };
         var rt = new FighterRuntime
         {
             Index = idx, Def = def, Weapon = weapon,
@@ -89,7 +114,8 @@ public sealed class MatchSim
         rt.GuardGauge = rt.GuardGaugeMax;
         rt.MoveSpeed = CombatMath.MoveSpeedMps(def.Stats, _c);
         rt.PerceptDelaySec = CombatMath.PerceptionDelay(def.Stats);
-        rt.Position = startPos;
+        rt.Pos = startPos;
+        rt.CircleSign = idx == 0 ? 1f : -1f;   // 서로 반대로 선회 → 꼬리물기 대칭 회피
         rt.RebuildDirective(0f);
         return rt;
     }
@@ -102,7 +128,7 @@ public sealed class MatchSim
         {
             var f = _f[i];
             _snaps[i][_tick % SnapRing] = new PerceptSnap(
-                f.State, f.MotionKindNow, f.Position, f.HpPct,
+                f.State, f.MotionKindNow, f.Pos, f.HpPct,
                 f.GuardGauge / f.GuardGaugeMax, f.StateElapsed, f.IsExhausted);
         }
     }
@@ -134,6 +160,11 @@ public sealed class MatchSim
             FighterState.Guard => -_c.StamCostGuardPerSec,
             _ => 0f, // 공격 모션/회피 중 회복 없음
         };
+        // 카이팅 비용(B): 존형이 거리 유지(후퇴/선회)로 빠지면 회복 대신 소모 — 영원히 카이팅 못 한다.
+        // 위치 이중안정을 스태미나 소모로 완충해 브롤러:카이터를 부드럽게 착지시키는 노브.
+        if (f.Weapon.Range >= _c.MinLongRange && f.State == FighterState.Move
+            && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
+            regen = -_c.KiteStamCostPerSec;
         if (regen > 0f) regen *= f.Dir.StamRegenMult;
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
@@ -158,8 +189,8 @@ public sealed class MatchSim
         if (f.PoiseRegenBlockTimer <= 0f)
             f.Poise = MathF.Min(f.PoiseMax, f.Poise + f.PoiseMax * _c.PoiseRecoverPctPerSec * Dt);
 
-        // 코너 체류 (판정 패널티)
-        if (f.Position <= _c.CornerZone || f.Position >= _c.ArenaWidth - _c.CornerZone)
+        // 가장자리 체류 (판정 패널티) — 중심에서 멀수록 몰린 것
+        if (f.Pos.Length >= _c.ArenaRadius - _c.CornerZone)
             f.CornerTime += Dt;
     }
 
@@ -181,7 +212,8 @@ public sealed class MatchSim
             ReservePct: f.Dir.StaminaReserve,
             SameWhiffCount: f.SameWhiffCount,
             HpDeficitPct: opp.HpPct - f.HpPct,
-            OppExhaustedPerceived: opp.IsExhausted);
+            OppExhaustedPerceived: opp.IsExhausted,
+            OppStaggeredPerceived: opp.State == FighterState.Stagger);
     }
 
     private void StrategyTick(FighterRuntime f)
@@ -296,7 +328,7 @@ public sealed class MatchSim
     private ActionRequest SelectAction(FighterRuntime f, in PerceptSnap opp)
     {
         ref readonly Directive d = ref f.Dir;
-        float dist = MathF.Abs(opp.Position - f.Position);
+        float dist = Vec2.Dist(opp.Pos, f.Pos);
         // 교전 거리 보정: 선호 거리가 자기 유효 공격 거리보다 멀면 영원한 대치가 된다 (거울 매치 KO 0%로 검출).
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
@@ -314,34 +346,62 @@ public sealed class MatchSim
         bool oppGuard = opp.State == FighterState.Guard;
         bool oppDown = opp.State is FighterState.Down or FighterState.GetUp;
 
+        // 경계 근접도 (0 중심 ~ 1 가장자리). B: 원형 핏 — 경계선 후퇴는 막히므로 선회가 답.
+        float edgeProx = MathF.Min(1f, f.Pos.Length / MathF.Max(0.5f, _c.ArenaRadius - 0.5f));
+
         Span<float> score = stackalloc float[9];
         score[(int)ActionRequest.Approach] = gap > d.DistanceTolerance ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.05f;
-        score[(int)ActionRequest.Retreat] = gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f;
-        score[(int)ActionRequest.Strafe] = 0.12f;
+        // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
+        score[(int)ActionRequest.Retreat] = (gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f)
+                                          * (1f - 0.6f * edgeProx);
+        // 선회(B 핵심): 사거리 우위 무기는 자기 스윗스팟을 '유지'하려 선회(견제 카이팅), 그 외엔 근접 시 거리벌리기.
+        bool wantSpace = gap < -d.DistanceTolerance
+                      || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance);
+        score[(int)ActionRequest.Strafe] = 0.10f + (wantSpace ? 0.30f + 0.7f * edgeProx : 0f);
 
         // 자기 약점 거리(inner ×0.6 구간)에서의 공격은 반토막 가치 — 창/채찍은 먼저 거리를 벌리는 게 정답
         bool selfInner = f.Weapon.Range >= _c.MinLongRange && dist < f.Weapon.Range * _c.InnerRangeRatio;
         float innerMul = selfInner ? 0.45f : 1f;
         float light = inRange ? (0.25f + d.Aggression) * innerMul : 0f; // 사거리 안 기본 공격성 (전 전술 공통 바닥값)
-        float heavy = inRange ? d.Aggression * (0.4f + 0.6f * d.RiskTolerance) * (1f + d.HeavyBias) * innerMul : 0f;
+        float heavy = inRange ? d.Aggression * (0.4f + 0.6f * d.RiskTolerance) * (1f + d.HeavyBias + f.Weapon.HeavyBias) * innerMul : 0f;
         float feint = (dist <= f.Weapon.Range * 1.3f) ? d.FeintRate * 0.8f : 0f;
 
         bool oppHeavyWindup = oppWindup && opp.MotionKind == MotionKind.Heavy;
 
         // 리치 우위: 상대는 내 사거리 안, 나는 상대 사거리 밖 = 일방 유효타 구간.
         // 창/채찍 "견제"의 기계적 본질 (문서[4] 8장 거리 대역 / 기획서 "창=견제 특화").
-        float oppRange = _f[1 - f.Index].Weapon.Range;
+        var oppRt = _f[1 - f.Index];
+        float oppRange = oppRt.Weapon.Range;
         bool reachAdvantage = inRange && dist > oppRange + 0.1f;
         if (reachAdvantage) { light *= 2.2f; feint *= 1.3f; }
 
+        // 수싸움 프레임 판정 (상성 매트릭스 디버깅으로 도입). 상대 선딜을 인지했을 때 세 갈래:
+        //  · 레이스 승산: (내 인지지연 + 내 약공 선딜) < 상대 잔여 선딜 → 반격이 먼저 닿는다 = 카운터
+        //  · 헛스윙 처벌 가능: 내 응답시간 < 상대 후딜 → 회피로 빼서 후딜을 때린다 = 회피
+        //  · 둘 다 아님(검 약공 등 빠르고 안전한 공격) → 가드가 정답. 이길 수 없는 레이스에
+        //    뛰어들면 항상 먼저 맞고 스윙이 끊기고, 처벌 못 할 공격을 피하면 스태미나만 샌다.
+        bool raceWinnable = false, whiffPunishable = false;
+        if (oppWindup)
+        {
+            var oppMotion = MotionTable.Get(oppRt.Weapon.Id, opp.MotionKind);
+            float oppWindupTotal = CombatMath.MotionTime(oppMotion.WindupBaseSec, oppRt.Weapon, oppRt.Def.Stats, _c);
+            float myStrike = f.PerceptDelaySec
+                + CombatMath.MotionTime(MotionTable.Get(f.Weapon.Id, MotionKind.Light).WindupBaseSec, f.Weapon, f.Def.Stats, _c);
+            raceWinnable = myStrike < oppWindupTotal * 0.9f;
+            whiffPunishable = myStrike < oppRt.Weapon.RecoverySec * oppMotion.RecoveryMult;
+        }
+
         // OpportunityMod — 수싸움의 핵심
-        if (oppWindup) light *= 1f + 1.875f * d.CounterWindow;        // CounterWindow 0.8 → ×2.5
+        if (oppWindup && raceWinnable) light *= 1f + 1.875f * d.CounterWindow; // CounterWindow 0.8 → ×2.5
         if (oppRecovery)
         {
             // 후딜 처벌은 카운터형의 본업 — CounterWindow가 여기에도 기여 (M2 튜닝: 1.8 고정이면 게이트 미달)
             float recBoost = 1.8f * (1f + 0.5f * d.CounterWindow);
             light *= recBoost; heavy *= recBoost;
         }
+        // 아머 트레이드: 하이퍼아머 무기는 상대가 커밋(선딜/액티브)했을 때 강공으로 받아친다.
+        // 상대 약공을 몸으로 받고(경직 무효) 내 일격을 꽂는다 — 중량 무기의 본래 게임플랜.
+        if (f.Weapon.HyperArmor && (oppWindup || opp.State == FighterState.Active)) heavy *= 2.6f;
         if (oppGuard) { heavy *= 1.4f; feint *= 1.5f; }               // 가드 깎기 / 흔들기
         if (oppDown) { light *= 1.3f; heavy *= 1.3f; }                // 기본 AI도 추가타 선호 (성격이 가감)
         if (opp.IsExhausted) { light *= 1.8f; heavy *= 2.2f; }        // 지친 적 = 인내형이 기다린 확정 처벌 창 (강공으로 Stagger→다운 노림)
@@ -351,8 +411,10 @@ public sealed class MatchSim
         if (f.LastAttack == ActionRequest.AttackLight) light *= 1f + d.RepeatBias;
         if (f.LastAttack == ActionRequest.AttackHeavy) heavy *= 1f + d.RepeatBias;
 
-        // StaminaFit: Reserve 이하로는 쓰지 않는다
-        float reserveAbs = d.StaminaReserve * f.StaminaMax;
+        // StaminaFit: Reserve 이하로는 쓰지 않는다 — 단, 확정 기회(캔슬 불가 상대)엔 규율 면제.
+        // Reserve는 평시 수싸움의 절제이지 황금 기회를 흘려보내는 규칙이 아니다. 이 면제가 없으면
+        // 수비형은 가드로 비축분까지 말라 "기다리던 처벌 창"이 와도 못 때린다 (상성 매트릭스 디버깅).
+        float reserveAbs = oppLocked ? 0f : d.StaminaReserve * f.StaminaMax;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) light = 0f;
         if (f.Stamina - _c.StamCostAttackHeavy < reserveAbs || f.IsExhausted) heavy = 0f;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) feint = 0f;
@@ -373,6 +435,9 @@ public sealed class MatchSim
         float dodge = (f.Stamina < _c.StamCostDodge || f.IsExhausted)
             ? 0f
             : (oppWindup && oppCanReachMe ? (0.35f + 0.6f * (1f - d.RiskTolerance)) * 1.3f : 0.08f);
+        // 회피의 가치는 "회피가 만든 헛스윙을 처벌할 수 있는가"에 달렸다. 후딜 짧은 공격(검 약공)을
+        // 피하는 건 스태미나 낭비(15/회)지만, 후딜 긴 공격(도끼)을 빼는 건 처벌 창 제조다.
+        if (oppWindup && !whiffPunishable) dodge *= 0.6f;
         // 강공은 가드 크러시 위협 — 가드 대신 회피로 흘리는 게 보편적 격투 상식
         if (oppHeavyWindup && oppCanReachMe) { guard *= 0.7f; dodge *= 1.6f; }
         score[(int)ActionRequest.Guard] = guard;
@@ -458,17 +523,15 @@ public sealed class MatchSim
         f.Stamina -= _c.StamCostDodge;
 
         var opp = _f[1 - f.Index];
-        float backDir = MathF.Sign(f.Position - opp.Position); // 상대 반대쪽
-        if (backDir == 0f) backDir = f.Index == 0 ? -1f : 1f;
-        if (!away) backDir = -backDir;
+        Vec2 back = (f.Pos - opp.Pos).Normalized();        // 상대 반대쪽
+        if (back.Length < 1e-6f) back = new Vec2(f.Index == 0 ? -1f : 1f, 0f);
+        if (!away) back = back * -1f;
 
-        float target = f.Position + backDir * _c.DodgeDistance;
-        if (target <= 0.5f || target >= _c.ArenaWidth - 0.5f)
-        {
-            // 코너 통과 롤: 후방 공간 없음 → 상대 등 뒤로 빠져나감 (원형 경기장 측면 이동의 1D 등가)
-            target = opp.Position + (opp.Position - f.Position >= 0f ? 1f : -1f) * 1.6f;
-        }
-        f.Position = Math.Clamp(target, 0.5f, _c.ArenaWidth - 0.5f);
+        Vec2 target = f.Pos + back * _c.DodgeDistance;
+        // 후방이 경계 밖이면 접선 성분을 섞어 측면으로 빠진다 (옛 1D '코너 통과 롤'의 2D 자연 등가 — 핵 불필요)
+        if (target.Length > _c.ArenaRadius - 0.5f)
+            target = f.Pos + (back + back.Perp() * f.CircleSign).Normalized() * _c.DodgeDistance;
+        f.Pos = ClampToArena(target);
         f.CurrentAction = ActionRequest.Dodge;
         ChangeState(f, FighterState.Dodge, _c.DodgeDurationSec);
         return true;
@@ -486,12 +549,20 @@ public sealed class MatchSim
         f.MotionKindNow = kind;
         f.IsFeintSwing = isFeint;
         f.SwingResolved = false;
+        f.LastSwingGuarded = false;
         f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c);
         f.CurrentAction = action;
         if (!isFeint) { f.AttackAttempts++; f.LastAttack = action; }
         ChangeState(f, FighterState.Windup, f.WindupTotalSec);
         Emit(new AttackSwung(_now, f.Index, f.Motion.Id, isFeint));
         return true;
+    }
+
+    /// <summary>원형 핏 경계 안으로 투영. 선회는 경계에 닿아도 접선으로 미끄러진다(벽-핀 제거 = B의 핵심).</summary>
+    private Vec2 ClampToArena(Vec2 p)
+    {
+        float maxR = _c.ArenaRadius - 0.5f, len = p.Length;
+        return len <= maxR ? p : p * (maxR / len);
     }
 
     private void FsmAdvance(FighterRuntime f)
@@ -502,10 +573,20 @@ public sealed class MatchSim
             case FighterState.Move:
             {
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f);
-                float dir = MathF.Sign(opp.Position - f.Position);
-                if (f.CurrentAction == ActionRequest.Retreat) dir = -dir;
-                if (f.CurrentAction != ActionRequest.Strafe)
-                    f.Position = Math.Clamp(f.Position + dir * speed * Dt, 0.5f, _c.ArenaWidth - 0.5f);
+                Vec2 toOpp = (opp.Pos - f.Pos).Normalized();
+                Vec2 move = f.CurrentAction switch
+                {
+                    // 선회(B): 교전선에 수직 접선 이동 → 등속 추격자로부터 간격 유지(카이팅). 옛 1D 불가 동작.
+                    ActionRequest.Strafe => toOpp.Perp() * f.CircleSign,
+                    ActionRequest.Retreat => toOpp * -1f,
+                    _ => toOpp, // Approach
+                };
+                // 카이터 레버: 후퇴/선회 시 경계로 밀리면 dodge-back 리셋 공간이 사라진다. 열린 중앙으로
+                // 당겨 벽-핀을 피하고 거리 유지 발판을 확보. 존형(장사거리) 전용 — 근접형 거울 질감 보존.
+                float rN = f.Pos.Length / _c.ArenaRadius;
+                if (f.Weapon.Range >= _c.MinLongRange && rN > 0.5f && f.CurrentAction != ActionRequest.Approach)
+                    move = (move + (f.Pos * -1f).Normalized() * ((rN - 0.5f) * 2.6f)).Normalized();
+                f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
                 break;
@@ -553,7 +634,7 @@ public sealed class MatchSim
     // ───────────────────────── 히트 판정 (문서[4] 3장 처리 순서) ─────────────────────────
 
     private readonly record struct DefenseSnap(
-        FighterState State, float StateElapsed, bool DownHitConsumed, float Position, bool IsExhausted);
+        FighterState State, float StateElapsed, bool DownHitConsumed, Vec2 Pos, bool IsExhausted, bool Armored);
 
     /// <summary>
     /// 동시 해결: 양측의 방어 상태를 먼저 캡처한 뒤 상호 적용한다.
@@ -564,8 +645,13 @@ public sealed class MatchSim
     {
         Span<DefenseSnap> snap = stackalloc DefenseSnap[2];
         for (int i = 0; i < 2; i++)
-            snap[i] = new DefenseSnap(_f[i].State, _f[i].StateElapsed, _f[i].DownHitConsumed,
-                                      _f[i].Position, _f[i].IsExhausted);
+        {
+            var f = _f[i];
+            // 하이퍼아머: 중량 무기가 강공 선딜을 커밋한 순간 = 약공에 안 끊기는 상태 (페인트 제외).
+            bool armored = f.Weapon.HyperArmor && f.State == FighterState.Windup
+                        && f.MotionKindNow == MotionKind.Heavy && !f.IsFeintSwing;
+            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Pos, f.IsExhausted, armored);
+        }
 
         for (int i = 0; i < 2; i++)
         {
@@ -579,14 +665,17 @@ public sealed class MatchSim
             if (atk.State == FighterState.Active && atk.StateTimer <= 0f)
             {
                 if (!atk.SwingResolved) RegisterWhiff(atk);
-                ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec);
+                // 후딜 = 무기 기본 × 모션 배율 (약공 0.8 안전 / 강공 1.6 처벌 가능 — T02 RecoveryMult)
+                //       × 가드됨 배율 (막힌 공격은 프레임 불리 — 방어자의 턴)
+                ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
+                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f));
             }
         }
     }
 
     private void TryResolveHit(FighterRuntime atk, FighterRuntime def, in DefenseSnap ds)
     {
-        float dist = MathF.Abs(atk.Position - ds.Position);
+        float dist = Vec2.Dist(atk.Pos, ds.Pos);
         if (dist > atk.Weapon.Range + 0.05f) return; // 아직 범위 밖 — Active 동안 계속 시도
 
         atk.SwingResolved = true;
@@ -606,6 +695,7 @@ public sealed class MatchSim
         // 2) 가드 판정
         if (ds.State == FighterState.Guard)
         {
+            atk.LastSwingGuarded = true; // 막힌 칼 = 프레임 불리 (후딜 ×GuardedRecoveryMult)
             float raw = CombatMath.RawDamage(atk.Weapon, motionMult, atk.Def.Stats) * (inner ? _c.InnerRangePenalty : 1f);
             var gr = CombatMath.ResolveGuardHit(raw, atk.Weapon, def.GuardGauge, def.Stamina, _c);
             def.GuardGauge = gr.GuardGaugeAfter;
@@ -631,12 +721,17 @@ public sealed class MatchSim
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
 
+        // 하이퍼아머: 방어자가 중량 강공을 커밋 중인데 들어온 게 약공 → 데미지·카운터딜은 받되 경직 무효.
+        // (강공으로 받아쳐야 끊긴다. 약공 스팸으로는 못 막는다 — 중량 무기의 '막을 수 없는 일격' 정체성.)
+        bool armorHeld = ds.Armored && atk.MotionKindNow == MotionKind.Light;
+
         bool wasStaggered = ds.State == FighterState.Stagger;
         bool wasDown = ds.State is FighterState.Down;
-        ApplyDamage(atk, def, damage, isCrit, isCounter, false);
+        ApplyDamage(atk, def, damage, isCrit, isCounter, false, armorHeld);
         atk.CleanHits++;
         if (isCrit) def.LastCritTakenAt = _now;
         if (def.Hp <= 0f) return;
+        if (armorHeld) return; // 경직 무효 — 방어자는 강공 선딜을 그대로 이어간다
 
         // 경직 처리
         if (wasDown) { def.DownHitConsumed = true; return; }
@@ -662,13 +757,13 @@ public sealed class MatchSim
         }
     }
 
-    private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded)
+    private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
     {
         def.Hp -= dmg;
         atk.DamageDealt += dmg;
         def.ConsecHitsTaken++;
         def.NoHitTimer = 0f;
-        Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded));
+        Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
     }
 
     private void ChangeState(FighterRuntime f, FighterState to, float timer = 0f)

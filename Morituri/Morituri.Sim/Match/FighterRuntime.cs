@@ -41,8 +41,9 @@ public sealed class FighterRuntime
     public float ExhaustTimer;          // > 0 = Exhausted
     public float PoiseRegenBlockTimer;  // 피격 후 1초 회복 정지
 
-    // --- 위치 (Phase 1 단순화: 1D 라인 아레나. 2D는 M4 프레젠테이션에서) ---
-    public float Position;
+    // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
+    public Vec2 Pos;
+    public float CircleSign = 1f;       // 선회 방향 (+1 반시계 / -1 시계). 경계 도달 시 반전
 
     // --- FSM ---
     public FighterState State = FighterState.Idle;
@@ -51,6 +52,7 @@ public sealed class FighterRuntime
     public MotionDef Motion;
     public MotionKind MotionKindNow;
     public bool IsFeintSwing, SwingResolved;
+    public bool LastSwingGuarded; // 이번 스윙이 가드됨 → 후딜 ×GuardedRecoveryMult (프레임 불리)
     public float WindupTotalSec;
 
     // --- 전략층 상태 ---
@@ -92,5 +94,5 @@ public sealed class FighterRuntime
 
 /// <summary>인지 지연용 스냅샷 (문서[3] 6.3) — 상대는 이걸 통해서만 보인다.</summary>
 public readonly record struct PerceptSnap(
-    FighterState State, MotionKind MotionKind, float Position,
+    FighterState State, MotionKind MotionKind, Vec2 Pos,
     float HpPct, float GuardGaugePct, float StateElapsed, bool IsExhausted);
