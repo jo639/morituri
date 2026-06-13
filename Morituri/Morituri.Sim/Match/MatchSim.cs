@@ -576,6 +576,11 @@ public sealed class MatchSim
                     ActionRequest.Retreat => toOpp * -1f,
                     _ => toOpp, // Approach
                 };
+                // 카이터 레버(스파이크): 후퇴/선회 시 경계로 밀리면 dodge-back 리셋 공간이 사라진다.
+                // 열린 중앙으로 당겨 벽-핀을 피하고 거리 유지의 발판을 확보 (공격적 접근은 면제).
+                float rN = f.Pos.Length / _c.ArenaRadius;
+                if (rN > 0.5f && f.CurrentAction != ActionRequest.Approach)
+                    move = (move + (f.Pos * -1f).Normalized() * ((rN - 0.5f) * 2.6f)).Normalized();
                 f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
