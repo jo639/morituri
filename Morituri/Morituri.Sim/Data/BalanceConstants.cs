@@ -44,6 +44,7 @@ public readonly record struct BalanceConstants
     public float StamCostSprintPerSec{ get; init; }
     public float StamRegenIdle       { get; init; }
     public float StamRegenMoving     { get; init; }
+    public float KiteStamCostPerSec  { get; init; }  // 존형이 거리 유지(후퇴/선회)로 빠질 때 소모 (B: 카이팅 비용)
     public float ExhaustDurationSec  { get; init; }
     public float ExhaustMoveSpeedMult{ get; init; }
     public float ExhaustDamageTakenMult { get; init; }  // 지친 방어자가 받는 피해 배수 (무너진 몸 = 처벌 강화)
@@ -136,6 +137,7 @@ public readonly record struct BalanceConstants
         StamCostSprintPerSec = 4f,
         StamRegenIdle = 6f,
         StamRegenMoving = 3f,
+        KiteStamCostPerSec = 1.5f,   // B 재튜닝: 카이팅 비용 노브 (0→창78% / 1.5→48% / 5→0%). 정확값은 트위치, 1.5 = 근접 균형
         ExhaustDurationSec = 3.0f,   // M3-A: 문서[4] 원값으로 복귀 (아래 주석)
         ExhaustMoveSpeedMult = 0.6f,
         // M3-A: 2.2→1.3 — 지침 중처벌(4.5s/×2.2)은 가드 프레임불리·헛스윙 처벌이 없던 시절의

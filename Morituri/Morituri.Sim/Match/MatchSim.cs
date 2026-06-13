@@ -160,6 +160,11 @@ public sealed class MatchSim
             FighterState.Guard => -_c.StamCostGuardPerSec,
             _ => 0f, // 공격 모션/회피 중 회복 없음
         };
+        // 카이팅 비용(B): 존형이 거리 유지(후퇴/선회)로 빠지면 회복 대신 소모 — 영원히 카이팅 못 한다.
+        // 위치 이중안정을 스태미나 소모로 완충해 브롤러:카이터를 부드럽게 착지시키는 노브.
+        if (f.Weapon.Range >= _c.MinLongRange && f.State == FighterState.Move
+            && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
+            regen = -_c.KiteStamCostPerSec;
         if (regen > 0f) regen *= f.Dir.StamRegenMult;
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
