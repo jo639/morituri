@@ -120,7 +120,7 @@ public static class PersonalityTable
     {
         // M3-B 재설계: 빈사(HP≤10%) 트리거는 처벌자가 이미 죽어 역전 0%였다.
         // "우세 + 상대 스태거"로 이동 — 상대는 살아서 스태거(0.8s) 회복 후 도발(1.5s) 잔여 창에 2배 처벌 가능.
-        new TriggerRule("TRG_ARRO_TAUNT", TriggerCondition.OppStaggeredWhileAhead, 5.5f, TriggerEffectKind.Interrupt,
+        new TriggerRule("TRG_ARRO_TAUNT", TriggerCondition.OppStaggeredWhileAhead, 8f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.70f, 10f, 1.5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_LAZY", TriggerCondition.SelfHpAbovePctAndWinning, 80f, TriggerEffectKind.Override,
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),
