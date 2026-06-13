@@ -55,6 +55,17 @@ public static class MatchSerializer
         return new MatchRecord(SchemaVersion, seed, result, events);
     }
 
+    /// <summary>
+    /// SimEvent 폴리모피즘 + enum-문자열 계약을 갖춘 새 옵션. 뷰어 등 외부 봉투가 같은 이벤트 직렬화를
+    /// 중복 구현 없이 재사용한다(writeIndented만 다름). 새 인스턴스라 호출자가 안전하게 변형할 수 있다.
+    /// </summary>
+    public static JsonSerializerOptions CreateEventAwareOptions(bool writeIndented = false) => new()
+    {
+        WriteIndented = writeIndented,
+        Converters = { new JsonStringEnumConverter() },
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { ConfigureSimEventPolymorphism } },
+    };
+
     private static JsonSerializerOptions BuildOptions() => new()
     {
         // enum은 문자열로 — 숫자는 enum 재정렬 시 의미가 바뀐다(영속 기록엔 치명적).

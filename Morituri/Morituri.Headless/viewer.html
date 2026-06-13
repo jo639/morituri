@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MORITURI 디버그 2D 뷰어 (M4-a)</title>
+<style>
+  :root{ --a:#4ea1ff; --b:#ff6b6b; --bg:#11141a; --panel:#1b2029; --ink:#e7ecf3; --dim:#8a93a3; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+        font:14px/1.4 system-ui,"Segoe UI","Malgun Gothic",sans-serif; }
+  header{ padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  h1{ font-size:15px; margin:0; font-weight:600; letter-spacing:.5px; color:var(--dim); }
+  #wrap{ max-width:980px; margin:0 auto; padding:0 16px 32px; }
+  /* HP 패널 */
+  #hud{ display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin:8px 0; }
+  .fcard{ background:var(--panel); border-radius:10px; padding:10px 12px; }
+  .fcard.b{ text-align:right; }
+  .fname{ font-weight:700; font-size:16px; }
+  .ftags{ color:var(--dim); font-size:11px; margin-top:2px; }
+  .bar{ height:12px; border-radius:6px; background:#0c0f14; margin-top:6px; overflow:hidden; }
+  .bar > i{ display:block; height:100%; width:100%; transition:width .05s linear; }
+  .hp.a > i{ background:linear-gradient(90deg,#2e6bb0,var(--a)); }
+  .hp.b > i{ background:linear-gradient(90deg,var(--b),#b03e3e); }
+  .stam{ height:5px; margin-top:4px; }
+  .stam > i{ background:#d9b15a; }
+  .vs{ color:var(--dim); font-weight:700; font-size:13px; text-align:center; }
+  .winner{ font-size:11px; margin-top:4px; min-height:14px; }
+  /* 캔버스 */
+  #stage{ position:relative; }
+  canvas{ width:100%; height:auto; background:#0c0f14; border-radius:10px; display:block; }
+  #drop{ position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
+         align-items:center; justify-content:center; text-align:center; color:var(--dim);
+         border:2px dashed #2c3340; border-radius:10px; cursor:pointer; }
+  #drop.hidden{ display:none; }
+  #drop b{ color:var(--ink); }
+  /* 컨트롤 */
+  #ctrl{ display:flex; gap:12px; align-items:center; margin-top:10px; }
+  button{ background:var(--panel); color:var(--ink); border:1px solid #2c3340;
+          border-radius:8px; padding:7px 14px; font-size:14px; cursor:pointer; }
+  button:hover{ border-color:#3a4452; }
+  #scrub{ flex:1; accent-color:var(--a); }
+  #clock{ font-variant-numeric:tabular-nums; color:var(--dim); min-width:96px; text-align:right; }
+  select{ background:var(--panel); color:var(--ink); border:1px solid #2c3340; border-radius:8px; padding:6px; }
+  .hint{ color:var(--dim); font-size:11px; margin-top:10px; }
+  code{ background:#0c0f14; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MORITURI · 디버그 2D 뷰어</h1>
+  <span class="hint" id="meta"></span>
+</header>
+
+<div id="wrap">
+  <div id="hud">
+    <div class="fcard a">
+      <div class="fname" id="nameA" style="color:var(--a)">—</div>
+      <div class="ftags" id="tagsA"></div>
+      <div class="bar hp a"><i id="hpA"></i></div>
+      <div class="bar stam"><i id="stA"></i></div>
+      <div class="winner" id="winA"></div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="fcard b">
+      <div class="fname" id="nameB" style="color:var(--b)">—</div>
+      <div class="ftags" id="tagsB"></div>
+      <div class="bar hp b"><i id="hpB"></i></div>
+      <div class="bar stam"><i id="stB"></i></div>
+      <div class="winner" id="winB"></div>
+    </div>
+  </div>
+
+  <div id="stage">
+    <canvas id="cv" width="940" height="380"></canvas>
+    <label id="drop">
+      <b>viewer.json 을 여기로 끌어다 놓으세요</b>
+      <span>또는 클릭해서 파일 선택 · 생성: <code>dotnet run -- viewer arrogant 7</code></span>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </label>
+  </div>
+
+  <div id="ctrl">
+    <button id="play">▶ 재생</button>
+    <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
+    <select id="speed">
+      <option value="0.25">0.25×</option>
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <span id="clock">0.0 / 0.0s</span>
+  </div>
+  <div class="hint">자세 색: 가드 🟦 · 경직/넘어짐 회색 · 도발 노랑 · 공격 시 무기 팔이 뻗는다. 가는 가로선 = 무기 사거리(간격 읽기).</div>
+</div>
+
+<script>
+"use strict";
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height, PAD = 70, GROUND = H - 70;
+let doc = null, frames = null, popups = [], decisions = [], duration = 0;
+let t = 0, playing = false, speed = 1, lastWall = 0;
+
+// ── 로드 ──
+function load(json){
+  doc = JSON.parse(json);
+  frames = doc.Frames;
+  duration = frames.length ? frames[frames.length-1].Time : 0;
+  buildPopups();
+  document.getElementById('meta').textContent =
+    `시드 ${doc.Seed} · 아레나 ${doc.Meta.ArenaWidth}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
+  const A = doc.Meta.A, B = doc.Meta.B;
+  document.getElementById('nameA').textContent = A.Name;
+  document.getElementById('nameB').textContent = B.Name;
+  document.getElementById('tagsA').textContent = label(A);
+  document.getElementById('tagsB').textContent = label(B);
+  const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
+      : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
+  document.getElementById('winA').textContent = r.Winner === 0 ? '🏆 ' + wtext : '';
+  document.getElementById('winB').textContent = r.Winner === 1 ? '🏆 ' + wtext : '';
+  if (r.Winner < 0){ document.getElementById('winA').textContent = wtext; }
+  const sc = document.getElementById('scrub');
+  sc.disabled = false; sc.value = 0;
+  document.getElementById('drop').classList.add('hidden');
+  t = 0; setPlaying(true);
+}
+const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
+  TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
+const PER = {PER_ARROGANT:'오만',PER_BOLD:'대담',PER_CALM:'냉철',PER_COWARD:'겁쟁이',PER_CRUEL:'잔혹',
+  PER_HONORABLE:'명예',PER_OBSESSIVE:'집착',PER_OPTIMIST:'낙관',PER_PESSIMIST:'비관',
+  PER_RECKLESS:'충동',PER_VENGEFUL:'복수',PER_WARY:'신중'};
+const WPN = {WPN_AXE:'도끼',WPN_DUALBLADES:'쌍검',WPN_GREATSWORD:'대검',WPN_HAMMER:'망치',
+  WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SWORDSHIELD:'검방패',WPN_WHIP:'채찍'};
+function label(f){ return `${WPN[f.Weapon]||f.Weapon} · ${TAC[f.Tactic]||f.Tactic} · ${PER[f.Personality]||f.Personality}`; }
+
+// 이벤트 → 시간창 팝업 (스크럽해도 상태 무관하게 t로부터 재계산)
+function buildPopups(){
+  popups = []; decisions = [];
+  const flavor = e => e.IsArmored ? ['🪨',' #9aa3af'] : e.IsGuarded ? ['🛡','#6fa8dc']
+        : e.IsCounter ? ['⚡','#ffd24a'] : e.IsCrit ? ['💢','#ff5d5d'] : ['','#ffffff'];
+  for (const e of doc.Events){
+    switch(e.type){
+      case 'HitLanded':{ const [ic,col]=flavor(e);
+        popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34,
+          text:`${ic}-${Math.round(e.Damage)}`, col}); break; }
+      case 'PoiseBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'자세붕괴', col:'#cbd2dc'}); break;
+      case 'GuardBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'가드파괴!', col:'#6fa8dc'}); break;
+      case 'KnockedDown':  popups.push({t:e.Time, who:e.FighterId, life:1.2, rise:26, text:'다운!', col:'#ff8a4a'}); break;
+      case 'StaminaExhausted': popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'탈진', col:'#d9b15a'}); break;
+      case 'Decision': decisions.push({t:e.Time, who:e.FighterId,
+          dur:Math.min(Math.max(e.Duration,0.9),2.5), tag:e.ReasonTag, layer:e.SourceLayer}); break;
+    }
+  }
+}
+
+// ── 프레임 조회 (시간 정렬 이진 탐색 + 위치 보간) ──
+function frameAt(time){
+  const F = frames; let lo=0, hi=F.length-1;
+  if (time <= F[0].Time) return {f:F[0], g:F[0], k:0};
+  if (time >= F[hi].Time) return {f:F[hi], g:F[hi], k:0};
+  while (lo+1 < hi){ const m=(lo+hi)>>1; if (F[m].Time <= time) lo=m; else hi=m; }
+  const a=F[lo], b=F[hi], span=b.Time-a.Time;
+  return {f:a, g:b, k: span>0 ? (time-a.Time)/span : 0};
+}
+const X = pos => PAD + (pos/doc.Meta.ArenaWidth)*(W-2*PAD);
+const PXM = () => (W-2*PAD)/doc.Meta.ArenaWidth;
+
+// ── 막대기 포즈 ──
+function poseColor(state){
+  if (state==='Guard') return '#6fa8dc';
+  if (state==='Stagger'||state==='HitStun'||state==='Down'||state==='GetUp') return '#9aa3af';
+  if (state==='Taunt') return '#ffd24a';
+  return null; // 기본색 사용
+}
+function drawFighter(x, state, facing, baseCol, reach){
+  const col = poseColor(state) || baseCol;
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3; ctx.lineCap='round';
+  const hip = GROUND-42, sh = GROUND-78, hd = GROUND-90;
+
+  // 사거리 위스커 (가슴 높이, 상대 방향) — 간격 읽기의 핵심
+  ctx.save(); ctx.globalAlpha=.28; ctx.lineWidth=2; ctx.strokeStyle=col;
+  ctx.beginPath(); ctx.moveTo(x, sh+8); ctx.lineTo(x+facing*reach*PXM(), sh+8); ctx.stroke();
+  ctx.restore();
+
+  if (state==='Down'){ // 바닥에 누움
+    ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(x-facing*18, GROUND-6); ctx.lineTo(x+facing*22, GROUND-6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x-facing*24, GROUND-9, 9, 0, 7); ctx.fill();
+    return;
+  }
+  let lean = 0, crouch = 0;
+  if (state==='HitStun'||state==='Stagger') lean = -facing*0.35;       // 뒤로 휘청
+  if (state==='Dodge') lean = -facing*0.5;
+  if (state==='GetUp') crouch = 0.5;
+  const cy = v => v + crouch*22;
+
+  // 몸통
+  const sx = x + lean*16;
+  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(sx, cy(sh)); ctx.stroke();
+  // 다리
+  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(x-9, GROUND); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, cy(hip)); ctx.lineTo(x+9, GROUND); ctx.stroke();
+  // 머리
+  ctx.beginPath(); ctx.arc(sx+lean*4, cy(hd), 9, 0, 7); ctx.fill();
+
+  // 무기 팔 각도 (facing 기준 0 = 상대쪽 수평)
+  let arm; // 라디안, 화면좌표(아래가 +)
+  switch(state){
+    case 'Windup':  arm = -2.3; break;   // 뒤로 치켜듦
+    case 'Active':  arm = 0;    break;   // 상대쪽 수평 (찌름/베기)
+    case 'Recovery':arm = 0.5;  break;   // 뻗었다 처짐
+    case 'Guard':   arm = -1.2; break;   // 앞에 세움
+    case 'Taunt':   arm = -2.0; break;   // 위로 (도발)
+    case 'Stagger': case 'HitStun': arm = -2.6; break;
+    default:        arm = 1.0;           // 늘어뜨림
+  }
+  const armLen = (state==='Active') ? 20 : 16;
+  const ax = sx + facing*Math.cos(arm)*armLen;
+  const ay = cy(sh) + Math.sin(arm)*armLen;
+  ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(sx, cy(sh)); ctx.lineTo(ax, ay); ctx.stroke();
+
+  // 무기(블레이드) — Active면 사거리만큼 길게 뻗어 타격 순간이 읽힌다
+  const wl = (state==='Active') ? reach*PXM()*0.7 : 16;
+  ctx.lineWidth=2.5; ctx.strokeStyle=col; ctx.globalAlpha = (state==='Active')?1:.7;
+  ctx.beginPath(); ctx.moveTo(ax, ay);
+  ctx.lineTo(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl); ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // 공격 강조 글로우
+  if (state==='Active'){ ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='#fff'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4,0,7); ctx.stroke(); ctx.restore(); }
+}
+
+// ── 렌더 ──
+function render(){
+  ctx.clearRect(0,0,W,H);
+  // 바닥 + 코너존
+  ctx.strokeStyle='#222a35'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(PAD-10,GROUND); ctx.lineTo(W-PAD+10,GROUND); ctx.stroke();
+  ctx.fillStyle='#161b23';
+  const cz = 1.5; ctx.fillRect(X(0)-10, GROUND-2, X(cz)-X(0)+10, 4);
+  ctx.fillRect(X(doc.Meta.ArenaWidth-cz), GROUND-2, X(doc.Meta.ArenaWidth)-X(doc.Meta.ArenaWidth-cz)+10, 4);
+
+  const fr = frameAt(t);
+  const f = fr.f, g = fr.g, k = fr.k;
+  const posA = f.PosA + (g.PosA-f.PosA)*k;
+  const posB = f.PosB + (g.PosB-f.PosB)*k;
+  const faceA = posA <= posB ? 1 : -1, faceB = -faceA;
+
+  // 간격 표시
+  ctx.fillStyle='#5b6470'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText(`간격 ${Math.abs(posA-posB).toFixed(1)}m`, (X(posA)+X(posB))/2, GROUND-118);
+
+  drawFighter(X(posA), f.StateA, faceA, getCSS('--a'), doc.Meta.A.Range);
+  drawFighter(X(posB), f.StateB, faceB, getCSS('--b'), doc.Meta.B.Range);
+
+  // 팝업 (타격·자세·다운)
+  ctx.textAlign='center';
+  for (const p of popups){
+    const age = t - p.t; if (age < 0 || age > p.life) continue;
+    const a = 1 - age/p.life;
+    const px = X(p.who===0?posA:posB), py = GROUND-100 - (p.rise*(1-a));
+    ctx.globalAlpha = a; ctx.fillStyle = p.col; ctx.font='bold 15px system-ui';
+    ctx.fillText(p.text, px, py); ctx.globalAlpha=1;
+  }
+  // Decision 아이콘 (판단 핀)
+  for (const d of decisions){
+    if (t < d.t || t > d.t + d.dur) continue;
+    const px = X(d.who===0?posA:posB), py = GROUND-138;
+    ctx.fillStyle = d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.9;
+    const txt = '🧠 '+d.tag; ctx.font='bold 12px system-ui';
+    const w = ctx.measureText(txt).width+14;
+    roundRect(px-w/2, py-14, w, 19, 6); ctx.fill();
+    ctx.fillStyle='#0c0f14'; ctx.fillText(txt, px, py); ctx.globalAlpha=1;
+  }
+
+  // HUD 바
+  setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
+  setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
+  document.getElementById('scrub').value = duration>0 ? (t/duration*1000)|0 : 0;
+  document.getElementById('clock').textContent = `${t.toFixed(1)} / ${duration.toFixed(1)}s`;
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function setBar(id,p){ document.getElementById(id).style.width = Math.max(0,Math.min(1,p))*100+'%'; }
+function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// ── 재생 루프 ──
+function tick(now){
+  if (playing && frames){
+    const dt = (now-lastWall)/1000; lastWall = now;
+    t += dt*speed;
+    if (t >= duration){ t = duration; setPlaying(false); }
+  } else lastWall = now;
+  if (frames) render();
+  requestAnimationFrame(tick);
+}
+function setPlaying(p){ playing = p && t < duration;
+  document.getElementById('play').textContent = playing ? '⏸ 일시정지' : '▶ 재생';
+  if (playing && t>=duration) t=0; }
+
+// ── 입력 ──
+document.getElementById('play').onclick = ()=>{ if (t>=duration) t=0; setPlaying(!playing); };
+document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false); };
+document.getElementById('speed').onchange = e=>{ speed = parseFloat(e.target.value); };
+const fileEl = document.getElementById('file');
+document.getElementById('drop').onclick = ()=> fileEl.click();
+fileEl.onchange = e=>{ const f=e.target.files[0]; if(f) f.text().then(load); };
+const stage = document.getElementById('stage');
+stage.ondragover = e=>{ e.preventDefault(); };
+stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f.text().then(load); };
+window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); } };
+
+// 같은 폴더에서 http로 열렸으면 자동 로드 시도 (file://에선 조용히 실패)
+fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{});
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

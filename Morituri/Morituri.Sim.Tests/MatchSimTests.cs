@@ -228,4 +228,35 @@ public class FairnessRegressionTests
         Assert.That((float)spearCounters / spearHits, Is.GreaterThan(0.25), "카운터 루프가 살아있어야 함 (적중의 유의미한 비중)");
         Assert.That(berserkerExhausts, Is.GreaterThan(0), "도끼 난사가 버서커를 가스아웃시켜야 함 (M3 처벌 레버)");
     }
+
+    [Test]
+    public void ReplayFrames_AreSampledMonotonically_WithinArena()
+    {
+        // M4-a: 뷰어가 막대기를 그릴 위치 트랙. 시간 단조 증가 + 위치는 아레나 안 + HP는 [0,1].
+        var frames = new List<ReplayFrame>();
+        new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 7, null, frames);
+
+        Assert.That(frames.Count, Is.GreaterThan(10), "프레임이 수집돼야 함");
+        float arena = BalanceConstants.Default.ArenaWidth;
+        for (int i = 0; i < frames.Count; i++)
+        {
+            var f = frames[i];
+            if (i > 0) Assert.That(f.Time, Is.GreaterThan(frames[i - 1].Time - 0.001f), "시간 비감소");
+            Assert.That(f.PosA, Is.InRange(0f, arena));
+            Assert.That(f.PosB, Is.InRange(0f, arena));
+            Assert.That(f.HpPctA, Is.InRange(0f, 1f));
+            Assert.That(f.HpPctB, Is.InRange(0f, 1f));
+        }
+    }
+
+    [Test]
+    public void ReplayFrames_DoNotPerturbDeterminism()
+    {
+        // 프레임 수집(읽기 전용 투영)이 시뮬레이션 결과를 바꾸면 안 된다 (원칙 B).
+        var bare = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 99);
+        var withFrames = new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, 99, null, new List<ReplayFrame>());
+        Assert.That(withFrames.Winner, Is.EqualTo(bare.Winner));
+        Assert.That(withFrames.DurationSec, Is.EqualTo(bare.DurationSec));
+        Assert.That(withFrames.ScoreA, Is.EqualTo(bare.ScoreA));
+    }
 }

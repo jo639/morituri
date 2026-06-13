@@ -9,6 +9,9 @@ using Morituri.Sim.Serialization;
 //       dotnet run -- replay [매치업] [시드]     경기 한 판 텍스트 중계
 //                     매치업: berserker(기본) | mirror | cruel | arrogant
 //       dotnet run -- matrix [N]                상성 매트릭스 5×5 + matchup_report.csv (칸당 N경기, 기본 1000)
+//       dotnet run -- export [매치업] [시드]    경기 1판 → match.json (MatchRecord, 역사 DB 입력)
+//       dotnet run -- viewer [매치업] [시드]    경기 1판 → viewer.json (위치 프레임 포함, viewer.html이 재생)
+//       dotnet run -- highlights [N]            명경기 자동 태깅 → highlights.json
 
 if (args.Length > 0 && args[0] == "matrix")
 {
@@ -85,6 +88,17 @@ if (args.Length > 0 && args[0] == "highlights")
     int hg = args.Length > 1 && int.TryParse(args[1], out int hgp) ? hgp : 1000;
     string outPath = args.Length > 2 ? args[2] : "highlights.json";
     Highlights.Collect(hg, outPath);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "viewer")
+{
+    // 디버그 2D 뷰어용 JSON (위치 프레임 포함). viewer.html이 끌어다 놓아 재생한다 (M4-a).
+    string matchup = args.Length > 1 ? args[1] : "berserker";
+    ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong vs) ? vs : 1;
+    string outPath = args.Length > 3 ? args[3] : "viewer.json";
+    var (va, vb) = Replay.Pick(matchup);
+    ViewerExport.Run(va, vb, seed, outPath);
     return;
 }
 

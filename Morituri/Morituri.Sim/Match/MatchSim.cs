@@ -44,7 +44,11 @@ public sealed class MatchSim
         _weaponDmgScale = weaponDmgScale;
     }
 
-    public MatchResult Run(FighterDef a, FighterDef b, ulong seed, List<SimEvent>? events = null)
+    // 뷰어 프레임 샘플링 주기 (15Hz = 4틱마다). 위치는 연속이라 60Hz 전량은 과하고, 15Hz면 보간으로 충분히 매끄럽다.
+    private const int FrameSampleTicks = 4;
+
+    public MatchResult Run(FighterDef a, FighterDef b, ulong seed,
+                           List<SimEvent>? events = null, List<ReplayFrame>? frames = null)
     {
         _events = events;
         _rng = new SimRandom(seed);
@@ -69,9 +73,22 @@ public sealed class MatchSim
             for (int i = 0; i < 2; i++) FsmAdvance(_f[i]);
             ResolutionPhase();
 
-            if (_f[0].Hp <= 0f || _f[1].Hp <= 0f) return EndByKo();
+            if (frames != null && _tick % FrameSampleTicks == 0) SampleFrame(frames);
+
+            if (_f[0].Hp <= 0f || _f[1].Hp <= 0f) { SampleFrame(frames); return EndByKo(); }
         }
+        SampleFrame(frames);
         return EndByJudgement();
+    }
+
+    private void SampleFrame(List<ReplayFrame>? frames)
+    {
+        if (frames == null) return;
+        frames.Add(new ReplayFrame(_now,
+            _f[0].Position, _f[1].Position,
+            MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
+            _f[0].StaminaPct, _f[1].StaminaPct,
+            _f[0].State, _f[1].State));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────
