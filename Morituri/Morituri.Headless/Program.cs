@@ -93,12 +93,12 @@ if (args.Length > 0 && args[0] == "highlights")
 
 if (args.Length > 0 && args[0] == "viewer")
 {
-    // 디버그 2D 뷰어용 JSON (위치 프레임 포함). viewer.html이 끌어다 놓아 재생한다 (M4-a).
     string matchup = args.Length > 1 ? args[1] : "berserker";
     ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong vs) ? vs : 1;
     string outPath = args.Length > 3 ? args[3] : "viewer.json";
     var (va, vb) = Replay.Pick(matchup);
     ViewerExport.Run(va, vb, seed, outPath);
+    ViewerServer.Serve(Directory.GetCurrentDirectory());
     return;
 }
 
