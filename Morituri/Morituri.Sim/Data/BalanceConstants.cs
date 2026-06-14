@@ -91,7 +91,6 @@ public readonly record struct BalanceConstants
     public float CornerZone        { get; init; }  // 경계에서 이 거리 이내 = 가장자리 (판정 패널티)
     public float InnerRangeRatio   { get; init; }  // dist < range×비율 → 안쪽 침투 판정
     public float MinLongRange      { get; init; }  // 이 사거리 이상 무기만 침투 패널티 대상
-    public float MinFighterGap     { get; init; }  // 두 캐릭터 최소 거리 (쌍검 사거리 = 모든 무기 중 최솟값)
 
     /// <summary>문서[4] v0.1 초기값. 모든 수치는 M3 배치 시뮬레이션으로 튜닝 대상.</summary>
     public static readonly BalanceConstants Default = new()
@@ -184,6 +183,5 @@ public readonly record struct BalanceConstants
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,
         MinLongRange = 2.0f,
-        MinFighterGap = 1.1f,   // 모든 무기 최소 사거리(쌍검 1.1m) — 두 캐릭터가 붙을 수 있는 물리 하한
     };
 }

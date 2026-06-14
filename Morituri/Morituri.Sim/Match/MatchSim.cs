@@ -351,18 +351,10 @@ public sealed class MatchSim
         float edgeProx = MathF.Min(1f, f.Pos.Length / MathF.Max(0.5f, _c.ArenaRadius - 0.5f));
 
         Span<float> score = stackalloc float[9];
-        // 거리 유지 점수: 허용 오차 기준선에서 점진적으로 상승 (이전 급경사 곡선 → 완만한 선형)
-        float overGap  = MathF.Max(0f, gap  - d.DistanceTolerance);
-        float underGap = MathF.Max(0f, -gap - d.DistanceTolerance);
-        score[(int)ActionRequest.Approach] = overGap  > 0f ? 0.28f + MathF.Min(1f, overGap  / 2f) * 0.50f : 0.05f;
+        score[(int)ActionRequest.Approach] = gap > d.DistanceTolerance ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.05f;
         // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
-        score[(int)ActionRequest.Retreat] = (underGap > 0f ? 0.28f + MathF.Min(1f, underGap / 2f) * 0.50f : 0.05f)
+        score[(int)ActionRequest.Retreat] = (gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f)
                                           * (1f - 0.6f * edgeProx);
-        // 최소 거리 벽: 이미 한계까지 붙어있을 때 접근 시도 차단 (물리 벽과 협력)
-        if (dist <= _c.MinFighterGap) score[(int)ActionRequest.Approach] = 0f;
-        // 이동 관성: 현재 진행 방향을 유지해 방향 전환 빈도 감소 (거리 미세 진동 방지)
-        if (f.CurrentAction == ActionRequest.Approach) score[(int)ActionRequest.Approach] += 0.12f;
-        if (f.CurrentAction == ActionRequest.Retreat)  score[(int)ActionRequest.Retreat]  += 0.12f;
         // 선회(B 핵심): 사거리 우위 무기는 자기 스윗스팟을 '유지'하려 선회(견제 카이팅), 그 외엔 근접 시 거리벌리기.
         bool wantSpace = gap < -d.DistanceTolerance
                       || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance);
@@ -383,6 +375,9 @@ public sealed class MatchSim
         float oppRange = oppRt.Weapon.Range;
         bool reachAdvantage = inRange && dist > oppRange + 0.1f;
         if (reachAdvantage) { light *= 2.2f; feint *= 1.3f; }
+        // 장거리 무기가 적 사거리 안쪽으로 끌려든 상태(cramped) = 자기 우위 거리(reachAdvantage)를 못 잡은 위험 구간.
+        // 여기선 처벌 욕심(아래 후딜/선딜 부스트)이 거리 회복보다 우선하면 도끼 카운터에 갈린다 — '창은 먼저 거리를 벌린다'.
+        bool reachWeaponCramped = f.Weapon.Range >= _c.MinLongRange && dist <= oppRange + 0.1f;
 
         // 수싸움 프레임 판정 (상성 매트릭스 디버깅으로 도입). 상대 선딜을 인지했을 때 세 갈래:
         //  · 레이스 승산: (내 인지지연 + 내 약공 선딜) < 상대 잔여 선딜 → 반격이 먼저 닿는다 = 카운터
@@ -429,6 +424,9 @@ public sealed class MatchSim
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) feint = 0f;
         if (d.NoAttack > 0.5f) { light = 0f; heavy = 0f; feint = 0f; }
 
+        // cramped(적 품속)에 끌려든 장거리 무기는 처벌 부스트를 깎아 거리 회복(후퇴/선회)이 이기게 한다.
+        // 이러면 창은 1.1m에서 찌르지 않고 자기 스윗스팟(1.5m+)으로 물러난 뒤, 거기서 reachAdvantage 처벌.
+        if (reachWeaponCramped) { light *= 0.35f; heavy *= 0.35f; }
         score[(int)ActionRequest.AttackLight] = light;
         score[(int)ActionRequest.AttackHeavy] = heavy;
         score[(int)ActionRequest.Feint] = feint;
@@ -596,14 +594,6 @@ public sealed class MatchSim
                 if (f.Weapon.Range >= _c.MinLongRange && rN > 0.5f && f.CurrentAction != ActionRequest.Approach)
                     move = (move + (f.Pos * -1f).Normalized() * ((rN - 0.5f) * 2.6f)).Normalized();
                 f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
-                // 물리 충돌 하한: Approach 중 MinFighterGap 이하로 파고들지 못하게 위치 보정
-                if (f.CurrentAction == ActionRequest.Approach)
-                {
-                    Vec2 d2 = opp.Pos - f.Pos;
-                    float d2len = d2.Length;
-                    if (d2len > 0f && d2len < _c.MinFighterGap)
-                        f.Pos = opp.Pos - d2.Normalized() * _c.MinFighterGap;
-                }
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
                 break;
