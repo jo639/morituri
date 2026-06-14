@@ -199,7 +199,7 @@ async function loadSprites(){
     const cfg = await (await fetch('sprites/sprites.json?'+Date.now())).json();
     const img = new Image();
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='sprites/'+cfg.image; });
-    sprite = { img, frames: cfg.frames };
+    sprite = { img, frames: cfg.frames, srcFlip: cfg.facing === 'left' };
   }catch(e){ sprite=null; } // 시트 없음 → 실루엣 폴백
 }
 // 바닥 장식 (사거리 링 + 그림자 + 팀색 글로우) — 스프라이트 경로용 (실루엣은 자체 보유)
@@ -214,9 +214,11 @@ function drawGround(fx, fy, scale, reach, col){
 function drawSprite(fx, fy, scale, state, kind, facing){
   const fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle;
   if(!fr) return false;
-  const h = 78*scale, w = h*(fr.w/fr.h);
-  ctx.save(); ctx.translate(fx, fy); if(facing<0) ctx.scale(-1,1);
-  ctx.imageSmoothingEnabled=false;                          // 픽셀아트 선명
+  const k = (82*scale)/sprite.frames.idle.h;                // 전 프레임 공통 배율(서있는 키 기준) → 비율 보존
+  const w = fr.w*k, h = fr.h*k;
+  const flip = (facing<0) !== sprite.srcFlip;               // 원본이 왼쪽 향함 → 보정(XOR)
+  ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
+  ctx.imageSmoothingEnabled=true;                           // 회화풍 아트 → 보간 ON
   ctx.drawImage(sprite.img, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h); // 발=앵커(바닥 0)
   ctx.restore(); return true;
 }
