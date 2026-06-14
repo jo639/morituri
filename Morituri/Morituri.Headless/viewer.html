@@ -180,8 +180,20 @@ function poseColor(state){
 // ── 스프라이트 시스템 (M4-b): sprites/sprites.json + PNG 시트가 있으면 실루엣 대신 그림을 그린다.
 //    상태(12종) → 포즈(8종) 매핑. 시트는 오른쪽 향함 기준, 발(바닥)이 앵커. 없으면 실루엣 폴백.
 let sprite = null; // { img, frames:{pose:{x,y,w,h}} }
-const POSE = { Idle:'idle', Move:'walk', Windup:'windup', Active:'strike', Recovery:'strike',
-  Guard:'guard', Dodge:'walk', HitStun:'hurt', Stagger:'hurt', Down:'down', GetUp:'down', Taunt:'taunt' };
+// 상태(+스윙 종류) → 9포즈. 강공은 예비(텔레그래프)와 타격이 갈린다 — 수싸움 가독성의 핵심.
+function poseFor(state, kind){
+  const heavy = kind==='Heavy';
+  switch(state){
+    case 'Move': case 'Dodge': return 'walk';
+    case 'Guard': return 'guard';
+    case 'Windup': return heavy?'heavy_windup':'light_attack';
+    case 'Active': case 'Recovery': return heavy?'heavy_attack':'light_attack';
+    case 'HitStun': case 'Stagger': return 'hurt';
+    case 'Down': case 'GetUp': return 'down';
+    case 'Taunt': return 'taunt';
+    default: return 'idle';
+  }
+}
 async function loadSprites(){
   try{
     const cfg = await (await fetch('sprites/sprites.json?'+Date.now())).json();
@@ -199,8 +211,8 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, facing){
-  const fr = sprite.frames[POSE[state]||'idle'] || sprite.frames.idle;
+function drawSprite(fx, fy, scale, state, kind, facing){
+  const fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle;
   if(!fr) return false;
   const h = 78*scale, w = h*(fr.w/fr.h);
   ctx.save(); ctx.translate(fx, fy); if(facing<0) ctx.scale(-1,1);
@@ -315,11 +327,11 @@ function render(){
   ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
-  const A={p:pa, sy:ay, st:f.StateA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA};
-  const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
+  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA};
+  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.face); }
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 70*sc - 16, u.name, u.hp, u.col);
   }

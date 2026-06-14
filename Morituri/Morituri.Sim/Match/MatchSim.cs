@@ -88,7 +88,8 @@ public sealed class MatchSim
             _f[0].Pos.X, _f[0].Pos.Y, _f[1].Pos.X, _f[1].Pos.Y,
             MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
             _f[0].StaminaPct, _f[1].StaminaPct,
-            _f[0].State, _f[1].State));
+            _f[0].State, _f[1].State,
+            _f[0].MotionKindNow, _f[1].MotionKindNow));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────

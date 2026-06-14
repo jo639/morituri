@@ -1,3 +1,5 @@
+using Morituri.Sim.Data;
+
 namespace Morituri.Sim.Match;
 
 /// <summary>
@@ -10,4 +12,5 @@ public readonly record struct ReplayFrame(
     float Ax, float Ay, float Bx, float By,   // 원형 핏 2D 좌표 (중심 0,0). B: 2D-lite
     float HpPctA, float HpPctB,
     float StamPctA, float StamPctB,
-    FighterState StateA, FighterState StateB);
+    FighterState StateA, FighterState StateB,
+    MotionKind KindA, MotionKind KindB);      // 현재 스윙 종류(강/약) — 스프라이트가 강공/약공 포즈를 고른다
