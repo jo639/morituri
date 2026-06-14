@@ -334,7 +334,6 @@ public sealed class MatchSim
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
                      : MathF.Min(d.PreferredDistance, f.Weapon.Range * 0.8f);
-        engage = MathF.Max(engage, _c.MinFighterGap); // 최소 거리 하한: 이보다 가까이 접근 목표를 두지 않는다
         float gap = dist - engage;
         // 지친 상대는 반격할 수 없다 = 캔슬 불가 상태와 동급의 확정 처벌 창.
         bool oppLocked = opp.IsExhausted
@@ -359,6 +358,8 @@ public sealed class MatchSim
         // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
         score[(int)ActionRequest.Retreat] = (underGap > 0f ? 0.28f + MathF.Min(1f, underGap / 2f) * 0.50f : 0.05f)
                                           * (1f - 0.6f * edgeProx);
+        // 최소 거리 벽: 이미 한계까지 붙어있을 때 접근 시도 차단 (물리 벽과 협력)
+        if (dist <= _c.MinFighterGap) score[(int)ActionRequest.Approach] = 0f;
         // 이동 관성: 현재 진행 방향을 유지해 방향 전환 빈도 감소 (거리 미세 진동 방지)
         if (f.CurrentAction == ActionRequest.Approach) score[(int)ActionRequest.Approach] += 0.12f;
         if (f.CurrentAction == ActionRequest.Retreat)  score[(int)ActionRequest.Retreat]  += 0.12f;
