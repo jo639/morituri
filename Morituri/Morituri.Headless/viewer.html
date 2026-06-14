@@ -98,9 +98,14 @@
 <script>
 "use strict";
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-const W = cv.width, H = cv.height, PAD = 70, GROUND = H - 70;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const W = 940, H = 440, PAD = 70, GROUND = H - 70;
+cv.width = W * DPR; cv.height = H * DPR;
+ctx.scale(DPR, DPR);
 let doc = null, frames = null, popups = [], decisions = [], duration = 0;
 let t = 0, playing = false, speed = 1, lastWall = 0;
+let postGame = false, postGameElapsed = 0;
+const TAUNT_DUR = 3.0;
 
 // ── 로드 ──
 function load(json){
@@ -123,7 +128,7 @@ function load(json){
   const sc = document.getElementById('scrub');
   sc.disabled = false; sc.value = 0;
   document.getElementById('drop').classList.add('hidden');
-  t = 0; setPlaying(true);
+  t = 0; postGame = false; postGameElapsed = 0; setPlaying(true);
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
   TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
@@ -214,7 +219,7 @@ function drawGround(fx, fy, scale, reach, col){
 function drawSprite(fx, fy, scale, state, kind, facing){
   const fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle;
   if(!fr) return false;
-  const k = (82*scale)/sprite.frames.idle.h;                // 전 프레임 공통 배율(서있는 키 기준) → 비율 보존
+  const k = (120*scale)/sprite.frames.idle.h;               // 전 프레임 공통 배율(서있는 키 기준) → 비율 보존
   const w = fr.w*k, h = fr.h*k;
   const flip = (facing<0) !== sprite.srcFlip;               // 원본이 왼쪽 향함 → 보정(XOR)
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
@@ -243,7 +248,7 @@ function drawFighter(fx, fy, scale, state, facing, baseCol, reach){
     roundRect(-20*scale,-5*scale,34*scale,10*scale,5*scale); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.arc(-22*scale,0,7*scale,0,7); ctx.fill(); ctx.stroke(); ctx.restore(); return;
   }
-  const H0 = 58*scale;
+  const H0 = 80*scale;
   let lean=0, crouch=0;
   if (state==='HitStun'||state==='Stagger') lean=-facing*0.30;
   if (state==='Dodge') lean=-facing*0.45;
@@ -328,14 +333,45 @@ function render(){
   ctx.fillStyle='#6e4f31'; ctx.font='11px system-ui'; ctx.textAlign='center';
   ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
 
+  // 근거리 시각 분리: 화면상 최소 간격 보장 (게임 내 물리 위치와 무관)
+  const MIN_SCR = 110;
+  const scrDx = pb.x - pa.x || 0.01;
+  if (Math.abs(scrDx) < MIN_SCR) {
+    const push = (MIN_SCR - Math.abs(scrDx)) / 2;
+    pa.x -= Math.sign(scrDx) * push;
+    pb.x += Math.sign(scrDx) * push;
+  }
+
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
   const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA};
   const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
+  // postGame: 승자 도발 · 패자 다운 포즈
+  if (postGame && doc.Result.Winner >= 0){
+    if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
+    else { A.st='Down'; B.st='Taunt'; }
+  }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
     if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
-    unitTag(u.p.x, u.p.y - 70*sc - 16, u.name, u.hp, u.col);
+    unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
+  }
+  // 승리 오버레이
+  if (postGame && doc.Result.Winner >= 0){
+    const winner = doc.Result.Winner;
+    const prog = Math.min(postGameElapsed / 0.8, 1);
+    const wname = winner===0 ? doc.Meta.A.Name : doc.Meta.B.Name;
+    const wcol  = winner===0 ? getCSS('--a') : getCSS('--b');
+    ctx.save();
+    ctx.globalAlpha = prog * 0.40; ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = prog; ctx.textAlign='center';
+    ctx.font='bold 42px system-ui'; ctx.fillStyle=wcol;
+    ctx.fillText(wname+' 승리!', W/2, H*0.38);
+    ctx.font='18px system-ui'; ctx.fillStyle='#f0e6d6'; ctx.globalAlpha=prog*0.8;
+    ctx.fillText(doc.Result.Reason, W/2, H*0.38+36);
+    ctx.restore();
   }
 
   // 팝업 / Decision 핀 (HUD 위로)
@@ -367,7 +403,14 @@ function tick(now){
   if (playing && frames){
     const dt = (now-lastWall)/1000; lastWall = now;
     t += dt*speed;
-    if (t >= duration){ t = duration; setPlaying(false); }
+    if (t >= duration){
+      t = duration; setPlaying(false);
+      if (doc?.Result?.Winner >= 0){ postGame=true; postGameElapsed=0; }
+    }
+  } else if (postGame && frames){
+    const dt = (now-lastWall)/1000; lastWall = now;
+    postGameElapsed += dt;
+    if (postGameElapsed >= TAUNT_DUR) postGame = false;
   } else lastWall = now;
   if (frames) render();
   requestAnimationFrame(tick);
