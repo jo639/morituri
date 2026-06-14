@@ -107,6 +107,7 @@ let t = 0, playing = false, speed = 1, lastWall = 0;
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 let vA = null, vB = null; // A. 독립 위치 스무딩 persistent state
+let lastFaceA = 1; // 방향 히스테리시스 (크로싱 순간 방향 떨림 방지)
 
 // ── 로드 ──
 function load(json){
@@ -129,7 +130,7 @@ function load(json){
   const sc = document.getElementById('scrub');
   sc.disabled = false; sc.value = 0;
   document.getElementById('drop').classList.add('hidden');
-  t = 0; postGame = false; postGameElapsed = 0; vA = null; vB = null; setPlaying(true);
+  t = 0; postGame = false; postGameElapsed = 0; vA = null; vB = null; lastFaceA = 1; setPlaying(true);
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
   TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
@@ -213,7 +214,7 @@ async function loadSprites(){
         await new Promise((res,rej)=>{ ai.onload=res; ai.onerror=rej; ai.src='sprites/'+a.image; });
         imgCache[a.image] = ai;
       }
-      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames };
+      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames, refH: a.refH, baseSpeed: a.baseSpeed||0 };
     }
     sprite = { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
   }catch(e){ sprite=null; } // 시트 없음 → 실루엣 폴백
@@ -353,7 +354,6 @@ function render(){
   const fr=frameAt(t), f=fr.f, g=fr.g, k=fr.k;
   const ax=f.Ax+(g.Ax-f.Ax)*k, ay=f.Ay+(g.Ay-f.Ay)*k;
   const bx=f.Bx+(g.Bx-f.Bx)*k, by=f.By+(g.By-f.By)*k;
-  const faceA = ax<=bx?1:-1, faceB=-faceA;
   const gap=Math.hypot(ax-bx, ay-by);
   // A. 독립 위치 스무딩 — 상태별·캐릭터별 다른 접근 속도로 관성 차별화
   if (!vA){ vA={x:ax,y:ay}; vB={x:bx,y:by}; }
@@ -361,6 +361,12 @@ function render(){
   const smB = f.StateB==='Guard'?0.06 : f.StateB==='Active'?0.30 : f.StateB==='Move'?0.24 : 0.14;
   vA.x+=(ax-vA.x)*smA; vA.y+=(ay-vA.y)*smA*0.8;
   vB.x+=(bx-vB.x)*smB; vB.y+=(by-vB.y)*smB*0.75;
+  // 크로싱 스냅: 시뮬과 시각 좌우 순서 불일치 시 즉시 정렬 (스무딩 지연으로 "반대편에서 따라오는" 현상 방지)
+  const simSignX = Math.sign(ax - bx);
+  if (simSignX !== 0 && Math.sign(vA.x - vB.x) !== simSignX) { vA.x = ax; vB.x = bx; }
+  // 방향 히스테리시스: 0.15m 이상 차이일 때만 갱신 (교차 직후 미세 진동으로 방향 깜빡임 방지)
+  if (Math.abs(ax - bx) > 0.15) lastFaceA = ax < bx ? 1 : -1;
+  const faceA = lastFaceA, faceB = -faceA;
   const pa=proj(vA.x,vA.y), pb=proj(vB.x,vB.y);
 
   // 간격선

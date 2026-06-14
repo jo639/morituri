@@ -351,10 +351,16 @@ public sealed class MatchSim
         float edgeProx = MathF.Min(1f, f.Pos.Length / MathF.Max(0.5f, _c.ArenaRadius - 0.5f));
 
         Span<float> score = stackalloc float[9];
-        score[(int)ActionRequest.Approach] = gap > d.DistanceTolerance ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.05f;
+        // 거리 유지 점수: 허용 오차 기준선에서 점진적으로 상승 (이전 급경사 곡선 → 완만한 선형)
+        float overGap  = MathF.Max(0f, gap  - d.DistanceTolerance);
+        float underGap = MathF.Max(0f, -gap - d.DistanceTolerance);
+        score[(int)ActionRequest.Approach] = overGap  > 0f ? 0.28f + MathF.Min(1f, overGap  / 2f) * 0.50f : 0.05f;
         // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
-        score[(int)ActionRequest.Retreat] = (gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f)
+        score[(int)ActionRequest.Retreat] = (underGap > 0f ? 0.28f + MathF.Min(1f, underGap / 2f) * 0.50f : 0.05f)
                                           * (1f - 0.6f * edgeProx);
+        // 이동 관성: 현재 진행 방향을 유지해 방향 전환 빈도 감소 (거리 미세 진동 방지)
+        if (f.CurrentAction == ActionRequest.Approach) score[(int)ActionRequest.Approach] += 0.12f;
+        if (f.CurrentAction == ActionRequest.Retreat)  score[(int)ActionRequest.Retreat]  += 0.12f;
         // 선회(B 핵심): 사거리 우위 무기는 자기 스윗스팟을 '유지'하려 선회(견제 카이팅), 그 외엔 근접 시 거리벌리기.
         bool wantSpace = gap < -d.DistanceTolerance
                       || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance);

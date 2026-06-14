@@ -113,20 +113,20 @@ public sealed record TacticsProfile(
 
 public static class TacticsTable
 {
-    public static readonly TacticsProfile Pressure  = new("TAC_PRESSURE",  1.0f, 0.3f, 0.70f, 0.35f, 0.10f, 0.20f, 0.15f, 0.50f, 0.10f);
-    public static readonly TacticsProfile Counter   = new("TAC_COUNTER",   2.0f, 0.3f, 0.30f, 0.60f, 0.80f, 0.50f, 0.10f, 0.40f, 0.25f);
-    public static readonly TacticsProfile Zoner     = new("TAC_ZONER",     2.8f, 0.4f, 0.45f, 0.50f, 0.30f, 0.30f, 0.50f, 0.30f, 0.30f);
-    public static readonly TacticsProfile Brawler   = new("TAC_BRAWLER",   0.7f, 0.2f, 0.80f, 0.25f, 0.15f, 0.10f, 0.20f, 0.70f, 0.05f);
-    public static readonly TacticsProfile Decision  = new("TAC_DECISION",  2.2f, 0.4f, 0.35f, 0.55f, 0.35f, 0.55f, 0.40f, 0.15f, 0.40f);
-    public static readonly TacticsProfile Hunter    = new("TAC_HUNTER",    1.6f, 0.3f, 0.55f, 0.65f, 0.40f, 0.30f, 0.35f, 0.45f, 0.20f,
+    public static readonly TacticsProfile Pressure  = new("TAC_PRESSURE",  1.0f, 0.55f, 0.70f, 0.35f, 0.10f, 0.20f, 0.15f, 0.50f, 0.10f);
+    public static readonly TacticsProfile Counter   = new("TAC_COUNTER",   2.0f, 0.65f, 0.30f, 0.60f, 0.80f, 0.50f, 0.10f, 0.40f, 0.25f);
+    public static readonly TacticsProfile Zoner     = new("TAC_ZONER",     2.8f, 0.75f, 0.45f, 0.50f, 0.30f, 0.30f, 0.50f, 0.30f, 0.30f);
+    public static readonly TacticsProfile Brawler   = new("TAC_BRAWLER",   0.7f, 0.50f, 0.80f, 0.25f, 0.15f, 0.10f, 0.20f, 0.70f, 0.05f);
+    public static readonly TacticsProfile Decision  = new("TAC_DECISION",  2.2f, 0.75f, 0.35f, 0.55f, 0.35f, 0.55f, 0.40f, 0.15f, 0.40f);
+    public static readonly TacticsProfile Hunter    = new("TAC_HUNTER",    1.6f, 0.60f, 0.55f, 0.65f, 0.40f, 0.30f, 0.35f, 0.45f, 0.20f,
         // 전술 고유 조건 (문서[3] 4.2 메모): 상처 입은 사냥감 추적.
         // Phase 1 단순화: 상대 스태미나 고갈 인지는 미구현 → 상대 HP 35% 이하 조건만 사용.
         new TriggerRule("TRG_HUNT", TriggerCondition.OppHpBelowPct, 35f, TriggerEffectKind.Override,
             new[] { ParamMod.Add(TParam.Aggression, 0.30f) }, InterruptAction.None, 1.0f, 1.0f, 3.0f, "HUNT"));
-    public static readonly TacticsProfile Gambler   = new("TAC_GAMBLER",   1.2f, 0.3f, 0.65f, 0.20f, 0.25f, 0.10f, 0.25f, 0.90f, 0.00f);
-    public static readonly TacticsProfile Evader    = new("TAC_EVADER",    2.5f, 0.5f, 0.25f, 0.55f, 0.45f, 0.20f, 0.30f, 0.20f, 0.35f);
-    public static readonly TacticsProfile Defender  = new("TAC_DEFENDER",  1.4f, 0.3f, 0.20f, 0.50f, 0.50f, 0.80f, 0.10f, 0.10f, 0.35f);
-    public static readonly TacticsProfile Balanced  = new("TAC_BALANCED",  1.6f, 0.3f, 0.50f, 0.45f, 0.35f, 0.40f, 0.30f, 0.40f, 0.20f);
+    public static readonly TacticsProfile Gambler   = new("TAC_GAMBLER",   1.2f, 0.55f, 0.65f, 0.20f, 0.25f, 0.10f, 0.25f, 0.90f, 0.00f);
+    public static readonly TacticsProfile Evader    = new("TAC_EVADER",    2.5f, 0.90f, 0.25f, 0.55f, 0.45f, 0.20f, 0.30f, 0.20f, 0.35f);
+    public static readonly TacticsProfile Defender  = new("TAC_DEFENDER",  1.4f, 0.65f, 0.20f, 0.50f, 0.50f, 0.80f, 0.10f, 0.10f, 0.35f);
+    public static readonly TacticsProfile Balanced  = new("TAC_BALANCED",  1.6f, 0.60f, 0.50f, 0.45f, 0.35f, 0.40f, 0.30f, 0.40f, 0.20f);
 
     public static readonly TacticsProfile[] All =
         { Pressure, Counter, Zoner, Brawler, Decision, Hunter, Gambler, Evader, Defender, Balanced };
