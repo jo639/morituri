@@ -65,12 +65,16 @@ public sealed class MatchSim
             _now = _tick * Dt;
             RecordSnapshots();
 
+            // 처리 순서 교대(_tick & 1): A/B가 같은 난수열에서 순차로 행동을 뽑는 비대칭을
+            // 매 틱 상쇄 → disc 근접 고정 난타에서도 거울전 대칭 보존. (결정론은 _tick 기반이라 유지)
+            int p0 = _tick & 1, p1 = 1 - p0;
             for (int i = 0; i < 2; i++) PassiveUpdate(_f[i]);
             if (_tick % strategyTicks == 0)
-                for (int i = 0; i < 2; i++) StrategyTick(_f[i]);
+                { StrategyTick(_f[p0]); StrategyTick(_f[p1]); }
             if (_tick % decisionTicks == 0)
-                for (int i = 0; i < 2; i++) TacticTick(_f[i]);
-            for (int i = 0; i < 2; i++) FsmAdvance(_f[i]);
+                { TacticTick(_f[p0]); TacticTick(_f[p1]); }
+            FsmAdvance(_f[p0]); FsmAdvance(_f[p1]);
+            ResolveCollision();   // Disc 충돌: 두 점유 공간(2×r) 통과·교환 금지
             ResolutionPhase();
 
             if (frames != null && _tick % FrameSampleTicks == 0) SampleFrame(frames);
@@ -572,6 +576,25 @@ public sealed class MatchSim
         return len <= maxR ? p : p * (maxR / len);
     }
 
+    /// <summary>
+    /// Disc 충돌 해소: 두 캐릭터의 점유 공간(반경 CollisionRadius)이 겹치면 대칭으로 밀어내
+    /// 통과·위치교환을 막는다. 정면으로 박으면 0.8m에서 정지, 비스듬히 오면 경계를 따라 미끄러진다
+    /// (= 상대를 돌아가는 플랭크의 물리적 기반). Point→Disc 승격의 핵심.
+    /// 매 틱 보정량이 작아(이동 0.03m/틱 ≪ 반경 0.4m) 부드럽고 터널링이 없다.
+    /// </summary>
+    private void ResolveCollision()
+    {
+        Vec2 delta = _f[1].Pos - _f[0].Pos;
+        float dist = delta.Length;
+        float minD = 2f * _c.CollisionRadius;
+        if (dist >= minD) return;
+        // 완전히 겹친(dist≈0) 비상시: 시작 배치 축(±x)으로 가른다.
+        Vec2 dir = dist > 1e-4f ? delta.Normalized() : new Vec2(1f, 0f);
+        float push = (minD - dist) * 0.5f;
+        _f[0].Pos = ClampToArena(_f[0].Pos - dir * push);
+        _f[1].Pos = ClampToArena(_f[1].Pos + dir * push);
+    }
+
     private void FsmAdvance(FighterRuntime f)
     {
         var opp = _f[1 - f.Index];
@@ -641,7 +664,7 @@ public sealed class MatchSim
     // ───────────────────────── 히트 판정 (문서[4] 3장 처리 순서) ─────────────────────────
 
     private readonly record struct DefenseSnap(
-        FighterState State, float StateElapsed, bool DownHitConsumed, Vec2 Pos, bool IsExhausted, bool Armored);
+        FighterState State, float StateElapsed, bool DownHitConsumed, Vec2 Pos, bool IsExhausted, bool Armored, bool Striking);
 
     /// <summary>
     /// 동시 해결: 양측의 방어 상태를 먼저 캡처한 뒤 상호 적용한다.
@@ -657,15 +680,17 @@ public sealed class MatchSim
             // 하이퍼아머: 중량 무기가 강공 선딜을 커밋한 순간 = 약공에 안 끊기는 상태 (페인트 제외).
             bool armored = f.Weapon.HyperArmor && f.State == FighterState.Windup
                         && f.MotionKindNow == MotionKind.Heavy && !f.IsFeintSwing;
-            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Pos, f.IsExhausted, armored);
+            // Striking: 이번 틱에 이 선수가 타격 적용 가능한 상태(Active·미해결)인지를 미리 고정.
+            // 이걸 실시간(atk.State)으로 보면, 선수0의 타격이 상대를 Stagger시켜 상대의 동시 반격을
+            // 취소시키는 선공 독점이 남는다 (거울 51:49 → disc 난타로 66:33 증폭의 원인).
+            bool striking = f.State == FighterState.Active && !f.SwingResolved;
+            snap[i] = new DefenseSnap(f.State, f.StateElapsed, f.DownHitConsumed, f.Pos, f.IsExhausted, armored, striking);
         }
 
+        // 완전 동시 해결: snap에 고정된 '이번 틱 타격 중' 플래그로 양측 타격을 적용한다.
+        // 한쪽의 타격이 상대를 경직시켜도 상대의 동시 스윙은 취소되지 않는다(인덱스 0 선공 독점 제거 = 거울 대칭).
         for (int i = 0; i < 2; i++)
-        {
-            var atk = _f[i];
-            if (atk.State == FighterState.Active && !atk.SwingResolved)
-                TryResolveHit(atk, _f[1 - i], snap[1 - i]);
-        }
+            if (snap[i].Striking) TryResolveHit(_f[i], _f[1 - i], snap[1 - i]);
         for (int i = 0; i < 2; i++)
         {
             var atk = _f[i];
@@ -787,7 +812,16 @@ public sealed class MatchSim
     private MatchResult EndByKo()
     {
         bool aDead = _f[0].Hp <= 0f, bDead = _f[1].Hp <= 0f;
-        int winner = aDead && bDead ? -1 : aDead ? 1 : 0;
+        // 동시 KO(양쪽 트레이드): 무조건 무승부 대신 판정 점수로 — 더 잘 싸운 쪽이 이긴다.
+        // disc 근접 동시 스윙이 잦아 트레이드가 늘었는데, 점수 승부가 비대칭 매치의 변별력을 회복한다.
+        // 거울전은 점수가 대칭이라 무승부가 자연히 유지된다.
+        int winner;
+        if (aDead && bDead)
+        {
+            float sa = Score(_f[0]), sb = Score(_f[1]);
+            winner = MathF.Abs(sa - sb) < 0.001f ? -1 : (sa > sb ? 0 : 1);
+        }
+        else winner = aDead ? 1 : 0;
         string reason = winner == -1 ? "Draw" : "KO";
         return Finish(winner, reason);
     }

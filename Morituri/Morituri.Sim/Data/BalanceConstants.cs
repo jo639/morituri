@@ -91,6 +91,7 @@ public readonly record struct BalanceConstants
     public float CornerZone        { get; init; }  // 경계에서 이 거리 이내 = 가장자리 (판정 패널티)
     public float InnerRangeRatio   { get; init; }  // dist < range×비율 → 안쪽 침투 판정
     public float MinLongRange      { get; init; }  // 이 사거리 이상 무기만 침투 패널티 대상
+    public float CollisionRadius   { get; init; }  // 캐릭터 원형 점유 반경(m). 두 disc(2×r)는 겹칠 수 없다 — 통과·위치교환 금지
 
     /// <summary>문서[4] v0.1 초기값. 모든 수치는 M3 배치 시뮬레이션으로 튜닝 대상.</summary>
     public static readonly BalanceConstants Default = new()
@@ -183,5 +184,6 @@ public readonly record struct BalanceConstants
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,
         MinLongRange = 2.0f,
+        CollisionRadius = 0.4f,  // 반경합 0.8m — 두 캐릭터 점유 공간 (Disc 충돌, 통과·교환 금지)
     };
 }
