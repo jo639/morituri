@@ -227,7 +227,7 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, kind, facing, velX, who){
+function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs){
   // Move/Dodge → 다중프레임 애니 (이동 방향으로 fwd/bwd 선택)
   let anim = null;
   if (sprite.anims && (state==='Move'||state==='Dodge')){
@@ -237,13 +237,19 @@ function drawSprite(fx, fy, scale, state, kind, facing, velX, who){
   }
   let fr, srcImg;
   if (anim?.frames?.length){
-    const fi = Math.floor((t + who*0.4) * anim.fps) % anim.frames.length;
+    // 이동 속도 연동 fps — 느리면 발 느리게, 빠르면 빠르게 (문워크 방지)
+    const dynFps = (anim.baseSpeed>0 && velMs>0.1)
+      ? Math.max(4, Math.min(24, anim.fps * velMs / anim.baseSpeed))
+      : anim.fps;
+    const fi = Math.floor((t + who*0.4) * dynFps) % anim.frames.length;
     fr = anim.frames[fi]; srcImg = anim.img;
   } else {
     fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle; srcImg = sprite.img;
   }
   if(!fr) return false;
-  const k = (120*scale)/sprite.frames.idle.h;
+  // 애니마다 자체 refH 사용 → 시트 간 크기 일관성 보장
+  const refH = (anim?.refH) || sprite.frames.idle.h;
+  const k = (120*scale)/refH;
   const w = fr.w*k, h = fr.h*k;
   const flip = (facing<0) !== sprite.srcFlip;
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
@@ -351,8 +357,8 @@ function render(){
   const gap=Math.hypot(ax-bx, ay-by);
   // A. 독립 위치 스무딩 — 상태별·캐릭터별 다른 접근 속도로 관성 차별화
   if (!vA){ vA={x:ax,y:ay}; vB={x:bx,y:by}; }
-  const smA = f.StateA==='Guard'?0.08 : f.StateA==='Active'?0.35 : 0.18;
-  const smB = f.StateB==='Guard'?0.06 : f.StateB==='Active'?0.30 : 0.14;
+  const smA = f.StateA==='Guard'?0.08 : f.StateA==='Active'?0.35 : f.StateA==='Move'?0.28 : 0.18;
+  const smB = f.StateB==='Guard'?0.06 : f.StateB==='Active'?0.30 : f.StateB==='Move'?0.24 : 0.14;
   vA.x+=(ax-vA.x)*smA; vA.y+=(ay-vA.y)*smA*0.8;
   vB.x+=(bx-vB.x)*smB; vB.y+=(by-vB.y)*smB*0.75;
   const pa=proj(vA.x,vA.y), pb=proj(vB.x,vB.y);
@@ -379,8 +385,9 @@ function render(){
   if (f.StateB==='Idle') pb.y -= Math.abs(Math.sin(t*2.8+1.3))*3;
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
-  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax};
-  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx};
+  const frameDt = Math.max(g.Time - f.Time, 0.016);
+  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt};
+  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -388,7 +395,7 @@ function render(){
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who); }
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
   }

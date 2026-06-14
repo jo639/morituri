@@ -17,6 +17,8 @@
     "walk_fwd": {
       "image": "gladiator_walk.png",
       "fps": 10,
+      "refH": 164,
+      "baseSpeed": 2.0,
       "frames": [
         {"x":5,   "y":0, "w":129, "h":162},
         {"x":165, "y":4, "w":137, "h":163},
@@ -29,6 +31,8 @@
     "walk_bwd": {
       "image": "gladiator_walk.png",
       "fps": 10,
+      "refH": 181,
+      "baseSpeed": 2.0,
       "frames": [
         {"x":3,    "y":188, "w":157, "h":175},
         {"x":177,  "y":190, "w":165, "h":181},
@@ -42,6 +46,8 @@
     "dash_fwd": {
       "image": "gladiator_dash.png",
       "fps": 14,
+      "refH": 167,
+      "baseSpeed": 3.0,
       "frames": [
         {"x":0,   "y":1,  "w":154, "h":167},
         {"x":166, "y":21, "w":227, "h":142},
@@ -52,6 +58,8 @@
     "dash_bwd": {
       "image": "gladiator_dash.png",
       "fps": 14,
+      "refH": 168,
+      "baseSpeed": 3.0,
       "frames": [
         {"x":35,  "y":193, "w":136, "h":163},
         {"x":176, "y":204, "w":196, "h":168},
