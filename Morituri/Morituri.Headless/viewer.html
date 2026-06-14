@@ -233,7 +233,7 @@ function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs){
   if (sprite.anims && (state==='Move'||state==='Dodge')){
     const fwd = velX===0 ? true : (velX*facing)>0;
     if (state==='Move') anim = fwd ? sprite.anims.walk_fwd : sprite.anims.walk_bwd;
-    else                anim = fwd ? sprite.anims.dash_fwd : sprite.anims.dash_bwd;
+    else                anim = sprite.anims.dash_bwd; // Dodge = 뒷회피 고정 (앞대쉬는 추후 Dash 기능용)
   }
   let fr, srcImg;
   if (anim?.frames?.length){
