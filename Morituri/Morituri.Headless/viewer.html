@@ -205,7 +205,17 @@ async function loadSprites(){
     const cfg = await (await fetch('sprites/sprites.json?'+Date.now())).json();
     const img = new Image();
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='sprites/'+cfg.image; });
-    sprite = { img, frames: cfg.frames, srcFlip: cfg.facing === 'left' };
+    // 애니메이션 시트 로드 (이미지 중복 없이 캐시)
+    const anims = {}, imgCache = {};
+    for (const [name, a] of Object.entries(cfg.animations||{})){
+      if (!imgCache[a.image]){
+        const ai = new Image();
+        await new Promise((res,rej)=>{ ai.onload=res; ai.onerror=rej; ai.src='sprites/'+a.image; });
+        imgCache[a.image] = ai;
+      }
+      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames };
+    }
+    sprite = { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
   }catch(e){ sprite=null; } // 시트 없음 → 실루엣 폴백
 }
 // 바닥 장식 (사거리 링 + 그림자 + 팀색 글로우) — 스프라이트 경로용 (실루엣은 자체 보유)
@@ -217,15 +227,28 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, kind, facing){
-  const fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle;
+function drawSprite(fx, fy, scale, state, kind, facing, velX, who){
+  // Move/Dodge → 다중프레임 애니 (이동 방향으로 fwd/bwd 선택)
+  let anim = null;
+  if (sprite.anims && (state==='Move'||state==='Dodge')){
+    const fwd = velX===0 ? true : (velX*facing)>0;
+    if (state==='Move') anim = fwd ? sprite.anims.walk_fwd : sprite.anims.walk_bwd;
+    else                anim = fwd ? sprite.anims.dash_fwd : sprite.anims.dash_bwd;
+  }
+  let fr, srcImg;
+  if (anim?.frames?.length){
+    const fi = Math.floor((t + who*0.4) * anim.fps) % anim.frames.length;
+    fr = anim.frames[fi]; srcImg = anim.img;
+  } else {
+    fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle; srcImg = sprite.img;
+  }
   if(!fr) return false;
-  const k = (120*scale)/sprite.frames.idle.h;               // 전 프레임 공통 배율(서있는 키 기준) → 비율 보존
+  const k = (120*scale)/sprite.frames.idle.h;
   const w = fr.w*k, h = fr.h*k;
-  const flip = (facing<0) !== sprite.srcFlip;               // 원본이 왼쪽 향함 → 보정(XOR)
+  const flip = (facing<0) !== sprite.srcFlip;
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
-  ctx.imageSmoothingEnabled=true;                           // 회화풍 아트 → 보간 ON
-  ctx.drawImage(sprite.img, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h); // 발=앵커(바닥 0)
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
   ctx.restore(); return true;
 }
 // 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
@@ -356,8 +379,8 @@ function render(){
   if (f.StateB==='Idle') pb.y -= Math.abs(Math.sin(t*2.8+1.3))*3;
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
-  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA};
-  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB};
+  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax};
+  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -365,7 +388,7 @@ function render(){
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face); }
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
   }
