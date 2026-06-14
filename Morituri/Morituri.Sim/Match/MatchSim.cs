@@ -334,6 +334,7 @@ public sealed class MatchSim
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
                      : MathF.Min(d.PreferredDistance, f.Weapon.Range * 0.8f);
+        engage = MathF.Max(engage, _c.MinFighterGap); // 최소 거리 하한: 이보다 가까이 접근 목표를 두지 않는다
         float gap = dist - engage;
         // 지친 상대는 반격할 수 없다 = 캔슬 불가 상태와 동급의 확정 처벌 창.
         bool oppLocked = opp.IsExhausted
@@ -594,6 +595,14 @@ public sealed class MatchSim
                 if (f.Weapon.Range >= _c.MinLongRange && rN > 0.5f && f.CurrentAction != ActionRequest.Approach)
                     move = (move + (f.Pos * -1f).Normalized() * ((rN - 0.5f) * 2.6f)).Normalized();
                 f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
+                // 물리 충돌 하한: Approach 중 MinFighterGap 이하로 파고들지 못하게 위치 보정
+                if (f.CurrentAction == ActionRequest.Approach)
+                {
+                    Vec2 d2 = opp.Pos - f.Pos;
+                    float d2len = d2.Length;
+                    if (d2len > 0f && d2len < _c.MinFighterGap)
+                        f.Pos = opp.Pos - d2.Normalized() * _c.MinFighterGap;
+                }
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
                 break;
