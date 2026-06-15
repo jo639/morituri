@@ -473,11 +473,21 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
 function setBar(id,p){ document.getElementById(id).style.width = Math.max(0,Math.min(1,p))*100+'%'; }
 function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
+// 빈 구간(둘 다 이동·정지 = 공방 없음) 판정 — 동적 재생속도용.
+// 경기의 ~절반이 스페이싱 댄스라, 그 구간을 빨리감아 루즈함을 압축한다(전투는 기본 속도 유지).
+const LULL_FF = 3.0;
+function isLull(fr){
+  const live = s => s!=='Idle' && s!=='Move'; // 공격/피격/가드/회피 = 살아있는 구간
+  return !live(fr.StateA) && !live(fr.StateB);
+}
+
 // ── 재생 루프 ──
 function tick(now){
   if (playing && frames){
     const dt = (now-lastWall)/1000; lastWall = now;
-    t += dt*speed;
+    // 전투는 'speed'(0.5×)로 천천히, 빈 구간은 LULL_FF배 빨리감기 — 액션은 읽기 쉽게, 탐색은 안 끌리게.
+    const eff = speed * (isLull(frameAt(t).f) ? LULL_FF : 1);
+    t += dt*eff;
     if (t >= duration){
       t = duration; setPlaying(false);
       if (doc?.Result?.Winner >= 0){ postGame=true; postGameElapsed=0; }

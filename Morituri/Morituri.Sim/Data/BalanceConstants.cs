@@ -108,8 +108,8 @@ public readonly record struct BalanceConstants
         CritMinPct = 2f,
         CritMaxPct = 20f,
         InnerRangePenalty = 0.6f,
-        DamageGlobalMult = 1.2f,  // M4-b: 0.5× 관전이 루즈하지 않게 TTK 단축(거울 65.5→49.9s). TTK가 hyper-sensitive +
-                                  // 빠른 경기가 방어형(가스아웃 처벌엔 시간 필요)을 과강화 → 형태 보존되는 gentle 1.2가 상한.
+        DamageGlobalMult = 1.0f,  // M4-b: 전역 데미지 배율 레버(전 무기 비율 보존). 1.0=중립. 루즈함의 원인은 데미지가
+                                  // 아니라 경기 절반을 차지하는 비전투 이동(뷰어 동적 재생속도로 압축) → 1.0 유지. 무겁게=doc[9].
 
         // M3-A 개정 0.15→0.06: 가드는 공격자보다 경제적이어야 한다. 0.15에서는 블록당 드레인+유지비가
         // 공격자 스윙 비용과 비등 + 칩딜까지 맞아 "가드 = 천천히 지는 행동"이었고, 방어형이 전 매치업 0%였다.
