@@ -91,8 +91,25 @@ internal static class Replay
             return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], "TAC_BALANCED", "PER_CALM"),
                     new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], "TAC_BALANCED", "PER_CALM"));
         }
+        // "s:WHIP:DUALBLADES" = 시그니처 빌드 진단용 (각 무기가 제 시그니처 전술 — sigmatrix 셀과 동일 조건).
+        // disc 재설계(doc[9]) 레버 검증: 카이터 vs 러셔 같은 실제 매치업을 replay/viewer로 재현.
+        if (m.StartsWith("s:"))
+        {
+            var p = m.Split(':');
+            return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], SigTactic(p[1]), "PER_CALM"),
+                    new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], SigTactic(p[2]), "PER_CALM"));
+        }
         return PickNamed(m);
     }
+
+    // 무기 → 시그니처 전술 (Analysis.SignatureMatrix의 5종 + 중량 3종). sigmatrix 셀 재현용.
+    private static string SigTactic(string wpn) => wpn switch
+    {
+        "SWORD" => "TAC_PRESSURE", "SPEAR" => "TAC_COUNTER", "WHIP" => "TAC_ZONER",
+        "DUALBLADES" => "TAC_BRAWLER", "SWORDSHIELD" => "TAC_DEFENDER",
+        "AXE" => "TAC_BRAWLER", "GREATSWORD" => "TAC_PRESSURE", "HAMMER" => "TAC_PRESSURE",
+        _ => "TAC_BALANCED",
+    };
 
     private static (FighterDef, FighterDef) PickNamed(string m) => m switch
     {
