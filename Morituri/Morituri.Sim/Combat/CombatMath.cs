@@ -74,6 +74,7 @@ public static class CombatMath
     {
         float raw = RawDamage(weapon, motionMult, attacker);
         if (ctx.IsInnerRange) raw *= c.InnerRangePenalty;
+        raw *= c.DamageGlobalMult;
 
         return raw
              * Mitigation(defender.Def, c)

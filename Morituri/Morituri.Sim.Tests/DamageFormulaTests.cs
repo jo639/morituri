@@ -90,7 +90,7 @@ public class DamageFormulaTests
         float mitig = 100f / (100f + Avg.Def * C.DefCurve);
         float dmg = CombatMath.FinalDamage(
             sw, C.MotionMultHeavy, Avg, Avg, CombatMath.HitContext.Clean, C);
-        Assert.That(dmg, Is.EqualTo(raw * mitig).Within(1e-3));
+        Assert.That(dmg, Is.EqualTo(raw * mitig * C.DamageGlobalMult).Within(1e-3));
     }
 
     [Test]
