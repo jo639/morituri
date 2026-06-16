@@ -118,6 +118,7 @@ function load(json){
   buildPopups();
   buildImpacts();
   buildPhaseProgress();
+  buildWalkDir();
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
   const A = doc.Meta.A, B = doc.Meta.B;
@@ -240,6 +241,29 @@ function buildPhaseProgress(){
   }
 }
 
+// 거리싸움 중 접근↔후퇴가 0.2s 틱마다 반복돼 앞걸음↔뒷걸음 모션이 뒤집혀 방정맞게 보임.
+// 걷기 방향을 dwell 히스테리시스로 커밋: 분명한 순변위(>DEAD)가 최소 DWELL초 이상 지속될 때만 전환.
+// 프레임별로 미리 계산(스크럽 안전·무상태). 계측: 전술가 방향전환 1.7/s → 0.4/s.
+function buildWalkDir(){
+  const F=frames; if(!F.length) return;
+  const fps = F.length>1 ? (F.length-1)/(F[F.length-1].Time-F[0].Time) : 15;
+  const Wf = Math.max(1, Math.round(0.18*fps));   // 순변위 측정 창(프레임)
+  const DEAD=0.15, DWELL=0.55;                     // 전환 임계 순변위(m) / 최소 커밋(s)
+  for (const who of ['A','B']){
+    const px = who==='A'?'Ax':'Bx', ox = who==='A'?'Bx':'Ax', out='_wdir'+who;
+    let dir=1, heldT=-99;
+    for (let i=0;i<F.length;i++){
+      const t=F[i].Time;
+      const lo=Math.max(0,i-Wf), hi=Math.min(F.length-1,i+Wf);
+      const face = (F[i][ox]-F[i][px])>=0 ? 1 : -1;   // 상대 방향(+면 상대가 오른쪽)
+      const net = F[hi][px]-F[lo][px];                 // 창 내 순수평변위
+      const inst = Math.abs(net)>DEAD ? ((net*face)>=0?1:-1) : 0;  // +1=전진(상대쪽) -1=후퇴 0=모호
+      if (inst!==0 && inst!==dir && (t-heldT)>=DWELL){ dir=inst; heldT=t; }
+      F[i][out]=dir;
+    }
+  }
+}
+
 // ── 프레임 조회 (시간 정렬 이진 탐색 + 위치 보간) ──
 function frameAt(time){
   const F = frames; let lo=0, hi=F.length-1;
@@ -307,12 +331,13 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkHold){
+function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkHold, walkDir){
   // 상태별 다중프레임 애니 선택 (이동·공격·피격). 없으면 정적 포즈 폴백.
   let anim = null;
   if (sprite.anims){
     if (state==='Move'||state==='Dodge'){
-      const fwd = velX===0 ? true : (velX*facing)>0;
+      // 걷기 방향: dwell 히스테리시스로 커밋된 _wdir(전진+1/후퇴-1, facing 반영됨) 사용 — 앞↔뒤 떨림 방지.
+      const fwd = (walkDir!=null) ? walkDir>0 : (velX===0 ? true : (velX*facing)>0);
       if (state==='Move') anim = fwd ? sprite.anims.walk_fwd : sprite.anims.walk_bwd;
       else                anim = sprite.anims.dash_bwd; // Dodge = 뒷회피 고정 (앞대쉬는 추후 Dash 기능용)
     } else if (state==='Windup'||state==='Active'||state==='Recovery'){
@@ -507,8 +532,8 @@ function render(){
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
   const frameDt = Math.max(g.Time - f.Time, 0.016);
   const smA = smoothMoveState(0, f.StateA), smB = smoothMoveState(1, f.StateB);
-  const A={p:pa, sy:ay, st:smA.st, hold:smA.hold, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0)};
-  const B={p:pb, sy:by, st:smB.st, hold:smB.hold, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1)};
+  const A={p:pa, sy:ay, st:smA.st, hold:smA.hold, kind:f.KindA, face:faceA, wdir:f._wdirA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0)};
+  const B={p:pb, sy:by, st:smB.st, hold:smB.hold, kind:f.KindB, face:faceB, wdir:f._wdirB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1)};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -516,7 +541,7 @@ function render(){
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.hold); }
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.hold, u.wdir); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
   }
