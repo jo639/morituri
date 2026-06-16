@@ -102,6 +102,8 @@ const DPR = Math.min(window.devicePixelRatio || 1, 2);
 const W = 940, H = 440, PAD = 70, GROUND = H - 70;
 cv.width = W * DPR; cv.height = H * DPR;
 ctx.scale(DPR, DPR);
+// 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
+const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], duration = 0;
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 let postGame = false, postGameElapsed = 0;
@@ -318,10 +320,18 @@ function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, fl
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
-  // 피격 흰색 플래시: source-atop = 그려진 스프라이트 픽셀에만 흰색을 덮어 캐릭터가 잠깐 하얘짐.
-  if (flash>0){ ctx.globalCompositeOperation='source-atop'; ctx.globalAlpha=Math.min(1,flash);
-    ctx.fillStyle='#fff'; ctx.fillRect(-w/2,-h,w,h);
-    ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; }
+  // 피격 흰색 플래시: 오프스크린에 스프라이트만 그려 거기서 source-atop(스프라이트 픽셀=유일한 목적지) →
+  // 실루엣 내부만 하얘진다. 본 캔버스에서 직접 하면 바닥까지 덮여 박스로 번짐.
+  if (flash>0){
+    const iw=Math.max(1,Math.ceil(w)), ih=Math.max(1,Math.ceil(h));
+    _fcv.width=iw; _fcv.height=ih;            // 크기 재설정 = 클리어
+    _fctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, 0,0, w, h);
+    _fctx.globalCompositeOperation='source-atop';
+    _fctx.fillStyle='#fff'; _fctx.globalAlpha=Math.min(1,flash);
+    _fctx.fillRect(0,0,iw,ih);
+    _fctx.globalCompositeOperation='source-over'; _fctx.globalAlpha=1;
+    ctx.drawImage(_fcv, -w/2,-h, w, h);
+  }
   ctx.restore(); return true;
 }
 // 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
