@@ -172,6 +172,9 @@ function buildImpacts(){
       let mag = Math.min(13, 3 + e.Damage*0.30);
       if (e.IsCrit) mag*=1.6; if (e.IsCounter) mag*=1.35;
       if (e.IsGuarded) mag*=0.30; if (e.IsArmored) mag*=0.45;
+      // 약공격은 흔들림을 아주 미세하게만 — 가해자(Attacker)의 현재 스윙 종류로 판별
+      const atkKind = e.Attacker===0 ? frameAt(e.Time).f.KindA : frameAt(e.Time).f.KindB;
+      if (atkKind==='Light') mag = Math.min(mag, 2.2);
       const big = !e.IsGuarded && (e.IsCrit || e.IsCounter || e.Damage>=20);
       impacts.push({ t:e.Time, who:e.Defender, mag, kind: e.IsGuarded?'guard':'hit',
         col: e.IsGuarded?'#bcdcff': e.IsCrit?'#ff6b6b': e.IsCounter?'#ffe08a':'#fff2db',
@@ -415,20 +418,21 @@ function unitTag(sx, topY, name, hpPct, col){
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 타격 임팩트 → 화면 흔들림 + 결정타 카메라 줌 (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
-  let shx=0, shy=0, zoom=1;
+  // 타격 임팩트 → 화면 흔들림 (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
+  let shx=0, shy=0;
+  // let zoom=1; // 결정타·KO 카메라 줌 — 보류(주석처리)
   for (const im of impacts){ const age=t-im.t;
     if (age>=0 && age<=0.22){ const d=1-age/0.22, m=im.mag*d*d;
       shx += Math.sin(age*185+im.t*31)*m;
       shy += Math.cos(age*152+im.t*27)*m*0.55; }
-    // 결정타·KO에 카메라 살짝 당겨찍기
-    const big = im.kind==='ko' || im.kind==='down' || im.stop>=0.07;
-    if (big){ const life=im.kind==='ko'?0.6:0.34; if(age>=0&&age<=life){
-      zoom = Math.max(zoom, 1 + (im.kind==='ko'?0.17:0.07)*(1-age/life)); } }
+    // 결정타·KO에 카메라 살짝 당겨찍기 — 보류(주석처리)
+    // const big = im.kind==='ko' || im.kind==='down' || im.stop>=0.07;
+    // if (big){ const life=im.kind==='ko'?0.6:0.34; if(age>=0&&age<=life){
+    //   zoom = Math.max(zoom, 1 + (im.kind==='ko'?0.17:0.07)*(1-age/life)); } }
   }
   ctx.save(); ctx.translate(shx, shy);
-  if (zoom!==1){ const z0=frameAt(t).f, fo=proj((z0.Ax+z0.Bx)/2, (z0.Ay+z0.By)/2);
-    ctx.translate(fo.x, fo.y); ctx.scale(zoom, zoom); ctx.translate(-fo.x, -fo.y); }
+  // if (zoom!==1){ const z0=frameAt(t).f, fo=proj((z0.Ax+z0.Bx)/2, (z0.Ay+z0.By)/2);
+  //   ctx.translate(fo.x, fo.y); ctx.scale(zoom, zoom); ctx.translate(-fo.x, -fo.y); }
   // 모래 핏 바닥 — 따뜻한 콜로세움
   ctx.save();
   ctx.fillStyle='#5a4129'; ctx.beginPath(); ctx.ellipse(CX,CY+4,RX+7,RY+7,0,0,7); ctx.fill(); // 흙벽 두께감
