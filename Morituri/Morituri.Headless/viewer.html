@@ -184,6 +184,15 @@ function buildImpacts(){
   }
 }
 
+// 피격 스프라이트 흰색 플래시 강도(0~1) — 최근 임팩트가 이 선수를 때렸으면 잠깐 하얘진다.
+function hitFlashAt(who){
+  let v=0;
+  for (const im of impacts){ if (im.who!==who) continue;
+    const age=t-im.t; if (age<0||age>0.13) continue;
+    v=Math.max(v, (1-age/0.13)*(im.kind==='guard'?0.45:0.9)); }
+  return v;
+}
+
 // 공격(Windup→Active→Recovery)·피격(HitStun/Stagger) 연속 구간의 진행률(0~1)을 각 프레임에 미리 계산.
 // 한 번 휘두르는 동안 스프라이트 시트를 한 번 재생(루프 없음)하기 위함.
 function buildPhaseProgress(){
@@ -269,7 +278,7 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph){
+function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash){
   // 상태별 다중프레임 애니 선택 (이동·공격·피격). 없으면 정적 포즈 폴백.
   let anim = null;
   if (sprite.anims){
@@ -309,6 +318,10 @@ function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph){
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
+  // 피격 흰색 플래시: source-atop = 그려진 스프라이트 픽셀에만 흰색을 덮어 캐릭터가 잠깐 하얘짐.
+  if (flash>0){ ctx.globalCompositeOperation='source-atop'; ctx.globalAlpha=Math.min(1,flash);
+    ctx.fillStyle='#fff'; ctx.fillRect(-w/2,-h,w,h);
+    ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; }
   ctx.restore(); return true;
 }
 // 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
@@ -392,13 +405,20 @@ function unitTag(sx, topY, name, hpPct, col){
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 타격 임팩트 → 화면 흔들림 (t로부터 결정 — 스크럽 안전). 장면 전체를 흔든다.
-  let shx=0, shy=0;
-  for (const im of impacts){ const age=t-im.t; if(age<0||age>0.22) continue;
-    const d=1-age/0.22, m=im.mag*d*d;
-    shx += Math.sin(age*185+im.t*31)*m;
-    shy += Math.cos(age*152+im.t*27)*m*0.55; }
+  // 타격 임팩트 → 화면 흔들림 + 결정타 카메라 줌 (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
+  let shx=0, shy=0, zoom=1;
+  for (const im of impacts){ const age=t-im.t;
+    if (age>=0 && age<=0.22){ const d=1-age/0.22, m=im.mag*d*d;
+      shx += Math.sin(age*185+im.t*31)*m;
+      shy += Math.cos(age*152+im.t*27)*m*0.55; }
+    // 결정타·KO에 카메라 살짝 당겨찍기
+    const big = im.kind==='ko' || im.kind==='down' || im.stop>=0.07;
+    if (big){ const life=im.kind==='ko'?0.6:0.34; if(age>=0&&age<=life){
+      zoom = Math.max(zoom, 1 + (im.kind==='ko'?0.17:0.07)*(1-age/life)); } }
+  }
   ctx.save(); ctx.translate(shx, shy);
+  if (zoom!==1){ const z0=frameAt(t).f, fo=proj((z0.Ax+z0.Bx)/2, (z0.Ay+z0.By)/2);
+    ctx.translate(fo.x, fo.y); ctx.scale(zoom, zoom); ctx.translate(-fo.x, -fo.y); }
   // 모래 핏 바닥 — 따뜻한 콜로세움
   ctx.save();
   ctx.fillStyle='#5a4129'; ctx.beginPath(); ctx.ellipse(CX,CY+4,RX+7,RY+7,0,0,7); ctx.fill(); // 흙벽 두께감
@@ -446,8 +466,8 @@ function render(){
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
   const frameDt = Math.max(g.Time - f.Time, 0.016);
-  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA};
-  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB};
+  const A={p:pa, sy:ay, st:f.StateA, kind:f.KindA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0)};
+  const B={p:pb, sy:by, st:f.StateB, kind:f.KindB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1)};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -455,7 +475,7 @@ function render(){
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph); }
+    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
   }
