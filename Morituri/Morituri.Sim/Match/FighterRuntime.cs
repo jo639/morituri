@@ -37,12 +37,14 @@ public sealed class FighterRuntime
 
     // --- 자원 ---
     public float Hp, Stamina, Poise, GuardGauge;
+    public float Patience;              // 인내심 0~Max. 무교전(NoHitTimer)이 길수록 감소 → 공격 충동↑. 영원 대치 해소.
     public bool GuardDisabled;          // GuardBreak 후 게이지 50% 회복 전까지
     public float ExhaustTimer;          // > 0 = Exhausted
     public float PoiseRegenBlockTimer;  // 피격 후 1초 회복 정지
 
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;
+    public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용
     public float CircleSign = 1f;       // 선회 방향 (+1 반시계 / -1 시계). 경계 도달 시 반전
 
     // --- FSM ---

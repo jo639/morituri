@@ -73,6 +73,7 @@ public sealed class MatchSim
                 { StrategyTick(_f[p0]); StrategyTick(_f[p1]); }
             if (_tick % decisionTicks == 0)
                 { TacticTick(_f[p0]); TacticTick(_f[p1]); }
+            _f[0].PrevPos = _f[0].Pos; _f[1].PrevPos = _f[1].Pos;  // 이동 전 위치 — 충돌 귀속용
             FsmAdvance(_f[p0]); FsmAdvance(_f[p1]);
             ResolveCollision();   // Disc 충돌: 두 점유 공간(2×r) 통과·교환 금지
             ResolutionPhase();
@@ -121,6 +122,7 @@ public sealed class MatchSim
         rt.PerceptDelaySec = CombatMath.PerceptionDelay(def.Stats);
         rt.Pos = startPos;
         rt.CircleSign = idx == 0 ? 1f : -1f;   // 서로 반대로 선회 → 꼬리물기 대칭 회피
+        rt.Patience = _c.PatienceMax;
         rt.RebuildDirective(0f);
         return rt;
     }
@@ -155,6 +157,15 @@ public sealed class MatchSim
         f.NoHitTimer += Dt;
         if (f.NoHitTimer > 3f) f.ConsecHitsTaken = 0;
         f.MinHpPct = MathF.Min(f.MinHpPct, f.HpPct);
+
+        // 인내심: 대치(Idle/이동)가 길수록 감소, 교전(공격모션/피격)하면 회복. 공격적일수록(Aggression) 빨리
+        // 소진 → 전술/성격/특성 자동 반영. 0에 가까울수록 공격 충동(SelectAction)이 커져 영원 대치를 깬다.
+        float pDrain = _c.PatienceDrainBase * (0.5f + f.Dir.Aggression);
+        bool engaging = f.State is FighterState.Windup or FighterState.Active or FighterState.Recovery
+                     or FighterState.HitStun or FighterState.Stagger or FighterState.Down;
+        f.Patience = engaging
+            ? MathF.Min(_c.PatienceMax, f.Patience + pDrain * 3f * Dt)   // 교전 중 빠르게 회복
+            : MathF.Max(0f, f.Patience - pDrain * Dt);                    // 대치 중 감소
 
         // 스태미나 (문서[4] 6장)
         float regen = f.State switch
@@ -430,7 +441,19 @@ public sealed class MatchSim
 
         // cramped(적 품속)에 끌려든 장거리 무기는 처벌 부스트를 깎아 거리 회복(후퇴/선회)이 이기게 한다.
         // 이러면 창은 1.1m에서 찌르지 않고 자기 스윗스팟(1.5m+)으로 물러난 뒤, 거기서 reachAdvantage 처벌.
-        if (reachWeaponCramped) { light *= 0.35f; heavy *= 0.35f; }
+        // 단 인내심이 바닥나면(조바심) 페널티를 완화 — 공격 결단이 거리 회복을 이긴다.
+        // 충동은 카이터(사거리 우위)에만 — 근접 무기는 원래 붙어 싸워 영원 대치가 없다(검 거울 baseline 보존).
+        float impulse = f.Weapon.Range >= _c.MinLongRange ? 1f - f.Patience / _c.PatienceMax : 0f;  // 0(인내)~1(소진)
+        if (reachWeaponCramped) { float p = 0.35f + 0.65f * impulse; light *= p; heavy *= p; }
+        // 인내심 충동: 바닥날수록 공격↑ + 카이팅(선회/후퇴)↓ → 대치를 끝내고 달려든다(거울전 영원 대치 해소).
+        if (impulse > 0f)
+        {
+            float mImp = 1f + _c.PatienceImpulseScale * impulse;
+            light *= mImp; heavy *= mImp;
+            float damp = 1f - 0.8f * impulse;
+            score[(int)ActionRequest.Strafe] *= damp;
+            score[(int)ActionRequest.Retreat] *= damp;
+        }
         score[(int)ActionRequest.AttackLight] = light;
         score[(int)ActionRequest.AttackHeavy] = heavy;
         score[(int)ActionRequest.Feint] = feint;
@@ -577,10 +600,11 @@ public sealed class MatchSim
     }
 
     /// <summary>
-    /// Disc 충돌 해소: 두 캐릭터의 점유 공간(반경 CollisionRadius)이 겹치면 대칭으로 밀어내
-    /// 통과·위치교환을 막는다. 정면으로 박으면 0.8m에서 정지, 비스듬히 오면 경계를 따라 미끄러진다
-    /// (= 상대를 돌아가는 플랭크의 물리적 기반). Point→Disc 승격의 핵심.
-    /// 매 틱 보정량이 작아(이동 0.03m/틱 ≪ 반경 0.4m) 부드럽고 터널링이 없다.
+    /// Disc 충돌 해소: 두 캐릭터의 점유 공간(반경 CollisionRadius)이 겹치면 밀어내 통과·위치교환을
+    /// 막는다. 정면으로 박으면 0.8m에서 정지, 비스듬히 오면 경계를 따라 미끄러진다(= 플랭크의 물리적 기반).
+    /// 보정은 대칭이 아니라 "이번 틱 누가 상대 쪽으로 파고들었나(접근 기여)"에 비례 — 가만히 선 쪽은
+    /// 안 밀리고 파고든 쪽만 정지한다(넉백 스킬 외에는 제자리 사수). 둘 다 접근 안 했는데 겹친 비상시
+    /// (경계 클램프 등)만 대칭 폴백. 매 틱 보정량이 작아(이동 0.03m/틱 ≪ 반경 0.4m) 부드럽고 터널링 없음.
     /// </summary>
     private void ResolveCollision()
     {
@@ -590,9 +614,19 @@ public sealed class MatchSim
         if (dist >= minD) return;
         // 완전히 겹친(dist≈0) 비상시: 시작 배치 축(±x)으로 가른다.
         Vec2 dir = dist > 1e-4f ? delta.Normalized() : new Vec2(1f, 0f);
-        float push = (minD - dist) * 0.5f;
-        _f[0].Pos = ClampToArena(_f[0].Pos - dir * push);
-        _f[1].Pos = ClampToArena(_f[1].Pos + dir * push);
+        float pen = minD - dist;   // 겹친 양
+
+        // 각자 이번 틱 이동 중 상대 쪽으로 좁힌 성분만 = 접근 기여. 가만히 선 쪽은 0 → 안 밀린다.
+        Vec2 m0 = _f[0].Pos - _f[0].PrevPos, m1 = _f[1].Pos - _f[1].PrevPos;
+        float c0 = MathF.Max(0f, m0.X * dir.X + m0.Y * dir.Y);    // f0가 +dir(f1 쪽)으로 전진
+        float c1 = MathF.Max(0f, -(m1.X * dir.X + m1.Y * dir.Y)); // f1이 -dir(f0 쪽)으로 전진
+        float total = c0 + c1;
+
+        float push0, push1;
+        if (total > 1e-5f) { push0 = pen * (c0 / total); push1 = pen * (c1 / total); }
+        else               { push0 = push1 = pen * 0.5f; }   // 접근 기여 없음 → 대칭 폴백
+        _f[0].Pos = ClampToArena(_f[0].Pos - dir * push0);
+        _f[1].Pos = ClampToArena(_f[1].Pos + dir * push1);
     }
 
     private void FsmAdvance(FighterRuntime f)

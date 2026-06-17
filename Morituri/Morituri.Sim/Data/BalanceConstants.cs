@@ -76,6 +76,11 @@ public readonly record struct BalanceConstants
     // --- AI/FSM/경기 진행 (문서[3], M2) ---
     public float DecisionTickSec   { get; init; }  // 전술층 주기 0.2s
     public float StrategyTickSec   { get; init; }  // 전략층 주기 1s
+
+    // --- 인내심 (영원 대치 해소): 무교전이 길어지면 소모 → 공격 충동. 거울전(reachAdvantage 부재) 교착 방지 ---
+    public float PatienceMax           { get; init; }  // 가득 찬 인내심
+    public float PatienceDrainBase     { get; init; }  // 초당 감소 기준 ×(0.5+Aggression) — 공격적일수록 빨리 소진(전술/성격/특성 반영)
+    public float PatienceImpulseScale  { get; init; }  // 인내심 0일 때 공격 점수 가산 배수
     public float UtilityNoise      { get; init; }  // ε = 0.10 — 이변의 원천 1
     public float AttackGateScale   { get; init; }  // Commit 게이트: 공격 채택 요구 점수 = Commit × 이 값
     public float CancelWindowRatio { get; init; }  // 선딜 중 캔슬 가능 비율 0.7
@@ -171,6 +176,9 @@ public readonly record struct BalanceConstants
 
         DecisionTickSec = 0.2f,
         StrategyTickSec = 1.0f,
+        PatienceMax = 100f,
+        PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
+        PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)
         UtilityNoise = 0.10f,
         AttackGateScale = 0.9f,   // 1.6은 카운터형이 영원히 공격 못 하는 값이었음 (M2 디버깅으로 발견)
         CancelWindowRatio = 0.7f,
