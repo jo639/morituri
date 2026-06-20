@@ -33,6 +33,12 @@ if (args.Length > 0 && args[0] == "sigmatrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "statgen")
+{
+    StatGenReport.Run(args.Length > 1 && int.TryParse(args[1], out int sgn) ? sgn : 20000);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "weaponsweep")
 {
     int wsg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 150;
