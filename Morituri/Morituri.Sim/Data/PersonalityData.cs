@@ -114,6 +114,9 @@ public static class PersonalityTable
         new TriggerRule("TRG_CALM_TAUNT", TriggerCondition.WasTaunted, 5f, TriggerEffectKind.Override,
             new[] { Add(TParam.Aggression, -0.25f), Add(TParam.CommitThreshold, 0.10f) },
             InterruptAction.None, 1.0f, 6f, 5f, "COOL"),
+        // 전술적 도발: 우세할 때 상대를 자극해 무리수 유도. GlobalProbMod -0.5 → 실발동 ~0.11 (낮은 빈도, 계산적)
+        new TriggerRule("TRG_CALM_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 65f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.22f, 15f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Reckless = new("PER_RECKLESS", 0f, None, new[]
@@ -126,6 +129,9 @@ public static class PersonalityTable
         // 도발에 이성을 잃는다 — 분노 베이스(A) 위에 공격성을 더 얹어 무모하게 달려든다.
         new TriggerRule("TRG_RECK_TAUNT", TriggerCondition.WasTaunted, 5f, TriggerEffectKind.Override,
             new[] { Add(TParam.Aggression, 0.3f) }, InterruptAction.None, 0.85f, 6f, 5f, "ENRAGED"),
+        // 분노형 도발: 맞으면 "이게 다야?" — 피격 분노가 즉각 도발로 폭발 (3회로 빈도 조절, ConsecHits는 3초 무피격 시 리셋)
+        new TriggerRule("TRG_RECK_ACT_TAUNT", TriggerCondition.ConsecHitsTaken, 3f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.45f, 12f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Arrogant = new("PER_ARROGANT", 0f, None, new[]
@@ -133,9 +139,11 @@ public static class PersonalityTable
         // M3-B 재설계: 빈사(HP≤10%) 트리거는 처벌자가 이미 죽어 역전 0%였다.
         // "우세 + 상대 스태거"로 이동 — 상대는 살아서 스태거(0.8s) 회복 후 도발(1.5s) 잔여 창에 2배 처벌 가능.
         new TriggerRule("TRG_ARRO_TAUNT", TriggerCondition.OppStaggeredWhileAhead, 8f, TriggerEffectKind.Interrupt,
-            None, InterruptAction.Taunt, 0.70f, 10f, 1.5f, "TAUNT"),
+            None, InterruptAction.Taunt, 0.70f, 15f, 1.5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_LAZY", TriggerCondition.SelfHpAbovePctAndWinning, 80f, TriggerEffectKind.Override,
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),
+        new TriggerRule("TRG_ARRO_ACT_TAUNT", TriggerCondition.OppHpBelowPct, 50f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.50f, 45f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Honorable = new("PER_HONORABLE", 0f, None, new[]
@@ -143,6 +151,9 @@ public static class PersonalityTable
         // 고결함: 상대 다운 → 거리 벌리고 대기 (추가타 금지). 관중 호응 트리거는 Phase 3(관중 시스템)로 이연.
         new TriggerRule("TRG_HONOR_HOLD", TriggerCondition.OppDown, 0f, TriggerEffectKind.Interrupt,
             None, InterruptAction.HoldOff, 0.95f, 2f, 2.0f, "HONOR"),
+        // 경의의 도발: 크게 앞설 때 드물게 상대에 경의를 표함 (오만이 아닌 존중의 제스처)
+        new TriggerRule("TRG_HONOR_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 80f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.12f, 20f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Coward = new("PER_COWARD", 0f, None, new[]
@@ -156,6 +167,9 @@ public static class PersonalityTable
         new TriggerRule("TRG_COW_TAUNT", TriggerCondition.WasTaunted, 5f, TriggerEffectKind.Override,
             new[] { Add(TParam.PreferredDistance, 0.6f), Add(TParam.Aggression, -0.5f) },
             InterruptAction.None, 0.80f, 6f, 5f, "FLINCH"),
+        // 겁쟁이 도발: 압도적으로 유리할 때만 아주 드물게 (안전 확보 후 허세)
+        new TriggerRule("TRG_COW_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 90f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.07f, 20f, 1.5f, "TAUNT"),
     });
 
     // 쇼맨: 화려한 마무리를 고집하고 우세할 때 관중 반응으로 더 대담해진다. (관중 시스템 없는 Phase 1에서는 자신감 버프로 모델링)
@@ -169,6 +183,12 @@ public static class PersonalityTable
         new TriggerRule("TRG_SHOW_MOMENTUM", TriggerCondition.SelfHpAbovePctAndWinning, 70f, TriggerEffectKind.Override,
             new[] { Add(TParam.HeavyBias, 0.35f), Add(TParam.CommitThreshold, -0.10f) },
             InterruptAction.None, 0.65f, 10f, 6f, "SHOWTIME"),
+        // 쇼맨 도발 A: 쓰러진 상대 조롱 — 극적 연출. OppDown은 순간 상태(1.5s)라 자주 안 생겨 쿨타임 짧아도 안전.
+        new TriggerRule("TRG_SHOW_TAUNT_DOWN", TriggerCondition.OppDown, 0f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.55f, 6f, 1.5f, "TAUNT"),
+        // 쇼맨 도발 B: 피니시 직전 우월감 퍼포먼스. OppHpBelowPct는 죽을 때까지 지속 참 → 긴 쿨타임(30s)으로 스팸 차단.
+        new TriggerRule("TRG_SHOW_TAUNT_LOW", TriggerCondition.OppHpBelowPct, 25f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.50f, 30f, 1.5f, "TAUNT"),
     });
 
     // 기회주의자: 평소엔 방어적·신중하다가 상대의 정량 허점(가드 붕괴 임박·스태미나 고갈)에 폭발적으로 반응.
@@ -184,6 +204,9 @@ public static class PersonalityTable
         new TriggerRule("TRG_OPP_TIRED", TriggerCondition.OppExhausted, 0f, TriggerEffectKind.Override,
             new[] { Set(TParam.Aggression, 0.85f), Add(TParam.HeavyBias, 0.40f) },
             InterruptAction.None, 0.85f, 6f, 4f, "EXPLOIT"),
+        // 가드 붕괴 직전 도발: 허점을 노출하고 심리 교란 (약한 도발 빈도, 계산적 타이밍)
+        new TriggerRule("TRG_OPP_ACT_TAUNT", TriggerCondition.OppGuardGaugeBelowPct, 25f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.15f, 15f, 1.5f, "TAUNT"),
     });
 
     // 잔혹함 = 상대의 '취약 상태'를 냄새 맡고 덮친다. 특정 약점(가드)이 아니라 약함 그 자체가 방아쇠:
@@ -201,6 +224,10 @@ public static class PersonalityTable
             InterruptAction.None, 0.90f, 5f, 5f, "CRUEL"),
         new TriggerRule("TRG_CRUEL_DOWN", TriggerCondition.OppDown, 0f, TriggerEffectKind.Interrupt,
             None, InterruptAction.ForcedHeavy, 0.80f, 2f, 0f, "CRUEL"),
+        // 약자 도발: 상대 HP 30% 이하 — 심리 붕괴 유도 (잔혹함의 핵심 즐거움).
+        // OppHpBelowPct는 죽을 때까지 지속 참 → 긴 쿨타임(30s)으로 스팸 차단(cd 10s일 때 경기당 6.6회 스팸 확인).
+        new TriggerRule("TRG_CRUEL_TAUNT", TriggerCondition.OppHpBelowPct, 30f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.40f, 30f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Bold = new("PER_BOLD", 0f, None, new[]
@@ -208,6 +235,9 @@ public static class PersonalityTable
         new TriggerRule("TRG_BOLD", TriggerCondition.TimeRemainPctBelowAndLosing, 20f, TriggerEffectKind.Override,
             new[] { Set(TParam.RiskTolerance, 1.0f), Add(TParam.HeavyBias, 1.0f) },
             InterruptAction.None, 0.85f, 999f, 999f, "BOLD"),
+        // 역전 도발: 지고 있을 때 "아직 안 끝났다" — 기백 도발로 상대를 흔들려는 시도
+        new TriggerRule("TRG_BOLD_TAUNT", TriggerCondition.HpDeficitPct, 20f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.22f, 15f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef Wary = new("PER_WARY", 0f,
@@ -215,6 +245,9 @@ public static class PersonalityTable
     {
         new TriggerRule("TRG_WARY_STAM", TriggerCondition.StaminaNearReserve, 0f, TriggerEffectKind.Override,
             new[] { Add(TParam.Aggression, -0.3f) }, InterruptAction.None, 1.0f, 1f, 3f, "WARY"),
+        // 신중한 도발: 압도적 우세 + 위험 없을 때만 (거의 안 함)
+        new TriggerRule("TRG_WARY_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 90f, TriggerEffectKind.Interrupt,
+            None, InterruptAction.Taunt, 0.07f, 25f, 1.5f, "TAUNT"),
     });
 
     public static readonly PersonalityDef[] All =

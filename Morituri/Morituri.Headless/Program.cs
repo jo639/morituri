@@ -45,6 +45,12 @@ if (args.Length > 0 && args[0] == "taunt")
     return;
 }
 
+if (args.Length > 0 && args[0] == "tauntfreq")
+{
+    TauntFrequencyProbe.Run(args.Length > 1 && int.TryParse(args[1], out int tfn) ? tfn : 3000);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "weaponsweep")
 {
     int wsg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 150;
