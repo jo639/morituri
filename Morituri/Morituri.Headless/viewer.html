@@ -123,6 +123,7 @@ function load(json){
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
   const A = doc.Meta.A, B = doc.Meta.B;
+  ensureWeaponSprites([A.Weapon, B.Weapon]); // 무기별 시트 비동기 확보 (로드 전엔 기본 시트로 폴백)
   document.getElementById('nameA').textContent = A.Name;
   document.getElementById('nameB').textContent = B.Name;
   document.getElementById('tagsA').textContent = label(A);
@@ -310,7 +311,10 @@ function poseColor(state){
 
 // ── 스프라이트 시스템 (M4-b): sprites/sprites.json + PNG 시트가 있으면 실루엣 대신 그림을 그린다.
 //    상태(12종) → 포즈(8종) 매핑. 시트는 오른쪽 향함 기준, 발(바닥)이 앵커. 없으면 실루엣 폴백.
-let sprite = null; // { img, frames:{pose:{x,y,w,h}} }
+// 무기별 시트(M4-b 확장): 선수마다 무기 ID로 다른 외형. sprites/<무기ID>.json 있으면 그걸, 없으면 공유 sprites.json.
+let defaultSprite = null;     // sprites.json (공유 폴백)
+const spriteSets = {};        // 무기ID → 스프라이트 세트 (시도 후 캐시; 없으면 defaultSprite)
+function spriteFor(weapon){ return spriteSets[weapon] || defaultSprite; }
 // 상태(+스윙 종류) → 9포즈. 강공은 예비(텔레그래프)와 타격이 갈린다 — 수싸움 가독성의 핵심.
 function poseFor(state, kind){
   const heavy = kind==='Heavy';
@@ -325,9 +329,10 @@ function poseFor(state, kind){
     default: return 'idle';
   }
 }
-async function loadSprites(){
+// 시트 한 세트 로드 (정적 포즈 + 애니). 실패 시 null → 호출부에서 폴백 결정.
+async function loadSpriteSet(jsonFile){
   try{
-    const cfg = await (await fetch('sprites/sprites.json?'+Date.now())).json();
+    const cfg = await (await fetch('sprites/'+jsonFile+'?'+Date.now())).json();
     const img = new Image();
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='sprites/'+cfg.image; });
     // 애니메이션 시트 로드 (이미지 중복 없이 캐시)
@@ -340,8 +345,17 @@ async function loadSprites(){
       }
       anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames, refH: a.refH, baseSpeed: a.baseSpeed||0 };
     }
-    sprite = { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
-  }catch(e){ sprite=null; } // 시트 없음 → 실루엣 폴백
+    return { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
+  }catch(e){ return null; } // 시트 없음
+}
+// 공유 기본 시트 로드 (sprites.json). 없으면 실루엣 폴백.
+async function loadDefaultSprites(){ defaultSprite = await loadSpriteSet('sprites.json'); }
+// 두 선수 무기의 전용 시트 확보. 무기 ID당 한 번만 시도하고, 없으면 기본 시트로 폴백 등록.
+async function ensureWeaponSprites(weapons){
+  for (const w of weapons){
+    if (!w || w in spriteSets) continue;
+    spriteSets[w] = (await loadSpriteSet(w + '.json')) || defaultSprite;
+  }
 }
 // 바닥 장식 (사거리 링 + 그림자 + 팀색 글로우) — 스프라이트 경로용 (실루엣은 자체 보유)
 function drawGround(fx, fy, scale, reach, col){
@@ -352,19 +366,19 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
   ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
-function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkDir, walkPhase){
+function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkDir, walkPhase){
   // 상태별 다중프레임 애니 선택 (이동·공격·피격). 없으면 정적 포즈 폴백.
   let anim = null;
-  if (sprite.anims){
+  if (spr.anims){
     if (state==='Move'||state==='Dodge'){
       // 걷기 방향: dwell 히스테리시스로 커밋된 _wdir(전진+1/후퇴-1, facing 반영됨) 사용 — 앞↔뒤 떨림 방지.
       const fwd = (walkDir!=null) ? walkDir>0 : (velX===0 ? true : (velX*facing)>0);
-      if (state==='Move') anim = fwd ? sprite.anims.walk_fwd : sprite.anims.walk_bwd;
-      else                anim = sprite.anims.dash_bwd; // Dodge = 뒷회피 고정 (앞대쉬는 추후 Dash 기능용)
+      if (state==='Move') anim = fwd ? spr.anims.walk_fwd : spr.anims.walk_bwd;
+      else                anim = spr.anims.dash_bwd; // Dodge = 뒷회피 고정 (앞대쉬는 추후 Dash 기능용)
     } else if (state==='Windup'||state==='Active'||state==='Recovery'){
-      anim = kind==='Heavy' ? sprite.anims.heavy_attack : sprite.anims.light_attack;
+      anim = kind==='Heavy' ? spr.anims.heavy_attack : spr.anims.light_attack;
     } else if (state==='HitStun'||state==='Stagger'){
-      anim = state==='Stagger' ? sprite.anims.hurt_heavy : sprite.anims.hurt_light; // 자세붕괴=강피격
+      anim = state==='Stagger' ? spr.anims.hurt_heavy : spr.anims.hurt_light; // 자세붕괴=강피격
     }
   }
   let fr, srcImg;
@@ -385,14 +399,14 @@ function drawSprite(fx, fy, scale, state, kind, facing, velX, who, velMs, ph, fl
     }
     fr = anim.frames[fi]; srcImg = anim.img;
   } else {
-    fr = sprite.frames[poseFor(state,kind)] || sprite.frames.idle; srcImg = sprite.img;
+    fr = spr.frames[poseFor(state,kind)] || spr.frames.idle; srcImg = spr.img;
   }
   if(!fr) return false;
   // refH(직립 환산 키) 우선순위: 애니 > 포즈별 > idle. 화면 키 일관성의 핵심.
-  const refH = (anim?.refH) || fr.refH || sprite.frames.idle.h;
+  const refH = (anim?.refH) || fr.refH || spr.frames.idle.h;
   const k = (120*scale)/refH;
   const w = fr.w*k, h = fr.h*k;
-  const flip = (facing<0) !== sprite.srcFlip;
+  const flip = (facing<0) !== spr.srcFlip;
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
@@ -556,8 +570,8 @@ function render(){
   const smA = smoothMoveState(0, f.StateA), smB = smoothMoveState(1, f.StateB);
   const wphA = (f._wphA??0) + (((g._wphA??0)-(f._wphA??0))*k);  // 누적 걷기 위상 보간(단조)
   const wphB = (f._wphB??0) + (((g._wphB??0)-(f._wphB??0))*k);
-  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0)};
-  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1)};
+  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon)};
+  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon)};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -565,7 +579,7 @@ function render(){
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
     const sc=0.8+0.4*depthN(u.sy);
-    if (sprite){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
+    if (u.spr){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
   }
@@ -670,7 +684,7 @@ stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f
 window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); } };
 
 // 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
-loadSprites().finally(()=>
+loadDefaultSprites().finally(()=>
   fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{}));
 requestAnimationFrame(tick);
 </script>
