@@ -120,6 +120,7 @@ function load(json){
   buildPhaseProgress();
   buildWalkDir();
   buildWalkPhase();
+  buildClinch();
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
   const A = doc.Meta.A, B = doc.Meta.B;
@@ -283,6 +284,31 @@ function buildWalkPhase(){
       ph += dt*fps;
       F[i][out]=ph;
     }
+  }
+}
+
+// 밀착 교착 연출(연출 전용 — sim 위치·승패 무변경, 스크럽 안전): 카운터 매치업의 간격 싸움은 sim상 정상이나,
+// 충돌 핀(0.8m)에서 양쪽이 거의 안 움직이며 milling(Move/Idle)을 반복하면 '제자리 비비기'(걷기 모션만 헛돔)로 보인다.
+// 근접(gap≤GAP) + 양쪽 실이동 속도 거의 0(≤SPD) + 공격 없음을 MIN초 이상 지속하는 '얼어붙은 핀'만 대치로 표시 →
+// 렌더에서 걷기 대신 idle 스탠스로 그린다. 실제로 선회 이동(16~18s처럼 ~1m 이동) 중이면 SPD를 넘어 걷기 애니 유지.
+function buildClinch(){
+  const F=frames; if(!F.length) return;
+  const GAP=1.15, MIN=0.45, SPD=0.25;   // 근접(m) / 최소 지속(s) / 정지로 볼 속도(m/s)
+  const mill = s => s==='Move' || s==='Idle';   // 공격·피격·다운·가드가 아닌 '간 보는' 상태
+  const gapAt = i => Math.hypot(F[i].Bx-F[i].Ax, F[i].By-F[i].Ay);
+  const spd = (i,px,py) => { const a = i>0 ? i-1 : 0, b = i>0 ? i : 1;
+    if (b>=F.length) return 0; const dt=F[b].Time-F[a].Time;
+    return dt>0 ? Math.hypot(F[b][px]-F[a][px], F[b][py]-F[a][py])/dt : 0; };
+  const pinned = i => mill(F[i].StateA) && mill(F[i].StateB) && gapAt(i)<=GAP
+                   && spd(i,'Ax','Ay')<SPD && spd(i,'Bx','By')<SPD;
+  let i=0;
+  while (i<F.length){
+    if (!pinned(i)){ F[i]._clinch=false; i++; continue; }
+    let j=i; while (j<F.length && pinned(j)) j++;
+    const dur=(j<F.length?F[j].Time:F[j-1].Time)-F[i].Time;
+    const val = dur>=MIN;   // 짧은 정지(<MIN)는 실제 교전 흐름 → 그대로 둔다
+    for (let m=i;m<j;m++) F[m]._clinch=val;
+    i=j;
   }
 }
 
@@ -548,9 +574,8 @@ function render(){
   // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
   if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
   if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
-  // C. 독립 Idle 미세 애니 — 위상 차로 각자 "숨쉬는" 느낌
-  if (f.StateA==='Idle') tpa.y -= Math.abs(Math.sin(t*2.8))*3;
-  if (f.StateB==='Idle') tpb.y -= Math.abs(Math.sin(t*2.8+1.3))*3;
+  // 대치(clinch) 판정 — 얼어붙은 핀 구간을 걷기 대신 idle 스탠스로 그리기 위함 (연출 전용)
+  const clinch = f._clinch === true && !postGame;
 
   // 위치 스무딩 — 잔여 떨림 흡수 (disc로 큰 점프는 이미 없음)
   if (!vScrA){ vScrA={x:tpa.x,y:tpa.y}; vScrB={x:tpb.x,y:tpb.y}; }
@@ -567,7 +592,9 @@ function render(){
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
   const frameDt = Math.max(g.Time - f.Time, 0.016);
-  const smA = smoothMoveState(0, f.StateA), smB = smoothMoveState(1, f.StateB);
+  // 대치 구간은 걷기(제자리 비비기) 대신 idle 스탠스로 — 두 선수가 간 보며 맞선 연출. 공격하면 clinch=false라 정상 복귀.
+  const smA = clinch ? 'Idle' : smoothMoveState(0, f.StateA);
+  const smB = clinch ? 'Idle' : smoothMoveState(1, f.StateB);
   const wphA = (f._wphA??0) + (((g._wphA??0)-(f._wphA??0))*k);  // 누적 걷기 위상 보간(단조)
   const wphB = (f._wphB??0) + (((g._wphB??0)-(f._wphB??0))*k);
   const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon)};
