@@ -8,9 +8,12 @@ using Morituri.Sim.Serialization;
 // 사용: dotnet run -- [N]                       배치 통계 (매치업당 N경기, 기본 1000)
 //       dotnet run -- replay [매치업] [시드]     경기 한 판 텍스트 중계
 //                     매치업: berserker(기본) | mirror | cruel | arrogant
+//                            | b:무기/전술/성격:무기/전술/성격  (빌드 직접 지정, 빈 필드=기본값, B생략=거울)
+//                              예: b:WHIP/ZONER/SHOWMAN:AXE/BRAWLER/CRUEL  /  b:/PRESSURE/ARROGANT
 //       dotnet run -- matrix [N]                상성 매트릭스 5×5 + matchup_report.csv (칸당 N경기, 기본 1000)
 //       dotnet run -- export [매치업] [시드]    경기 1판 → match.json (MatchRecord, 역사 DB 입력)
 //       dotnet run -- viewer [매치업] [시드]    경기 1판 → viewer.json (위치 프레임 포함, viewer.html이 재생)
+//                     매치업은 replay와 동일 (b:무기/전술/성격 빌드 지정 가능)
 //       dotnet run -- highlights [N]            명경기 자동 태깅 → highlights.json
 
 if (args.Length > 0 && args[0] == "matrix")

@@ -99,8 +99,32 @@ internal static class Replay
             return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], SigTactic(p[1]), "PER_CALM"),
                     new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], SigTactic(p[2]), "PER_CALM"));
         }
+        // "b:SWORD/PRESSURE/ARROGANT:AXE/BALANCED/RECKLESS" = 무기/전술/성격 직접 지정.
+        // 각 빌드는 무기/전술/성격, 빈 필드는 기본값(SWORD/BALANCED/CALM). B 빌드 생략 시 A의 거울.
+        // 예: "b:WHIP/ZONER/SHOWMAN:AXE/BRAWLER/CRUEL", "b:/PRESSURE/CRUEL"(검·압박·잔혹 vs 거울)
+        if (m.StartsWith("b:"))
+        {
+            var p = m.Split(':');
+            var a = BuildFighter(p.Length > 1 ? p[1] : "", 0);
+            var b = BuildFighter(p.Length > 2 ? p[2] : (p.Length > 1 ? p[1] : ""), 1);
+            return (a, b);
+        }
         return PickNamed(m);
     }
+
+    // "무기/전술/성격" 한 빌드 → FighterDef. 빈 필드는 기본값으로 채우고 ID 프리픽스를 자동 부착한다.
+    private static FighterDef BuildFighter(string spec, int idx)
+    {
+        var f = spec.Split('/');
+        string wpn = Field(f, 0, "SWORD");
+        string tac = Field(f, 1, "BALANCED");
+        string per = Field(f, 2, "CALM");
+        string name = $"P{idx + 1}·{per}·{tac}·{wpn}";
+        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per);
+    }
+
+    private static string Field(string[] f, int i, string def)
+        => i < f.Length && f[i].Length > 0 ? f[i].Trim().ToUpperInvariant() : def;
 
     // 무기 → 시그니처 전술 (Analysis.SignatureMatrix의 5종 + 중량 3종). sigmatrix 셀 재현용.
     private static string SigTactic(string wpn) => wpn switch
