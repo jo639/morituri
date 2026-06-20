@@ -405,7 +405,10 @@ async function loadSpriteSet(jsonFile){
         await new Promise((res,rej)=>{ ai.onload=res; ai.onerror=rej; ai.src='sprites/'+a.image; });
         imgCache[a.image] = ai;
       }
-      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames, refH: a.refH, baseSpeed: a.baseSpeed||0 };
+      // holds: 프레임별 지속 가중치(선택). 특정 포즈(임팩트 프레임 등)를 더 오래 유지하려 비균등 타이밍 부여.
+      const holds = Array.isArray(a.holds) && a.holds.length===a.frames.length ? a.holds : null;
+      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames, refH: a.refH, baseSpeed: a.baseSpeed||0,
+                      holds, holdTot: holds ? holds.reduce((s,x)=>s+x,0) : 0 };
     }
     return { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
   }catch(e){ return null; } // 시트 없음
@@ -447,8 +450,14 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
   if (anim?.frames?.length){
     let fi;
     if (ph && ph.grp){
-      // 공격/피격: 구간 진행률로 시트를 한 번 재생 (루프 없음)
-      fi = Math.min(anim.frames.length-1, Math.max(0, Math.round(ph.p*(anim.frames.length-1))));
+      // 공격/피격: 구간 진행률로 시트를 한 번 재생 (루프 없음). holds 있으면 프레임별 가중 타이밍(임팩트 포즈 유지).
+      if (anim.holds){
+        const target = ph.p * anim.holdTot; let acc=0, idx=0;
+        for (idx=0; idx<anim.holds.length; idx++){ acc+=anim.holds[idx]; if (target < acc) break; }
+        fi = Math.min(anim.frames.length-1, idx);
+      } else {
+        fi = Math.min(anim.frames.length-1, Math.max(0, Math.round(ph.p*(anim.frames.length-1))));
+      }
     } else if (walkPhase!=null){
       // 이동: 누적 걷기 위상(buildWalkPhase, 단조증가) → 프레임 역행 없음. 정지 시 위상 동결=다리 멈춤.
       fi = Math.floor(walkPhase) % anim.frames.length;
