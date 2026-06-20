@@ -120,6 +120,7 @@ function load(json){
   buildPhaseProgress();
   buildWalkDir();
   buildWalkPhase();
+  buildFacing();
   buildClinch();
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
@@ -284,6 +285,22 @@ function buildWalkPhase(){
       ph += dt*fps;
       F[i][out]=ph;
     }
+  }
+}
+
+// 좌우 위치·바라보기 히스테리시스(연출 전용 — sim 위치·승패 무변경, 스크럽 안전): 동속 락스텝(추격-후퇴 동시
+// 슬라이드)에서 두 선수의 X가 0.2s 틱마다 미세 교차하면 facing(좌우 미러)과 화면 좌우배치가 매번 뒤집혀
+// "자리가 계속 바뀐다"로 보인다. X차가 데드밴드(DEAD)를 넘어 DWELL초 이상 지속될 때만 좌우 관계를 전환 →
+// 미세 교차는 무시. +1 = A가 좌(상대가 우), faceB = -faceA. (buildWalkDir의 dwell 방식과 동일)
+function buildFacing(){
+  const F=frames; if(!F.length) return;
+  const DEAD=0.22, DWELL=0.45;
+  let face = (F[0].Bx - F[0].Ax) >= 0 ? 1 : -1, heldT = -99;
+  for (let i=0;i<F.length;i++){
+    const dx = F[i].Bx - F[i].Ax;                            // +면 B가 A의 오른쪽
+    const want = Math.abs(dx) > DEAD ? (dx>=0?1:-1) : face;  // 데드밴드 안이면 현 상태 유지
+    if (want !== face && (F[i].Time - heldT) >= DWELL){ face = want; heldT = F[i].Time; }
+    F[i]._faceA = face;
   }
 }
 
@@ -564,13 +581,12 @@ function render(){
   const gap=Math.hypot(ax-bx, ay-by);
   const MIN_SCR = 65;
 
-  // Disc 충돌이 시뮬에서 통과·위치교환을 막으므로, 시뮬 위치를 충실히 투영한다(연출 트릭 불필요).
-  // 방향은 위치 벡터 기준 — 좌우 교차가 물리적으로 없어 안정적이고, 돌아가면 자연히 따라 바뀐다.
-  const faceA = bx>=ax ? 1 : -1, faceB = -faceA;
+  // 바라보기: 동속 락스텝의 미세 X교차로 매 틱 뒤집히지 않게 히스테리시스 적용(buildFacing). +1 = A가 좌·상대가 우.
+  const faceA = f._faceA ?? (bx>=ax ? 1 : -1), faceB = -faceA;
   const tpa = proj(ax, ay), tpb = proj(bx, by);
-  // 화면 최소 분리: 충돌 거리(0.8m)가 화면상 너무 가까우면 겹쳐 보이므로 살짝 벌림
-  const dxs = tpb.x - tpa.x;
-  if (Math.abs(dxs) < MIN_SCR){ const s=dxs>=0?1:-1, push=(MIN_SCR-Math.abs(dxs))/2; tpa.x-=s*push; tpb.x+=s*push; }
+  // 화면 최소 분리 + 안정 좌우순서: faceA 기준 순서를 강제해, 미세 교차로 화면 자리가 좌↔우로 뒤바뀌지 않게 한다.
+  const sep = (tpb.x - tpa.x) * faceA;   // 안정 순서 기준 분리(정상이면 >0)
+  if (sep < MIN_SCR){ const mid=(tpa.x+tpb.x)/2, half=MIN_SCR/2; tpa.x = mid - faceA*half; tpb.x = mid + faceA*half; }
   // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
   if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
   if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
