@@ -273,15 +273,22 @@ function buildWalkDir(){
 // 정지 구간은 위상 동결 → 다리 멈춤. fps·baseSpeed는 walk_fwd/bwd 시트값(10 / 2.0)과 일치.
 function buildWalkPhase(){
   const F=frames; if(!F.length) return;
-  const FPS=10, BASE=2.0, MINF=4, MAXF=24;
+  const FPS=10, BASE=2.0, MINF=4, MAXF=24, SMW=3;  // SMW: 다리 케이던스 속도 평활 창(±프레임 ≈ ±0.2s)
   for (const who of ['A','B']){
     const px=who==='A'?'Ax':'Bx', py=who==='A'?'Ay':'By', out='_wph'+who;
+    // 프레임별 순간속도(2D 실이동)
+    const sp=new Array(F.length).fill(0);
+    for (let i=1;i<F.length;i++){ const dt=F[i].Time-F[i-1].Time;
+      sp[i] = dt>0 ? Math.hypot(F[i][px]-F[i-1][px], F[i][py]-F[i-1][py])/dt : 0; }
+    // 다리 케이던스를 '이동평균 속도'로 구동: 추격 중 두 선수가 0.2s씩 번갈아 치고나가/멈추는(풀스피드↔정지)
+    // 패턴을 평균내 다리가 '멈췄다-빨라졌다'(풋 스케이팅) 하지 않고 매끄럽게 걷게 한다. 몸은 클램프로 등속 활주 →
+    // 둘이 나란히 걸어가는 모양. 진짜 정지(clinch 등 긴 0)는 창 전체가 0이라 그대로 다리 멈춤.
     let ph=0; F[0][out]=0;
     for (let i=1;i<F.length;i++){
+      let acc=0,n=0; for (let j=Math.max(1,i-SMW); j<=Math.min(F.length-1,i+SMW); j++){ acc+=sp[j]; n++; }
+      const s=acc/n;
       const dt=F[i].Time-F[i-1].Time;
-      const dist=Math.hypot(F[i][px]-F[i-1][px], F[i][py]-F[i-1][py]);
-      const sp = dt>0 ? dist/dt : 0;
-      const fps = sp>0.15 ? Math.max(MINF, Math.min(MAXF, FPS*sp/BASE)) : 0;  // 정지=위상 동결
+      const fps = s>0.15 ? Math.max(MINF, Math.min(MAXF, FPS*s/BASE)) : 0;  // 진짜 정지=위상 동결
       ph += dt*fps;
       F[i][out]=ph;
     }
