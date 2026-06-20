@@ -118,9 +118,9 @@ function load(json){
   buildPopups();
   buildImpacts();
   buildPhaseProgress();
+  buildFacing();      // _faceA(안정 바라보기)를 walk 방향 계산보다 먼저 — 걷기 fwd/bwd가 그려진 facing과 일치하도록
   buildWalkDir();
   buildWalkPhase();
-  buildFacing();
   buildClinch();
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
@@ -258,7 +258,9 @@ function buildWalkDir(){
     for (let i=0;i<F.length;i++){
       const t=F[i].Time;
       const lo=Math.max(0,i-Wf), hi=Math.min(F.length-1,i+Wf);
-      const face = (F[i][ox]-F[i][px])>=0 ? 1 : -1;   // 상대 방향(+면 상대가 오른쪽)
+      // 그려진 facing(_faceA, 히스테리시스)과 일치하는 방향 — 즉석 (ox-px)를 쓰면 미세 교차마다 fwd/bwd가
+      // 뒤집혀 후퇴 중인데 forward walk가 나온다. A는 _faceA, B는 -_faceA(faceB).
+      const face = who==='A' ? F[i]._faceA : -F[i]._faceA;
       const net = F[hi][px]-F[lo][px];                 // 창 내 순수평변위
       const inst = Math.abs(net)>DEAD ? ((net*face)>=0?1:-1) : 0;  // +1=전진(상대쪽) -1=후퇴 0=모호
       if (inst!==0 && inst!==dir && (t-heldT)>=DWELL){ dir=inst; heldT=t; }
@@ -301,13 +303,23 @@ function buildWalkPhase(){
 // 미세 교차는 무시. +1 = A가 좌(상대가 우), faceB = -faceA. (buildWalkDir의 dwell 방식과 동일)
 function buildFacing(){
   const F=frames; if(!F.length) return;
-  const DEAD=0.22, DWELL=0.45;
+  const DEAD=0.22, DWELL=0.45, TURN=0.60;   // 데드밴드(m) / 최소 커밋(s) / 좌우 교차 이징 길이(s, 길수록 천천히 걸어서 교차)
   let face = (F[0].Bx - F[0].Ax) >= 0 ? 1 : -1, heldT = -99;
+  const flips=[];
   for (let i=0;i<F.length;i++){
     const dx = F[i].Bx - F[i].Ax;                            // +면 B가 A의 오른쪽
     const want = Math.abs(dx) > DEAD ? (dx>=0?1:-1) : face;  // 데드밴드 안이면 현 상태 유지
-    if (want !== face && (F[i].Time - heldT) >= DWELL){ face = want; heldT = F[i].Time; }
+    if (want !== face && (F[i].Time - heldT) >= DWELL){ face = want; heldT = F[i].Time; flips.push({t:F[i].Time, to:face}); }
     F[i]._faceA = face;
+  }
+  // _faceLerp: 클램프 좌우순서를 즉석 ±1 대신 전환 ±TURN/2에서 old→0→new로 이징한다. 화면 분리가 0을 거쳐
+  // 반대로 벌어져 두 선수가 '걸어서 자리를 바꾸는' 교차가 됨(13s 65px 순간이동 방지). 스프라이트 미러는 즉석 _faceA.
+  const h=TURN/2;
+  for (let i=0;i<F.length;i++){
+    let lerp = F[i]._faceA;
+    for (const fl of flips){ const d=F[i].Time-fl.t;
+      if (d>=-h && d<=h){ lerp = Math.max(-1, Math.min(1, d/h)) * fl.to; break; } }
+    F[i]._faceLerp = lerp;
   }
 }
 
@@ -591,9 +603,10 @@ function render(){
   // 바라보기: 동속 락스텝의 미세 X교차로 매 틱 뒤집히지 않게 히스테리시스 적용(buildFacing). +1 = A가 좌·상대가 우.
   const faceA = f._faceA ?? (bx>=ax ? 1 : -1), faceB = -faceA;
   const tpa = proj(ax, ay), tpb = proj(bx, by);
-  // 화면 최소 분리 + 안정 좌우순서: faceA 기준 순서를 강제해, 미세 교차로 화면 자리가 좌↔우로 뒤바뀌지 않게 한다.
-  const sep = (tpb.x - tpa.x) * faceA;   // 안정 순서 기준 분리(정상이면 >0)
-  if (sep < MIN_SCR){ const mid=(tpa.x+tpb.x)/2, half=MIN_SCR/2; tpa.x = mid - faceA*half; tpb.x = mid + faceA*half; }
+  // 화면 최소 분리 + 안정 좌우순서: 미세 교차로 화면 자리가 좌↔우로 뒤바뀌지 않게 순서를 강제하되, 진짜 교차(13s)는
+  // _faceLerp로 분리를 0을 거쳐 반대로 이징 → 65px 순간이동 대신 '걸어서 자리 바꾸는' 교차. (ord +1 = A좌)
+  const ord = f._faceLerp ?? faceA;
+  if (Math.abs(tpb.x - tpa.x) < MIN_SCR){ const mid=(tpa.x+tpb.x)/2, half=MIN_SCR/2; tpa.x = mid - ord*half; tpb.x = mid + ord*half; }
   // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
   if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
   if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
