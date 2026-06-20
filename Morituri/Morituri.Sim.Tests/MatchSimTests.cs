@@ -70,6 +70,25 @@ public class MatchSimTests
     }
 
     [Test]
+    public void Taunt_EnragesOpponent_RagedEventEmitted()
+    {
+        // 도발이 상대 심리에 영향(A): 도발 발동 → 상대에 RAGED(분노) Decision이 따라붙는다.
+        var arrogant = new FighterDef("오만", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_ARROGANT");
+        var rival    = new FighterDef("도전", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_RECKLESS");
+        bool taunted = false, raged = false;
+        for (ulong seed = 1; seed <= 500 && !(taunted && raged); seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(arrogant, rival, seed, ev);
+            var d = ev.OfType<Decision>().ToList();
+            if (d.Any(x => x.ReasonTag == "TAUNT")) taunted = true;
+            if (d.Any(x => x.ReasonTag == "RAGED")) raged = true;
+        }
+        Assert.That(taunted, Is.True, "오만함 도발이 500경기 내 한 번은 발동해야 함");
+        Assert.That(raged, Is.True, "도발당한 상대에 RAGED(분노)가 배선돼야 함");
+    }
+
+    [Test]
     public void Personality_CowardVsCruel_ProduceDifferentFights()
     {
         // 문서[3] 9장 체크 1의 수치 버전: 같은 전술(압박형), 다른 성격 → 통계적으로 구분되는가
@@ -101,10 +120,10 @@ public class TriggerEvalTests
         float selfHp = 1f, float oppHp = 1f, int consecHits = 0, bool oppHeavyWindup = false,
         bool oppDown = false, float sinceCrit = 999f, float timeRemain = 1f,
         float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f,
-        bool oppStaggered = false)
+        bool oppStaggered = false, float secSinceTaunted = 999f)
         => new(selfHp, oppHp, selfHp > oppHp + 0.05f, consecHits, oppHeavyWindup, oppDown,
                sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit,
-               OppStaggeredPerceived: oppStaggered);
+               OppStaggeredPerceived: oppStaggered, SecSinceTaunted: secSinceTaunted);
 
     [Test]
     public void Reckless_FiresAtOrBelow30PctHp()
@@ -134,6 +153,35 @@ public class TriggerEvalTests
     }
 
     [Test]
+    public void WasTaunted_FiresOnlyWithinRageWindow()
+    {
+        // C: 도발 반응 트리거는 분노 창(5초) 안에서만 발동, 도발 이력 없으면(999s) 미발동.
+        var rule = Array.Find(PersonalityTable.Calm.Rules, r => r.Cond == TriggerCondition.WasTaunted)!;
+        Assert.That(TriggerEval.Matches(rule, Ctx(secSinceTaunted: 1f)), Is.True);
+        Assert.That(TriggerEval.Matches(rule, Ctx(secSinceTaunted: 6f)), Is.False, "분노 창 밖");
+        Assert.That(TriggerEval.Matches(rule, Ctx()), Is.False, "도발 이력 없음");
+    }
+
+    [Test]
+    public void TauntReaction_DiffersByPersonality()
+    {
+        // C 보완: 같은 도발 베이스(A) 위에서 성격별 반응 방향이 갈린다 — 증폭/중화/위축.
+        Directive WithRage(PersonalityDef p)
+        {
+            var d = Directive.From(TacticsTable.Pressure);
+            d.Apply(ParamMod.Add(TParam.Aggression, 0.25f));      // A 베이스 분노
+            d.Apply(ParamMod.Add(TParam.CommitThreshold, -0.10f));
+            var rule = Array.Find(p.Rules, r => r.Cond == TriggerCondition.WasTaunted);
+            if (rule != null) foreach (var m in rule.Mods) d.Apply(m);
+            return d;
+        }
+        var bare = Directive.From(TacticsTable.Pressure);
+        Assert.That(WithRage(PersonalityTable.Reckless).Aggression, Is.GreaterThan(bare.Aggression), "충동: 분노 증폭");
+        Assert.That(WithRage(PersonalityTable.Calm).Aggression, Is.EqualTo(bare.Aggression).Within(1e-5), "냉철: 분노 중화");
+        Assert.That(WithRage(PersonalityTable.Coward).PreferredDistance, Is.GreaterThan(bare.PreferredDistance), "겁쟁이: 위축(거리↑)");
+    }
+
+    [Test]
     public void Coward_ReactsToHeavyWindupOnly()
     {
         var rule = PersonalityTable.Coward.Rules[0];
@@ -148,14 +196,6 @@ public class TriggerEvalTests
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.15f, deficit: 0.10f)), Is.True);
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.15f, deficit: -0.10f)), Is.False, "이기고 있으면 발동 안 함");
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.50f, deficit: 0.10f)), Is.False, "시간 여유 있으면 발동 안 함");
-    }
-
-    [Test]
-    public void Vengeful_IsDormantInPhase1()
-    {
-        var rule = PersonalityTable.Vengeful.Rules[0];
-        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.01f, deficit: 0.99f)), Is.False,
-            "복수심은 Phase 2 관계 시스템 입력 전까지 항상 비활성");
     }
 
     [Test]

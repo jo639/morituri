@@ -39,6 +39,12 @@ if (args.Length > 0 && args[0] == "statgen")
     return;
 }
 
+if (args.Length > 0 && args[0] == "taunt")
+{
+    TauntProbe.Run(args.Length > 1 && int.TryParse(args[1], out int tn) ? tn : 8000);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "weaponsweep")
 {
     int wsg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 150;

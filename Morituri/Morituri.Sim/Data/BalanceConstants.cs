@@ -90,6 +90,9 @@ public readonly record struct BalanceConstants
     public float DownDurationSec   { get; init; }
     public float GetUpDurationSec  { get; init; }
     public float TauntDurationSec  { get; init; }
+    public float TauntRageAggression { get; init; }  // 도발당한 상대 분노: Aggression +이값 (성격이 가감)
+    public float TauntRageCommitAdd  { get; init; }  // 도발당한 상대: CommitThreshold +이값 (보통 음수 → 더 잘 지름)
+    public float TauntRageDurationSec{ get; init; }  // 분노 지속. > TauntDurationSec여야 도발 후 카운터 창이 생김
     public float FeintCancelRatio  { get; init; }  // 페인트: 선딜 × 이 비율에서 중단
     public float FeintRecoverySec  { get; init; }
     public float ArenaRadius       { get; init; }  // 원형 핏 반지름 (중심 0,0). B: 2D-lite (문서[8])
@@ -188,6 +191,9 @@ public readonly record struct BalanceConstants
         DownDurationSec = 1.5f,
         GetUpDurationSec = 0.7f,
         TauntDurationSec = 1.5f,
+        TauntRageAggression = 0.25f,
+        TauntRageCommitAdd = -0.10f,
+        TauntRageDurationSec = 5.0f,
         FeintCancelRatio = 0.5f,
         FeintRecoverySec = 0.25f,
         ArenaRadius = 8f,   // 지름 16m = 옛 1D 폭과 동일 스케일, 단 원형이라 선회 공간 존재

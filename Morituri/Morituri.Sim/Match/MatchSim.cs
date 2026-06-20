@@ -229,7 +229,8 @@ public sealed class MatchSim
             SameWhiffCount: f.SameWhiffCount,
             HpDeficitPct: opp.HpPct - f.HpPct,
             OppExhaustedPerceived: opp.IsExhausted,
-            OppStaggeredPerceived: opp.State == FighterState.Stagger);
+            OppStaggeredPerceived: opp.State == FighterState.Stagger,
+            SecSinceTaunted: _now - f.LastTauntedAt);
     }
 
     private void StrategyTick(FighterRuntime f)
@@ -316,6 +317,21 @@ public sealed class MatchSim
         if (!IsCancellable(f, allowWindupCancel: false)) return false;
         f.EverTaunted = true;
         ChangeState(f, FighterState.Taunt, _c.TauntDurationSec);
+        // A: 도발당한 상대에게 분노를 건다. 지속(>도발 경직)이 길어 도발 후 카운터 창이 생긴다.
+        //    성격은 WasTaunted 트리거로 이 분노를 증폭(충동)·상쇄(냉철)·반전(겁쟁이 위축)한다 (C).
+        var opp = _f[1 - f.Index];
+        opp.LastTauntedAt = _now;
+        opp.Overrides.Add(new ActiveOverride
+        {
+            Mods = new[]
+            {
+                ParamMod.Add(TParam.Aggression, _c.TauntRageAggression),
+                ParamMod.Add(TParam.CommitThreshold, _c.TauntRageCommitAdd),
+            },
+            ExpiresAt = _now + _c.TauntRageDurationSec,
+            ReasonTag = "RAGED",
+        });
+        Emit(new Decision(_now, opp.Index, "RAGED", "Strategy", _c.TauntRageDurationSec));
         return true;
     }
 

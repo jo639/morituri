@@ -67,6 +67,7 @@ public sealed class FighterRuntime
     public int ConsecHitsTaken;
     public float NoHitTimer;            // 3초 무피격 시 ConsecHitsTaken 리셋
     public float LastCritTakenAt = -999f;
+    public float LastTauntedAt = -999f;  // 상대에게 도발당한 시각 — 분노 반응(성격별) 트리거용
     public ActionRequest LastAttack = ActionRequest.None;
     public ActionRequest LastWhiffed = ActionRequest.None;
     public int SameWhiffCount;
