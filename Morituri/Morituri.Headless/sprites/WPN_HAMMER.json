@@ -73,7 +73,7 @@
     },
     "light_attack": {
       "image": "mang attack.png",
-      "refH": 255,
+      "refH": 244,
       "frames": [
         {"x":14,   "y":39, "w":170, "h":237},
         {"x":193,  "y":34, "w":166, "h":242},
@@ -87,7 +87,7 @@
     },
     "heavy_attack": {
       "image": "mang attack.png",
-      "refH": 255,
+      "refH": 240,
       "frames": [
         {"x":8,    "y":355, "w":170, "h":250},
         {"x":197,  "y":355, "w":168, "h":215},
@@ -103,7 +103,7 @@
     },
     "hurt_light": {
       "image": "mang hit.png",
-      "refH": 284,
+      "refH": 215,
       "frames": [
         {"x":16,  "y":30, "w":170, "h":211},
         {"x":215, "y":20, "w":135, "h":223},
@@ -113,7 +113,7 @@
     },
     "hurt_heavy": {
       "image": "mang hit.png",
-      "refH": 284,
+      "refH": 208,
       "frames": [
         {"x":0,    "y":352, "w":170, "h":212},
         {"x":181,  "y":342, "w":134, "h":224},
