@@ -465,7 +465,9 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
       }
     } else if (walkPhase!=null){
       // 이동: 누적 걷기 위상(buildWalkPhase, 단조증가) → 프레임 역행 없음. 정지 시 위상 동결=다리 멈춤.
-      fi = Math.floor(walkPhase*animMul) % anim.frames.length;
+      // 걷기는 animMul 제외 — 다리 케이던스는 (느려진) 실제 이동 속도에 맞춰야 풋 스케이팅이 안 생긴다.
+      // (공격/피격·시계만 원속도로 분리; 걷기 다리는 몸과 동기.)
+      fi = Math.floor(walkPhase) % anim.frames.length;
     } else {
       // 폴백(구 json): 속도 연동 fps 루프 — 위상 비연속이라 프레임 튐 가능
       const dynFps = (anim.baseSpeed>0 && velMs>0.1)
