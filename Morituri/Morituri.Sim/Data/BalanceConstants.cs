@@ -196,7 +196,7 @@ public readonly record struct BalanceConstants
         TauntRageDurationSec = 5.0f,
         FeintCancelRatio = 0.5f,
         FeintRecoverySec = 0.25f,
-        ArenaRadius = 8f,   // 지름 16m = 옛 1D 폭과 동일 스케일, 단 원형이라 선회 공간 존재
+        ArenaRadius = 12f,  // 지름 24m — 넓은 핏(외곽 선회·도주 공간↑). 뷰어가 R()로 정규화해 이동이 더 느려 보임. (밸런스: 카이터 여유↑)
         StartGap = 4f,
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,
