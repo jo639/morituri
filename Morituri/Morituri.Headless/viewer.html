@@ -83,12 +83,13 @@
   <div id="ctrl">
     <button id="play">▶ 재생</button>
     <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
+    <!-- 표시 라벨은 그대로지만 실재생속도는 절반 — 기본 1×가 옛 0.5× 속도(더 묵직한 진행). value=실제 배율 -->
     <select id="speed">
-      <option value="0.25">0.25×</option>
-      <option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option>
-      <option value="2">2×</option>
-      <option value="4">4×</option>
+      <option value="0.125">0.25×</option>
+      <option value="0.25">0.5×</option>
+      <option value="0.5" selected>1×</option>
+      <option value="1">2×</option>
+      <option value="2">4×</option>
     </select>
     <span id="clock">0.0 / 0.0s</span>
   </div>
@@ -105,7 +106,7 @@ ctx.scale(DPR, DPR);
 // 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
 const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], duration = 0;
-let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
+let t = 0, playing = false, speed = 0.5, lastWall = 0, hitstopUntil = 0;  // 기본 1×(=실제 0.5배속, 라벨 스케일 절반)
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
