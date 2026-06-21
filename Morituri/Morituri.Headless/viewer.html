@@ -83,13 +83,12 @@
   <div id="ctrl">
     <button id="play">▶ 재생</button>
     <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
-    <!-- 표시 라벨은 그대로지만 실재생속도는 절반 — 기본 1×가 옛 0.5× 속도(더 묵직한 진행). value=실제 배율 -->
     <select id="speed">
-      <option value="0.125">0.25×</option>
-      <option value="0.25">0.5×</option>
-      <option value="0.5" selected>1×</option>
-      <option value="1">2×</option>
-      <option value="2">4×</option>
+      <option value="0.25">0.25×</option>
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
     </select>
     <span id="clock">0.0 / 0.0s</span>
   </div>
@@ -106,7 +105,7 @@ ctx.scale(DPR, DPR);
 // 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
 const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], duration = 0;
-let t = 0, playing = false, speed = 0.5, lastWall = 0, hitstopUntil = 0;  // 기본 1×(=실제 0.5배속, 라벨 스케일 절반)
+let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
@@ -450,23 +449,17 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
   let fr, srcImg;
   if (anim?.frames?.length){
     let fi;
-    // 애니 프레임 속도는 재생속도와 분리(연출 전용): 이동(t)은 0.5×라도 애니는 원속도로 돌도록 1/speed 보정.
-    // 이동·시계·애니가 한 t를 공유하므로, 애니 위상만 animMul배 빠르게 진행시켜 슬로모를 상쇄한다.
-    const animMul = speed>0 ? 1/speed : 1;
     if (ph && ph.grp){
       // 공격/피격: 구간 진행률로 시트를 한 번 재생 (루프 없음). holds 있으면 프레임별 가중 타이밍(임팩트 포즈 유지).
-      const pp = Math.min(1, ph.p*animMul);   // 원속도 재생 → 액션이 슬로모로 늘어지지 않음
       if (anim.holds){
-        const target = pp * anim.holdTot; let acc=0, idx=0;
+        const target = ph.p * anim.holdTot; let acc=0, idx=0;
         for (idx=0; idx<anim.holds.length; idx++){ acc+=anim.holds[idx]; if (target < acc) break; }
         fi = Math.min(anim.frames.length-1, idx);
       } else {
-        fi = Math.min(anim.frames.length-1, Math.max(0, Math.round(pp*(anim.frames.length-1))));
+        fi = Math.min(anim.frames.length-1, Math.max(0, Math.round(ph.p*(anim.frames.length-1))));
       }
     } else if (walkPhase!=null){
       // 이동: 누적 걷기 위상(buildWalkPhase, 단조증가) → 프레임 역행 없음. 정지 시 위상 동결=다리 멈춤.
-      // 걷기는 animMul 제외 — 다리 케이던스는 (느려진) 실제 이동 속도에 맞춰야 풋 스케이팅이 안 생긴다.
-      // (공격/피격·시계만 원속도로 분리; 걷기 다리는 몸과 동기.)
       fi = Math.floor(walkPhase) % anim.frames.length;
     } else {
       // 폴백(구 json): 속도 연동 fps 루프 — 위상 비연속이라 프레임 튐 가능
@@ -716,9 +709,7 @@ function render(){
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
   document.getElementById('scrub').value = duration>0 ? (t/duration*1000)|0 : 0;
-  // 시계도 재생속도와 분리: t(0.5×)가 아닌 실제 재생 경과(t/speed)·총길이(duration/speed)로 표시 → 1×에서 정상 속도로 카운트.
-  const spd = speed>0 ? speed : 1;
-  document.getElementById('clock').textContent = `${(t/spd).toFixed(1)} / ${(duration/spd).toFixed(1)}s`;
+  document.getElementById('clock').textContent = `${t.toFixed(1)} / ${duration.toFixed(1)}s`;
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
