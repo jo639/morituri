@@ -366,6 +366,10 @@ const R = () => doc.Meta.ArenaRadius;
 const proj = (sx, sy) => ({ x: CX + (sx/R())*RX, y: CY + (sy/R())*RY });
 const mPx = () => RX/R();              // 가로 m→px
 const depthN = sy => (sy/R()+1)/2;     // 0 뒤 ~ 1 앞 (원근·정렬)
+// 근접 간격 가독성: 화면 x간격 g(px)를 비선형으로 벌려 표시 — 겹침 방지(근접일수록 +OFF로 띄움) +
+// 차이 보존(0.9m·1.1m가 구분됨). 멀면(≥TAPER) 실제 그대로. 옛 하드클램프(모든 근접을 65px로 납작)를 대체.
+const GAP_OFF = 45, GAP_TAPER = 135;   // 띄움량 / 0으로 수렴하는 간격(px) — 과장 강도 조절 노브
+const gapShow = g => g + GAP_OFF*Math.max(0, 1 - g/GAP_TAPER);
 
 function poseColor(state){
   if (state==='Guard') return '#6fa8dc';
@@ -626,15 +630,14 @@ function render(){
   const ax=f.Ax+(g.Ax-f.Ax)*k, ay=f.Ay+(g.Ay-f.Ay)*k;
   const bx=f.Bx+(g.Bx-f.Bx)*k, by=f.By+(g.By-f.By)*k;
   const gap=Math.hypot(ax-bx, ay-by);
-  const MIN_SCR = 65;
 
   // 바라보기: 동속 락스텝의 미세 X교차로 매 틱 뒤집히지 않게 히스테리시스 적용(buildFacing). +1 = A가 좌·상대가 우.
   const faceA = f._faceA ?? (bx>=ax ? 1 : -1), faceB = -faceA;
   const tpa = proj(ax, ay), tpb = proj(bx, by);
-  // 화면 최소 분리 + 안정 좌우순서: 미세 교차로 화면 자리가 좌↔우로 뒤바뀌지 않게 순서를 강제하되, 진짜 교차(13s)는
-  // _faceLerp로 분리를 0을 거쳐 반대로 이징 → 65px 순간이동 대신 '걸어서 자리 바꾸는' 교차. (ord +1 = A좌)
+  // 간격 표시: 실제 x간격을 gapShow로 비선형 확대(겹침 방지 + 근접 차이 가독). 안정 좌우순서(_faceLerp)로 배치 —
+  // 미세 교차로 자리가 좌↔우 뒤바뀌지 않고, 진짜 교차(13s)는 ord가 0을 거쳐 이징돼 '걸어서 자리 바꾸기'.
   const ord = f._faceLerp ?? faceA;
-  if (Math.abs(tpb.x - tpa.x) < MIN_SCR){ const mid=(tpa.x+tpb.x)/2, half=MIN_SCR/2; tpa.x = mid - ord*half; tpb.x = mid + ord*half; }
+  { const mid=(tpa.x+tpb.x)/2, G=gapShow(Math.abs(tpb.x-tpa.x)); tpa.x = mid - ord*G/2; tpb.x = mid + ord*G/2; }
   // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
   if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
   if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
