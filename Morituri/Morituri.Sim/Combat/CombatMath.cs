@@ -20,9 +20,9 @@ public static class CombatMath
     public static float GuardGaugeMax(in FighterStats s, in WeaponDef w, in BalanceConstants c)
         => (c.GuardGaugeBase + s.Def * c.GuardGaugePerDef) * (1f + w.GuardGaugeBonus);
 
-    /// <summary>이동속도 m/s 환산: 2.0 + SPD×0.02</summary>
-    public static float MoveSpeedMps(in FighterStats s, in BalanceConstants c)
-        => c.MoveSpeedBase + s.Spd * c.MoveSpeedPerSpd;
+    /// <summary>이동속도 m/s 환산: (2.0 + SPD×0.02) × 무기MoveSpeedMult</summary>
+    public static float MoveSpeedMps(in FighterStats s, in WeaponDef w, in BalanceConstants c)
+        => (c.MoveSpeedBase + s.Spd * c.MoveSpeedPerSpd) * w.MoveSpeedMult;
 
     /// <summary>
     /// 실제 모션 시간 = 기본시간 / (무기 모션속도 × (0.7 + ASPD/250)). 문서[4] 7장.

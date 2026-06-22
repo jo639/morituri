@@ -42,6 +42,12 @@ public sealed class MatchSim
     private const float CrowdDecayPerSec = 4f, CrowdDeadzone = 15f, CrowdMaxAbs = 100f, CrowdFillScale = 2f;
     private const float CrowdDmgBuff = 0.12f, CrowdMoveBuff = 0.08f;   // 유리한 쪽 데미지·이속 최대 배율(norm=1)
 
+    // 이동 반응 지연 — 결정(Approach/Retreat/Strafe)은 인지 지연을 거치지만, 추격 '방향'까지 상대 실시간
+    // 위치를 0지연 호밍하면 거리 추적이 완벽해 둘이 붙어다니는 헤드-호밍이 된다. 추격 방향이 '마지막으로
+    // 인지한 위치'를 따르게 해 인간 풋워크 랙(과스텝·간격 벌어짐 = 거리조절 댄스)을 만든다.
+    // 밸런스 무관 연출 노브 — 충돌/히트 판정은 실시간 위치 유지(터널링 없음).
+    private const float MoveReactDelaySec = 0.30f;
+
     private readonly IReadOnlyDictionary<string, float>? _weaponDmgScale; // 밸런스 스윕용 무기별 데미지 배율 주입
 
     public MatchSim(BalanceConstants? constants = null, IReadOnlyDictionary<string, float>? weaponDmgScale = null)
@@ -125,7 +131,7 @@ public sealed class MatchSim
         rt.Poise = rt.PoiseMax;
         rt.GuardGaugeMax = CombatMath.GuardGaugeMax(def.Stats, weapon, _c);
         rt.GuardGauge = rt.GuardGaugeMax;
-        rt.MoveSpeed = CombatMath.MoveSpeedMps(def.Stats, _c);
+        rt.MoveSpeed = CombatMath.MoveSpeedMps(def.Stats, weapon, _c);
         rt.PerceptDelaySec = CombatMath.PerceptionDelay(def.Stats);
         rt.Pos = startPos;
         rt.CircleSign = idx == 0 ? 1f : -1f;   // 서로 반대로 선회 → 꼬리물기 대칭 회피
@@ -153,6 +159,14 @@ public sealed class MatchSim
         int delay = (int)MathF.Round(viewer.PerceptDelaySec / Dt);
         int t = Math.Max(0, _tick - delay);
         return _snaps[1 - viewer.Index][t % SnapRing];
+    }
+
+    /// <summary>이동 추격이 따라갈 상대 위치 — MoveReactDelaySec만큼 지연(인간 풋워크 랙).</summary>
+    private Vec2 PerceivedMovePos(FighterRuntime viewer)
+    {
+        int delay = (int)MathF.Round(MoveReactDelaySec / Dt);
+        int t = Math.Max(0, _tick - delay);
+        return _snaps[1 - viewer.Index][t % SnapRing].Pos;
     }
 
     // ───────────────────────── 패시브 (자원/타이머) ─────────────────────────
@@ -655,13 +669,13 @@ public sealed class MatchSim
 
     private void FsmAdvance(FighterRuntime f)
     {
-        var opp = _f[1 - f.Index];
         switch (f.State)
         {
             case FighterState.Move:
             {
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum);
-                Vec2 toOpp = (opp.Pos - f.Pos).Normalized();
+                // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
+                Vec2 toOpp = (PerceivedMovePos(f) - f.Pos).Normalized();
                 Vec2 move = f.CurrentAction switch
                 {
                     // 선회(B): 교전선에 수직 접선 이동 → 등속 추격자로부터 간격 유지(카이팅). 옛 1D 불가 동작.

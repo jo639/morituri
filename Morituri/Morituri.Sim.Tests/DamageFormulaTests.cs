@@ -30,7 +30,7 @@ public class DamageFormulaTests
 
     [Test]
     public void MoveSpeed_Spd70_Is3_4mps()
-        => Assert.That(CombatMath.MoveSpeedMps(Avg, C), Is.EqualTo(3.4f).Within(1e-4));
+        => Assert.That(CombatMath.MoveSpeedMps(Avg, WeaponTable.Sword, C), Is.EqualTo(3.4f).Within(1e-4));
 
     [Test]
     public void MotionTime_Aspd70_Sword()
