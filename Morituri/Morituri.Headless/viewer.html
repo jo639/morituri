@@ -596,6 +596,23 @@ function unitTag(sx, topY, name, hpPct, col){
   for(let i=1;i<4;i++){ const segx=x+w*i/4|0; ctx.beginPath(); ctx.moveTo(segx,y); ctx.lineTo(segx,y+6); ctx.stroke(); }
 }
 
+// 출혈 표시: 발밑에 떨어지는 핏방울(스택 수만큼) + 스택 점. t로 애니메이션(스크럽 안전).
+function drawBleed(fx, fy, sc, stacks){
+  ctx.save();
+  for(let i=0;i<stacks;i++){
+    const ph=((t*1.4 + i*0.37) % 1);          // 0→1 낙하 위상
+    const dx=fx + (i-(stacks-1)/2)*9*sc;
+    const dy=fy - 46*sc + ph*46*sc;            // 몸통에서 바닥으로
+    ctx.globalAlpha=0.85*(1-ph*0.5);
+    ctx.fillStyle='#c0241c';
+    ctx.beginPath(); ctx.ellipse(dx, dy, 2.0*sc, 3.0*sc, 0,0,7); ctx.fill();
+  }
+  // 스택 점(머리 위 핏색 도트)
+  ctx.globalAlpha=1; ctx.fillStyle='#e0382c';
+  for(let i=0;i<stacks;i++){ ctx.beginPath(); ctx.arc(fx-(stacks-1)*3*sc+i*6*sc, fy-104*sc, 2.2*sc, 0,7); ctx.fill(); }
+  ctx.restore();
+}
+
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
@@ -680,8 +697,8 @@ function render(){
   const smB = clinch ? 'Idle' : smoothMoveState(1, f.StateB);
   const wphA = (f._wphA??0) + (((g._wphA??0)-(f._wphA??0))*k);  // 누적 걷기 위상 보간(단조)
   const wphB = (f._wphB??0) + (((g._wphB??0)-(f._wphB??0))*k);
-  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon)};
-  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon)};
+  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon), bleed:(f.BleedA||0)};
+  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon), bleed:(f.BleedB||0)};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
@@ -692,6 +709,7 @@ function render(){
     if (u.spr){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
+    if (u.bleed > 0) drawBleed(u.p.x, u.p.y, sc, u.bleed);
   }
   // 승리 오버레이
   if (postGame && doc.Result.Winner >= 0){

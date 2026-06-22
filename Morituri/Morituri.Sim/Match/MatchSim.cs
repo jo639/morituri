@@ -107,7 +107,8 @@ public sealed class MatchSim
             MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
             _f[0].StaminaPct, _f[1].StaminaPct,
             _f[0].State, _f[1].State,
-            _f[0].MotionKindNow, _f[1].MotionKindNow, _crowd));
+            _f[0].MotionKindNow, _f[1].MotionKindNow, _crowd,
+            _f[0].BleedStacks, _f[1].BleedStacks));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────
@@ -177,6 +178,19 @@ public sealed class MatchSim
         f.StateTimer -= Dt;
         f.NoHitTimer += Dt;
         if (f.NoHitTimer > 3f) f.ConsecHitsTaken = 0;
+
+        // 출혈: 매 틱 누적 피해 (별도 트랙 — 상태 무관, 가드·다운 중에도 흐른다). 출혈사 가능(아래 KO 체크가 잡음).
+        if (f.BleedStacks > 0)
+        {
+            if (_now >= f.BleedExpiry) { f.BleedStacks = 0; f.BleedDps = 0f; f.BleedSource = -1; }
+            else
+            {
+                float bd = f.BleedStacks * f.BleedDps * Dt;
+                f.Hp -= bd;
+                if (f.BleedSource >= 0) _f[f.BleedSource].DamageDealt += bd;
+            }
+        }
+
         f.MinHpPct = MathF.Min(f.MinHpPct, f.HpPct);
 
         // 인내심: 대치(Idle/이동)가 길수록 감소, 교전(공격모션/피격)하면 회복. 공격적일수록(Aggression) 빨리
@@ -873,6 +887,19 @@ public sealed class MatchSim
         Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
         // 관중 적립: 가드칩 약함 / 크리·카운터 강함 / 결정타(KO) 피날레 보너스. (스태거·넉다운·가드붕괴는 호출부에서 추가.)
         CrowdFill(atk, (guarded ? 1f : (crit || counter) ? 6f : 2f) + (def.Hp <= 0f ? 20f : 0f));
+        // 출혈: 칼날이 살을 가른 클린 히트만(가드는 막혀 출혈 없음). 도끼 전용(BleedDps>0).
+        if (!guarded && atk.Weapon.BleedDps > 0f && def.Hp > 0f)
+            ApplyBleed(atk, def);
+    }
+
+    /// <summary>출혈 1스택 적립·갱신 (합산, 상한 BleedMaxStacks). 지속 시간 갱신(연장 아님).</summary>
+    private void ApplyBleed(FighterRuntime atk, FighterRuntime def)
+    {
+        def.BleedStacks = Math.Min(_c.BleedMaxStacks, def.BleedStacks + 1);
+        def.BleedDps = atk.Weapon.BleedDps;
+        def.BleedExpiry = _now + _c.BleedDurationSec;
+        def.BleedSource = atk.Index;
+        Emit(new BleedApplied(_now, atk.Index, def.Index, def.BleedStacks));
     }
 
     private void ChangeState(FighterRuntime f, FighterState to, float timer = 0f)

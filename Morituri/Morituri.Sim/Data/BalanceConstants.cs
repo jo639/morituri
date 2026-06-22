@@ -36,6 +36,10 @@ public readonly record struct BalanceConstants
     public float PoiseRecoverPctPerSec { get; init; }
     public float PoiseRecoverDelaySec  { get; init; }  // 피격 후 회복 정지
 
+    // --- 출혈 (별도 트랙, 문서[7]§2) ---
+    public float BleedDurationSec { get; init; }  // 적용/갱신 시 지속 시간
+    public int   BleedMaxStacks   { get; init; }  // 합산 상한 (스택당 무기 BleedDps)
+
     // --- 스태미나 (문서[4] 6장) ---
     public float StamCostAttackLight { get; init; }
     public float StamCostAttackHeavy { get; init; }
@@ -138,6 +142,9 @@ public readonly record struct BalanceConstants
         HitStunPerPoiseDmg = 0.004f,
         PoiseRecoverPctPerSec = 0.10f,
         PoiseRecoverDelaySec = 1.0f,
+
+        BleedDurationSec = 4f,   // 출혈 지속(초안 — sigmatrix 튜닝)
+        BleedMaxStacks = 3,
 
         StamCostAttackLight = 8f,
         StamCostAttackHeavy = 18f,

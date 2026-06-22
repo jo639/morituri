@@ -42,6 +42,12 @@ public sealed class FighterRuntime
     public float ExhaustTimer;          // > 0 = Exhausted
     public float PoiseRegenBlockTimer;  // 피격 후 1초 회복 정지
 
+    // --- 출혈 (별도 트랙, 문서[7]§2) — 매 틱 BleedStacks×BleedDps 피해 ---
+    public int   BleedStacks;
+    public float BleedDps;              // 최근 적용 무기의 스택당 dps
+    public float BleedExpiry;           // 만료 시각 (now ≥ 이 값이면 소멸)
+    public int   BleedSource = -1;      // 출혈 입힌 공격자 index (피해 귀속)
+
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;
     public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용

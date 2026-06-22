@@ -43,6 +43,10 @@ internal static class Replay
                                       $"[{name[ev.Defender]} {Bar(hp[ev.Defender], hpMax[ev.Defender])} {hp[ev.Defender]:F0}/{hpMax[ev.Defender]:F0}]");
                     break;
 
+                case BleedApplied ev:
+                    Console.WriteLine($"{T(ev.Time)}   🩸 {name[ev.Defender]} 출혈 {ev.Stacks}스택 (도끼 {name[ev.Attacker]})");
+                    break;
+
                 case PoiseBroken ev:
                     Console.WriteLine($"{T(ev.Time)}   〽 {name[ev.FighterId]} 자세 무너짐 (Stagger)");
                     break;

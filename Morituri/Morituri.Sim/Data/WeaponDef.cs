@@ -18,9 +18,10 @@ public readonly record struct WeaponDef(
     float GuardCrush,        // 가드 게이지 깎기 계수
     float GuardGaugeBonus,   // 방패검 +0.6, 그 외 0
     float GuardBypass,       // 채찍 0.1 (가드 우회), 그 외 0
-    bool HyperArmor = false, // 중량 무기(도끼/대검/망치): 강공 선딜 중 약공에 안 끊김 (M3-A2)
+    bool HyperArmor = false, // 중량 무기(대검/망치): 강공 선딜 중 약공에 안 끊김 (M3-A2)
     float HeavyBias = 0f,    // 강공 선호 가중 — 중량 무기의 정체성은 약공 견제가 아니라 한 방 (M3-A2)
-    float MoveSpeedMult = 1.0f); // 이동속도 배율 — 무기 중량 표현 노브 (1.0 = 기본, <1 둔중, >1 날렵)
+    float MoveSpeedMult = 1.0f, // 이동속도 배율 — 무기 중량 표현 노브 (1.0 = 기본, <1 둔중, >1 날렵)
+    float BleedDps = 0f);    // 출혈: 클린 히트당 1스택, 스택당 초당 피해(도끼 전용). 최대 BleedMaxStacks 합산, BleedDurationSec 지속
 
 /// <summary>Phase 1 무기 8종. M1은 하드코딩, M3에서 CSV 임포터가 같은 구조체를 채운다.</summary>
 public static class WeaponTable
@@ -28,7 +29,7 @@ public static class WeaponTable
     //                                                  id           base hit  rng   mSpd   rcv   pDmg pMax  crush  gBon  byps  hyper  hvBias  movMult
     public static readonly WeaponDef Sword       = new("WPN_SWORD",       33f, 1, 1.6f, 1.00f, 0.45f, 18f, 50f, 0.30f, 0f,    0f,   false, 0f,    1.00f);
     public static readonly WeaponDef Spear       = new("WPN_SPEAR",       38f, 1, 2.6f, 0.95f, 0.55f, 14f, 40f, 0.25f, 0f,    0f,   false, 0f,    1.00f);
-    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   false, 1.5f,  1.00f); // 출혈·버스트 정체성 — 하이퍼아머 제거(끊길 수 있는 고위험 한방). 출혈 DoT는 Phase 2
+    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   false, 1.5f,  1.00f, 1.0f); // 출혈·버스트 — 하이퍼아머 없음(끊길 수 있는 고위험 한방) + 클린 히트당 출혈 1.0/s 스택(최대 3/s)
     public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f,   true,  1.5f,  1.00f);
     public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  18f, 2, 1.1f, 1.10f, 0.42f, 10f, 35f, 0.15f, 0f,    0f,   false, 0f,    1.00f);
     public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f,   true,  1.5f,  1.00f); // 높은 경직 + 하이퍼아머(중량 무기의 '멈출 수 없는 일격')

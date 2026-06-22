@@ -56,6 +56,29 @@ public class MatchSimTests
     }
 
     [Test]
+    public void Bleed_AxeAppliesAndStacks_NonBleedWeaponDoesNot()
+    {
+        // 출혈(문서[7]§2): 도끼 클린 히트 → BleedApplied, 최대 3스택까지 누적. 검(BleedDps=0)은 출혈 없음.
+        var axe   = new FighterDef("도끼", FighterStats.Baseline, "WPN_AXE",   "TAC_BRAWLER", "PER_CRUEL");
+        var sword = new FighterDef("검",   FighterStats.Baseline, "WPN_SWORD", "TAC_COUNTER", "PER_CALM");
+
+        bool axeBled = false, reached3 = false, swordBled = false;
+        for (ulong seed = 1; seed <= 30; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(axe, sword, seed, ev);
+            foreach (var b in ev.OfType<BleedApplied>())
+            {
+                if (b.Attacker == 0) { axeBled = true; if (b.Stacks >= 3) reached3 = true; }
+                if (b.Attacker == 1) swordBled = true; // 검은 출혈 안 시킴
+            }
+        }
+        Assert.That(axeBled, Is.True, "도끼 클린 히트는 출혈을 일으켜야 함");
+        Assert.That(reached3, Is.True, "30경기 내 3스택까지 누적돼야 함");
+        Assert.That(swordBled, Is.False, "검(BleedDps=0)은 출혈을 일으키면 안 됨");
+    }
+
+    [Test]
     public void Personality_RecklessTrigger_FiresInLowHpMatches()
     {
         // 충동적(HP≤30%) 트리거가 실제 경기에서 발화하는지 — 100시드 중 1회 이상이면 배선 OK

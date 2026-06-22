@@ -14,4 +14,5 @@ public readonly record struct ReplayFrame(
     float StamPctA, float StamPctB,
     FighterState StateA, FighterState StateB,
     MotionKind KindA, MotionKind KindB,       // 현재 스윙 종류(강/약) — 스프라이트가 강공/약공 포즈를 고른다
-    float Crowd = 0f);                        // 군중게이지 −100~+100 (+=A편) — 뷰어 미터·함성용 (문서[10])
+    float Crowd = 0f,                         // 군중게이지 −100~+100 (+=A편) — 뷰어 미터·함성용 (문서[10])
+    int BleedA = 0, int BleedB = 0);          // 출혈 스택(0~3) — 뷰어 🩸 표시 (문서[7]§2)
