@@ -145,7 +145,7 @@ public static class PersonalityTable
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_ACT_TAUNT", TriggerCondition.OppHpBelowPct, 50f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.50f, 45f, 1.5f, "TAUNT"),
-    }, 0.8f);  // 관중 외면 시 위축(자존심에 금)
+    }, 0.5f);  // 관중 외면 시 위축(자존심에 금) — 0.8→0.5 완화: 오만은 외면을 어느정도 무시
 
     public static readonly PersonalityDef Honorable = new("PER_HONORABLE", 0f, None, new[]
     {
