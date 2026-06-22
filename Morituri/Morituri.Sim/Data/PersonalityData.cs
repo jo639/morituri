@@ -98,7 +98,8 @@ public sealed record PersonalityDef(
     string Id,
     float GlobalProbMod,      // 냉철함 -0.5: 모든 트리거 발동 확률 ×(1+값)
     ParamMod[] GlobalMods,    // 상시 파라미터 보정
-    TriggerRule[] Rules);
+    TriggerRule[] Rules,
+    float CrowdSensitivity = 0f); // 관중 외면(불리) 시 위축 강도 0~1. 쇼맨·오만·겁쟁이만 >0, 그 외는 무관.
 
 /// <summary>성격 12종 (문서[3] 5.2 테이블의 코드화).</summary>
 public static class PersonalityTable
@@ -144,7 +145,7 @@ public static class PersonalityTable
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_ACT_TAUNT", TriggerCondition.OppHpBelowPct, 50f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.50f, 45f, 1.5f, "TAUNT"),
-    });
+    }, 0.8f);  // 관중 외면 시 위축(자존심에 금)
 
     public static readonly PersonalityDef Honorable = new("PER_HONORABLE", 0f, None, new[]
     {
@@ -170,7 +171,7 @@ public static class PersonalityTable
         // 겁쟁이 도발: 압도적으로 유리할 때만 아주 드물게 (안전 확보 후 허세)
         new TriggerRule("TRG_COW_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 90f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.07f, 20f, 1.5f, "TAUNT"),
-    });
+    }, 0.7f);  // 관중 야유 = 더 겁먹음
 
     // 쇼맨: 화려한 마무리를 고집하고 우세할 때 관중 반응으로 더 대담해진다. (관중 시스템 없는 Phase 1에서는 자신감 버프로 모델링)
     public static readonly PersonalityDef Showman = new("PER_SHOWMAN", 0f,
@@ -189,7 +190,7 @@ public static class PersonalityTable
         // 쇼맨 도발 B: 피니시 직전 우월감 퍼포먼스. OppHpBelowPct는 죽을 때까지 지속 참 → 긴 쿨타임(30s)으로 스팸 차단.
         new TriggerRule("TRG_SHOW_TAUNT_LOW", TriggerCondition.OppHpBelowPct, 25f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.50f, 30f, 1.5f, "TAUNT"),
-    });
+    }, 1.0f);  // 관중이 곧 동력 — 외면받으면 가장 크게 위축
 
     // 기회주의자: 평소엔 방어적·신중하다가 상대의 정량 허점(가드 붕괴 임박·스태미나 고갈)에 폭발적으로 반응.
     //   잔혹함이 감정적 약자 사냥이라면, 기회주의는 계산적 허점 공략.

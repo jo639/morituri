@@ -35,6 +35,12 @@ public sealed class MatchSim
     private List<SimEvent>? _events;
     private float _now;
     private int _tick;
+    private float _crowd;   // 군중게이지 −100~+100 (+ = 선수0 편). 문서[10].
+
+    // 관중 튜닝(초안 — 추후 T14_CrowdTuning 데이터로). 페이오프=유리한 쪽 기세 버프.
+    // 감쇠는 적립이 쌓일 수 있게 약하게(4/s), 데드존 낮춰(15) 우세 스트릭이 게이지를 점유하게.
+    private const float CrowdDecayPerSec = 4f, CrowdDeadzone = 15f, CrowdMaxAbs = 100f, CrowdFillScale = 2f;
+    private const float CrowdDmgBuff = 0.12f, CrowdMoveBuff = 0.08f;   // 유리한 쪽 데미지·이속 최대 배율(norm=1)
 
     private readonly IReadOnlyDictionary<string, float>? _weaponDmgScale; // 밸런스 스윕용 무기별 데미지 배율 주입
 
@@ -54,7 +60,7 @@ public sealed class MatchSim
         _rng = new SimRandom(seed);
         _f[0] = CreateRuntime(0, a, new Vec2(-_c.StartGap / 2f, 0f));
         _f[1] = CreateRuntime(1, b, new Vec2(_c.StartGap / 2f, 0f));
-        _now = 0f; _tick = 0;
+        _now = 0f; _tick = 0; _crowd = 0f;
 
         int strategyTicks = Math.Max(1, (int)MathF.Round(_c.StrategyTickSec / Dt));
         int decisionTicks = Math.Max(1, (int)MathF.Round(_c.DecisionTickSec / Dt));
@@ -64,6 +70,7 @@ public sealed class MatchSim
         {
             _now = _tick * Dt;
             RecordSnapshots();
+            CrowdUpdate();   // 군중게이지 감쇠 + 기세/위축 강도 갱신 (이번 틱 데미지·이속·directive에 반영)
 
             // 처리 순서 교대(_tick & 1): A/B가 같은 난수열에서 순차로 행동을 뽑는 비대칭을
             // 매 틱 상쇄 → disc 근접 고정 난타에서도 거울전 대칭 보존. (결정론은 _tick 기반이라 유지)
@@ -317,6 +324,7 @@ public sealed class MatchSim
         if (!IsCancellable(f, allowWindupCancel: false)) return false;
         f.EverTaunted = true;
         ChangeState(f, FighterState.Taunt, _c.TauntDurationSec);
+        CrowdFill(f, 7f);   // 도발 — 관중 호응(쇼맨·오만 테마)
         // A: 도발당한 상대에게 분노를 건다. 지속(>도발 경직)이 길어 도발 후 카운터 창이 생긴다.
         //    성격은 WasTaunted 트리거로 이 분노를 증폭(충동)·상쇄(냉철)·반전(겁쟁이 위축)한다 (C).
         var opp = _f[1 - f.Index];
@@ -652,7 +660,7 @@ public sealed class MatchSim
         {
             case FighterState.Move:
             {
-                float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f);
+                float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum);
                 Vec2 toOpp = (opp.Pos - f.Pos).Normalized();
                 Vec2 move = f.CurrentAction switch
                 {
@@ -783,7 +791,7 @@ public sealed class MatchSim
             def.GuardGauge = gr.GuardGaugeAfter;
             def.Stamina = MathF.Max(0f, gr.StaminaAfter);
 
-            var ctx = new CombatMath.HitContext(false, true, false, inner, 1f, _rng.Range(_c.VarianceMin, _c.VarianceMax));
+            var ctx = new CombatMath.HitContext(false, true, false, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax));
             float dmg = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, ctx, _c);
             ApplyDamage(atk, def, dmg, false, false, true);
 
@@ -791,6 +799,7 @@ public sealed class MatchSim
             {
                 def.GuardDisabled = true;
                 Emit(new GuardBroken(_now, def.Index));
+                CrowdFill(atk, 8f);   // 가드 파괴 — 함성
                 ChangeState(def, FighterState.Stagger, gr.StaggerSec);
             }
             return;
@@ -799,7 +808,7 @@ public sealed class MatchSim
         // 3) 풀 히트
         bool isCounter = ds.State is FighterState.Windup or FighterState.Recovery;
         bool isCrit = _rng.Roll(CombatMath.CritChancePct(atk.Def.Stats, def.Def.Stats, _c) / 100f);
-        var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f,
+        var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum,
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
 
@@ -822,6 +831,7 @@ public sealed class MatchSim
             // Stagger 중 강공 적중 → 다운
             atk.Knockdowns++;
             Emit(new KnockedDown(_now, def.Index));
+            CrowdFill(atk, 15f);   // 넉다운 — 큰 환호
             ChangeState(def, FighterState.Down, _c.DownDurationSec);
             return;
         }
@@ -831,6 +841,7 @@ public sealed class MatchSim
         if (pr.IsStagger)
         {
             Emit(new PoiseBroken(_now, def.Index));
+            CrowdFill(atk, 5f);   // 자세 붕괴 — 함성
             ChangeState(def, FighterState.Stagger, pr.StunSec);
         }
         else if (def.State is not (FighterState.Stagger or FighterState.Down or FighterState.GetUp))
@@ -846,6 +857,8 @@ public sealed class MatchSim
         def.ConsecHitsTaken++;
         def.NoHitTimer = 0f;
         Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
+        // 관중 적립: 가드칩 약함 / 크리·카운터 강함 / 결정타(KO) 피날레 보너스. (스태거·넉다운·가드붕괴는 호출부에서 추가.)
+        CrowdFill(atk, (guarded ? 1f : (crit || counter) ? 6f : 2f) + (def.Hp <= 0f ? 20f : 0f));
     }
 
     private void ChangeState(FighterRuntime f, FighterState to, float timer = 0f)
@@ -900,6 +913,32 @@ public sealed class MatchSim
     private static MatchFighterStats Summary(FighterRuntime f) => new(
         f.Def.Name, f.DamageDealt, f.CleanHits, f.Knockdowns, f.AttackAttempts,
         f.Whiffs, f.CornerTime, f.MinHpPct, MathF.Max(0f, f.HpPct), f.EverTaunted);
+
+    // ───────────────────────── 관중 (문서[10]) ─────────────────────────
+    /// <summary>군중게이지 감쇠 + 기세(유리)/위축(불리) 강도 갱신. 매 틱 — 이번 틱 데미지·이속·directive에 반영.</summary>
+    private void CrowdUpdate()
+    {
+        // 감쇠: 0으로 회귀. 양쪽 비교전(소극)이면 ×2 가속(야유로 관중이 식음).
+        bool passive = _f[0].State is FighterState.Idle or FighterState.Move
+                    && _f[1].State is FighterState.Idle or FighterState.Move;
+        float dec = CrowdDecayPerSec * (passive ? 2f : 1f) * Dt;
+        if (_crowd > 0f) _crowd = MathF.Max(0f, _crowd - dec);
+        else if (_crowd < 0f) _crowd = MathF.Min(0f, _crowd + dec);
+
+        // 기세/위축 강도: |게이지| 데드존 위에서만 선형(0~1). 거울전은 대칭이라 _crowd≈0 → norm 0 → 버프 0.
+        float a = MathF.Abs(_crowd);
+        float norm = a <= CrowdDeadzone ? 0f : MathF.Min(1f, (a - CrowdDeadzone) / (CrowdMaxAbs - CrowdDeadzone));
+        int fav = _crowd >= 0f ? 0 : 1;
+        _f[fav].CrowdMomentum = norm;     _f[fav].CrowdPressure = 0f;
+        _f[1 - fav].CrowdMomentum = 0f;   _f[1 - fav].CrowdPressure = norm;
+    }
+
+    /// <summary>멋진 행동 → 행위자 편으로 게이지 적립. 빈사(HP&lt;30%)면 ×2 = 역전 호응. 문서[10] §3.</summary>
+    private void CrowdFill(FighterRuntime actor, float delta)
+    {
+        float d = delta * CrowdFillScale * (actor.HpPct < 0.30f ? 2f : 1f);
+        _crowd = Math.Clamp(_crowd + (actor.Index == 0 ? d : -d), -CrowdMaxAbs, CrowdMaxAbs);
+    }
 
     private void Emit(SimEvent e) => _events?.Add(e);
 }

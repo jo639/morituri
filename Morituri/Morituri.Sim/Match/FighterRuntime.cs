@@ -47,6 +47,10 @@ public sealed class FighterRuntime
     public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용
     public float CircleSign = 1f;       // 선회 방향 (+1 반시계 / -1 시계). 경계 도달 시 반전
 
+    // --- 관중 기세 (문서[10]) — MatchSim이 군중게이지로부터 매 틱 갱신 ---
+    public float CrowdMomentum;         // 0~1: 관중이 내 편(유리). 보편 기세 버프(공격성·커밋·회복·데미지·이속).
+    public float CrowdPressure;         // 0~1: 관중이 상대 편(불리). 위축은 성격 민감도(CrowdSensitivity)에 비례.
+
     // --- FSM ---
     public FighterState State = FighterState.Idle;
     public float StateTimer, StateElapsed;
@@ -92,6 +96,20 @@ public sealed class FighterRuntime
         foreach (var m in Personality.GlobalMods) Dir.Apply(m);
         foreach (var o in Overrides)
             foreach (var m in o.Mods) Dir.Apply(m);
+        // 관중 기세(유리, 보편): 적극·결단·지구력 ↑. (데미지·이속은 MatchSim에서 CrowdMomentum 직접 사용)
+        if (CrowdMomentum > 0f)
+        {
+            Dir.Apply(ParamMod.Add(TParam.Aggression, 0.30f * CrowdMomentum));
+            Dir.Apply(ParamMod.Add(TParam.CommitThreshold, -0.10f * CrowdMomentum));
+            Dir.Apply(ParamMod.Add(TParam.StamRegenMult, 0.30f * CrowdMomentum));
+        }
+        // 관중 외면(불리): 기본 무효, 성격 민감도만큼만 위축(공격성↓·결단↓) — 쇼맨·오만·겁쟁이만 반응.
+        if (CrowdPressure > 0f && Personality.CrowdSensitivity > 0f)
+        {
+            float p = CrowdPressure * Personality.CrowdSensitivity;
+            Dir.Apply(ParamMod.Add(TParam.Aggression, -0.25f * p));
+            Dir.Apply(ParamMod.Add(TParam.CommitThreshold, 0.10f * p));
+        }
     }
 }
 
