@@ -114,11 +114,15 @@ if (args.Length > 0 && args[0] == "highlights")
 
 if (args.Length > 0 && args[0] == "viewer")
 {
+    // dotnet run -- viewer [매치업] [경기시드] [천부시드A] [천부시드B]
+    // 천부시드 생략 시 천부·잠재력 정보 없이 생성 (기존 동작 유지)
     string matchup = args.Length > 1 ? args[1] : "berserker";
     ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong vs) ? vs : 1;
-    string outPath = args.Length > 3 ? args[3] : "viewer.json";
+    ulong? talentA = args.Length > 3 && ulong.TryParse(args[3], out ulong ta) ? ta : null;
+    ulong? talentB = args.Length > 4 && ulong.TryParse(args[4], out ulong tb) ? tb : talentA; // B 생략 시 A 시드 재사용
+    string outPath = "viewer.json";
     var (va, vb) = Replay.Pick(matchup);
-    ViewerExport.Run(va, vb, seed, outPath);
+    ViewerExport.Run(va, vb, seed, outPath, talentA, talentB);
     ViewerServer.Serve(Directory.GetCurrentDirectory());
     return;
 }

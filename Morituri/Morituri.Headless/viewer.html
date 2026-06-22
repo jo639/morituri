@@ -18,6 +18,9 @@
   .fcard.b{ text-align:right; }
   .fname{ font-weight:700; font-size:16px; }
   .ftags{ color:var(--dim); font-size:11px; margin-top:2px; }
+  .fendow{ color:var(--dim); font-size:10px; margin-top:3px; letter-spacing:.03em; }
+  .fendow .grade{ color:#c9a84c; font-weight:600; }
+  .fendow .stats{ opacity:.75; }
   .bar{ height:12px; border-radius:6px; background:#0c0f14; margin-top:6px; overflow:hidden; }
   .bar > i{ display:block; height:100%; width:100%; transition:width .05s linear; }
   .hp.a > i{ background:linear-gradient(90deg,#2e6bb0,var(--a)); }
@@ -57,6 +60,7 @@
     <div class="fcard a">
       <div class="fname" id="nameA" style="color:var(--a)">—</div>
       <div class="ftags" id="tagsA"></div>
+      <div class="fendow" id="endowA"></div>
       <div class="bar hp a"><i id="hpA"></i></div>
       <div class="bar stam"><i id="stA"></i></div>
       <div class="winner" id="winA"></div>
@@ -65,6 +69,7 @@
     <div class="fcard b">
       <div class="fname" id="nameB" style="color:var(--b)">—</div>
       <div class="ftags" id="tagsB"></div>
+      <div class="fendow" id="endowB"></div>
       <div class="bar hp b"><i id="hpB"></i></div>
       <div class="bar stam"><i id="stB"></i></div>
       <div class="winner" id="winB"></div>
@@ -133,6 +138,8 @@ function load(json){
   document.getElementById('nameB').textContent = B.Name;
   document.getElementById('tagsA').textContent = label(A);
   document.getElementById('tagsB').textContent = label(B);
+  fillEndow('endowA', A.Endowment);
+  fillEndow('endowB', B.Endowment);
   const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
       : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
   document.getElementById('winA').textContent = r.Winner === 0 ? '🏆 ' + wtext : '';
@@ -151,6 +158,14 @@ const PER = {PER_ARROGANT:'오만',PER_BOLD:'대담',PER_CALM:'냉철',PER_COWAR
 const WPN = {WPN_AXE:'도끼',WPN_DUALBLADES:'쌍검',WPN_GREATSWORD:'대검',WPN_HAMMER:'망치',
   WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SWORDSHIELD:'검방패',WPN_WHIP:'채찍'};
 function label(f){ return `${WPN[f.Weapon]||f.Weapon} · ${TAC[f.Tactic]||f.Tactic} · ${PER[f.Personality]||f.Personality}`; }
+function fillEndow(id, e){
+  const el = document.getElementById(id);
+  if (!e){ el.innerHTML = ''; return; }
+  const grow = (e.PotentialBudget - e.TalentBudget).toFixed(0);
+  el.innerHTML =
+    `<span class="grade">천부 ${e.Talent}</span> · 잠재력 ${e.Potential} (+${grow})<br>`+
+    `<span class="stats">ATK ${e.Atk.toFixed(0)} · DEF ${e.Def.toFixed(0)} · HP ${e.HpMax.toFixed(0)} · SPD ${e.Spd.toFixed(0)} · ASPD ${e.Aspd.toFixed(0)} · RCT ${e.Rct.toFixed(0)}</span>`;
+}
 
 // 이벤트 → 시간창 팝업 (스크럽해도 상태 무관하게 t로부터 재계산)
 function buildPopups(){
@@ -368,7 +383,8 @@ const mPx = () => RX/R();              // 가로 m→px
 const depthN = sy => (sy/R()+1)/2;     // 0 뒤 ~ 1 앞 (원근·정렬)
 // 근접 간격 가독성: 화면 x간격 g(px)를 비선형으로 벌려 표시 — 겹침 방지(근접일수록 +OFF로 띄움) +
 // 차이 보존(0.9m·1.1m가 구분됨). 멀면(≥TAPER) 실제 그대로. 옛 하드클램프(모든 근접을 65px로 납작)를 대체.
-const GAP_OFF = 45, GAP_TAPER = 135;   // 띄움량 / 0으로 수렴하는 간격(px) — 과장 강도 조절 노브
+// 1.8m(≈60px)에서 표시 간격이 캐릭터 키(스프라이트 120px)와 비슷해지도록: gapShow(60)≈120.
+const GAP_OFF = 85, GAP_TAPER = 200;   // 띄움량 / 0으로 수렴하는 간격(px) — 과장 강도 조절 노브
 const gapShow = g => g + GAP_OFF*Math.max(0, 1 - g/GAP_TAPER);
 
 function poseColor(state){
