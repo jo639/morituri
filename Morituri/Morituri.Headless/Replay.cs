@@ -47,6 +47,10 @@ internal static class Replay
                     Console.WriteLine($"{T(ev.Time)}   🩸 {name[ev.Defender]} 출혈 {ev.Stacks}스택 (도끼 {name[ev.Attacker]})");
                     break;
 
+                case Parried ev:
+                    Console.WriteLine($"{T(ev.Time)}   🛡⚡ {name[ev.Defender]} 패링! (공격자 {name[ev.Attacker]} 패링당함 {ev.StunStacks}스택{(ev.StunStacks == 0 ? " → 기절" : "")})");
+                    break;
+
                 case PoiseBroken ev:
                     Console.WriteLine($"{T(ev.Time)}   〽 {name[ev.FighterId]} 자세 무너짐 (Stagger)");
                     break;

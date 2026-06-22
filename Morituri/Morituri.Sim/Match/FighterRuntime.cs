@@ -48,6 +48,10 @@ public sealed class FighterRuntime
     public float BleedExpiry;           // 만료 시각 (now ≥ 이 값이면 소멸)
     public int   BleedSource = -1;      // 출혈 입힌 공격자 index (피해 귀속)
 
+    // --- 패링당함 스택 (방패 패링 한정 + 감쇠) — 내 공격이 패링당한 누적, 임계 도달 시 내가 기절 ---
+    public int   ParriedStacks;
+    public float ParriedDecayAt;        // 다음 1스택 감쇠 시각
+
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;
     public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용

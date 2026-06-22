@@ -40,6 +40,13 @@ public readonly record struct BalanceConstants
     public float BleedDurationSec { get; init; }  // 적용/갱신 시 지속 시간
     public int   BleedMaxStacks   { get; init; }  // 합산 상한 (스택당 무기 BleedDps)
 
+    // --- 방패 패링 (방패 전용, 문서[7] 방어형) ---
+    public float ParryChance              { get; init; }  // 자격창 내 패링 성공 확률 — 성공률 다이얼(창의 계단 회피, 매끄러운 조절)
+    public float ParryRefundStamina       { get; init; }  // 패링 성공 시 스태미나 환급(프레임 우위 자원)
+    public int   ParryStunStacksMax        { get; init; }  // 패링당함 누적 → 공격자 기절 임계
+    public float ParryStunDecaySec         { get; init; }  // 누적 스택 1개 감쇠 주기
+    public float ShieldGuardBreakStaggerSec { get; init; } // 방패 가드붕괴 완화 스태거(기존 1.2 대비 짧게)
+
     // --- 스태미나 (문서[4] 6장) ---
     public float StamCostAttackLight { get; init; }
     public float StamCostAttackHeavy { get; init; }
@@ -145,6 +152,12 @@ public readonly record struct BalanceConstants
 
         BleedDurationSec = 4f,   // 출혈 지속(초안 — sigmatrix 튜닝)
         BleedMaxStacks = 3,
+
+        ParryChance = 0.4f,                // 자격창 내 패링 성공률(초안 — 방패 균형 다이얼)
+        ParryRefundStamina = 12f,          // 패링 환급(약공 1.5회분)
+        ParryStunStacksMax = 3,            // 3회 패링당하면 기절
+        ParryStunDecaySec = 3f,            // 3초마다 1스택 감쇠 (연속 패링 아니면 안 쌓임)
+        ShieldGuardBreakStaggerSec = 0.5f, // 방패 붕괴 완화(1.2→0.5): 파국적 0% 모드 축소
 
         StamCostAttackLight = 8f,
         StamCostAttackHeavy = 18f,

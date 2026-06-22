@@ -191,6 +191,13 @@ public sealed class MatchSim
             }
         }
 
+        // 패링당함 스택 감쇠 (연속 패링이 아니면 안 쌓이게 — 터틀 방지)
+        if (f.ParriedStacks > 0 && _now >= f.ParriedDecayAt)
+        {
+            f.ParriedStacks--;
+            f.ParriedDecayAt = _now + _c.ParryStunDecaySec;
+        }
+
         f.MinHpPct = MathF.Min(f.MinHpPct, f.HpPct);
 
         // 인내심: 대치(Idle/이동)가 길수록 감소, 교전(공격모션/피격)하면 회복. 공격적일수록(Aggression) 빨리
@@ -813,6 +820,14 @@ public sealed class MatchSim
         // 2) 가드 판정
         if (ds.State == FighterState.Guard)
         {
+            // 패링(방패 전용): 가드 진입 후 ParryWindowSec 이내 피격 = 자격 → ParryChance 롤 성공 시 무효+환급+프레임우위.
+            // 자격창은 '반응 가드'만 포착(오래 든 가드·스팸 제외 = 타이밍 비용), 성공률은 ParryChance 다이얼(창 계단 회피).
+            if (def.Weapon.ParryWindowSec > 0f && ds.StateElapsed <= def.Weapon.ParryWindowSec
+                && _rng.Roll(_c.ParryChance))
+            {
+                ApplyParry(atk, def);
+                return;
+            }
             atk.LastSwingGuarded = true; // 막힌 칼 = 프레임 불리 (후딜 ×GuardedRecoveryMult)
             float raw = CombatMath.RawDamage(atk.Weapon, motionMult, atk.Def.Stats) * (inner ? _c.InnerRangePenalty : 1f);
             var gr = CombatMath.ResolveGuardHit(raw, atk.Weapon, def.GuardGauge, def.Stamina, _c);
@@ -828,7 +843,9 @@ public sealed class MatchSim
                 def.GuardDisabled = true;
                 Emit(new GuardBroken(_now, def.Index));
                 CrowdFill(atk, 8f);   // 가드 파괴 — 함성
-                ChangeState(def, FighterState.Stagger, gr.StaggerSec);
+                // 방패는 붕괴 완화(파국적 0% 모드 축소) — 그 외 무기는 기존 풀스태거.
+                float breakStagger = def.Weapon.ParryWindowSec > 0f ? _c.ShieldGuardBreakStaggerSec : gr.StaggerSec;
+                ChangeState(def, FighterState.Stagger, breakStagger);
             }
             return;
         }
@@ -890,6 +907,30 @@ public sealed class MatchSim
         // 출혈: 칼날이 살을 가른 클린 히트만(가드는 막혀 출혈 없음). 도끼 전용(BleedDps>0).
         if (!guarded && atk.Weapon.BleedDps > 0f && def.Hp > 0f)
             ApplyBleed(atk, def);
+    }
+
+    /// <summary>
+    /// 패링 성공(방패 전용): 데미지·게이지 칩 무효 + 스태미나 환급 + 프레임 우위(공격자 스윙을 흘려 후딜로).
+    /// 방어자는 가드 캔슬로 즉시 행동 가능 — 기존 'oppRecovery 공격 부스트'가 이 창을 처벌(승리 조건).
+    /// 기절 스택(패링 한정+감쇠): 공격자가 누적 → 임계 도달 시 기절(스태거).
+    /// </summary>
+    private void ApplyParry(FighterRuntime atk, FighterRuntime def)
+    {
+        atk.SwingResolved = true;
+        def.Stamina = MathF.Min(def.StaminaMax, def.Stamina + _c.ParryRefundStamina); // 환급 = 프레임우위 자원
+        ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec);               // 스윙 흘림 → 후딜(처벌창)
+        CrowdFill(def, 5f);   // 패링 — 함성
+
+        atk.ParriedStacks++;
+        atk.ParriedDecayAt = _now + _c.ParryStunDecaySec;
+        bool stunned = atk.ParriedStacks >= _c.ParryStunStacksMax;
+        Emit(new Parried(_now, def.Index, atk.Index, stunned ? 0 : atk.ParriedStacks)); // 0 = 누적 임계 → 기절
+        if (stunned)
+        {
+            atk.ParriedStacks = 0;
+            ChangeState(atk, FighterState.Stagger, _c.StaggerSec);   // 누적 패링 → 기절
+            CrowdFill(def, 8f);
+        }
     }
 
     /// <summary>출혈 1스택 적립·갱신 (합산, 상한 BleedMaxStacks). 지속 시간 갱신(연장 아님).</summary>

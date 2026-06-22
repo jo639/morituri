@@ -1,4 +1,5 @@
 using Morituri.Sim.Data;
+using Morituri.Sim.Events;
 using Morituri.Sim.Match;
 
 namespace Morituri.Headless;
@@ -194,4 +195,35 @@ internal static class Analysis
         "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SHIELD" => "방패",
         _ => wpn,
     };
+
+    /// <summary>패링 성공률 프로브: 방패(방어형)가 각 무기(압박)를 상대로 패링 vs 칩블록 비율·기절·승률.</summary>
+    public static void ParryProbe(int games)
+    {
+        Console.WriteLine($"=== 패링 성공률 프로브 (방패+방어형 vs 각 무기·압박, 매치업당 {games}경기) ===");
+        Console.WriteLine($"  ParryWindow = {WeaponTable.Shield.ParryWindowSec * 1000f:F0}ms · ParryChance = {BalanceConstants.Default.ParryChance:P0}\n");
+        Console.WriteLine("상대무기  패링   칩블록  패링률   기절유발  방패승률");
+        int totP = 0, totB = 0, totS = 0;
+        foreach (var w in AllWeapons)
+        {
+            var a = new FighterDef("방패", FighterStats.Baseline, "WPN_SHIELD", "TAC_DEFENDER", "PER_CALM");
+            var b = new FighterDef(Short(w), FighterStats.Baseline, w, "TAC_PRESSURE", "PER_CALM");
+            int parries = 0, blocks = 0, stuns = 0, shieldWins = 0;
+            for (ulong s = 1; s <= (ulong)games; s++)
+            {
+                var ev = new List<SimEvent>();
+                var r = new MatchSim().Run(a, b, s, ev);
+                if (r.Winner == 0) shieldWins++;
+                foreach (var e in ev)
+                {
+                    if (e is Parried p && p.Defender == 0) { parries++; if (p.StunStacks == 0) stuns++; }
+                    else if (e is HitLanded h && h.Defender == 0 && h.IsGuarded) blocks++;
+                }
+            }
+            int tot = parries + blocks;
+            totP += parries; totB += blocks; totS += stuns;
+            Console.WriteLine($"  {Short(w),-5} {parries,6} {blocks,7} {(tot > 0 ? 100f * parries / tot : 0f),6:F1}% {stuns,8} {100f * shieldWins / games,7:F1}%");
+        }
+        int gt = totP + totB;
+        Console.WriteLine($"\n  전체 패링률: {(gt > 0 ? 100f * totP / gt : 0f):F1}%  (패링 {totP} / 블록 {totB}), 기절 {totS}회");
+    }
 }
