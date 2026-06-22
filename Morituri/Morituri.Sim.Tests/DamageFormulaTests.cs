@@ -21,10 +21,10 @@ public class DamageFormulaTests
         => Assert.That(CombatMath.GuardGaugeMax(Avg, WeaponTable.Sword, C), Is.EqualTo(40f + 70f * 0.4f).Within(1e-4)); // 68
 
     [Test]
-    public void GuardGaugeMax_SwordShield_Gets60PercentBonus()
+    public void GuardGaugeMax_Shield_Gets60PercentBonus()
     {
         float baseGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.Sword, C);
-        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.SwordShield, C);
+        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.Shield, C);
         Assert.That(shieldGauge, Is.EqualTo(baseGauge * 1.6f).Within(1e-3));
     }
 

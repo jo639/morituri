@@ -156,7 +156,7 @@ const PER = {PER_ARROGANT:'오만',PER_BOLD:'대담',PER_CALM:'냉철',PER_COWAR
   PER_HONORABLE:'명예',PER_OBSESSIVE:'집착',PER_OPTIMIST:'낙관',PER_PESSIMIST:'비관',
   PER_RECKLESS:'충동',PER_VENGEFUL:'복수',PER_WARY:'신중'};
 const WPN = {WPN_AXE:'도끼',WPN_DUALBLADES:'쌍검',WPN_GREATSWORD:'대검',WPN_HAMMER:'망치',
-  WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SWORDSHIELD:'검방패',WPN_WHIP:'채찍'};
+  WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SHIELD:'방패',WPN_WHIP:'채찍'};
 function label(f){ return `${WPN[f.Weapon]||f.Weapon} · ${TAC[f.Tactic]||f.Tactic} · ${PER[f.Personality]||f.Personality}`; }
 function fillEndow(id, e){
   const el = document.getElementById(id);

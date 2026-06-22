@@ -130,7 +130,7 @@ internal static class Replay
     private static string SigTactic(string wpn) => wpn switch
     {
         "SWORD" => "TAC_PRESSURE", "SPEAR" => "TAC_COUNTER", "WHIP" => "TAC_ZONER",
-        "DUALBLADES" => "TAC_BRAWLER", "SWORDSHIELD" => "TAC_DEFENDER",
+        "DUALBLADES" => "TAC_BRAWLER", "SHIELD" => "TAC_DEFENDER",
         "AXE" => "TAC_BRAWLER", "GREATSWORD" => "TAC_PRESSURE", "HAMMER" => "TAC_PRESSURE",
         _ => "TAC_BALANCED",
     };

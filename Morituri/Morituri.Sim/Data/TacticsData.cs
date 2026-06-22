@@ -27,7 +27,7 @@ public static class MotionTable
         ["WPN_DUALBLADES"]  = (new("MOT_DB_L",    MotionKind.Light, 0.20f, 0.08f, 0.8f), new("MOT_DB_H",    MotionKind.Heavy, 0.40f, 0.10f, 1.6f)),
         ["WPN_HAMMER"]      = (new("MOT_HAM_L",   MotionKind.Light, 0.50f, 0.12f, 0.8f), new("MOT_HAM_H",   MotionKind.Heavy, 0.55f, 0.15f, 0.9f)),
         ["WPN_WHIP"]        = (new("MOT_WHIP_L",  MotionKind.Light, 0.30f, 0.10f, 0.8f), new("MOT_WHIP_H",  MotionKind.Heavy, 0.50f, 0.12f, 1.6f)),
-        ["WPN_SWORDSHIELD"] = (new("MOT_SS_L",    MotionKind.Light, 0.32f, 0.10f, 0.8f), new("MOT_SS_H",    MotionKind.Heavy, 0.58f, 0.12f, 1.6f)),
+        ["WPN_SHIELD"]      = (new("MOT_SH_L",    MotionKind.Light, 0.32f, 0.10f, 0.8f), new("MOT_SH_H",    MotionKind.Heavy, 0.58f, 0.12f, 1.6f)),
     };
 
     public static MotionDef Get(string weaponId, MotionKind kind)

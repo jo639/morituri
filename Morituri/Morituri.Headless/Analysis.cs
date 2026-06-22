@@ -18,13 +18,13 @@ internal static class Analysis
         ("TAC_COUNTER",  "카운터", "WPN_SPEAR"),       // 전술가+창 (문서[4])
         ("TAC_ZONER",    "견제",   "WPN_WHIP"),        // 최장 사거리 순수 견제
         ("TAC_BRAWLER",  "난전",   "WPN_DUALBLADES"),  // 근접 난전 특화 (기획시안: 쌍검)
-        ("TAC_DEFENDER", "방어",   "WPN_SWORDSHIELD"), // 방패검 방어 특화
+        ("TAC_DEFENDER", "방어",   "WPN_SHIELD"),      // 방패 방어·CC 특화
     };
 
     private static readonly string[] AllWeapons =
     {
         "WPN_SWORD", "WPN_SPEAR", "WPN_AXE", "WPN_GREATSWORD",
-        "WPN_DUALBLADES", "WPN_HAMMER", "WPN_WHIP", "WPN_SWORDSHIELD",
+        "WPN_DUALBLADES", "WPN_HAMMER", "WPN_WHIP", "WPN_SHIELD",
     };
 
     /// <summary>코너 교대 듀얼. 이벤트 미수집(속도). 행 승수/판정수 반환.</summary>
@@ -117,7 +117,7 @@ internal static class Analysis
         ("WPN_DUALBLADES",  "TAC_BRAWLER",  "쌍검·난전"),
         ("WPN_HAMMER",      "TAC_PRESSURE", "망치·압박"),
         ("WPN_WHIP",        "TAC_ZONER",    "채찍·견제"),
-        ("WPN_SWORDSHIELD", "TAC_DEFENDER", "방패·방어"),
+        ("WPN_SHIELD",      "TAC_DEFENDER", "방패·방어"),
     };
 
     /// <summary>무기×빌드 매트릭스 (M3-A2 신규 성공 지표). 각 무기를 '제 빌드'에서 8×8.
@@ -191,7 +191,7 @@ internal static class Analysis
     private static string Short(string wpn) => wpn switch
     {
         "WPN_SWORD" => "검", "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검",
-        "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SWORDSHIELD" => "방패",
+        "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SHIELD" => "방패",
         _ => wpn,
     };
 }
