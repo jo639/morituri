@@ -101,7 +101,7 @@ public sealed class MatchSim
             MathF.Max(0f, _f[0].HpPct), MathF.Max(0f, _f[1].HpPct),
             _f[0].StaminaPct, _f[1].StaminaPct,
             _f[0].State, _f[1].State,
-            _f[0].MotionKindNow, _f[1].MotionKindNow));
+            _f[0].MotionKindNow, _f[1].MotionKindNow, _crowd));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────

@@ -728,6 +728,22 @@ function render(){
 
   ctx.restore(); // 화면 흔들림 종료
 
+  // 군중게이지 미터 (HUD — 카메라·흔들림 무관, 화면 상단 중앙). +=A(파랑) / −=B(빨강). 문서[10].
+  {
+    const crowd = (f.Crowd ?? 0) + (((g.Crowd ?? 0) - (f.Crowd ?? 0)) * k);
+    const mw=280, mh=8, mx=(W-mw)/2, my=10, cx=W/2, half=mw/2;
+    ctx.fillStyle='rgba(15,10,6,0.55)'; roundRect(mx-3,my-3,mw+6,mh+6,4); ctx.fill();
+    ctx.fillStyle='rgba(240,230,214,0.12)'; ctx.fillRect(mx,my,mw,mh);
+    // 데드존(±15) 음영
+    ctx.fillStyle='rgba(240,230,214,0.10)'; ctx.fillRect(cx-half*0.15, my, half*0.30, mh);
+    const frac=Math.max(-1,Math.min(1,crowd/100));
+    if (frac>=0){ ctx.fillStyle=getCSS('--a'); ctx.fillRect(cx, my, half*frac, mh); }
+    else        { ctx.fillStyle=getCSS('--b'); ctx.fillRect(cx+half*frac, my, -half*frac, mh); }
+    ctx.fillStyle='#f0e6d6'; ctx.fillRect(cx-1, my-2, 2, mh+4);   // 중앙선
+    ctx.textAlign='center'; ctx.font='9px system-ui'; ctx.fillStyle=getCSS('--dim');
+    ctx.fillText('⚑ 관중', cx, my-5);
+  }
+
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
   document.getElementById('scrub').value = duration>0 ? (t/duration*1000)|0 : 0;
