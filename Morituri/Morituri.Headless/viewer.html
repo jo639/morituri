@@ -331,14 +331,14 @@ function buildWalkPhase(){
 // 미세 교차는 무시. +1 = A가 좌(상대가 우), faceB = -faceA. (buildWalkDir의 dwell 방식과 동일)
 function buildFacing(){
   const F=frames; if(!F.length) return;
-  const DEAD=0.22, DWELL=0.45, TURN=0.60, CONTACT=1.3;   // 데드밴드(m) / 최소 커밋(s) / 좌우 교차 이징 길이(s) / 접촉거리(m)
+  const DEAD=0.22, DWELL=0.45, TURN=0.60, CONTACT=1.3;   // 데드밴드(m) / 최소 커밋(s) / 좌우 교차 이징 / 접촉거리(m)
   let face = (F[0].Bx - F[0].Ax) >= 0 ? 1 : -1, heldT = -99;
   const flips=[];
   for (let i=0;i<F.length;i++){
     const dx = F[i].Bx - F[i].Ax;                            // +면 B가 A의 오른쪽
     const dist = Math.hypot(dx, F[i].By - F[i].Ay);
-    // 접촉거리(공전/클린치) 이하에선 좌우 진폭이 거리와 같은 스케일 → 공전 교차와 진짜 자리바꿈을 못 가른다.
-    // 구분점은 "진짜 자리바꿈은 그 뒤 떨어진다". 그래서 접촉 중엔 facing 동결(스트로빙 방지), 떨어질 때만 전환.
+    // 접촉(공전/클린치) 이하에선 좌우 진폭이 거리와 같은 스케일 → 공전과 진짜 자리바꿈을 못 가른다(sim 정지는
+    // 카이터를 죽여 매트릭스가 붕괴 — 검증됨). 그래서 접촉 중엔 facing 동결(스트로빙 방지), 떨어질 때만 전환.
     const want = (dist > CONTACT && Math.abs(dx) > DEAD) ? (dx>=0?1:-1) : face;
     if (want !== face && (F[i].Time - heldT) >= DWELL){ face = want; heldT = F[i].Time; flips.push({t:F[i].Time, to:face}); }
     F[i]._faceA = face;
