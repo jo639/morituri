@@ -91,6 +91,7 @@ public sealed class FighterRuntime
     public readonly List<ActiveOverride> Overrides = new();
     public readonly Dictionary<string, float> CooldownUntil = new();
     public ActionRequest PendingForced = ActionRequest.None; // ForcedHeavy 인터럽트
+    public float RepositionUntil;        // [안B] 공격 후 이탈 창 — 이 시각까지 후퇴 강제(카이터 찌르고 빠짐)
 
     // --- 누적 컨텍스트 (문서[3] 3장) ---
     public int ConsecHitsTaken;

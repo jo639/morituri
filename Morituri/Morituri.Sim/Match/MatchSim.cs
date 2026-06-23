@@ -341,6 +341,13 @@ public sealed class MatchSim
             if (TryStartAction(f, f.PendingForced, opp)) { f.PendingForced = ActionRequest.None; return; }
         }
 
+        // 2.5) [안B] 공격 후 이탈 창: 카이터는 일반 행동 대신 후퇴 강제(찌르고 빠짐). 인터럽트(회피·가드)는 위에서 이미 처리.
+        if (_now < f.RepositionUntil)
+        {
+            TryStartAction(f, ActionRequest.Retreat, opp);   // 후딜 중이면 캔슬불가로 무효 → 후딜 끝나면 후퇴 발동
+            return;
+        }
+
         // 3) Utility 행동 선택
         var action = SelectAction(f, opp);
         if (action != f.CurrentAction || f.State == FighterState.Idle)
@@ -427,7 +434,7 @@ public sealed class MatchSim
         // 교전 거리 보정: 선호 거리가 자기 유효 공격 거리보다 멀면 영원한 대치가 된다 (거울 매치 KO 0%로 검출).
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
-                     : MathF.Min(d.PreferredDistance, f.EffRange * 0.8f);
+                     : MathF.Min(d.PreferredDistance, f.EffRange * f.Weapon.EngageRangeRatio); // [안E] 카이터는 사거리 끝 유지
         float gap = dist - engage;
         // 지친 상대는 반격할 수 없다 = 캔슬 불가 상태와 동급의 확정 처벌 창.
         bool oppLocked = opp.IsExhausted
@@ -815,8 +822,12 @@ public sealed class MatchSim
                 if (!atk.SwingResolved) RegisterWhiff(atk);
                 // 후딜 = 무기 기본 × 모션 배율 (약공 0.8 안전 / 강공 1.6 처벌 가능 — T02 RecoveryMult)
                 //       × 가드됨 배율 (막힌 공격은 프레임 불리 — 방어자의 턴)
-                ChangeState(atk, FighterState.Recovery, atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
-                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f));
+                float recDur = atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
+                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f);
+                ChangeState(atk, FighterState.Recovery, recDur);
+                // [안B] 공격 후 이탈: 카이터(창·채찍)는 후딜 후 일정 시간 후퇴 강제 → '찌르고 빠짐' 리듬.
+                if (atk.Weapon.PostAttackRetreatSec > 0f)
+                    atk.RepositionUntil = _now + recDur + atk.Weapon.PostAttackRetreatSec;
             }
         }
     }
