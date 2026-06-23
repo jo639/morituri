@@ -30,13 +30,14 @@ public static class WeaponTable
     //                                                  id           base hit  rng   mSpd   rcv   pDmg pMax  crush  gBon  byps  hyper  hvBias  movMult
     public static readonly WeaponDef Sword       = new("WPN_SWORD",       33f, 1, 1.6f, 1.00f, 0.45f, 18f, 50f, 0.30f, 0f,    0f,   false, 0f,    1.00f);
     public static readonly WeaponDef Spear       = new("WPN_SPEAR",       38f, 1, 2.6f, 0.95f, 0.55f, 14f, 40f, 0.25f, 0f,    0f,   false, 0f,    1.00f);
-    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   false, 1.5f,  1.00f, 1.0f); // 출혈·버스트 — 하이퍼아머 없음(끊길 수 있는 고위험 한방) + 클린 히트당 출혈 1.0/s 스택(최대 3/s)
-    public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f,   true,  1.5f,  1.00f);
-    public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  18f, 2, 1.1f, 1.10f, 0.42f, 10f, 35f, 0.15f, 0f,    0f,   false, 0f,    1.00f);
-    public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f,   true,  1.5f,  1.00f); // 높은 경직 + 하이퍼아머(중량 무기의 '멈출 수 없는 일격')
-    public static readonly WeaponDef Whip        = new("WPN_WHIP",        35f, 1, 3.0f, 1.05f, 0.50f,  8f, 35f, 0.10f, 0f,    0.10f,false, 0f,    1.00f);
+    // 실험(2026-06-23): 무기별 이동속도 차등 — 동속 lockstep 깨기. movMult 스프레드 0.82~1.15(가벼울수록 빠름).
+    public static readonly WeaponDef Axe         = new("WPN_AXE",         64f, 1, 1.4f, 0.70f, 0.85f, 30f, 60f, 0.55f, 0f,    0f,   false, 1.5f,  0.88f, 1.0f); // 출혈·버스트 — 하이퍼아머 없음(끊길 수 있는 고위험 한방) + 클린 히트당 출혈 1.0/s 스택(최대 3/s)
+    public static readonly WeaponDef Greatsword  = new("WPN_GREATSWORD",  55f, 1, 2.0f, 0.75f, 0.75f, 26f, 65f, 0.45f, 0f,    0f,   true,  1.5f,  0.88f);
+    public static readonly WeaponDef DualBlades  = new("WPN_DUALBLADES",  18f, 2, 1.1f, 1.10f, 0.42f, 10f, 35f, 0.15f, 0f,    0f,   false, 0f,    1.15f);
+    public static readonly WeaponDef Hammer      = new("WPN_HAMMER",      58f, 1, 1.3f, 0.65f, 0.90f, 45f, 70f, 0.60f, 0f,    0f,   true,  1.5f,  0.82f); // 높은 경직 + 하이퍼아머(중량 무기의 '멈출 수 없는 일격')
+    public static readonly WeaponDef Whip        = new("WPN_WHIP",        35f, 1, 3.0f, 1.05f, 0.50f,  8f, 35f, 0.10f, 0f,    0.10f,false, 0f,    1.10f);
     // 방패(기존 방패검 교체): 방어·CC 특화. 약공격(dmg↓) + 가드보너스 유지, CC는 스킬(방패밀치기). 방어 메커니즘 전면 재튜닝은 별도 방어형 마일스톤.
-    public static readonly WeaponDef Shield      = new("WPN_SHIELD",      30f, 1, 1.5f, 0.90f, 0.50f, 16f, 55f, 0.25f, 0.60f, 0f,   false, 0f,    1.00f, 0f, 0.15f); // 패링 자격창 0.15s(반응 가드 포착) — 성공률은 BalanceConstants.ParryChance 다이얼
+    public static readonly WeaponDef Shield      = new("WPN_SHIELD",      30f, 1, 1.5f, 0.90f, 0.50f, 16f, 55f, 0.25f, 0.60f, 0f,   false, 0f,    0.95f, 0f, 0.15f); // 패링 자격창 0.15s(반응 가드 포착) — 성공률은 BalanceConstants.ParryChance 다이얼
 
     public static readonly WeaponDef[] All =
         { Sword, Spear, Axe, Greatsword, DualBlades, Hammer, Whip, Shield };
