@@ -676,11 +676,16 @@ function render(){
 
   // 바라보기: 동속 락스텝의 미세 X교차로 매 틱 뒤집히지 않게 히스테리시스 적용(buildFacing). +1 = A가 좌·상대가 우.
   const faceA = f._faceA ?? (bx>=ax ? 1 : -1), faceB = -faceA;
+  // 위치 충실: 각자 진짜 투영 좌표로 그린다. (옛 중점대칭 gapShow 과장은 고정 선수가 상대 따라 움직이는
+  // 아티팩트를 만들어 제거 — 위치 충실 우선.) 스프라이트 미러(facing)만 히스테리시스로 안정.
   const tpa = proj(ax, ay), tpb = proj(bx, by);
-  // 간격 표시: 실제 x간격을 gapShow로 비선형 확대(겹침 방지 + 근접 차이 가독). 안정 좌우순서(_faceLerp)로 배치 —
-  // 미세 교차로 자리가 좌↔우 뒤바뀌지 않고, 진짜 교차(13s)는 ord가 0을 거쳐 이징돼 '걸어서 자리 바꾸기'.
-  const ord = f._faceLerp ?? faceA;
-  { const mid=(tpa.x+tpb.x)/2, G=gapShow(Math.abs(tpb.x-tpa.x)); tpa.x = mid - ord*G/2; tpb.x = mid + ord*G/2; }
+  // 완전히 겹칠 때만 최소 분리 넛지(두 스프라이트가 뭉쳐 보이는 것 방지). 그 외엔 실제 좌표 그대로.
+  // 넛지는 '안 움직이는 쪽(이번 프레임 Move 아님 — 도발·경직 등)'을 고정하고 움직이는 쪽만 밀어 → 고정 선수는 화면서도 고정.
+  { const dxs = tpb.x - tpa.x, MINSEP = 22, ad = Math.abs(dxs);
+    if (ad < MINSEP){ const s=(dxs>=0?1:-1), aMove=f.StateA==='Move', bMove=f.StateB==='Move';
+      if (!aMove && bMove)      tpb.x = tpa.x + s*MINSEP;            // A 고정 → B만 밀기
+      else if (!bMove && aMove) tpa.x = tpb.x - s*MINSEP;            // B 고정 → A만 밀기
+      else { const mid=(tpa.x+tpb.x)/2; tpa.x = mid - s*MINSEP/2; tpb.x = mid + s*MINSEP/2; } } } // 둘 다 → 대칭
   // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
   if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
   if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
