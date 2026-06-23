@@ -21,6 +21,8 @@
   .fendow{ color:var(--dim); font-size:10px; margin-top:3px; letter-spacing:.03em; }
   .fendow .grade{ color:#c9a84c; font-weight:600; }
   .fendow .stats{ opacity:.75; }
+  .ftraits2{ font-size:10px; margin-top:3px; color:#9bd17a; }
+  .ftraits2 .t{ display:inline-block; background:rgba(120,170,90,0.18); border-radius:3px; padding:0 4px; margin:1px 2px 0 0; }
   .bar{ height:12px; border-radius:6px; background:#0c0f14; margin-top:6px; overflow:hidden; }
   .bar > i{ display:block; height:100%; width:100%; transition:width .05s linear; }
   .hp.a > i{ background:linear-gradient(90deg,#2e6bb0,var(--a)); }
@@ -61,6 +63,7 @@
       <div class="fname" id="nameA" style="color:var(--a)">—</div>
       <div class="ftags" id="tagsA"></div>
       <div class="fendow" id="endowA"></div>
+      <div class="ftraits2" id="traitA"></div>
       <div class="bar hp a"><i id="hpA"></i></div>
       <div class="bar stam"><i id="stA"></i></div>
       <div class="winner" id="winA"></div>
@@ -70,6 +73,7 @@
       <div class="fname" id="nameB" style="color:var(--b)">—</div>
       <div class="ftags" id="tagsB"></div>
       <div class="fendow" id="endowB"></div>
+      <div class="ftraits2" id="traitB"></div>
       <div class="bar hp b"><i id="hpB"></i></div>
       <div class="bar stam"><i id="stB"></i></div>
       <div class="winner" id="winB"></div>
@@ -140,6 +144,8 @@ function load(json){
   document.getElementById('tagsB').textContent = label(B);
   fillEndow('endowA', A.Endowment);
   fillEndow('endowB', B.Endowment);
+  fillTraits('traitA', A.Traits);
+  fillTraits('traitB', B.Traits);
   const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
       : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
   document.getElementById('winA').textContent = r.Winner === 0 ? '🏆 ' + wtext : '';
@@ -158,6 +164,10 @@ const PER = {PER_ARROGANT:'오만',PER_BOLD:'대담',PER_CALM:'냉철',PER_COWAR
 const WPN = {WPN_AXE:'도끼',WPN_DUALBLADES:'쌍검',WPN_GREATSWORD:'대검',WPN_HAMMER:'망치',
   WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SHIELD:'방패',WPN_WHIP:'채찍'};
 function label(f){ return `${WPN[f.Weapon]||f.Weapon} · ${TAC[f.Tactic]||f.Tactic} · ${PER[f.Personality]||f.Personality}`; }
+function fillTraits(id, traits){
+  const el = document.getElementById(id);
+  el.innerHTML = (traits && traits.length) ? traits.map(t=>`<span class="t">${t}</span>`).join('') : '';
+}
 function fillEndow(id, e){
   const el = document.getElementById(id);
   if (!e){ el.innerHTML = ''; return; }
@@ -697,15 +707,15 @@ function render(){
   const smB = clinch ? 'Idle' : smoothMoveState(1, f.StateB);
   const wphA = (f._wphA??0) + (((g._wphA??0)-(f._wphA??0))*k);  // 누적 걷기 위상 보간(단조)
   const wphB = (f._wphB??0) + (((g._wphB??0)-(f._wphB??0))*k);
-  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon), bleed:(f.BleedA||0)};
-  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon), bleed:(f.BleedB||0)};
+  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon), bleed:(f.BleedA||0), size:(doc.Meta.A.SizeScale||1)};
+  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon), bleed:(f.BleedB||0), size:(doc.Meta.B.SizeScale||1)};
   // postGame: 승자 도발 · 패자 다운 포즈
   if (postGame && doc.Result.Winner >= 0){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
     else { A.st='Down'; B.st='Taunt'; }
   }
   for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
-    const sc=0.8+0.4*depthN(u.sy);
+    const sc=(0.8+0.4*depthN(u.sy))*(u.size||1);   // 거인 등 특성 크기 배율
     if (u.spr){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);

@@ -52,6 +52,21 @@ public sealed class FighterRuntime
     public int   ParriedStacks;
     public float ParriedDecayAt;        // 다음 1스택 감쇠 시각
 
+    // --- 특성 (T09, 문서[7]§6) — 생성 시 CreateRuntime이 파생스탯에 반영 + 고유 행동은 보유 여부로 분기 ---
+    public HashSet<string> Traits = new();
+    public float DamageTakenMult = 1f;  // 받는 피해 배율 (유리몸·질긴가죽·둔감)
+    public float StamRegenTraitMult = 1f; // 스태미나 회복 배율 (마르지않는샘·허약체질)
+    public float DodgeCostMult = 1f;    // 대시 스태미나 소모 배율 (초상비)
+    public float RangeBonus;            // 사거리 가산 (거인)
+    public float SizeScale = 1f;        // 뷰어 크기 배율 (거인) — sim 무관, 프레젠테이션
+    public float DashSpeedBuffUntil;    // 초상비: 대시 후 이속 버프 만료
+    public bool  FirstHitDone;          // 선취점: 첫 클린 히트 소비 여부
+    public float ShieldHp;              // 흡수 쉴드 잔량 (선취점·향후 액티브)
+    public float ShieldExpiry;          // 흡수 쉴드 만료
+
+    public bool Has(string traitId) => Traits.Contains(traitId);
+    public float EffRange => Weapon.Range + RangeBonus;   // 유효 사거리 (거인 +)
+
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;
     public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용

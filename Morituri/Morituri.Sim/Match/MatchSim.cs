@@ -125,15 +125,35 @@ public sealed class MatchSim
             Personality = PersonalityTable.Get(def.PersonalityId),
         };
         rt.HpMax = def.Stats.HpMax;
-        rt.Hp = rt.HpMax;
         rt.StaminaMax = CombatMath.StaminaMax(def.Stats, _c);
-        rt.Stamina = rt.StaminaMax;
         rt.PoiseMax = weapon.PoiseMax;
-        rt.Poise = rt.PoiseMax;
         rt.GuardGaugeMax = CombatMath.GuardGaugeMax(def.Stats, weapon, _c);
-        rt.GuardGauge = rt.GuardGaugeMax;
         rt.MoveSpeed = CombatMath.MoveSpeedMps(def.Stats, weapon, _c);
         rt.PerceptDelaySec = CombatMath.PerceptionDelay(def.Stats);
+
+        // 특성(T09): 파생스탯·전투 배율 반영. 고유 행동(좀비·숨고르기·초상비·선취점)은 Traits 보유 여부로 분기.
+        if (def.TraitIds != null)
+            foreach (var id in def.TraitIds)
+            {
+                if (!TraitTable.Exists(id)) continue;
+                rt.Traits.Add(id);
+                var t = TraitTable.Get(id);
+                rt.HpMax *= t.HpMaxMult;
+                rt.StaminaMax *= t.StaminaMaxMult;
+                rt.PoiseMax *= t.PoiseMaxMult;
+                rt.MoveSpeed *= t.MoveSpeedMult;
+                rt.PerceptDelaySec += t.PerceptDelayAdd;
+                rt.DamageTakenMult *= t.DamageTakenMult;
+                rt.StamRegenTraitMult *= t.StamRegenMult;
+                rt.DodgeCostMult *= t.DodgeCostMult;
+                rt.RangeBonus += t.RangeAdd;
+                rt.SizeScale *= t.SizeScale;
+            }
+
+        rt.Hp = rt.HpMax;
+        rt.Stamina = rt.StaminaMax;
+        rt.Poise = rt.PoiseMax;
+        rt.GuardGauge = rt.GuardGaugeMax;
         rt.Pos = startPos;
         rt.CircleSign = idx == 0 ? 1f : -1f;   // 서로 반대로 선회 → 꼬리물기 대칭 회피
         rt.Patience = _c.PatienceMax;
@@ -182,7 +202,7 @@ public sealed class MatchSim
         // 출혈: 매 틱 누적 피해 (별도 트랙 — 상태 무관, 가드·다운 중에도 흐른다). 출혈사 가능(아래 KO 체크가 잡음).
         if (f.BleedStacks > 0)
         {
-            if (_now >= f.BleedExpiry) { f.BleedStacks = 0; f.BleedDps = 0f; f.BleedSource = -1; }
+            if (_now >= f.BleedExpiry || DebuffImmune(f)) { f.BleedStacks = 0; f.BleedDps = 0f; f.BleedSource = -1; }
             else
             {
                 float bd = f.BleedStacks * f.BleedDps * Dt;
@@ -223,7 +243,7 @@ public sealed class MatchSim
         if (f.Weapon.Range >= _c.MinLongRange && f.State == FighterState.Move
             && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
             regen = -_c.KiteStamCostPerSec;
-        if (regen > 0f) regen *= f.Dir.StamRegenMult;
+        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
         if (f.IsExhausted) f.ExhaustTimer -= Dt;
@@ -407,7 +427,7 @@ public sealed class MatchSim
         // 교전 거리 보정: 선호 거리가 자기 유효 공격 거리보다 멀면 영원한 대치가 된다 (거울 매치 KO 0%로 검출).
         // "때릴 의지가 있으면 닿는 곳까지 간다" — 단 NoAttack(명예중시 HoldOff) 중엔 원래 선호 거리 유지.
         float engage = d.NoAttack > 0.5f ? d.PreferredDistance
-                     : MathF.Min(d.PreferredDistance, f.Weapon.Range * 0.8f);
+                     : MathF.Min(d.PreferredDistance, f.EffRange * 0.8f);
         float gap = dist - engage;
         // 지친 상대는 반격할 수 없다 = 캔슬 불가 상태와 동급의 확정 처벌 창.
         bool oppLocked = opp.IsExhausted
@@ -415,7 +435,7 @@ public sealed class MatchSim
                       or FighterState.Down or FighterState.Taunt or FighterState.HitStun;
         // 평시엔 인지 지연 보상 마진(사거리 끝 발사는 빈 곳을 때림),
         // 확정 기회(캔슬 불가 상태의 상대)엔 풀 사거리 — 후딜 처벌이 마진에 막히면 카운터형이 죽는다.
-        bool inRange = dist <= f.Weapon.Range * (oppLocked ? 1.0f : 0.88f);
+        bool inRange = dist <= f.EffRange * (oppLocked ? 1.0f : 0.88f);
         bool oppWindup = opp.State == FighterState.Windup;
         bool oppRecovery = opp.State == FighterState.Recovery;
         bool oppGuard = opp.State == FighterState.Guard;
@@ -439,14 +459,14 @@ public sealed class MatchSim
         float innerMul = selfInner ? 0.45f : 1f;
         float light = inRange ? (0.25f + d.Aggression) * innerMul : 0f; // 사거리 안 기본 공격성 (전 전술 공통 바닥값)
         float heavy = inRange ? d.Aggression * (0.4f + 0.6f * d.RiskTolerance) * (1f + d.HeavyBias + f.Weapon.HeavyBias) * innerMul : 0f;
-        float feint = (dist <= f.Weapon.Range * 1.3f) ? d.FeintRate * 0.8f : 0f;
+        float feint = (dist <= f.EffRange * 1.3f) ? d.FeintRate * 0.8f : 0f;
 
         bool oppHeavyWindup = oppWindup && opp.MotionKind == MotionKind.Heavy;
 
         // 리치 우위: 상대는 내 사거리 안, 나는 상대 사거리 밖 = 일방 유효타 구간.
         // 창/채찍 "견제"의 기계적 본질 (문서[4] 8장 거리 대역 / 기획서 "창=견제 특화").
         var oppRt = _f[1 - f.Index];
-        float oppRange = oppRt.Weapon.Range;
+        float oppRange = oppRt.EffRange;
         bool reachAdvantage = inRange && dist > oppRange + 0.1f;
         if (reachAdvantage) { light *= 2.2f; feint *= 1.3f; }
         // 장거리 무기가 적 사거리 안쪽으로 끌려든 상태(cramped) = 자기 우위 거리(reachAdvantage)를 못 잡은 위험 구간.
@@ -612,8 +632,10 @@ public sealed class MatchSim
     private bool DoDodge(FighterRuntime f, bool away, bool allowWindupCancel)
     {
         if (!IsCancellable(f, allowWindupCancel)) return false;
-        if (f.Stamina < _c.StamCostDodge || f.IsExhausted) return false;
-        f.Stamina -= _c.StamCostDodge;
+        float cost = _c.StamCostDodge * f.DodgeCostMult;   // 초상비: 대시 ST소모 감소
+        if (f.Stamina < cost || f.IsExhausted) return false;
+        f.Stamina -= cost;
+        if (f.Has(TraitTable.Lightfoot)) f.DashSpeedBuffUntil = _now + 1f;  // 초상비: 대시 후 1초 이속↑
 
         var opp = _f[1 - f.Index];
         Vec2 back = (f.Pos - opp.Pos).Normalized();        // 상대 반대쪽
@@ -694,7 +716,8 @@ public sealed class MatchSim
         {
             case FighterState.Move:
             {
-                float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum);
+                float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
+                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
                 Vec2 toOpp = (PerceivedMovePos(f) - f.Pos).Normalized();
                 Vec2 move = f.CurrentAction switch
@@ -801,7 +824,7 @@ public sealed class MatchSim
     private void TryResolveHit(FighterRuntime atk, FighterRuntime def, in DefenseSnap ds)
     {
         float dist = Vec2.Dist(atk.Pos, ds.Pos);
-        if (dist > atk.Weapon.Range + 0.05f) return; // 아직 범위 밖 — Active 동안 계속 시도
+        if (dist > atk.EffRange + 0.05f) return; // 아직 범위 밖 — Active 동안 계속 시도 (거인 EffRange 반영)
 
         atk.SwingResolved = true;
 
@@ -843,9 +866,9 @@ public sealed class MatchSim
                 def.GuardDisabled = true;
                 Emit(new GuardBroken(_now, def.Index));
                 CrowdFill(atk, 8f);   // 가드 파괴 — 함성
-                // 방패는 붕괴 완화(파국적 0% 모드 축소) — 그 외 무기는 기존 풀스태거.
+                // 방패는 붕괴 완화(파국적 0% 모드 축소) — 그 외 무기는 기존 풀스태거. 좀비(저HP)는 면역.
                 float breakStagger = def.Weapon.ParryWindowSec > 0f ? _c.ShieldGuardBreakStaggerSec : gr.StaggerSec;
-                ChangeState(def, FighterState.Stagger, breakStagger);
+                if (!DebuffImmune(def)) ChangeState(def, FighterState.Stagger, breakStagger);
             }
             return;
         }
@@ -853,6 +876,7 @@ public sealed class MatchSim
         // 3) 풀 히트
         bool isCounter = ds.State is FighterState.Windup or FighterState.Recovery;
         bool isCrit = _rng.Roll(CombatMath.CritChancePct(atk.Def.Stats, def.Def.Stats, _c) / 100f);
+        if (atk.Has(TraitTable.CatchBreath) && atk.StaminaPct >= 0.80f) isCrit = true; // 숨고르기: ST≥80% 확정 크리
         var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum,
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
@@ -871,6 +895,8 @@ public sealed class MatchSim
 
         // 경직 처리
         if (wasDown) { def.DownHitConsumed = true; return; }
+        // 좀비: HP≤30%면 모든 경직(다운/스태거/히트스턴) 면역 — 피해는 받되 흐름은 안 끊긴다.
+        if (DebuffImmune(def)) return;
         if (wasStaggered && atk.MotionKindNow == MotionKind.Heavy)
         {
             // Stagger 중 강공 적중 → 다운
@@ -895,8 +921,26 @@ public sealed class MatchSim
         }
     }
 
+    /// <summary>좀비: HP≤30% 시 디버프(경직·출혈·기절) 면역. 피해 자체는 정상.</summary>
+    private static bool DebuffImmune(FighterRuntime f) => f.Has(TraitTable.Zombie) && f.HpPct <= 0.30f;
+
     private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
     {
+        // 선취점: 첫 클린 히트(가드 제외) ×1.25 + 본인에 흡수 쉴드 부여(다음 피격 완충).
+        if (!guarded && atk.Has(TraitTable.FirstBlood) && !atk.FirstHitDone)
+        {
+            atk.FirstHitDone = true;
+            dmg *= 1.25f;
+            atk.ShieldHp = _c.FirstBloodShield;
+            atk.ShieldExpiry = _now + _c.FirstBloodShieldSec;
+        }
+        dmg *= def.DamageTakenMult;   // 받피 특성 (유리몸·질긴가죽·둔감)
+        // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
+        if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
+        {
+            float a = MathF.Min(dmg, def.ShieldHp);
+            def.ShieldHp -= a; dmg -= a;
+        }
         def.Hp -= dmg;
         atk.DamageDealt += dmg;
         def.ConsecHitsTaken++;
@@ -923,7 +967,7 @@ public sealed class MatchSim
 
         atk.ParriedStacks++;
         atk.ParriedDecayAt = _now + _c.ParryStunDecaySec;
-        bool stunned = atk.ParriedStacks >= _c.ParryStunStacksMax;
+        bool stunned = atk.ParriedStacks >= _c.ParryStunStacksMax && !DebuffImmune(atk); // 좀비(저HP)는 기절 면역
         Emit(new Parried(_now, def.Index, atk.Index, stunned ? 0 : atk.ParriedStacks)); // 0 = 누적 임계 → 기절
         if (stunned)
         {
@@ -936,6 +980,7 @@ public sealed class MatchSim
     /// <summary>출혈 1스택 적립·갱신 (합산, 상한 BleedMaxStacks). 지속 시간 갱신(연장 아님).</summary>
     private void ApplyBleed(FighterRuntime atk, FighterRuntime def)
     {
+        if (DebuffImmune(def)) return;   // 좀비(저HP): 출혈 면역
         def.BleedStacks = Math.Min(_c.BleedMaxStacks, def.BleedStacks + 1);
         def.BleedDps = atk.Weapon.BleedDps;
         def.BleedExpiry = _now + _c.BleedDurationSec;

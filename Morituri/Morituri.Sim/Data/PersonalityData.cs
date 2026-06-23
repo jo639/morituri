@@ -260,7 +260,8 @@ public static class PersonalityTable
 // ───────────────────────── T07_FighterTemplates ─────────────────────────
 
 /// <summary>테스트용 선수 정의 (스탯 + 무기 + 전술 + 성격 조합).</summary>
-public sealed record FighterDef(string Name, FighterStats Stats, string WeaponId, string TacticsId, string PersonalityId)
+public sealed record FighterDef(string Name, FighterStats Stats, string WeaponId, string TacticsId, string PersonalityId,
+    string[]? TraitIds = null)   // T09 특성 (문서[7]§6) — 생성 시 TraitGen.Roll로 부여, 미지정 시 없음
 {
     /// <summary>문서[4] 11장 검증 케이스: 버서커 (난전형 + 충동적 + 도끼)</summary>
     public static readonly FighterDef Berserker =

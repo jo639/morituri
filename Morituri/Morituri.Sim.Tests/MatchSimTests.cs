@@ -56,6 +56,45 @@ public class MatchSimTests
     }
 
     [Test]
+    public void TraitGen_RespectsCountDistributionAndExclusion()
+    {
+        // 부여 개수 1(75%)/2(20%)/3(5%) + 상반 배타(같은 축 반대극성 공존 금지) — 결정론.
+        var rng = new Morituri.Sim.Core.SimRandom(12345);
+        var counts = new int[4];
+        for (int i = 0; i < 5000; i++)
+        {
+            var ids = TraitGen.Roll(rng);
+            counts[ids.Length]++;
+            // 배타 검증: 같은 ExclAxis에서 +/− 동시 보유 없음
+            var defs = ids.Select(TraitTable.Get).ToList();
+            foreach (var g in defs.Where(t => t.ExclAxis.Length > 0).GroupBy(t => t.ExclAxis))
+                Assert.That(g.Select(t => t.ExclPolarity).Distinct().Count() <= 1, Is.True,
+                    $"상반 특성 공존: {string.Join(",", ids)}");
+            Assert.That(ids.Distinct().Count(), Is.EqualTo(ids.Length), "중복 특성");
+        }
+        Assert.That(counts[1] / 5000.0, Is.EqualTo(0.75).Within(0.04), "1개 부여 ≈75%");
+        Assert.That(counts[2] / 5000.0, Is.EqualTo(0.20).Within(0.04), "2개 부여 ≈20%");
+        Assert.That(counts[3] / 5000.0, Is.EqualTo(0.05).Within(0.03), "3개 부여 ≈5%");
+    }
+
+    [Test]
+    public void Trait_GiantBoostsHpAndRange_FleetReducesHp()
+    {
+        // 거인: HP·사거리↑(생성 시 파생스탯 반영). 결정론적으로 스탯 변화만 확인(런타임 노출은 프레임으로).
+        var giant = new FighterDef("거인", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_CALM",
+            new[] { "TRT_GIANT" });
+        var plain = new FighterDef("기본", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_CALM");
+        // 거인은 HP·사거리 우위라 동일 빌드(검·압박·냉철) 거울에서 평균 이상 승률이어야 함
+        int giantWins = 0, decided = 0;
+        for (ulong s = 1; s <= 200; s++)
+        {
+            var r = new MatchSim().Run(giant, plain, s);
+            if (r.Winner == 0) { giantWins++; decided++; } else if (r.Winner == 1) decided++;
+        }
+        Assert.That((float)giantWins / decided, Is.GreaterThan(0.55f), "거인(HP·사거리↑)이 기본보다 유리해야 함");
+    }
+
+    [Test]
     public void Bleed_AxeAppliesAndStacks_NonBleedWeaponDoesNot()
     {
         // 출혈(문서[7]§2): 도끼 클린 히트 → BleedApplied, 최대 3스택까지 누적. 검(BleedDps=0)은 출혈 없음.

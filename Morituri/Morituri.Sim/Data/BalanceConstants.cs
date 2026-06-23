@@ -47,6 +47,10 @@ public readonly record struct BalanceConstants
     public float ParryStunDecaySec         { get; init; }  // 누적 스택 1개 감쇠 주기
     public float ShieldGuardBreakStaggerSec { get; init; } // 방패 가드붕괴 완화 스태거(기존 1.2 대비 짧게)
 
+    // --- 흡수 쉴드 (선취점 특성·향후 방패 액티브, 문서[7]) ---
+    public float FirstBloodShield    { get; init; }  // 선취점 부여 흡수량
+    public float FirstBloodShieldSec { get; init; }  // 선취점 쉴드 지속
+
     // --- 스태미나 (문서[4] 6장) ---
     public float StamCostAttackLight { get; init; }
     public float StamCostAttackHeavy { get; init; }
@@ -158,6 +162,9 @@ public readonly record struct BalanceConstants
         ParryStunStacksMax = 3,            // 3회 패링당하면 기절
         ParryStunDecaySec = 3f,            // 3초마다 1스택 감쇠 (연속 패링 아니면 안 쌓임)
         ShieldGuardBreakStaggerSec = 0.5f, // 방패 붕괴 완화(1.2→0.5): 파국적 0% 모드 축소
+
+        FirstBloodShield = 50f,            // 선취점 흡수량(약 1히트분)
+        FirstBloodShieldSec = 8f,          // 선취점 쉴드 지속
 
         StamCostAttackLight = 8f,
         StamCostAttackHeavy = 18f,

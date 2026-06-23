@@ -120,15 +120,20 @@ internal static class Replay
         return PickNamed(m);
     }
 
-    // "무기/전술/성격" 한 빌드 → FighterDef. 빈 필드는 기본값으로 채우고 ID 프리픽스를 자동 부착한다.
+    // "무기/전술/성격[/특성+특성]" 한 빌드 → FighterDef. 빈 필드는 기본값. 4번째 필드는 +로 구분된 특성(예: GIANT+ZOMBIE).
     private static FighterDef BuildFighter(string spec, int idx)
     {
         var f = spec.Split('/');
         string wpn = Field(f, 0, "SWORD");
         string tac = Field(f, 1, "BALANCED");
         string per = Field(f, 2, "CALM");
+        string[]? traits = null;
+        if (f.Length > 3 && f[3].Length > 0)
+            traits = f[3].Split('+', StringSplitOptions.RemoveEmptyEntries)
+                         .Select(t => "TRT_" + t.Trim().ToUpperInvariant())
+                         .Where(TraitTable.Exists).ToArray();
         string name = $"P{idx + 1}·{per}·{tac}·{wpn}";
-        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per);
+        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits);
     }
 
     private static string Field(string[] f, int i, string def)

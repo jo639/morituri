@@ -16,7 +16,7 @@ public sealed record ViewerEndowment(
 
 /// <summary>한 선수의 정적 정보 — 뷰어가 HP바 라벨·사거리 표시에 쓴다.</summary>
 public sealed record ViewerFighter(string Name, string Weapon, string Tactic, string Personality, float Range,
-    ViewerEndowment? Endowment = null);
+    ViewerEndowment? Endowment = null, string[]? Traits = null, float SizeScale = 1f);
 
 public sealed record ViewerMeta(float ArenaRadius, ViewerFighter A, ViewerFighter B);
 
@@ -70,6 +70,15 @@ public static class ViewerExport
             s.Atk, s.Def, s.HpMax, s.Spd, s.Aspd, s.Rct);
     }
 
-    private static ViewerFighter Describe(FighterDef d, ViewerEndowment? end) =>
-        new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, WeaponTable.Get(d.WeaponId).Range, end);
+    private static ViewerFighter Describe(FighterDef d, ViewerEndowment? end)
+    {
+        string[]? names = null; float size = 1f;
+        if (d.TraitIds is { Length: > 0 })
+        {
+            var defs = d.TraitIds.Where(TraitTable.Exists).Select(TraitTable.Get).ToArray();
+            names = defs.Select(t => t.Name).ToArray();
+            foreach (var t in defs) size *= t.SizeScale;   // 거인 등 크기 배율 합성
+        }
+        return new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, WeaponTable.Get(d.WeaponId).Range, end, names, size);
+    }
 }
