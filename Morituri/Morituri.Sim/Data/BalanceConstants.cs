@@ -227,7 +227,7 @@ public readonly record struct BalanceConstants
         StartGap = 4f,
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,
-        MinLongRange = 2.0f,
-        CollisionRadius = 0.4f,  // 반경합 0.8m — 두 캐릭터 점유 공간 (Disc 충돌, 통과·교환 금지)
+        MinLongRange = 3.0f,   // 거리 ×1.5 스케일 동반(검 2.4 근접 유지, 대검3.0·창3.9·채찍4.5 장사거리)
+        CollisionRadius = 0.6f,  // 반경합 1.2m — 거리 ×1.5 스케일. 쌍검(1.65)도 적중 가능(1.2<1.65)
     };
 }

@@ -196,6 +196,46 @@ internal static class Analysis
         _ => wpn,
     };
 
+    // 무기 → 시그니처 전술 (간격 측정용)
+    private static string SigTac(string w) => w switch
+    {
+        "WPN_SPEAR" => "TAC_COUNTER", "WPN_WHIP" => "TAC_ZONER", "WPN_DUALBLADES" => "TAC_BRAWLER",
+        "WPN_SHIELD" => "TAC_DEFENDER", "WPN_AXE" => "TAC_BRAWLER", _ => "TAC_PRESSURE",
+    };
+
+    /// <summary>간격 측정: 전 무기(시그니처 빌드) 페어별 평균/최소/최대 gap + 무기별 평균. 사거리/거리 스케일 영향 관찰.</summary>
+    public static void SpacingProbe(int games)
+    {
+        Console.WriteLine($"=== 간격 측정 (전 무기 페어, 매치업당 {games}경기, 프레임 평균) ===\n");
+        var perW = new Dictionary<string, (double sum, long n)>();
+        double allSum = 0; long allN = 0; double allMin = 1e9, allMax = 0;
+        foreach (var wa in AllWeapons)
+        {
+            double wsum = 0; long wn = 0;
+            foreach (var wb in AllWeapons)
+            {
+                var a = new FighterDef(Short(wa), FighterStats.Baseline, wa, SigTac(wa), "PER_CALM");
+                var b = new FighterDef(Short(wb), FighterStats.Baseline, wb, SigTac(wb), "PER_CALM");
+                for (ulong s = 1; s <= (ulong)games; s++)
+                {
+                    var frames = new List<ReplayFrame>();
+                    new MatchSim().Run(a, b, s, null, frames);
+                    foreach (var f in frames)
+                    {
+                        double g = Math.Sqrt((f.Bx - f.Ax) * (f.Bx - f.Ax) + (f.By - f.Ay) * (f.By - f.Ay));
+                        wsum += g; wn++; allSum += g; allN++;
+                        if (g < allMin) allMin = g; if (g > allMax) allMax = g;
+                    }
+                }
+            }
+            perW[wa] = (wsum, wn);
+        }
+        Console.WriteLine("무기      평균 gap(자기 모든 매치업)");
+        foreach (var w in AllWeapons)
+            Console.WriteLine($"  {Short(w),-5} {perW[w].sum / perW[w].n,5:F2}m");
+        Console.WriteLine($"\n전체 평균 gap: {allSum / allN:F2}m  (최소 {allMin:F2} / 최대 {allMax:F2})");
+    }
+
     /// <summary>패링 성공률 프로브: 방패(방어형)가 각 무기(압박)를 상대로 패링 vs 칩블록 비율·기절·승률.</summary>
     public static void ParryProbe(int games)
     {

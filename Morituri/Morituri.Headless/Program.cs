@@ -42,6 +42,12 @@ if (args.Length > 0 && args[0] == "parryprobe")
     return;
 }
 
+if (args.Length > 0 && args[0] == "spacingprobe")
+{
+    Analysis.SpacingProbe(args.Length > 1 && int.TryParse(args[1], out int spp) ? spp : 20);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "statgen")
 {
     StatGenReport.Run(args.Length > 1 && int.TryParse(args[1], out int sgn) ? sgn : 20000);
