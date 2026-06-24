@@ -73,12 +73,13 @@ public static class ViewerExport
     private static ViewerFighter Describe(FighterDef d, ViewerEndowment? end)
     {
         string[]? names = null; float size = 1f;
+        float range = WeaponTable.Get(d.WeaponId).Range;   // 사거리 링 = 유효 사거리(거인 RangeAdd 포함)로
         if (d.TraitIds is { Length: > 0 })
         {
             var defs = d.TraitIds.Where(TraitTable.Exists).Select(TraitTable.Get).ToArray();
             names = defs.Select(t => t.Name).ToArray();
-            foreach (var t in defs) size *= t.SizeScale;   // 거인 등 크기 배율 합성
+            foreach (var t in defs) { size *= t.SizeScale; range += t.RangeAdd; }   // 거인: 크기 ×1.3 + 사거리 +0.3
         }
-        return new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, WeaponTable.Get(d.WeaponId).Range, end, names, size);
+        return new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, range, end, names, size);
     }
 }
