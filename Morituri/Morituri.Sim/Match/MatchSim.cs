@@ -148,6 +148,7 @@ public sealed class MatchSim
                 rt.StamRegenTraitMult *= t.StamRegenMult;
                 rt.DodgeCostMult *= t.DodgeCostMult;
                 rt.RangeBonus += t.RangeAdd;
+                rt.RangeMult *= t.RangeMult;
                 rt.SizeScale *= t.SizeScale;
             }
 

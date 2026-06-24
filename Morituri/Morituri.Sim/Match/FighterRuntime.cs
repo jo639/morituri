@@ -58,7 +58,8 @@ public sealed class FighterRuntime
     public float GuardDamageMult = 1f;  // 가드 시 받는 피해 추가 배율 (봉쇄자)
     public float StamRegenTraitMult = 1f; // 스태미나 회복 배율 (마르지않는샘·허약체질)
     public float DodgeCostMult = 1f;    // 대시 스태미나 소모 배율 (초상비)
-    public float RangeBonus;            // 사거리 가산 (거인)
+    public float RangeBonus;            // 사거리 가산(flat)
+    public float RangeMult = 1f;        // 사거리 배율 (거인 — 비례 reach, 무기 정체성 보존)
     public float SizeScale = 1f;        // 뷰어 크기 배율 (거인) — sim 무관, 프레젠테이션
     public float DashSpeedBuffUntil;    // 초상비: 대시 후 이속 버프 만료
     public bool  FirstHitDone;          // 선취점: 첫 클린 히트 소비 여부
@@ -66,7 +67,7 @@ public sealed class FighterRuntime
     public float ShieldExpiry;          // 흡수 쉴드 만료
 
     public bool Has(string traitId) => Traits.Contains(traitId);
-    public float EffRange => Weapon.Range + RangeBonus;   // 유효 사거리 (거인 +)
+    public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)
 
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;

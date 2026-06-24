@@ -13,7 +13,7 @@ public sealed record TraitDef(
     float HpMaxMult = 1f, float StaminaMaxMult = 1f, float StamRegenMult = 1f,
     float MoveSpeedMult = 1f, float PoiseMaxMult = 1f, float PerceptDelayAdd = 0f,
     float DamageTakenMult = 1f, float DodgeCostMult = 1f, float RangeAdd = 0f, float SizeScale = 1f,
-    float GuardDamageMult = 1f);   // 가드 성공 시 받는 피해 추가 배율(봉쇄자 <1). 일반 받피(DamageTakenMult)와 별개로 가드에만 적용
+    float GuardDamageMult = 1f, float RangeMult = 1f);   // RangeMult: 사거리 비례 배율(거인)   // 가드 성공 시 받는 피해 추가 배율(봉쇄자 <1). 일반 받피(DamageTakenMult)와 별개로 가드에만 적용
 
 public static class TraitTable
 {
@@ -38,7 +38,7 @@ public static class TraitTable
         new("TRT_STAND",      "불굴",        PoiseMaxMult: 1.30f),
         new("TRT_STONEWALL",  "봉쇄자",      GuardDamageMult: 0.50f),              // 방어 시 받는 피해 ×0.5(가드 한정)
         new("TRT_GLASSJAW",   "유리턱",      PoiseMaxMult: 0.60f),                 // 기절 잘 걸림
-        new("TRT_GIANT",      "거인",        HpMaxMult: 1.25f, RangeAdd: 0.30f, SizeScale: 1.30f),
+        new("TRT_GIANT",      "거인",        HpMaxMult: 1.25f, RangeMult: 1.25f, SizeScale: 1.30f),  // 비례 reach ×1.25(의미있는 선타 우위, 압살은 아님)
         new(Zombie,           "좀비",        MoveSpeedMult: 0.85f),                 // + 고유: HP≤30% 디버프 면역
         new(CatchBreath,      "숨고르기"),                                          // 고유: ST≥80% 확정 크리
         new(Lightfoot,        "초상비",      DodgeCostMult: 0.50f),                 // + 고유: 대시 후 이속↑
