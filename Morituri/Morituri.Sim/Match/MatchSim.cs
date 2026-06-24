@@ -144,6 +144,7 @@ public sealed class MatchSim
                 rt.MoveSpeed *= t.MoveSpeedMult;
                 rt.PerceptDelaySec += t.PerceptDelayAdd;
                 rt.DamageTakenMult *= t.DamageTakenMult;
+                rt.GuardDamageMult *= t.GuardDamageMult;
                 rt.StamRegenTraitMult *= t.StamRegenMult;
                 rt.DodgeCostMult *= t.DodgeCostMult;
                 rt.RangeBonus += t.RangeAdd;
@@ -946,6 +947,7 @@ public sealed class MatchSim
             atk.ShieldExpiry = _now + _c.FirstBloodShieldSec;
         }
         dmg *= def.DamageTakenMult;   // 받피 특성 (유리몸·질긴가죽·둔감)
+        if (guarded) dmg *= def.GuardDamageMult;   // 봉쇄자: 가드 시 추가 감쇠
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
         {

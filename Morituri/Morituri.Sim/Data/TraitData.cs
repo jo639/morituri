@@ -12,7 +12,8 @@ public sealed record TraitDef(
     string ExclAxis = "", int ExclPolarity = 0,
     float HpMaxMult = 1f, float StaminaMaxMult = 1f, float StamRegenMult = 1f,
     float MoveSpeedMult = 1f, float PoiseMaxMult = 1f, float PerceptDelayAdd = 0f,
-    float DamageTakenMult = 1f, float DodgeCostMult = 1f, float RangeAdd = 0f, float SizeScale = 1f);
+    float DamageTakenMult = 1f, float DodgeCostMult = 1f, float RangeAdd = 0f, float SizeScale = 1f,
+    float GuardDamageMult = 1f);   // 가드 성공 시 받는 피해 추가 배율(봉쇄자 <1). 일반 받피(DamageTakenMult)와 별개로 가드에만 적용
 
 public static class TraitTable
 {
@@ -35,6 +36,7 @@ public static class TraitTable
         // 단독(배타 없음)
         new("TRT_FLEET",      "민첩",        MoveSpeedMult: 1.12f, HpMaxMult: 0.90f),
         new("TRT_STAND",      "불굴",        PoiseMaxMult: 1.30f),
+        new("TRT_STONEWALL",  "봉쇄자",      GuardDamageMult: 0.50f),              // 방어 시 받는 피해 ×0.5(가드 한정)
         new("TRT_GLASSJAW",   "유리턱",      PoiseMaxMult: 0.60f),                 // 기절 잘 걸림
         new("TRT_GIANT",      "거인",        HpMaxMult: 1.25f, RangeAdd: 0.30f, SizeScale: 1.30f),
         new(Zombie,           "좀비",        MoveSpeedMult: 0.85f),                 // + 고유: HP≤30% 디버프 면역

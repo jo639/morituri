@@ -55,6 +55,7 @@ public sealed class FighterRuntime
     // --- 특성 (T09, 문서[7]§6) — 생성 시 CreateRuntime이 파생스탯에 반영 + 고유 행동은 보유 여부로 분기 ---
     public HashSet<string> Traits = new();
     public float DamageTakenMult = 1f;  // 받는 피해 배율 (유리몸·질긴가죽·둔감)
+    public float GuardDamageMult = 1f;  // 가드 시 받는 피해 추가 배율 (봉쇄자)
     public float StamRegenTraitMult = 1f; // 스태미나 회복 배율 (마르지않는샘·허약체질)
     public float DodgeCostMult = 1f;    // 대시 스태미나 소모 배율 (초상비)
     public float RangeBonus;            // 사거리 가산 (거인)
