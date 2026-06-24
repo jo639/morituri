@@ -357,7 +357,7 @@ function buildFacing(){
 // 렌더에서 걷기 대신 idle 스탠스로 그린다. 실제로 선회 이동(16~18s처럼 ~1m 이동) 중이면 SPD를 넘어 걷기 애니 유지.
 function buildClinch(){
   const F=frames; if(!F.length) return;
-  const GAP=1.15, MIN=0.45, SPD=0.25;   // 근접(m) / 최소 지속(s) / 정지로 볼 속도(m/s)
+  const GAP=1.35, MIN=0.45, SPD=0.25;   // 근접(m) / 최소 지속(s) / 정지로 볼 속도(m/s). GAP는 충돌 최소거리(2×CollisionRadius=1.2) 위로 — 핀 프레임이 걷기 대신 idle로
   const mill = s => s==='Move' || s==='Idle';   // 공격·피격·다운·가드가 아닌 '간 보는' 상태
   const gapAt = i => Math.hypot(F[i].Bx-F[i].Ax, F[i].By-F[i].Ay);
   const spd = (i,px,py) => { const a = i>0 ? i-1 : 0, b = i>0 ? i : 1;
