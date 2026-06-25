@@ -93,6 +93,18 @@ public readonly record struct BalanceConstants
     public float DecisionTickSec   { get; init; }  // 전술층 주기 0.2s
     public float StrategyTickSec   { get; init; }  // 전략층 주기 1s
 
+    // --- 이동 스티어링(안1, 연출 노브 — MoveReactDelaySec과 동급, 밸런스 무손상) ---
+    // 결정층(Approach/Retreat/Strafe 라벨)은 그대로. 라벨→위치 번역만 매끄럽게: 목표거리 근처 감속(arrive)으로
+    // 오버슈트·튕김 제거, 접선 혼합(orbit)으로 직각 스텝 대신 호, 가속제한(maxAccel)으로 방향 순간이동 제거.
+    // 히트/충돌은 실시간 Pos로 판정하므로 매트릭스 무관(거울 KO만 점검).
+    public float SteerArriveBand   { get; init; }  // 목표거리 ±이 폭에서 방사속도 0→full 선형 램프(감속 밴드, m)
+    public float SteerOrbitGain    { get; init; }  // 접선(선회) 혼합 비율 — 호의 곡률(0=직선)
+    public float SteerMaxAccel     { get; init; }  // 속도 변경 상한(m/s²) — 작을수록 무겁고 굼뜸
+
+    // --- 스페이싱 의도 히스테리시스(안2) — 거리 댄스(경계 깜빡임)를 commit으로, 무의미한 선회를 Hold(대기)로 ---
+    public float SpacingDwellSec        { get; init; }  // 의도 전환 최소 간격(초) — 잔떨림 억제(commit 강제)
+    public float SpacingHoldReleaseRatio{ get; init; }  // Close/Space → Hold 해제 임계 = band × 이값 (이중임계 = 히스테리시스)
+
     // --- 인내심 (영원 대치 해소): 무교전이 길어지면 소모 → 공격 충동. 거울전(reachAdvantage 부재) 교착 방지 ---
     public float PatienceMax           { get; init; }  // 가득 찬 인내심
     public float PatienceDrainBase     { get; init; }  // 초당 감소 기준 ×(0.5+Aggression) — 공격적일수록 빨리 소진(전술/성격/특성 반영)
@@ -208,6 +220,11 @@ public readonly record struct BalanceConstants
 
         DecisionTickSec = 0.2f,
         StrategyTickSec = 1.0f,
+        SteerArriveBand = 0.4f,   // 교전거리 0.4m 안에서만 감속 — 그 전엔 풀스피드로 붙어 교전 빈도 보존(KO율 유지)
+        SteerOrbitGain = 0.35f,   // 선회(Strafe) 접선 비율 — 카이터 호의 곡률
+        SteerMaxAccel = 10f,      // 이속 ~2.5m/s를 0.25s에 도달 — 무게감 있으나 굼뜨지 않게
+        SpacingDwellSec = 0.35f,        // 의도 전환 후 0.35s 유지 — 0.2s 결정틱마다 뒤집히던 잔떨림 제거
+        SpacingHoldReleaseRatio = 0.4f, // 교전거리 ±(band×0.4)까지 돌아와야 Hold 해제 → 진입 band, 이탈 0.4band (히스테리시스)
         PatienceMax = 100f,
         PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)

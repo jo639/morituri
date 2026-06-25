@@ -432,6 +432,29 @@ public sealed class MatchSim
 
     // --- Utility 점수 산식 (문서[3] 6.2) ---
 
+    /// <summary>
+    /// 스페이싱 의도(Close/Hold/Space) 히스테리시스 갱신(안2). gap이 교전거리 ±band를 명백히 벗어나면 좁힘/벌림으로
+    /// 진입하고, 중심쪽으로 band×ReleaseRatio 안까지 돌아와야 Hold로 해제(이중임계). 전환은 SpacingDwellSec마다 1회로
+    /// 제한 → 0.2s 결정틱마다 Approach↔Retreat가 뒤집히던 잔떨림(거리 댄스)을 commit된 결단으로 바꾼다.
+    /// </summary>
+    private void UpdateSpacingIntent(FighterRuntime f, float gap, float band)
+    {
+        SpacingIntent want = f.Intent;
+        if (gap > band) want = SpacingIntent.Close;            // 명백히 멀다 → 좁힌다
+        else if (gap < -band) want = SpacingIntent.Space;      // 명백히 가깝다 → 벌린다
+        else                                                   // 밴드 안: 중심쪽으로 충분히 돌아왔을 때만 Hold 해제
+        {
+            float inner = band * _c.SpacingHoldReleaseRatio;
+            if (f.Intent == SpacingIntent.Close && gap <= inner) want = SpacingIntent.Hold;
+            else if (f.Intent == SpacingIntent.Space && gap >= -inner) want = SpacingIntent.Hold;
+        }
+        if (want != f.Intent && (_now - f.IntentSince) >= _c.SpacingDwellSec)
+        {
+            f.Intent = want;
+            f.IntentSince = _now;
+        }
+    }
+
     private ActionRequest SelectAction(FighterRuntime f, in PerceptSnap opp)
     {
         ref readonly Directive d = ref f.Dir;
@@ -456,15 +479,24 @@ public sealed class MatchSim
         // 경계 근접도 (0 중심 ~ 1 가장자리). B: 원형 핏 — 경계선 후퇴는 막히므로 선회가 답.
         float edgeProx = MathF.Min(1f, f.Pos.Length / MathF.Max(0.5f, _c.ArenaRadius - 0.5f));
 
-        Span<float> score = stackalloc float[9];
-        score[(int)ActionRequest.Approach] = gap > d.DistanceTolerance ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.05f;
-        // 후퇴: 경계에선 벽에 막혀 무의미 → 가치 감쇠 (옛 1D 벽-핀 문제의 제거)
-        score[(int)ActionRequest.Retreat] = (gap < -d.DistanceTolerance ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.05f)
-                                          * (1f - 0.6f * edgeProx);
-        // 선회(B 핵심): 사거리 우위 무기는 자기 스윗스팟을 '유지'하려 선회(견제 카이팅), 그 외엔 근접 시 거리벌리기.
-        bool wantSpace = gap < -d.DistanceTolerance
-                      || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance);
-        score[(int)ActionRequest.Strafe] = 0.10f + (wantSpace ? 0.30f + 0.7f * edgeProx : 0f);
+        // 스페이싱 의도(안2): Close/Hold/Space 3-상태 히스테리시스. gap 경계에서 매 틱 뒤집히던 거리 댄스를
+        // commit(최소 dwell·이중임계)으로 바꾸고, Hold(중립 대기)를 도입해 "할 게 없을 때 빙빙 도는" 무의미한
+        // 선회를 제자리 회복·관망으로 대체한다.
+        UpdateSpacingIntent(f, gap, d.DistanceTolerance);
+
+        Span<float> score = stackalloc float[10];
+        // 접근은 Close 의도일 때만, 후퇴는 Space 의도일 때만 — 의도가 안정돼 경계 잔떨림 제거. (후퇴는 경계서 벽 막힘 → 감쇠)
+        score[(int)ActionRequest.Approach] = f.Intent == SpacingIntent.Close
+            ? 0.45f + MathF.Min(1f, gap / 2f) * 0.8f : 0.03f;
+        score[(int)ActionRequest.Retreat] = (f.Intent == SpacingIntent.Space
+            ? 0.45f + MathF.Min(1f, -gap / 2f) * 0.8f : 0.03f) * (1f - 0.6f * edgeProx);
+        // 선회(B 핵심): Space 의도일 때만 — 카이터의 스윗스팟 유지(장사거리) + 근접 시 거리벌리기. 의도 없는 기본
+        // 선회(옛 0.10 바닥)는 제거 → "빙빙 도는" 인위적 동작이 사라지고 Hold가 그 자리를 대신한다.
+        bool wantSpace = f.Intent == SpacingIntent.Space
+                      && (gap < -d.DistanceTolerance || (f.Weapon.Range >= _c.MinLongRange && gap < d.DistanceTolerance));
+        score[(int)ActionRequest.Strafe] = wantSpace ? 0.40f + 0.7f * edgeProx : 0.02f;
+        // Hold(중립 대기): 교전거리에 안착(Hold 의도)했고 더 나은 행동이 없을 때 제자리에서 회복·관망(옛 Strafe 바닥값 대체).
+        score[(int)ActionRequest.Hold] = f.Intent == SpacingIntent.Hold ? 0.12f : 0.02f;
 
         // 자기 약점 거리(inner ×0.6 구간)에서의 공격은 반토막 가치 — 창/채찍은 먼저 거리를 벌리는 게 정답
         bool selfInner = f.Weapon.Range >= _c.MinLongRange && dist < f.Weapon.Range * _c.InnerRangeRatio;
@@ -575,12 +607,12 @@ public sealed class MatchSim
         score[(int)ActionRequest.Dodge] = dodge;
 
         // Noise — 이변의 원천 1
-        for (int i = 1; i < 9; i++)
+        for (int i = 1; i < 10; i++)
             score[i] *= 1f + _rng.Range(-_c.UtilityNoise, _c.UtilityNoise);
 
         // 최고점 + Commit 게이트 (공격은 확신도 요구치 이상일 때만)
         int best = 1;
-        for (int i = 2; i < 9; i++) if (score[i] > score[best]) best = i;
+        for (int i = 2; i < 10; i++) if (score[i] > score[best]) best = i;
 
         var bestAction = (ActionRequest)best;
         bool isAttack = bestAction is ActionRequest.AttackLight or ActionRequest.AttackHeavy or ActionRequest.Feint;
@@ -588,7 +620,7 @@ public sealed class MatchSim
         {
             // 확신도 미달 → 차순위 비공격 행동 (신중함이 공격을 아끼는 메커니즘)
             int alt = (int)ActionRequest.Approach;
-            for (int i = 1; i < 9; i++)
+            for (int i = 1; i < 10; i++)
             {
                 var a = (ActionRequest)i;
                 if (a is ActionRequest.AttackLight or ActionRequest.AttackHeavy or ActionRequest.Feint) continue;
@@ -626,6 +658,12 @@ public sealed class MatchSim
             case ActionRequest.Strafe:
                 f.CurrentAction = action;
                 ChangeState(f, FighterState.Move, _c.DecisionTickSec); // Phase 1: 짧은 정지(각 잡기 연출은 M4)
+                return true;
+
+            case ActionRequest.Hold:   // 안2: 중립 대기 — 발 멈추고 회복·관망(빙빙 도는 무의미한 선회 대체)
+                f.CurrentAction = action;
+                f.Vel = default;                                        // 관성 0 (제자리 정지)
+                if (f.State != FighterState.Idle) ChangeState(f, FighterState.Idle);
                 return true;
 
             case ActionRequest.Guard:
@@ -737,27 +775,51 @@ public sealed class MatchSim
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
                             * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
-                Vec2 toOpp = (PerceivedMovePos(f) - f.Pos).Normalized();
-                Vec2 move = f.CurrentAction switch
+                Vec2 toOpp = PerceivedMovePos(f) - f.Pos;
+                float distO = toOpp.Length;
+                Vec2 radial = distO > 1e-4f ? toOpp * (1f / distO) : new Vec2(f.Index == 0 ? 1f : -1f, 0f);
+                Vec2 tangent = radial.Perp() * f.CircleSign;   // 교전선 수직(선회)
+
+                // arrive(안1): 목표 교전거리(SelectAction과 동일 산식)에 가까울수록 방사속도를 0으로 감속.
+                // gap>0=더 다가갈 여지 / gap<0=물러설 여지. 밴드 안에서 선형 램프 → 오버슈트·튕김(거리 댄스) 제거.
+                ref readonly Directive d = ref f.Dir;
+                float engage = d.NoAttack > 0.5f ? d.PreferredDistance
+                             : MathF.Min(d.PreferredDistance, f.EffRange * f.Weapon.EngageRangeRatio);
+                float arrive = Math.Clamp((distO - engage) / _c.SteerArriveBand, -1f, 1f);
+
+                // 라벨(결정층)이 방사 의도를 정한다. orbit(접선)은 Strafe(선회)에만 — 접근/후퇴에 상시 섞으면
+                // 두 선수가 중심을 공전만 하다 교전이 급감한다(KO 0%·거울 비대칭으로 검출). 접근/후퇴는 직선
+                // 의도를 유지하되 arrive 감속 + 속도 관성이 급반전(거리 댄스)만 매끄러운 위빙으로 바꾼다.
+                Vec2 desiredDir = f.CurrentAction switch
                 {
-                    // 선회(B): 교전선에 수직 접선 이동 → 등속 추격자로부터 간격 유지(카이팅). 옛 1D 불가 동작.
-                    ActionRequest.Strafe => toOpp.Perp() * f.CircleSign,
-                    ActionRequest.Retreat => toOpp * -1f,
-                    _ => toOpp, // Approach
+                    // 접근: 멀면 방사로 좁히고(arrive>0), 교전거리 마지막 한 뼘에서 감속 → 오버슈트·튕김 제거
+                    ActionRequest.Approach => radial * MathF.Max(0f, arrive),
+                    // 후퇴: 너무 가까울 때만(arrive<0) 방사 후진, 교전거리 닿으면 감속 정지(카이터 벽까지 안 도망)
+                    ActionRequest.Retreat => radial * MathF.Min(0f, arrive),
+                    // 선회: 거리 유지하며 접선 주, 거리 오차는 약하게 보정 (옛 Strafe 동작 + 관성 스무딩)
+                    _ => tangent + radial * (arrive * 0.5f),
                 };
+
                 // 벽-접선 탈출(M4-b 재설계): 경계에 몰린 채 거리를 벌리려 할 때(후퇴/선회), 반경(벽)으로 미는
-                // 대신 경계 접선을 따라 상대 반대쪽으로 미끄러진다. 두 disc가 벽에 나란히 박히면 선회(toOpp
-                // 수직)가 ≈반경이 돼 클램프로 잘려 동결되는 핀 버그(74s 정지)를 푼다. 접선은 경계를 안 벗어나
-                // 클램프에 안 잘림.
+                // 대신 경계 접선을 따라 상대 반대쪽으로 미끄러진다. 두 disc가 벽에 나란히 박히면 방사 후진이
+                // ≈반경이 돼 클램프로 잘려 동결되는 핀 버그(74s 정지)를 푼다. 접선은 경계를 안 벗어나 안 잘림.
                 float rN = f.Pos.Length / _c.ArenaRadius;
                 bool wantsSpaceNearWall = rN > 0.5f && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe;
                 if (wantsSpaceNearWall)
                 {
-                    Vec2 tangent = f.Pos.Normalized().Perp();
-                    if (toOpp.X * tangent.X + toOpp.Y * tangent.Y > 0f) tangent = tangent * -1f; // 상대 반대쪽 호
-                    move = tangent;
+                    Vec2 wallTan = f.Pos.Normalized().Perp();
+                    if (radial.X * wallTan.X + radial.Y * wallTan.Y > 0f) wallTan = wallTan * -1f; // 상대 반대쪽 호
+                    desiredDir = wallTan;
                 }
-                f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
+
+                // desired velocity = 방향 × 속도(상한 speed). 속도 관성으로 가속제한 수렴 → 방향 순간이동 금지(무게감).
+                Vec2 desiredVel = desiredDir * speed;
+                if (desiredVel.Length > speed) desiredVel = desiredVel.Normalized() * speed;
+                Vec2 dv = desiredVel - f.Vel;
+                float maxDv = _c.SteerMaxAccel * Dt;
+                if (dv.Length > maxDv) dv = dv.Normalized() * maxDv;
+                f.Vel += dv;
+                f.Pos = ClampToArena(f.Pos + f.Vel * Dt);
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);
                 break;

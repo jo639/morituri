@@ -10,7 +10,10 @@ public enum FighterState
     Taunt, // 오만함 전용 — 역전패 제조기 (의도된 설계)
 }
 
-public enum ActionRequest { None, Approach, Retreat, Strafe, AttackLight, AttackHeavy, Guard, Dodge, Feint }
+public enum ActionRequest { None, Approach, Retreat, Strafe, AttackLight, AttackHeavy, Guard, Dodge, Feint, Hold }
+
+/// <summary>스페이싱 의도(안2) — gap 기반 이동 결정을 히스테리시스로 안정화. Close=좁힘 / Hold=대기 / Space=벌림.</summary>
+public enum SpacingIntent { Close, Hold, Space }
 
 /// <summary>지속형 Override의 런타임 인스턴스 (스택, 만료 시 제거 후 재합성 = 롤백).</summary>
 public sealed class ActiveOverride
@@ -72,6 +75,7 @@ public sealed class FighterRuntime
     // --- 위치 (B: 2D-lite. 원형 핏, 중심 0,0. 문서[8]) ---
     public Vec2 Pos;
     public Vec2 PrevPos;                // 이번 틱 이동 직전 위치 — disc 충돌이 "누가 파고들었나"를 가리는 데 사용
+    public Vec2 Vel;                    // 현재 이동 속도(m/s) — 스티어링 관성. desired velocity로 가속제한 수렴 → 방향 순간이동 금지(무게감)
     public float CircleSign = 1f;       // 선회 방향 (+1 반시계 / -1 시계). 경계 도달 시 반전
 
     // --- 관중 기세 (문서[10]) — MatchSim이 군중게이지로부터 매 틱 갱신 ---
@@ -94,6 +98,8 @@ public sealed class FighterRuntime
     public readonly Dictionary<string, float> CooldownUntil = new();
     public ActionRequest PendingForced = ActionRequest.None; // ForcedHeavy 인터럽트
     public float RepositionUntil;        // [안B] 공격 후 이탈 창 — 이 시각까지 후퇴 강제(카이터 찌르고 빠짐)
+    public SpacingIntent Intent = SpacingIntent.Hold;  // 스페이싱 의도(안2) — 히스테리시스로 안정화된 거리 의사
+    public float IntentSince;            // 마지막 의도 전환 시각 — dwell(최소 유지시간) 판정용
 
     // --- 누적 컨텍스트 (문서[3] 3장) ---
     public int ConsecHitsTaken;
