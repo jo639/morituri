@@ -49,11 +49,14 @@ public sealed class MatchSim
     private const float MoveReactDelaySec = 0.30f;
 
     private readonly IReadOnlyDictionary<string, float>? _weaponDmgScale; // 밸런스 스윕용 무기별 데미지 배율 주입
+    private readonly IReadOnlyDictionary<string, TacticsProfile>? _tacticOverride; // 튜닝 스윕용 전술 프로파일 주입
 
-    public MatchSim(BalanceConstants? constants = null, IReadOnlyDictionary<string, float>? weaponDmgScale = null)
+    public MatchSim(BalanceConstants? constants = null, IReadOnlyDictionary<string, float>? weaponDmgScale = null,
+                    IReadOnlyDictionary<string, TacticsProfile>? tacticOverride = null)
     {
         _c = constants ?? BalanceConstants.Default;
         _weaponDmgScale = weaponDmgScale;
+        _tacticOverride = tacticOverride;
     }
 
     // 뷰어 프레임 샘플링 주기 (15Hz = 4틱마다). 위치는 연속이라 60Hz 전량은 과하고, 15Hz면 보간으로 충분히 매끄럽다.
@@ -121,7 +124,7 @@ public sealed class MatchSim
         var rt = new FighterRuntime
         {
             Index = idx, Def = def, Weapon = weapon,
-            Profile = TacticsTable.Get(def.TacticsId),
+            Profile = _tacticOverride != null && _tacticOverride.TryGetValue(def.TacticsId, out var tp) ? tp : TacticsTable.Get(def.TacticsId),
             Personality = PersonalityTable.Get(def.PersonalityId),
         };
         rt.HpMax = def.Stats.HpMax;
@@ -240,9 +243,9 @@ public sealed class MatchSim
             FighterState.Guard => -_c.StamCostGuardPerSec,
             _ => 0f, // 공격 모션/회피 중 회복 없음
         };
-        // 카이팅 비용(B): 존형이 거리 유지(후퇴/선회)로 빠지면 회복 대신 소모 — 영원히 카이팅 못 한다.
-        // 위치 이중안정을 스태미나 소모로 완충해 브롤러:카이터를 부드럽게 착지시키는 노브.
-        if (f.Weapon.Range >= _c.MinLongRange && f.State == FighterState.Move
+        // 카이팅 비용(B): 거리 유지(후퇴/선회)로 빠지면 회복 대신 소모 — 영원히 카이팅 못 한다.
+        // 위치 이중안정을 스태미나 소모로 완충. 과금 범위는 KiteCostMinRange(기본 장사거리 전용, 튜닝 스윕 차원).
+        if (f.Weapon.Range >= _c.KiteCostMinRange && f.State == FighterState.Move
             && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
             regen = -_c.KiteStamCostPerSec;
         if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
@@ -510,6 +513,7 @@ public sealed class MatchSim
         // 상대 약공을 몸으로 받고(경직 무효) 내 일격을 꽂는다 — 중량 무기의 본래 게임플랜.
         if (f.Weapon.HyperArmor && (oppWindup || opp.State == FighterState.Active)) heavy *= 2.6f;
         if (oppGuard) { heavy *= 1.4f; feint *= 1.5f; }               // 가드 깎기 / 흔들기
+
         if (oppDown) { light *= 1.3f; heavy *= 1.3f; }                // 기본 AI도 추가타 선호 (성격이 가감)
         if (opp.IsExhausted) { light *= 1.8f; heavy *= 2.2f; }        // 지친 적 = 인내형이 기다린 확정 처벌 창 (강공으로 Stagger→다운 노림)
         if (opp.State == FighterState.Taunt) { light *= 2.0f; heavy *= 2.0f; } // 도발 = 무방비 — 역전패 제조기가 작동하려면 처벌자가 있어야 한다
@@ -542,6 +546,11 @@ public sealed class MatchSim
             score[(int)ActionRequest.Strafe] *= damp;
             score[(int)ActionRequest.Retreat] *= damp;
         }
+        // [접촉 핀 해소 실험] 서로 사거리 이내(상호 타격 가능) + 내 선호거리가 상대보다 큰 쪽(=거리를 더 원하는 쪽)만
+        // 데드밴드·감쇠 무시하고 후퇴. 둘 다 빠지지 않고 카이터(높은 pref)만 빠져 → 상대(공격형)는 추격, 거리 분화.
+        bool bothInRange = dist <= f.EffRange && dist <= oppRt.EffRange;
+        bool iWantMoreSpace = d.PreferredDistance > oppRt.Dir.PreferredDistance && gap < -0.05f;
+        if (bothInRange && iWantMoreSpace && impulse < 0.5f) score[(int)ActionRequest.Retreat] = MathF.Max(score[(int)ActionRequest.Retreat], 0.7f);
         score[(int)ActionRequest.AttackLight] = light;
         score[(int)ActionRequest.AttackHeavy] = heavy;
         score[(int)ActionRequest.Feint] = feint;
@@ -736,11 +745,18 @@ public sealed class MatchSim
                     ActionRequest.Retreat => toOpp * -1f,
                     _ => toOpp, // Approach
                 };
-                // 카이터 레버: 후퇴/선회 시 경계로 밀리면 dodge-back 리셋 공간이 사라진다. 열린 중앙으로
-                // 당겨 벽-핀을 피하고 거리 유지 발판을 확보. 존형(장사거리) 전용 — 근접형 거울 질감 보존.
+                // 벽-접선 탈출(M4-b 재설계): 경계에 몰린 채 거리를 벌리려 할 때(후퇴/선회), 반경(벽)으로 미는
+                // 대신 경계 접선을 따라 상대 반대쪽으로 미끄러진다. 두 disc가 벽에 나란히 박히면 선회(toOpp
+                // 수직)가 ≈반경이 돼 클램프로 잘려 동결되는 핀 버그(74s 정지)를 푼다. 접선은 경계를 안 벗어나
+                // 클램프에 안 잘림.
                 float rN = f.Pos.Length / _c.ArenaRadius;
-                if (f.Weapon.Range >= _c.MinLongRange && rN > 0.5f && f.CurrentAction != ActionRequest.Approach)
-                    move = (move + (f.Pos * -1f).Normalized() * ((rN - 0.5f) * 2.6f)).Normalized();
+                bool wantsSpaceNearWall = rN > 0.5f && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe;
+                if (wantsSpaceNearWall)
+                {
+                    Vec2 tangent = f.Pos.Normalized().Perp();
+                    if (toOpp.X * tangent.X + toOpp.Y * tangent.Y > 0f) tangent = tangent * -1f; // 상대 반대쪽 호
+                    move = tangent;
+                }
                 f.Pos = ClampToArena(f.Pos + move * (speed * Dt));
                 if (f.StateTimer <= 0f && f.CurrentAction == ActionRequest.Strafe)
                     ChangeState(f, FighterState.Idle);

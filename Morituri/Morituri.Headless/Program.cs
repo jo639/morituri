@@ -42,6 +42,20 @@ if (args.Length > 0 && args[0] == "parryprobe")
     return;
 }
 
+if (args.Length > 0 && args[0] == "tune")
+{
+    Tune.Run(args.Length > 1 && int.TryParse(args[1], out int tg) ? tg : 100);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "tunetac")
+{
+    int ttg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 60;
+    int ttp = args.Length > 2 && int.TryParse(args[2], out int a2) ? a2 : 2;
+    Tune.RunDescent(ttg, ttp);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "spacingprobe")
 {
     Analysis.SpacingProbe(args.Length > 1 && int.TryParse(args[1], out int spp) ? spp : 20);

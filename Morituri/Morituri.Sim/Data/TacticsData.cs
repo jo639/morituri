@@ -114,9 +114,9 @@ public sealed record TacticsProfile(
 public static class TacticsTable
 {
     public static readonly TacticsProfile Pressure  = new("TAC_PRESSURE",  1.5f, 0.3f, 0.70f, 0.35f, 0.10f, 0.20f, 0.15f, 0.50f, 0.10f);
-    public static readonly TacticsProfile Counter   = new("TAC_COUNTER",   3.0f, 0.3f, 0.30f, 0.60f, 0.80f, 0.50f, 0.10f, 0.40f, 0.25f);
+    public static readonly TacticsProfile Counter   = new("TAC_COUNTER",   3.0f, 0.3f, 0.30f, 0.60f, 0.80f, 0.65f, 0.10f, 0.40f, 0.25f);  // M4-b co-tune: GuardBias 0.50→0.65
     public static readonly TacticsProfile Zoner     = new("TAC_ZONER",     4.2f, 0.4f, 0.45f, 0.50f, 0.30f, 0.30f, 0.50f, 0.30f, 0.30f);
-    public static readonly TacticsProfile Brawler   = new("TAC_BRAWLER",   1.05f, 0.2f, 0.80f, 0.25f, 0.15f, 0.10f, 0.20f, 0.70f, 0.05f);
+    public static readonly TacticsProfile Brawler   = new("TAC_BRAWLER",   1.05f, 0.2f, 0.60f, 0.25f, 0.15f, 0.10f, 0.20f, 0.70f, 0.05f);  // M4-b co-tune: Aggr 0.80→0.60
     public static readonly TacticsProfile Decision  = new("TAC_DECISION",  3.3f, 0.4f, 0.35f, 0.55f, 0.35f, 0.55f, 0.40f, 0.15f, 0.40f);
     public static readonly TacticsProfile Hunter    = new("TAC_HUNTER",    2.4f, 0.3f, 0.55f, 0.65f, 0.40f, 0.30f, 0.35f, 0.45f, 0.20f,
         // 전술 고유 조건 (문서[3] 4.2 메모): 상처 입은 사냥감 추적.
@@ -125,7 +125,9 @@ public static class TacticsTable
             new[] { ParamMod.Add(TParam.Aggression, 0.30f) }, InterruptAction.None, 1.0f, 1.0f, 3.0f, "HUNT"));
     public static readonly TacticsProfile Gambler   = new("TAC_GAMBLER",   1.8f, 0.3f, 0.65f, 0.20f, 0.25f, 0.10f, 0.25f, 0.90f, 0.00f);
     public static readonly TacticsProfile Evader    = new("TAC_EVADER",    3.75f, 0.5f, 0.25f, 0.55f, 0.45f, 0.20f, 0.30f, 0.20f, 0.35f);
-    public static readonly TacticsProfile Defender  = new("TAC_DEFENDER",  2.1f, 0.3f, 0.20f, 0.50f, 0.50f, 0.80f, 0.10f, 0.10f, 0.35f);
+    // M4-b co-tune(좌표하강, 양극화 패널티 포함): 카운터 집착 ↓(CounterWin 0.50→0.10=순수 회피 정체성),
+    // 가드율 ↓(0.80→0.40). 벽-접선 탈출 결합 시 방어형 공짜 카이팅-카운터 무적을 해소.
+    public static readonly TacticsProfile Defender  = new("TAC_DEFENDER",  2.1f, 0.3f, 0.20f, 0.50f, 0.10f, 0.40f, 0.10f, 0.10f, 0.35f);
     public static readonly TacticsProfile Balanced  = new("TAC_BALANCED",  2.4f, 0.3f, 0.50f, 0.45f, 0.35f, 0.40f, 0.30f, 0.40f, 0.20f);
 
     public static readonly TacticsProfile[] All =
