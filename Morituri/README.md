@@ -1,10 +1,15 @@
-# MORITURI — Phase 1 구현 (M1 + M2 + M3 초도)
+# MORITURI — Phase 1 구현 (M1~M4-b)
+
+> 전체 현재 상태는 레포 루트 [`MORITURI_현황.md`](../MORITURI_현황.md) 참조. 이 파일은 빌드·실행·구조 요약.
 
 ## 실행
 ```
-dotnet run --project Morituri.Sim.Tests        # 테스트 50개 (오프라인 자체 러너)
-dotnet run --project Morituri.Headless -- 500  # 배치 시뮬레이션 (매치업당 N경기)
+dotnet run --project Morituri.Sim.Tests          # 테스트 62개 (오프라인 자체 러너)
+dotnet run --project Morituri.Headless -- 500    # 배치 시뮬레이션 (매치업당 N경기)
+dotnet run --project Morituri.Headless -c Release -- viewer "b:SPEAR/COUNTER/CALM:AXE/BRAWLER/CRUEL" 7
+                                                 # 경기 1판 → viewer.json + http://localhost:5173/viewer.html
 ```
+명령어 전체는 [뷰어 명령어 레퍼런스](../뷰어_명령어_레퍼런스.md), 현황 §2 참조.
 NUnit 전환(개발 PC): Tests csproj의 PackageReference 주석 해제, NUNIT_SHIM/OutputType 제거,
 NUnitShim.cs·Program.cs 삭제 → `dotnet test`. 테스트 코드 무변경.
 
@@ -12,47 +17,43 @@ NUnitShim.cs·Program.cs 삭제 → `dotnet test`. 테스트 코드 무변경.
 ```
 Morituri.Sim/            순수 C# — UnityEngine 무의존 (원칙 A)
   Core/SimRandom.cs        xorshift64* 결정론 RNG (원칙 B)
-  Data/                    T01~T07 (원칙 C: 매직넘버 0개)
+  Data/                    T01~T09 (원칙 C: 매직넘버 0개)
     BalanceConstants.cs      T06 전역 상수
-    WeaponDef.cs             T01 무기 8종 (+PoiseMax 신규 컬럼)
+    WeaponDef.cs             T01 무기 8종
     TacticsData.cs           T02 모션 / T03 전술 10종 / Directive·ParamMod
-    PersonalityData.cs       T04 트리거 / T05 성격 12종 / T07 검증 선수
+    PersonalityData.cs       T04 트리거 / T05 성격 10종 / T07 검증 선수
+    TraitData.cs             T09 특성 14종 + 생성 추첨(TraitGen)
+    StatGen.cs               천부/잠재력 추첨 + 스탯 분배(Endowment)
+    FighterStats.cs          6대 스탯 (Baseline 70 균일)
   Combat/CombatMath.cs     문서[4] 수식 (순수 함수, 난수 주입)
   Events/SimEvent.cs       문서[1] 4.1 이벤트 계약
   Match/                   60Hz 매치 시뮬레이터
-    FighterRuntime.cs        Blackboard (문서[3] 3장)
-    MatchSim.cs              전략층(1s)/전술층(0.2s)/실행FSM(60Hz)
-Morituri.Headless/       배치 러너 → 승률/KO율/역전율/도발역전 리포트
+    FighterRuntime.cs        선수 런타임 상태 (문서[3] 3장)
+    MatchSim.cs              전략층(1s)/전술층(0.2s·지터)/실행FSM(60Hz)
+    Vec2.cs / ReplayFrame.cs  2D 위치(B) / 15Hz 뷰어 트랙
+  Serialization/           MatchRecord ↔ JSON (schemaVer, 결정론)
+Morituri.Headless/       배치 러너 + 분석 도구 + viewer.html 서버
+Morituri.Sim.Tests/      테스트 62개 (자체 러너)
 ```
 
-## Phase 1 단순화 (M4 이전 한시적)
-- 아레나 1D 라인 (거리 축이 전술 검증의 본질; 각도/사이드스텝은 프레젠테이션 단계)
-- 코너 회피 = 통과 롤 (원형 경기장 측면 이동의 1D 등가)
-- Strafe = 짧은 정지 / 관중·감정·관계 인터페이스만 예약
+## 현재 위치 (M4-b)
+- **공간 모델:** 1D → **2D-lite(B)** 전환 완료. 원형 핏(반경 12m), 유클리드 거리, 선회=각도이동, 충돌 disc.
+  (1D 시절 "동속+직선=카이팅 불가" 진단 → B로 구조 전환, 잔존 동속점착은 인내심 메커니즘으로 해소. → 문서[8][9])
+- **선구현 메커니즘:** 인내심·관중게이지·출혈(도끼)·패링(방패)·선취점쉴드·하이퍼아머·카이팅비용·
+  스티어링/스페이싱 히스테리시스·판단주기 지터·천부(StatGen)·특성 14종(TraitGen).
 
 ## M2 디버깅으로 확정된 설계 결정 (배치 데이터 근거)
 1. 동시 히트 해결 페이즈 — 순차 적용 시 선공 100:0 (거울전으로 검출)
-2. 교전 거리 = min(선호거리, 사거리×0.8) — 아니면 영원한 대치 (거울전 KO 0%)
+2. 교전 거리 = min(선호거리, 사거리×교전비) — 아니면 영원한 대치 (거울전 KO 0%)
 3. Utility 경로 선딜 캔슬 금지 — 캔슬은 성격 Interrupt 전용 (스윙 커밋 원칙)
 4. 확정 기회(상대 캔슬불가 상태)엔 풀 사거리 발사 — 후딜 처벌 성립 조건
 5. 자기 약점 거리(inner) 공격 가치 ×0.45 — 창의 인파이팅 자살 방지
-6. 가드 점수 × (1-상대무기 GuardCrush) — 도끼 상대 가드 자살 방지
+6. 가드 점수 × (1−상대무기 GuardCrush) — 도끼 상대 가드 자살 방지
 7. AttackGateScale 1.6→0.9 — 카운터형이 영원히 공격 불가했음
 
-## 현재 배치 결과 (1000경기/매치업, 시드 1~1000)
-| 매치업 | 결과 | 판정 |
-|---|---|---|
-| 거울 (균형+검) | 57.6 : 42.4 | ⚠ 공정성 (선공편향 ~7.6%p — 스태미나 압박이 결정순서 편향을 증폭, 이슈 #4) |
-| 버서커 vs 전술가 | 43.3 : 56.7 | ✅ 목표 달성(전술가 55~60%). KO 80%·역전승 54% — 박진감 있는 승부 |
-| 압박+잔혹 vs 압박+겁쟁이 | 66.8 : 33.1 | ✅ 같은 전술, 성격만으로 승률 분리 |
-| 오만함 도발 | 발생 100%, 역전패 0% | ⚠ 도발 시점(상대 HP10%)에 처벌자가 이미 빈사 — 트리거 조건 재설계 후보 |
-
-## M3 본튜닝 오픈 이슈
-1. ~~**판정 점수식 결함**~~ ✅ **해결**: 어그레션 점수를 "공격시도" → "유효시도(시도−헛스윙)"로 개편.
-   헛스윙은 점수를 받지 않는다 (문서[4] 10장 개정 반영).
-2. ~~버서커:전술가 99.7:0.3~~ ✅ **해결 (43.3:56.7)**: ①유효시도 판정식 ②헛스윙 스태미나 소모(난전형 가스아웃)
-   ③회피 거리게이트(사거리 밖 공격은 회피 안 함 — 창 스태미나 보존) ④지침 인식(인내형이 지친 적을 처벌)
-   ⑤지친 방어자 피해 ×2.2. 부수: 잔혹함 성격을 '취약 상태'(가드붕괴+빈사+지침) 일반 트리거로 확장.
-3. 도발 역전 0% → 트리거를 "우세 + 상대 다운 직후" 등 처벌 가능 시점으로. (미해결)
-4. 거울전 선공 편향 ~7.6%p — 스태미나 압박 도입으로 ~5→7.6%p 증가. 결정 순서 시드 교대로 해소 가능. (미해결)
-5. 치명타 상한 도달 불가 (M1 이슈 #2, T06). (미해결)
+## 밸런스 작업 이력 (요약 — 상세는 문서[0][8][9])
+- **M3-A:** 동일무기 전술 RPS 구조적 불가 판명 → "전술=무기 결합" 프레임 전환. 무기×빌드 매트릭스로 검증 전환.
+- **M3-A2:** 무기 밸런스 + 하이퍼아머. 자동 데미지 스윕(검42→33·방패→방패교체·쌍검26×2→18×2 등).
+- **M3-B:** 오만함 도발 역전 재설계 — 트리거를 `OppStaggeredWhileAhead`로 이동(역전패 0%→~8.5%).
+- **M3-C:** 거울전 선공편향 — 1D 수용 후 2D화로 ~50/50 해소. 회귀테스트 [0.42,0.58].
+- **M4-b:** disc 점착·5레버 폐기(bistability) → **인내심**으로 영원대치 해소·부분수렴. (문서[9] 종결)
