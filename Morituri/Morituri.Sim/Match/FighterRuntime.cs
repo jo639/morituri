@@ -100,6 +100,7 @@ public sealed class FighterRuntime
     public float RepositionUntil;        // [안B] 공격 후 이탈 창 — 이 시각까지 후퇴 강제(카이터 찌르고 빠짐)
     public SpacingIntent Intent = SpacingIntent.Hold;  // 스페이싱 의도(안2) — 히스테리시스로 안정화된 거리 의사
     public float IntentSince;            // 마지막 의도 전환 시각 — dwell(최소 유지시간) 판정용
+    public int NextDecisionTick;         // 판단주기 지터: 이 틱부터 다음 전술 판단 가능 (선수별 불규칙 반응 리듬)
 
     // --- 누적 컨텍스트 (문서[3] 3장) ---
     public int ConsecHitsTaken;

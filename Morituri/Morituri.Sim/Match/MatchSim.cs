@@ -32,6 +32,7 @@ public sealed class MatchSim
     private readonly FighterRuntime[] _f = new FighterRuntime[2];
     private readonly PerceptSnap[][] _snaps = { new PerceptSnap[SnapRing], new PerceptSnap[SnapRing] };
     private SimRandom _rng = null!;
+    private readonly SimRandom[] _decisionRng = new SimRandom[2];  // 선수별 판단주기 지터 전용 파생 스트림(액션 RNG 순서 불변)
     private List<SimEvent>? _events;
     private float _now;
     private int _tick;
@@ -69,10 +70,14 @@ public sealed class MatchSim
         _rng = new SimRandom(seed);
         _f[0] = CreateRuntime(0, a, new Vec2(-_c.StartGap / 2f, 0f));
         _f[1] = CreateRuntime(1, b, new Vec2(_c.StartGap / 2f, 0f));
+        // 판단주기 지터(1단계): 선수별 파생 RNG. Derive는 _rng 상태를 소비하지 않아 액션 RNG 수열 불변.
+        // 거울매치는 둘이 다른 스트림 → per-game 비대칭이지만 같은 분포라 통계적으로 50/50 수렴(실측 검증 대상).
+        _decisionRng[0] = _rng.Derive(0xD1CE05UL);
+        _decisionRng[1] = _rng.Derive(0xD1CE06UL);
         _now = 0f; _tick = 0; _crowd = 0f;
 
         int strategyTicks = Math.Max(1, (int)MathF.Round(_c.StrategyTickSec / Dt));
-        int decisionTicks = Math.Max(1, (int)MathF.Round(_c.DecisionTickSec / Dt));
+        int decisionTicks = Math.Max(1, (int)MathF.Round(_c.DecisionTickSec / Dt));  // 인터럽트 평가 = 고정 박자(메타 보존)
         int maxTicks = (int)(_c.MatchTimeSec / Dt);
 
         for (_tick = 0; _tick < maxTicks; _tick++)
@@ -87,8 +92,13 @@ public sealed class MatchSim
             for (int i = 0; i < 2; i++) PassiveUpdate(_f[i]);
             if (_tick % strategyTicks == 0)
                 { StrategyTick(_f[p0]); StrategyTick(_f[p1]); }
+            // 인터럽트층(도발·회피·강제강공·후딜이탈) = 고정 박자(트리거 메타 보존). 소비 시 같은 틱 행동 스킵.
+            bool consumed0 = false, consumed1 = false;
             if (_tick % decisionTicks == 0)
-                { TacticTick(_f[p0]); TacticTick(_f[p1]); }
+                { consumed0 = TacticInterrupts(_f[p0]); consumed1 = TacticInterrupts(_f[p1]); }
+            // 유틸리티 행동층 = 선수별 지터 박자(평균=DecisionTickSec, 폭만 흔듦). 둘이 겹칠 때만 parity 순서 교대.
+            if (_tick >= _f[p0].NextDecisionTick) { if (!consumed0) TacticAction(_f[p0]); ScheduleNextDecision(_f[p0]); }
+            if (_tick >= _f[p1].NextDecisionTick) { if (!consumed1) TacticAction(_f[p1]); ScheduleNextDecision(_f[p1]); }
             _f[0].PrevPos = _f[0].Pos; _f[1].PrevPos = _f[1].Pos;  // 이동 전 위치 — 충돌 귀속용
             FsmAdvance(_f[p0]); FsmAdvance(_f[p1]);
             ResolveCollision();   // Disc 충돌: 두 점유 공간(2×r) 통과·교환 금지
@@ -331,29 +341,49 @@ public sealed class MatchSim
 
     // ───────────────────────── 전술층 (Interrupt + Utility) ─────────────────────────
 
-    private void TacticTick(FighterRuntime f)
+    /// <summary>다음 전술 판단 틱 예약 — 평균 DecisionTickSec, [Min,Max]Mult 범위에서 매번 다르게 추첨(지터).
+    /// 인간의 불규칙한 반응 리듬. 폭의 중앙=1.0이라 평균 반응지연은 보존(밸런스 1단계: 지터만 격리 검증).</summary>
+    private void ScheduleNextDecision(FighterRuntime f)
+    {
+        float mult = _decisionRng[f.Index].Range(_c.DecisionJitterMinMult, _c.DecisionJitterMaxMult);
+        int interval = Math.Max(1, (int)MathF.Round(_c.DecisionTickSec * mult / Dt));
+        f.NextDecisionTick = _tick + interval;
+    }
+
+    /// <summary>
+    /// 성격 Interrupt(도발·회피·강제강공)와 후딜 이탈 = 즉발 반응층. **정상(고정) 박자로 평가** — 판단주기 지터가
+    /// 이걸 흔들면 인터럽트 평가가 선수 자신의 공격-후딜 사이클과 탈동조돼 transient 트리거(도발 등)를 과포착해
+    /// 트리거 메타가 붕괴한다(거울 도발 21→57%로 검출). 반응 메타 보존을 위해 지터에서 분리.
+    /// 반환: 인터럽트가 이번 턴을 소비(행동 시작)했으면 true → 같은 틱 유틸리티 행동 스킵.
+    /// </summary>
+    private bool TacticInterrupts(FighterRuntime f)
     {
         f.RebuildDirective(_now);
         var opp = Perceive(f);
         var ctx = BuildTriggerContext(f, opp);
 
-        // 1) 성격 Interrupt (즉발형 — 빠른 반응이 본질이라 전술층 주기로 평가)
-        if (TryInterrupts(f, ctx)) return;
+        if (TryInterrupts(f, ctx)) return true;
 
-        // 2) ForcedHeavy 인터럽트 잔여분
         if (f.PendingForced != ActionRequest.None)
         {
-            if (TryStartAction(f, f.PendingForced, opp)) { f.PendingForced = ActionRequest.None; return; }
+            if (TryStartAction(f, f.PendingForced, opp)) { f.PendingForced = ActionRequest.None; return true; }
         }
 
-        // 2.5) [안B] 공격 후 이탈 창: 카이터는 일반 행동 대신 후퇴 강제(찌르고 빠짐). 인터럽트(회피·가드)는 위에서 이미 처리.
+        // [안B] 공격 후 이탈 창: 카이터는 후퇴 강제(찌르고 빠짐).
         if (_now < f.RepositionUntil)
         {
             TryStartAction(f, ActionRequest.Retreat, opp);   // 후딜 중이면 캔슬불가로 무효 → 후딜 끝나면 후퇴 발동
-            return;
+            return true;
         }
+        return false;
+    }
 
-        // 3) Utility 행동 선택
+    /// <summary>유틸리티 행동(접근/후퇴/선회/Hold/공격/가드) 선택 = 교전 리듬층. **선수별 지터 박자로 평가** —
+    /// 메트로놈 같은 0.2s 격자 대신 불규칙한 인간 반응 리듬. 트리거 메타와 무관(위 인터럽트층이 따로 담당).</summary>
+    private void TacticAction(FighterRuntime f)
+    {
+        f.RebuildDirective(_now);
+        var opp = Perceive(f);
         var action = SelectAction(f, opp);
         if (action != f.CurrentAction || f.State == FighterState.Idle)
             TryStartAction(f, action, opp);
@@ -366,7 +396,10 @@ public sealed class MatchSim
             if (r.Kind != TriggerEffectKind.Interrupt) continue;
             if (f.CooldownUntil.TryGetValue(r.Id, out float until) && _now < until) continue;
             if (!TriggerEval.Matches(r, ctx)) continue;
-            if (!_rng.Roll(r.Probability * (1f + f.Personality.GlobalProbMod))) continue;
+            // 도발만 전역 보정: 판단주기 지터가 전투를 더 결단적으로 만들어 "우세+건강/스태거" 도발 조건 노출이
+            // 늘어 도발이 증폭됐다(거울 21→50%). TauntProbMult로 도발 메타만 새 운영점에 재정렬(다른 인터럽트 무관).
+            float pMod = (1f + f.Personality.GlobalProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
+            if (!_rng.Roll(r.Probability * pMod)) continue;
 
             bool fired = r.Interrupt switch
             {

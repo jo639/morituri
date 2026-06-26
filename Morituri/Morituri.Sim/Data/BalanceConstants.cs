@@ -105,6 +105,11 @@ public readonly record struct BalanceConstants
     public float SpacingDwellSec        { get; init; }  // 의도 전환 최소 간격(초) — 잔떨림 억제(commit 강제)
     public float SpacingHoldReleaseRatio{ get; init; }  // Close/Space → Hold 해제 임계 = band × 이값 (이중임계 = 히스테리시스)
 
+    // --- 판단주기 지터(1단계) — 전술 판단 간격을 매번 [Min,Max]×DecisionTickSec로 추첨(불규칙 반응 리듬) ---
+    public float DecisionJitterMinMult  { get; init; }  // 최소 배율 (중앙 1.0 유지 시 평균 반응지연 보존)
+    public float DecisionJitterMaxMult  { get; init; }  // 최대 배율
+    public float TauntProbMult          { get; init; }  // 도발 인터럽트 확률 전역 보정 — 지터가 증폭한 도발 메타 재정렬(1.0=중립)
+
     // --- 인내심 (영원 대치 해소): 무교전이 길어지면 소모 → 공격 충동. 거울전(reachAdvantage 부재) 교착 방지 ---
     public float PatienceMax           { get; init; }  // 가득 찬 인내심
     public float PatienceDrainBase     { get; init; }  // 초당 감소 기준 ×(0.5+Aggression) — 공격적일수록 빨리 소진(전술/성격/특성 반영)
@@ -225,6 +230,9 @@ public readonly record struct BalanceConstants
         SteerMaxAccel = 10f,      // 이속 ~2.5m/s를 0.25s에 도달 — 무게감 있으나 굼뜨지 않게
         SpacingDwellSec = 0.35f,        // 의도 전환 후 0.35s 유지 — 0.2s 결정틱마다 뒤집히던 잔떨림 제거
         SpacingHoldReleaseRatio = 0.4f, // 교전거리 ±(band×0.4)까지 돌아와야 Hold 해제 → 진입 band, 이탈 0.4band (히스테리시스)
+        DecisionJitterMinMult = 0.4f,   // 0.2s×0.4=0.08s ~ ×1.6=0.32s, 중앙 1.0 → 평균 0.2s 보존(밸런스 격리)
+        DecisionJitterMaxMult = 1.6f,
+        TauntProbMult = 0.2f,           // 지터 도발 증폭 보정(수렴 중) — 거울 도발률·챔피언전을 baseline으로
         PatienceMax = 100f,
         PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)
