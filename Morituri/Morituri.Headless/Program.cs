@@ -16,6 +16,7 @@ using Morituri.Sim.Serialization;
 //                     매치업은 replay와 동일 (b:무기/전술/성격 빌드 지정 가능)
 //       dotnet run -- highlights [N]            명경기 자동 태깅 → highlights.json
 //       dotnet run -- emotionprobe [N]          감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 (기본 500)
+//       dotnet run -- emotiongen [N]            감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 (기본 30)
 
 if (args.Length > 0 && args[0] == "matrix")
 {
@@ -46,6 +47,12 @@ if (args.Length > 0 && args[0] == "parryprobe")
 if (args.Length > 0 && args[0] == "emotionprobe")
 {
     EmotionProbe.Run(args.Length > 1 && int.TryParse(args[1], out int ep) ? ep : 500);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "emotiongen")
+{
+    EmotionProbe.GenRate(args.Length > 1 && int.TryParse(args[1], out int eg) ? eg : 30);
     return;
 }
 

@@ -16,7 +16,7 @@
   Phase 3  리그/역사 — 미착수 (ERD 필요)
   Phase 4  혈통/감독 — 미착수
   ```
-- **테스트:** 67개 (`[Test]` 기준, 6개 파일) 전부 통과 기조.
+- **테스트:** 68개 (`[Test]` 기준, 6개 파일) 전부 통과 기조.
 
 ---
 
@@ -73,6 +73,7 @@ dotnet run -c Release -- [명령]
 | `spacingprobe [N]` | 무기별 평균 간격 |
 | `statgen [N]` | 천부/잠재력 분포 검증 |
 | `emotionprobe [N]` | 감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 |
+| `emotiongen [N]` | 감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 |
 | `taunt [N]` / `tauntfreq [N]` | 도발 역전·빈도 프로브 |
 | `weaponsweep` / `sweep` / `tune` / `tunetac` | 자동 밸런스 스윕(좌표하강) |
 
@@ -184,10 +185,11 @@ dotnet run -c Release -- [명령]
 | 패배 | 열등감 INFERIOR(겁쟁이/신중) · 동기부여 MOTIVATED(대담/고결/기회) · 좌절 FRUSTRATED(충동/잔혹/오만) |
 | KO패 | 원한 GRUDGE(충동/잔혹/대담·상대 귀속) · 트라우마 TRAUMA(그 외) |
 
-- **생성:** `EmotionGen.FromResult(winner, selfIdx, wasKo, selfMinHpPct, personality)` → 감정 tag (순수 분류, 결정론).
+- **생성 = 2단계:** `EmotionGen.Classify(...)`(어떤 감정 유형 — 순수 분류) + `EmotionGen.Roll(rng, ...)`(실제로 생기는가 — 발생률 게이트). 감정은 매 경기 붙는 게 아니라 **이벤트처럼 가끔(GenChance) 생기는 변화구** — 대부분의 결과는 무감정.
+- **발생률(GenChance, 데이터 튜닝):** 강렬한 결과일수록 잘 남음 — 원한 50%·트라우마 45%·자만/동기부여 35%·부담감/열등감/좌절 30%·자신감 15%. **실측(emotiongen): 전체 결과의 ~30%만 감정 발생**(70% 무감정). 자만 0.8%(희귀)~열등감 6.5%(최다).
 - **주입:** `FighterDef.EmotionIds` (b: 문법 5번째 필드 `무기/전술/성격/특성/감정`). 시작 시 Decision 이벤트로 가시화.
-- **검증:** `emotionprobe` — 감정 유무·종류로 승률·행동(공격 빈도·도발) 측정 가능하게 갈림. 양쪽 동일 감정이면 거울 대칭 보존.
-- **범위:** Phase 1은 인메모리 1경기 고정. **다음 경기 이월(영속)=Phase 3, 성격 변화 입력=Phase 4.** 수치 크기는 초안(밸런스 패스 대상).
+- **검증:** `emotionprobe`(효과 — 승률·행동 델타) / `emotiongen`(발생률). 양쪽 동일 감정이면 거울 대칭 보존.
+- **범위:** Phase 1은 인메모리 1경기 고정. **다음 경기 이월(영속)=Phase 3, 성격 변화 입력=Phase 4.** 효과·발생률 수치는 초안(밸런스 패스 대상).
 
 ---
 

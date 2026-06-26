@@ -1,3 +1,4 @@
+using Morituri.Sim.Core;
 using Morituri.Sim.Data;
 using Morituri.Sim.Match;
 
@@ -16,21 +17,45 @@ public class EmotionTests
     public void EmotionGen_BranchesByOutcomeAndPersonality()
     {
         // 승리(self=0, winner=0)
-        Assert.That(EmotionGen.FromResult(0, 0, false, 0.9f, PersonalityTable.Arrogant), Is.EqualTo(EmotionTable.Hubris),  "압승 오만 → 자만");
-        Assert.That(EmotionGen.FromResult(0, 0, false, 0.5f, PersonalityTable.Coward),   Is.EqualTo(EmotionTable.Pressure), "승리 겁쟁이 → 부담감");
-        Assert.That(EmotionGen.FromResult(0, 0, false, 0.5f, PersonalityTable.Reckless), Is.EqualTo(EmotionTable.Confident),"승리 충동 → 자신감");
+        Assert.That(EmotionGen.Classify(0, 0, false, 0.9f, PersonalityTable.Arrogant), Is.EqualTo(EmotionTable.Hubris),  "압승 오만 → 자만");
+        Assert.That(EmotionGen.Classify(0, 0, false, 0.5f, PersonalityTable.Coward),   Is.EqualTo(EmotionTable.Pressure), "승리 겁쟁이 → 부담감");
+        Assert.That(EmotionGen.Classify(0, 0, false, 0.5f, PersonalityTable.Reckless), Is.EqualTo(EmotionTable.Confident),"승리 충동 → 자신감");
 
         // 판정/시간 패배(winner=1)
-        Assert.That(EmotionGen.FromResult(1, 0, false, 0.2f, PersonalityTable.Wary),     Is.EqualTo(EmotionTable.Inferior),  "패배 신중 → 열등감");
-        Assert.That(EmotionGen.FromResult(1, 0, false, 0.2f, PersonalityTable.Bold),     Is.EqualTo(EmotionTable.Motivated), "패배 대담 → 동기부여");
-        Assert.That(EmotionGen.FromResult(1, 0, false, 0.2f, PersonalityTable.Cruel),    Is.EqualTo(EmotionTable.Frustrated),"패배 잔혹 → 좌절");
+        Assert.That(EmotionGen.Classify(1, 0, false, 0.2f, PersonalityTable.Wary),     Is.EqualTo(EmotionTable.Inferior),  "패배 신중 → 열등감");
+        Assert.That(EmotionGen.Classify(1, 0, false, 0.2f, PersonalityTable.Bold),     Is.EqualTo(EmotionTable.Motivated), "패배 대담 → 동기부여");
+        Assert.That(EmotionGen.Classify(1, 0, false, 0.2f, PersonalityTable.Cruel),    Is.EqualTo(EmotionTable.Frustrated),"패배 잔혹 → 좌절");
 
         // KO 패배
-        Assert.That(EmotionGen.FromResult(1, 0, true, 0.0f, PersonalityTable.Reckless),  Is.EqualTo(EmotionTable.Grudge), "KO패 충동 → 원한");
-        Assert.That(EmotionGen.FromResult(1, 0, true, 0.0f, PersonalityTable.Coward),    Is.EqualTo(EmotionTable.Trauma), "KO패 겁쟁이 → 트라우마");
+        Assert.That(EmotionGen.Classify(1, 0, true, 0.0f, PersonalityTable.Reckless),  Is.EqualTo(EmotionTable.Grudge), "KO패 충동 → 원한");
+        Assert.That(EmotionGen.Classify(1, 0, true, 0.0f, PersonalityTable.Coward),    Is.EqualTo(EmotionTable.Trauma), "KO패 겁쟁이 → 트라우마");
 
         // 무승부 → 중립
-        Assert.That(EmotionGen.FromResult(-1, 0, false, 0.5f, PersonalityTable.Calm) == null, Is.True, "무승부 → 감정 없음");
+        Assert.That(EmotionGen.Classify(-1, 0, false, 0.5f, PersonalityTable.Calm) == null, Is.True, "무승부 → 감정 없음");
+    }
+
+    // ── 발생률: 감정은 매 경기 붙는 게 아니라 '가끔'(GenChance) 생기는 이벤트성 변화구 ──
+    [Test]
+    public void EmotionGen_Roll_RespectsGenChance_OccasionalNotAlways()
+    {
+        // KO패 + 충동 → 원한(GenChance 0.50). 굴려보면 ~절반만 실제로 생기고, 생긴 건 전부 원한.
+        var rng = new SimRandom(2026);
+        int hit = 0, n = 4000;
+        for (int i = 0; i < n; i++)
+        {
+            var id = EmotionGen.Roll(rng, 1, 0, true, 0f, PersonalityTable.Reckless);
+            if (id != null) { hit++; Assert.That(id, Is.EqualTo(EmotionTable.Grudge)); }
+        }
+        float rate = 100f * hit / n;
+        Assert.That(rate, Is.InRange(45f, 55f), $"원한 발생률 ≈ GenChance 50% (got {rate:F1})");
+
+        // 평범한 승리(충동→자신감, GenChance 0.15)는 드물게만 생긴다(대부분 무감정).
+        var rng2 = new SimRandom(7);
+        int conf = 0;
+        for (int i = 0; i < n; i++)
+            if (EmotionGen.Roll(rng2, 0, 0, false, 0.5f, PersonalityTable.Reckless) != null) conf++;
+        float confRate = 100f * conf / n;
+        Assert.That(confRate, Is.InRange(10f, 20f), $"자신감 발생률 ≈ 15% (got {confRate:F1})");
     }
 
     // ── 효과: 감정 종류로 행동·승률이 측정 가능하게 갈린다 (로드맵 합격기준) ──
