@@ -38,7 +38,7 @@ public class EmotionTests
     [Test]
     public void EmotionGen_Roll_RespectsGenChance_OccasionalNotAlways()
     {
-        // KO패 + 충동 → 원한(GenChance 0.50). 굴려보면 ~절반만 실제로 생기고, 생긴 건 전부 원한.
+        // KO패 + 충동 → 원한(GenChance 0.25). 굴려보면 ~1/4만 실제로 생기고, 생긴 건 전부 원한.
         var rng = new SimRandom(2026);
         int hit = 0, n = 4000;
         for (int i = 0; i < n; i++)
@@ -47,15 +47,15 @@ public class EmotionTests
             if (id != null) { hit++; Assert.That(id, Is.EqualTo(EmotionTable.Grudge)); }
         }
         float rate = 100f * hit / n;
-        Assert.That(rate, Is.InRange(45f, 55f), $"원한 발생률 ≈ GenChance 50% (got {rate:F1})");
+        Assert.That(rate, Is.InRange(20f, 30f), $"원한 발생률 ≈ GenChance 25% (got {rate:F1})");
 
-        // 평범한 승리(충동→자신감, GenChance 0.15)는 드물게만 생긴다(대부분 무감정).
+        // 평범한 승리(충동→자신감, GenChance 0.07)는 아주 드물게만 생긴다(대부분 무감정).
         var rng2 = new SimRandom(7);
         int conf = 0;
         for (int i = 0; i < n; i++)
             if (EmotionGen.Roll(rng2, 0, 0, false, 0.5f, PersonalityTable.Reckless) != null) conf++;
         float confRate = 100f * conf / n;
-        Assert.That(confRate, Is.InRange(10f, 20f), $"자신감 발생률 ≈ 15% (got {confRate:F1})");
+        Assert.That(confRate, Is.InRange(4f, 11f), $"자신감 발생률 ≈ 7% (got {confRate:F1})");
     }
 
     // ── 효과: 감정 종류로 행동·승률이 측정 가능하게 갈린다 (로드맵 합격기준) ──

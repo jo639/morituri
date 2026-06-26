@@ -36,21 +36,22 @@ public static class EmotionTable
     public const string Trauma    = "EMO_TRAUMA";
     public const string Grudge    = "EMO_GRUDGE";
 
-    // GenChance(발생률) 초안: 강렬한 결과(KO·압승)일수록 잘 남고, 평범한 승리는 잘 안 남는다(이벤트성). emotiongen으로 점검·튜닝.
+    // GenChance(발생률): 강렬한 결과(KO·압승)일수록 잘 남고, 평범한 승리는 잘 안 남는다(이벤트성).
+    // 튜닝(2026-06-26): 전체 발생률을 ~30%→~15%로 절반 + 자만은 오히려↑(0.35→0.50, 희귀하지만 더 또렷한 변화구). emotiongen으로 점검.
     public static readonly EmotionDef[] All =
     {
         //          id          이름        trigProb  mods                                                                                        genChance
         // 승리
-        new(Confident,  "자신감",   0f,     new[] { Add(TParam.Aggression, 0.10f), Add(TParam.CommitThreshold, -0.05f) },                              0.15f),  // 흔한 승리는 잘 안 남음
-        new(Hubris,     "자만",     0.25f,  new[] { Add(TParam.CommitThreshold, 0.15f), Add(TParam.Aggression, -0.10f), Add(TParam.GuardBias, -0.10f) }, 0.35f), // 방심 → 역전 드라마
-        new(Pressure,   "부담감",   -0.05f, new[] { Add(TParam.Aggression, -0.10f), Add(TParam.CommitThreshold, 0.10f), Add(TParam.GuardBias, 0.10f) },   0.30f), // 지킬 게 생김
+        new(Confident,  "자신감",   0f,     new[] { Add(TParam.Aggression, 0.10f), Add(TParam.CommitThreshold, -0.05f) },                              0.07f),  // 흔한 승리는 잘 안 남음(분류 비중 최다라 낮게)
+        new(Hubris,     "자만",     0.25f,  new[] { Add(TParam.CommitThreshold, 0.15f), Add(TParam.Aggression, -0.10f), Add(TParam.GuardBias, -0.10f) }, 0.50f), // 방심 → 역전 드라마. 희귀(압승 한정)지만 발생 시 또렷
+        new(Pressure,   "부담감",   -0.05f, new[] { Add(TParam.Aggression, -0.10f), Add(TParam.CommitThreshold, 0.10f), Add(TParam.GuardBias, 0.10f) },   0.15f), // 지킬 게 생김
         // 패배
-        new(Inferior,   "열등감",   -0.10f, new[] { Add(TParam.Aggression, -0.15f), Add(TParam.PreferredDistance, 0.4f), Add(TParam.GuardBias, 0.15f) },  0.30f), // 위축
-        new(Motivated,  "동기부여", 0f,     new[] { Add(TParam.CommitThreshold, -0.10f), Add(TParam.Aggression, 0.10f), Add(TParam.CounterWindow, 0.05f) },0.35f), // 분발·집중
-        new(Frustrated, "좌절",     0.10f,  new[] { Add(TParam.CommitThreshold, -0.15f), Add(TParam.Aggression, 0.10f), Add(TParam.GuardBias, -0.10f) },   0.30f), // 산만·자포자기
+        new(Inferior,   "열등감",   -0.10f, new[] { Add(TParam.Aggression, -0.15f), Add(TParam.PreferredDistance, 0.4f), Add(TParam.GuardBias, 0.15f) },  0.15f), // 위축
+        new(Motivated,  "동기부여", 0f,     new[] { Add(TParam.CommitThreshold, -0.10f), Add(TParam.Aggression, 0.10f), Add(TParam.CounterWindow, 0.05f) },0.18f), // 분발·집중
+        new(Frustrated, "좌절",     0.10f,  new[] { Add(TParam.CommitThreshold, -0.15f), Add(TParam.Aggression, 0.10f), Add(TParam.GuardBias, -0.10f) },   0.15f), // 산만·자포자기
         // KO 패배 (강렬 → 더 잘 남음)
-        new(Trauma,     "트라우마", -0.15f, new[] { Add(TParam.Aggression, -0.30f), Add(TParam.PreferredDistance, 1.0f), Add(TParam.GuardBias, 0.20f) },   0.45f), // 강한 공포
-        new(Grudge,     "원한",     0.20f,  new[] { Add(TParam.Aggression, 0.20f), Add(TParam.RiskTolerance, 0.20f), Add(TParam.CommitThreshold, -0.10f), Add(TParam.HeavyBias, 0.20f) }, 0.50f), // 특정 상대 복수
+        new(Trauma,     "트라우마", -0.15f, new[] { Add(TParam.Aggression, -0.30f), Add(TParam.PreferredDistance, 1.0f), Add(TParam.GuardBias, 0.20f) },   0.22f), // 강한 공포
+        new(Grudge,     "원한",     0.20f,  new[] { Add(TParam.Aggression, 0.20f), Add(TParam.RiskTolerance, 0.20f), Add(TParam.CommitThreshold, -0.10f), Add(TParam.HeavyBias, 0.20f) }, 0.25f), // 특정 상대 복수
     };
 
     private static readonly Dictionary<string, EmotionDef> _byId = All.ToDictionary(e => e.Id);

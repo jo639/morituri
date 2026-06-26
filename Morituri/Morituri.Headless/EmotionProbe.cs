@@ -38,6 +38,7 @@ public static class EmotionProbe
         var tally = new Dictionary<string, int>();
         foreach (var e in EmotionTable.All) tally[e.Id] = 0;
         int samples = 0, anyEmotion = 0, draws = 0;
+        var rng = new SimRandom(12345);   // 단일 스트림(균일) — 샘플별 재시드는 시퀀셜 편향이 생김
 
         foreach (var pa in pers)
             foreach (var pb in pers)
@@ -53,7 +54,6 @@ public static class EmotionProbe
                     {
                         samples++;
                         float minHp = side == 0 ? r.StatsA.MinHpPct : r.StatsB.MinHpPct;
-                        var rng = new SimRandom(s * 4 + (ulong)side + 1);
                         var id = EmotionGen.Roll(rng, r.Winner, side, ko, minHp, side == 0 ? pa : pb);
                         if (id != null) { tally[id]++; anyEmotion++; }
                     }
