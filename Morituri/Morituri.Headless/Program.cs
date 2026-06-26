@@ -15,6 +15,7 @@ using Morituri.Sim.Serialization;
 //       dotnet run -- viewer [매치업] [시드]    경기 1판 → viewer.json (위치 프레임 포함, viewer.html이 재생)
 //                     매치업은 replay와 동일 (b:무기/전술/성격 빌드 지정 가능)
 //       dotnet run -- highlights [N]            명경기 자동 태깅 → highlights.json
+//       dotnet run -- emotionprobe [N]          감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 (기본 500)
 
 if (args.Length > 0 && args[0] == "matrix")
 {
@@ -39,6 +40,12 @@ if (args.Length > 0 && args[0] == "sigmatrix")
 if (args.Length > 0 && args[0] == "parryprobe")
 {
     Analysis.ParryProbe(args.Length > 1 && int.TryParse(args[1], out int pp) ? pp : 300);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "emotionprobe")
+{
+    EmotionProbe.Run(args.Length > 1 && int.TryParse(args[1], out int ep) ? ep : 500);
     return;
 }
 

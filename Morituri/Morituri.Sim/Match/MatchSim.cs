@@ -165,6 +165,18 @@ public sealed class MatchSim
                 rt.SizeScale *= t.SizeScale;
             }
 
+        // 감정(T10): 일시적 심리 상태를 결정 경로에만 주입 (트리거 확률 + Directive 가중치). 데미지 수식 무관.
+        if (def.EmotionIds != null)
+            foreach (var id in def.EmotionIds)
+            {
+                if (!EmotionTable.Exists(id)) continue;
+                var e = EmotionTable.Get(id);
+                rt.EmotionTriggerProbMod += e.TriggerProbMod;
+                rt.EmotionMods.AddRange(e.Mods);
+                // 가독성 원칙([3]§8): 경기 시작 시 감정 아이콘 노출 (Decision reasonTag).
+                Emit(new Decision(0f, idx, e.Id, "Strategy", 3f));
+            }
+
         rt.Hp = rt.HpMax;
         rt.Stamina = rt.StaminaMax;
         rt.Poise = rt.PoiseMax;
@@ -316,10 +328,11 @@ public sealed class MatchSim
         var opp = Perceive(f);
         var ctx = BuildTriggerContext(f, opp);
 
-        // 성격 Override 규칙 + 전술 고유 조건 (같은 엔진 — 문서[5] 5장)
-        EvalOverrideRules(f, f.Personality.Rules, ctx, f.Personality.GlobalProbMod);
+        // 성격 Override 규칙 + 전술 고유 조건 (같은 엔진 — 문서[5] 5장). 감정(T10)이 트리거 확률을 가감(의사결정).
+        float probMod = f.Personality.GlobalProbMod + f.EmotionTriggerProbMod;
+        EvalOverrideRules(f, f.Personality.Rules, ctx, probMod);
         if (f.Profile.UniqueRule is { } unique)
-            EvalOverrideRules(f, new[] { unique }, ctx, f.Personality.GlobalProbMod);
+            EvalOverrideRules(f, new[] { unique }, ctx, probMod);
 
         f.RebuildDirective(_now);
     }
@@ -400,7 +413,7 @@ public sealed class MatchSim
             if (!TriggerEval.Matches(r, ctx)) continue;
             // 도발만 전역 보정: 판단주기 지터가 전투를 더 결단적으로 만들어 "우세+건강/스태거" 도발 조건 노출이
             // 늘어 도발이 증폭됐다(거울 21→50%). TauntProbMult로 도발 메타만 새 운영점에 재정렬(다른 인터럽트 무관).
-            float pMod = (1f + f.Personality.GlobalProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
+            float pMod = (1f + f.Personality.GlobalProbMod + f.EmotionTriggerProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
             if (!_rng.Roll(r.Probability * pMod)) continue;
 
             bool fired = r.Interrupt switch

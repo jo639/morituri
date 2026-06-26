@@ -82,6 +82,10 @@ public sealed class FighterRuntime
     public float CrowdMomentum;         // 0~1: 관중이 내 편(유리). 보편 기세 버프(공격성·커밋·회복·데미지·이속).
     public float CrowdPressure;         // 0~1: 관중이 상대 편(불리). 위축은 성격 민감도(CrowdSensitivity)에 비례.
 
+    // --- 감정 (T10, 일시적 심리 상태) — 경기 시작 시 CreateRuntime이 EmotionIds로 세팅. decision-only(데미지 무관) ---
+    public float EmotionTriggerProbMod; // 트리거 발동 확률 가산 (도발/격노 등이 더/덜 터짐)
+    public readonly List<ParamMod> EmotionMods = new();  // Directive 결정 가중치 (RebuildDirective에서 합성)
+
     // --- FSM ---
     public FighterState State = FighterState.Idle;
     public float StateTimer, StateElapsed;
@@ -129,6 +133,8 @@ public sealed class FighterRuntime
         Overrides.RemoveAll(o => o.ExpiresAt <= now);
         Dir = Directive.From(Profile);
         foreach (var m in Personality.GlobalMods) Dir.Apply(m);
+        // 감정(T10): 일시적 심리 상태 = 결정 가중치 상시 보정 (의사선택만, 데미지 무관). 성격 상시보정과 동급 층.
+        foreach (var m in EmotionMods) Dir.Apply(m);
         foreach (var o in Overrides)
             foreach (var m in o.Mods) Dir.Apply(m);
         // 관중 기세(유리, 보편): 적극·결단·지구력 ↑. (데미지·이속은 MatchSim에서 CrowdMomentum 직접 사용)

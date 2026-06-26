@@ -120,7 +120,8 @@ internal static class Replay
         return PickNamed(m);
     }
 
-    // "무기/전술/성격[/특성+특성]" 한 빌드 → FighterDef. 빈 필드는 기본값. 4번째 필드는 +로 구분된 특성(예: GIANT+ZOMBIE).
+    // "무기/전술/성격[/특성+특성][/감정+감정]" 한 빌드 → FighterDef. 빈 필드는 기본값.
+    // 4번째 필드 = +로 구분된 특성(예: GIANT+ZOMBIE). 5번째 필드 = +로 구분된 감정(예: GRUDGE 또는 TRAUMA+CONFIDENT).
     private static FighterDef BuildFighter(string spec, int idx)
     {
         var f = spec.Split('/');
@@ -132,8 +133,13 @@ internal static class Replay
             traits = f[3].Split('+', StringSplitOptions.RemoveEmptyEntries)
                          .Select(t => "TRT_" + t.Trim().ToUpperInvariant())
                          .Where(TraitTable.Exists).ToArray();
+        string[]? emotions = null;
+        if (f.Length > 4 && f[4].Length > 0)
+            emotions = f[4].Split('+', StringSplitOptions.RemoveEmptyEntries)
+                           .Select(e => "EMO_" + e.Trim().ToUpperInvariant())
+                           .Where(EmotionTable.Exists).ToArray();
         string name = $"P{idx + 1}·{per}·{tac}·{wpn}";
-        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits);
+        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits, emotions);
     }
 
     private static string Field(string[] f, int i, string def)

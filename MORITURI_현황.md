@@ -16,7 +16,7 @@
   Phase 3  리그/역사 — 미착수 (ERD 필요)
   Phase 4  혈통/감독 — 미착수
   ```
-- **테스트:** 62개 (`[Test]` 기준, 5개 파일) 전부 통과 기조.
+- **테스트:** 67개 (`[Test]` 기준, 6개 파일) 전부 통과 기조.
 
 ---
 
@@ -26,12 +26,13 @@
 Morituri/  (.sln)
 ├─ Morituri.Sim/                순수 C# — UnityEngine 무의존 (아키텍처 원칙 A)
 │  ├─ Core/SimRandom.cs           xorshift64* 결정론 RNG (원칙 B)
-│  ├─ Data/                       T01~T09 데이터 테이블 (원칙 C: 매직넘버 0)
+│  ├─ Data/                       T01~T10 데이터 테이블 (원칙 C: 매직넘버 0)
 │  │   ├─ BalanceConstants.cs       T06 전역 상수 단일 출처
 │  │   ├─ WeaponDef.cs              T01 무기 8종
 │  │   ├─ TacticsData.cs            T02 모션 / T03 전술 10종 / Directive·ParamMod
 │  │   ├─ PersonalityData.cs        T04 트리거 / T05 성격 10종 / T07 검증 선수(FighterDef)
 │  │   ├─ TraitData.cs              T09 특성 14종 + 생성 추첨(TraitGen)
+│  │   ├─ EmotionData.cs            T10 감정 8종 + 생성기(EmotionGen) — 의사선택만(decision-only)
 │  │   ├─ StatGen.cs                천부/잠재력 추첨 + 스탯 분배 (Endowment)
 │  │   └─ FighterStats.cs           6대 스탯 (Baseline=70 균일·HP700)
 │  ├─ Combat/CombatMath.cs        전투 수식 (순수 함수, 난수 주입)
@@ -71,6 +72,7 @@ dotnet run -c Release -- [명령]
 | `parryprobe [N]` | 방패 패링 성공률·기절·승률 |
 | `spacingprobe [N]` | 무기별 평균 간격 |
 | `statgen [N]` | 천부/잠재력 분포 검증 |
+| `emotionprobe [N]` | 감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 |
 | `taunt [N]` / `tauntfreq [N]` | 도발 역전·빈도 프로브 |
 | `weaponsweep` / `sweep` / `tune` / `tunetac` | 자동 밸런스 스윕(좌표하강) |
 
@@ -172,6 +174,23 @@ dotnet run -c Release -- [명령]
 
 ---
 
+## 7.5 감정 (T10 — `EmotionData.cs`, 구현됨)
+
+경기 결과로 생성되는 **일시적 심리 상태**. **★ 의사선택(decision)에만 영향 — 데미지·받피·자원 배율 절대 무관**(겁먹으면 데미지가 주는 게 아니라 *망설이고 거리를 둔다*). 효과 = 트리거 발동 확률(`EmotionTriggerProbMod`) + Directive 결정 가중치(`EmotionMods`, RebuildDirective 합성). 같은 결과라도 **성격이 다르게 해석**한다.
+
+| 결과 | 감정 8종 (성격별 분기) |
+|---|---|
+| 승리 | 자신감 CONFIDENT(일반) · 자만 HUBRIS(오만/쇼맨 압승) · 부담감 PRESSURE(겁쟁이/신중) |
+| 패배 | 열등감 INFERIOR(겁쟁이/신중) · 동기부여 MOTIVATED(대담/고결/기회) · 좌절 FRUSTRATED(충동/잔혹/오만) |
+| KO패 | 원한 GRUDGE(충동/잔혹/대담·상대 귀속) · 트라우마 TRAUMA(그 외) |
+
+- **생성:** `EmotionGen.FromResult(winner, selfIdx, wasKo, selfMinHpPct, personality)` → 감정 tag (순수 분류, 결정론).
+- **주입:** `FighterDef.EmotionIds` (b: 문법 5번째 필드 `무기/전술/성격/특성/감정`). 시작 시 Decision 이벤트로 가시화.
+- **검증:** `emotionprobe` — 감정 유무·종류로 승률·행동(공격 빈도·도발) 측정 가능하게 갈림. 양쪽 동일 감정이면 거울 대칭 보존.
+- **범위:** Phase 1은 인메모리 1경기 고정. **다음 경기 이월(영속)=Phase 3, 성격 변화 입력=Phase 4.** 수치 크기는 초안(밸런스 패스 대상).
+
+---
+
 ## 8. 전투 수식 (`CombatMath.cs` — 순수 함수)
 
 ```
@@ -183,7 +202,8 @@ dotnet run -c Release -- [명령]
        판단주기배율 = clamp(1 − (RCT−70)×0.003, 0.7, 1.3)   ← RCT 70=1.0(baseline 불변)
 
 데미지: Raw = Base × 타수 × MotionMult × (1+ATK/100) × [InnerRange 0.6] × DamageGlobalMult
-       Final = Raw × Mitigation × Crit × Guard × Counter × Exhaust × Emotion × Variance
+       Final = Raw × Mitigation × Crit × Guard × Counter × Exhaust × CrowdDmgBuff × Variance
+       ※ HitContext.EmotionMult 슬롯은 현재 관중 데미지 버프가 사용. 감정(T10)은 데미지를 건드리지 않음(decision-only).
        Mitigation = 100/(100+DEF×0.8)   (승산곡선 — 0데미지 없음)
        Crit% = clamp(5+(ATK−DEF)×0.05, 2, 20)   ← 상한20% 도달불가(백로그)
        크리×1.6 · 가드×0.25(+채찍 우회) · 카운터×1.35 · 지친방어자×1.3
@@ -212,12 +232,14 @@ dotnet run -c Release -- [명령]
 | **스페이싱 히스테리시스(안2)** | SpacingDwell/HoldRelease | 거리 댄스를 commit으로, 무의미 선회를 Hold로. |
 | **판단주기 지터** | DecisionJitterMin/Max 0.4~1.6 | 전술판단 간격 매번 추첨(불규칙 리듬). 중앙1.0로 평균 보존(밸런스 격리). |
 | **도발 메타** | PersonalityData·TauntProbMult | 능동 도발 + 피도발 반응(WasTaunted) 성격별 분기. |
+| **감정(T10)** | EmotionData·FighterRuntime·MatchSim | 경기 결과로 생성되는 일시적 심리 상태(8종). **의사선택만**(트리거 확률+Directive 가중치), 데미지·스탯 배율 무관. → [10]은 관중, 감정은 §아래. |
 
 ---
 
 ## 10. 미구현 / Phase 2+ 예약
 
-- **감정(T10)·관계(T11):** `EmotionMult`(공식 자리만 1.0 고정), `OppIsNemesis`(항상 false). 미구현.
+- **감정(T10):** ✅ 구현(decision-only, → §7.5). **영속 이월(Phase 3)·성격 변화 입력(Phase 4)은 미구현.**
+- **관계(T11):** `OppIsNemesis`(항상 false). 미구현. (트라우마·원한이 상대 식별을 쓰나 관계 게이지 −100~+100은 별도.)
 - **스킬·계급(T12/T13):** 설계만(→ [6][7]). 패시브=트리거 엔진 재사용, 액티브=모션 추가. 슬롯경제 미구현.
 - **나이/성장:** 특성 "20세 +1 부여", 잠재력→성장엔진, 노화(RCT 하락) 미구현.
 - **CSV 데이터 파이프라인:** 현재 C# 정적 테이블. 25칸 동시튜닝이 고통스러워지면 착수(백로그).
