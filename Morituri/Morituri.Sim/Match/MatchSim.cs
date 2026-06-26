@@ -341,12 +341,14 @@ public sealed class MatchSim
 
     // ───────────────────────── 전술층 (Interrupt + Utility) ─────────────────────────
 
-    /// <summary>다음 전술 판단 틱 예약 — 평균 DecisionTickSec, [Min,Max]Mult 범위에서 매번 다르게 추첨(지터).
-    /// 인간의 불규칙한 반응 리듬. 폭의 중앙=1.0이라 평균 반응지연은 보존(밸런스 1단계: 지터만 격리 검증).</summary>
+    /// <summary>다음 전술 판단 틱 예약 — 평균 = DecisionTickSec × 반응(RCT) 배율(2단계), [Min,Max]Mult로 매번 지터.
+    /// 중앙값(반응속도)은 RCT 스탯이 정하고(평균선수 RCT 70 = ×1.0 → baseline 불변), 폭은 전역 — 인간의
+    /// 불규칙 반응 리듬 + 캐릭터별 반응속도 정체성.</summary>
     private void ScheduleNextDecision(FighterRuntime f)
     {
+        float mean = _c.DecisionTickSec * CombatMath.DecisionCadenceFactor(f.Def.Stats);
         float mult = _decisionRng[f.Index].Range(_c.DecisionJitterMinMult, _c.DecisionJitterMaxMult);
-        int interval = Math.Max(1, (int)MathF.Round(_c.DecisionTickSec * mult / Dt));
+        int interval = Math.Max(1, (int)MathF.Round(mean * mult / Dt));
         f.NextDecisionTick = _tick + interval;
     }
 

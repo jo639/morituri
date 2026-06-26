@@ -40,10 +40,15 @@ public static class ViewerExport
     {
         var events = new List<SimEvent>();
         var frames = new List<ReplayFrame>();
-        var result = new MatchSim().Run(a, b, seed, events, frames);
+        // 천부시드 주면 그 스탯으로 실제 전투(스탯 차별화 발현 — 2단계 RCT 판단주기 등). 미지정 시 기존 Baseline.
+        var rawA = talentSeedA.HasValue ? StatGen.Roll(new SimRandom(talentSeedA.Value)) : (Endowment?)null;
+        var rawB = talentSeedB.HasValue ? StatGen.Roll(new SimRandom(talentSeedB.Value)) : (Endowment?)null;
+        var simA = rawA.HasValue ? a with { Stats = rawA.Value.Stats } : a;
+        var simB = rawB.HasValue ? b with { Stats = rawB.Value.Stats } : b;
+        var result = new MatchSim().Run(simA, simB, seed, events, frames);
 
-        var endA = talentSeedA.HasValue ? RollEndowment(talentSeedA.Value) : null;
-        var endB = talentSeedB.HasValue ? RollEndowment(talentSeedB.Value) : null;
+        var endA = rawA.HasValue ? ToViewer(rawA.Value) : null;
+        var endB = rawB.HasValue ? ToViewer(rawB.Value) : null;
 
         var doc = new ViewerDoc(MatchSerializer.SchemaVersion, seed,
             new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, endA), Describe(b, endB)),
@@ -60,9 +65,8 @@ public static class ViewerExport
         Console.WriteLine($"   viewer.html을 브라우저로 열고 이 파일을 끌어다 놓으세요.");
     }
 
-    private static ViewerEndowment RollEndowment(ulong seed)
+    private static ViewerEndowment ToViewer(Endowment e)
     {
-        var e = StatGen.Roll(new SimRandom(seed));
         var s = e.Stats;
         return new ViewerEndowment(
             TalentNames[(int)e.Talent], PotNames[(int)e.Potential],

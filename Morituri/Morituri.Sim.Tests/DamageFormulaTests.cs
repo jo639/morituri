@@ -51,6 +51,19 @@ public class DamageFormulaTests
         Assert.That(CombatMath.PerceptionDelay(Avg with { Rct = 1 }),   Is.EqualTo(0.298f).Within(1e-4));
     }
 
+    [Test]
+    public void DecisionCadenceFactor_NeutralAt70_FasterHighRct_SlowerLowRct()
+    {
+        // 평균 선수(RCT 70) = 1.0 → baseline 판단주기 불변 (Phase 2 밸런스 무손상의 근거)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 70 }),  Is.EqualTo(1.0f).Within(1e-4));
+        // 1 - (RCT-70)×0.003: RCT 높을수록 판단 간격↓(빠름), 낮을수록↑(진중)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 120 }), Is.EqualTo(0.85f).Within(1e-4));
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 20 }),  Is.EqualTo(1.15f).Within(1e-4));
+        // 유효 범위[1,150] 양끝: 0.76~1.207 — clamp[0.7,1.3]는 PerceptionDelay처럼 안전장치(범위 내 미도달)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 150 }), Is.EqualTo(0.76f).Within(1e-4));
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 1 }),   Is.EqualTo(1.207f).Within(1e-4));
+    }
+
     // ── 데미지 공식 ──
 
     [Test]
