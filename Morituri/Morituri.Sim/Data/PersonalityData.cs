@@ -23,7 +23,9 @@ public enum TriggerCondition
     StaminaNearReserve,           // 스태미나 ≤ Reserve + 10%p
     SameAttackWhiffedTwice,       // 같은 공격 연속 빗나감 ≥ value
     HpDeficitPct,                 // HP 열세 차이 ≥ value%p
-    OppIsNemesis,                 // Phase 2 예약 (관계 시스템) — Phase 1에서는 항상 false
+    OppIsNemesis,                 // 관계(T11): 상대가 원수 — 복수심 행동 게이트
+    OppIsRival,                   // 관계(T11): 상대가 라이벌 — 집중·방심 면역 게이트
+    OppIsFeared,                  // 관계(T11): 상대가 천적(공포) — 위축·회피 게이트
 }
 
 public enum TriggerEffectKind { Override, Interrupt }
@@ -60,7 +62,10 @@ public readonly record struct TriggerContext(
     float HpDeficitPct,           // 상대HP% - 자기HP% (양수 = 내가 열세)
     bool OppExhaustedPerceived = false,
     bool OppStaggeredPerceived = false,
-    float SecSinceTaunted = 999f);// 상대에게 도발당한 후 경과 초 (작을수록 막 도발당함)
+    float SecSinceTaunted = 999f, // 상대에게 도발당한 후 경과 초 (작을수록 막 도발당함)
+    bool OppIsNemesis = false,    // 관계(T11) — 상대가 원수/라이벌/천적인가 (트리거 게이트)
+    bool OppIsRival = false,
+    bool OppIsFeared = false);
 
 public static class TriggerEval
 {
@@ -87,7 +92,9 @@ public static class TriggerEval
         TriggerCondition.SameAttackWhiffedTwice   => c.SameWhiffCount >= (int)r.CondValue,
         TriggerCondition.HpDeficitPct             => c.HpDeficitPct * 100f >= r.CondValue - Eps,
         TriggerCondition.WasTaunted               => c.SecSinceTaunted <= r.CondValue + Eps,
-        TriggerCondition.OppIsNemesis             => false, // Phase 2
+        TriggerCondition.OppIsNemesis             => c.OppIsNemesis,  // 관계(T11) 게이트
+        TriggerCondition.OppIsRival               => c.OppIsRival,
+        TriggerCondition.OppIsFeared              => c.OppIsFeared,
         _ => false,
     };
 }
@@ -262,7 +269,9 @@ public static class PersonalityTable
 /// <summary>테스트용 선수 정의 (스탯 + 무기 + 전술 + 성격 조합).</summary>
 public sealed record FighterDef(string Name, FighterStats Stats, string WeaponId, string TacticsId, string PersonalityId,
     string[]? TraitIds = null,    // T09 특성 (문서[7]§6) — 생성 시 TraitGen.Roll로 부여, 미지정 시 없음
-    string[]? EmotionIds = null)  // T10 감정 (일시적 심리 상태) — 경기 전 주입(EmotionGen.FromResult 산물), 미지정 시 중립
+    string[]? EmotionIds = null,  // T10 감정 (일시적 심리 상태) — 경기 전 주입(EmotionGen.FromResult 산물), 미지정 시 중립
+    RelationType? RelationToOpp = null,  // T11 관계 — 상대를 향한 관계(1v1이라 단일). RelationLedger 누적 산물, 미지정 시 없음
+    float RelationIntensity = 1f)        // 관계 강도 0~1 (보통 |affinity|/100). 인매치 효과 배율
 {
     /// <summary>문서[4] 11장 검증 케이스: 버서커 (난전형 + 충동적 + 도끼)</summary>
     public static readonly FighterDef Berserker =

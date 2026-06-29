@@ -86,6 +86,11 @@ public sealed class FighterRuntime
     public float EmotionTriggerProbMod; // 트리거 발동 확률 가산 (도발/격노 등이 더/덜 터짐)
     public readonly List<ParamMod> EmotionMods = new();  // Directive 결정 가중치 (RebuildDirective에서 합성)
 
+    // --- 관계 (T11, 특정 상대를 향한 누적 관계) — CreateRuntime이 RelationToOpp로 세팅. decision-only + 트리거 게이트 ---
+    public RelationType? Relation;       // 이 경기 상대에 대한 관계 (없으면 null). 트리거 플래그(OppIsNemesis 등) 결정
+    public float RelationTriggerProbMod; // 트리거 발동 확률 가산
+    public readonly List<ParamMod> RelationMods = new();  // Directive 결정 가중치 (그 상대 한정)
+
     // --- FSM ---
     public FighterState State = FighterState.Idle;
     public float StateTimer, StateElapsed;
@@ -135,6 +140,8 @@ public sealed class FighterRuntime
         foreach (var m in Personality.GlobalMods) Dir.Apply(m);
         // 감정(T10): 일시적 심리 상태 = 결정 가중치 상시 보정 (의사선택만, 데미지 무관). 성격 상시보정과 동급 층.
         foreach (var m in EmotionMods) Dir.Apply(m);
+        // 관계(T11): 특정 상대를 향한 누적 관계도 결정 가중치 보정 (그 상대 한정, decision-only).
+        foreach (var m in RelationMods) Dir.Apply(m);
         foreach (var o in Overrides)
             foreach (var m in o.Mods) Dir.Apply(m);
         // 관중 기세(유리, 보편): 적극·결단·지구력 ↑. (데미지·이속은 MatchSim에서 CrowdMomentum 직접 사용)

@@ -138,8 +138,10 @@ internal static class Replay
             emotions = f[4].Split('+', StringSplitOptions.RemoveEmptyEntries)
                            .Select(e => "EMO_" + e.Trim().ToUpperInvariant())
                            .Where(EmotionTable.Exists).ToArray();
+        RelationType? relation = null;
+        if (f.Length > 5 && f[5].Length > 0 && RelationTable.TryParse(f[5].Trim(), out var rt)) relation = rt;
         string name = $"P{idx + 1}·{per}·{tac}·{wpn}";
-        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits, emotions);
+        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits, emotions, relation);
     }
 
     private static string Field(string[] f, int i, string def)

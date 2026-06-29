@@ -177,6 +177,17 @@ public sealed class MatchSim
                 Emit(new Decision(0f, idx, e.Id, "Strategy", 3f));
             }
 
+        // 관계(T11): 특정 상대를 향한 누적 관계를 결정 경로에만 주입(트리거 게이트 + decision 가중치). 데미지 무관.
+        if (def.RelationToOpp is { } relType)
+        {
+            var rd = RelationTable.Get(relType);
+            rt.Relation = relType;
+            float k = def.RelationIntensity <= 0f ? 1f : MathF.Min(1f, def.RelationIntensity);
+            foreach (var m in rd.Mods) rt.RelationMods.Add(ParamMod.Add(m.Param, m.Value * k));
+            rt.RelationTriggerProbMod += rd.TriggerProbMod * k;
+            Emit(new Decision(0f, idx, "REL_" + relType.ToString().ToUpperInvariant(), "Strategy", 3f));
+        }
+
         rt.Hp = rt.HpMax;
         rt.Stamina = rt.StaminaMax;
         rt.Poise = rt.PoiseMax;
@@ -319,7 +330,10 @@ public sealed class MatchSim
             HpDeficitPct: opp.HpPct - f.HpPct,
             OppExhaustedPerceived: opp.IsExhausted,
             OppStaggeredPerceived: opp.State == FighterState.Stagger,
-            SecSinceTaunted: _now - f.LastTauntedAt);
+            SecSinceTaunted: _now - f.LastTauntedAt,
+            OppIsNemesis: f.Relation == RelationType.Nemesis,   // 관계(T11) 게이트 — 특정 상대 한정 행동
+            OppIsRival: f.Relation == RelationType.Rival,
+            OppIsFeared: f.Relation == RelationType.Fear);
     }
 
     private void StrategyTick(FighterRuntime f)
@@ -328,8 +342,8 @@ public sealed class MatchSim
         var opp = Perceive(f);
         var ctx = BuildTriggerContext(f, opp);
 
-        // 성격 Override 규칙 + 전술 고유 조건 (같은 엔진 — 문서[5] 5장). 감정(T10)이 트리거 확률을 가감(의사결정).
-        float probMod = f.Personality.GlobalProbMod + f.EmotionTriggerProbMod;
+        // 성격 Override 규칙 + 전술 고유 조건 (같은 엔진 — 문서[5] 5장). 감정(T10)·관계(T11)가 트리거 확률을 가감(의사결정).
+        float probMod = f.Personality.GlobalProbMod + f.EmotionTriggerProbMod + f.RelationTriggerProbMod;
         EvalOverrideRules(f, f.Personality.Rules, ctx, probMod);
         if (f.Profile.UniqueRule is { } unique)
             EvalOverrideRules(f, new[] { unique }, ctx, probMod);
@@ -407,29 +421,36 @@ public sealed class MatchSim
     private bool TryInterrupts(FighterRuntime f, in TriggerContext ctx)
     {
         foreach (var r in f.Personality.Rules)
-        {
-            if (r.Kind != TriggerEffectKind.Interrupt) continue;
-            if (f.CooldownUntil.TryGetValue(r.Id, out float until) && _now < until) continue;
-            if (!TriggerEval.Matches(r, ctx)) continue;
-            // 도발만 전역 보정: 판단주기 지터가 전투를 더 결단적으로 만들어 "우세+건강/스태거" 도발 조건 노출이
-            // 늘어 도발이 증폭됐다(거울 21→50%). TauntProbMult로 도발 메타만 새 운영점에 재정렬(다른 인터럽트 무관).
-            float pMod = (1f + f.Personality.GlobalProbMod + f.EmotionTriggerProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
-            if (!_rng.Roll(r.Probability * pMod)) continue;
+            if (TryInterruptRule(f, r, ctx)) return true;
+        // 관계(T11) 게이트 룰 — 그 상대에게만 켜지는 행동(원수 복수 도발 등). 성격 인터럽트 다음 우선순위.
+        if (f.Relation is { } relt && RelationTable.Get(relt).Rule is { } relRule
+            && TryInterruptRule(f, relRule, ctx)) return true;
+        return false;
+    }
 
-            bool fired = r.Interrupt switch
-            {
-                InterruptAction.Taunt => DoTaunt(f),
-                InterruptAction.DodgeBack => DoDodge(f, away: true, allowWindupCancel: true),
-                InterruptAction.ForcedHeavy => DoForcedHeavy(f),
-                InterruptAction.HoldOff => DoHoldOff(f, r.DurationSec),
-                _ => false,
-            };
-            if (fired)
-            {
-                f.CooldownUntil[r.Id] = _now + r.CooldownSec;
-                Emit(new Decision(_now, f.Index, r.ReasonTag, "Execution", MathF.Max(r.DurationSec, 1f)));
-                return true;
-            }
+    private bool TryInterruptRule(FighterRuntime f, TriggerRule r, in TriggerContext ctx)
+    {
+        if (r.Kind != TriggerEffectKind.Interrupt) return false;
+        if (f.CooldownUntil.TryGetValue(r.Id, out float until) && _now < until) return false;
+        if (!TriggerEval.Matches(r, ctx)) return false;
+        // 도발만 전역 보정: 판단주기 지터가 전투를 더 결단적으로 만들어 "우세+건강/스태거" 도발 조건 노출이
+        // 늘어 도발이 증폭됐다(거울 21→50%). TauntProbMult로 도발 메타만 새 운영점에 재정렬(다른 인터럽트 무관).
+        float pMod = (1f + f.Personality.GlobalProbMod + f.EmotionTriggerProbMod + f.RelationTriggerProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
+        if (!_rng.Roll(r.Probability * pMod)) return false;
+
+        bool fired = r.Interrupt switch
+        {
+            InterruptAction.Taunt => DoTaunt(f),
+            InterruptAction.DodgeBack => DoDodge(f, away: true, allowWindupCancel: true),
+            InterruptAction.ForcedHeavy => DoForcedHeavy(f),
+            InterruptAction.HoldOff => DoHoldOff(f, r.DurationSec),
+            _ => false,
+        };
+        if (fired)
+        {
+            f.CooldownUntil[r.Id] = _now + r.CooldownSec;
+            Emit(new Decision(_now, f.Index, r.ReasonTag, "Execution", MathF.Max(r.DurationSec, 1f)));
+            return true;
         }
         return false;
     }

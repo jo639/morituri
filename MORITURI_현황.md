@@ -16,7 +16,7 @@
   Phase 3  리그/역사 — 미착수 (ERD 필요)
   Phase 4  혈통/감독 — 미착수
   ```
-- **테스트:** 68개 (`[Test]` 기준, 6개 파일) 전부 통과 기조.
+- **테스트:** 73개 (`[Test]` 기준, 7개 파일) 전부 통과 기조.
 
 ---
 
@@ -33,6 +33,7 @@ Morituri/  (.sln)
 │  │   ├─ PersonalityData.cs        T04 트리거 / T05 성격 10종 / T07 검증 선수(FighterDef)
 │  │   ├─ TraitData.cs              T09 특성 14종 + 생성 추첨(TraitGen)
 │  │   ├─ EmotionData.cs            T10 감정 8종 + 생성기(EmotionGen) — 의사선택만(decision-only)
+│  │   ├─ RelationData.cs           T11 관계 7종 + 누적 원장(RelationLedger) — 메타 영속·트리거 게이트
 │  │   ├─ StatGen.cs                천부/잠재력 추첨 + 스탯 분배 (Endowment)
 │  │   └─ FighterStats.cs           6대 스탯 (Baseline=70 균일·HP700)
 │  ├─ Combat/CombatMath.cs        전투 수식 (순수 함수, 난수 주입)
@@ -74,6 +75,7 @@ dotnet run -c Release -- [명령]
 | `statgen [N]` | 천부/잠재력 분포 검증 |
 | `emotionprobe [N]` | 감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 |
 | `emotiongen [N]` | 감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 |
+| `relations [N]` | 관계(T11) 메타 데모 — 라운드로빈 누적 관계 그래프·복수전 후보 |
 | `taunt [N]` / `tauntfreq [N]` | 도발 역전·빈도 프로브 |
 | `weaponsweep` / `sweep` / `tune` / `tunetac` | 자동 밸런스 스윕(좌표하강) |
 
@@ -193,6 +195,30 @@ dotnet run -c Release -- [명령]
 
 ---
 
+## 7.6 관계 (T11 — `RelationData.cs`, 구현됨)
+
+**특정 상대를 향한, 여러 경기에 걸쳐 누적되는 유대/적대.** = 로드맵의 "기억 최소판"(Phase 3 역사 DB 전신).
+
+**★ 감정과의 차별:** 감정=일시적·자기상태·연속 다이얼(인매치) / 관계=**메타 영속·특정 상대 전용·트리거 게이트** + **경기 외적 영향**. 둘 다 decision-only(데미지 무관).
+
+| 타입 | affinity | 인매치(게이트) | 메타 |
+|---|---|---|---|
+| 원수 NEMESIS | −−강 | OppIsNemesis→복수심(Aggr+·Risk+)+복수 도발(VENGE) | 복수전 후보 |
+| 공포 FEAR | −− | OppIsFeared→위축·회피(움찔 DREAD) | 대전 기피 |
+| 질투 ENVY | − | 과공격·강공 | 라이벌리 |
+| 집착 OBSESSION | 박빙 다전 | 추격·반복공격 | 서사 |
+| 라이벌 RIVAL | 호각(균형 전적) | 집중·결단(Commit−) | 라이벌리 점수(매치메이킹) |
+| 존경 RESPECT | + | 정정당당(가벼움) | 명성 |
+| 친구 FRIEND | ++ | 봐주기(Aggr−) | 우호 |
+
+- **누적 그래프:** `RelationLedger` (self→opp affinity −100~+100 + 전적). `RecordMatch`(패배→affinity↓·KO 강하게, 균형 전적→라이벌, 일방 패배→원수/공포). dominant 타입 = affinity + 승패 균형 + 성격 해석(`RelationState.Classify`).
+- **인매치 주입:** `FighterDef.RelationToOpp`(b: 6번째 필드). 트리거 컨텍스트 `OppIsNemesis/OppIsRival/OppIsFeared` 게이트 + decision 가중치 + 시작 시 `REL_*` Decision 가시화.
+- **메타 쿼리(경기 외적):** `RivalryWeight`(매치메이킹 가중)·`RevengeCandidates`(원수+미복수)·`AllRelations`. Phase 3 리그/명성의 입력 인터페이스.
+- **검증:** `relations` 데모 — 10성격 라운드로빈에서 관계 그래프 창발(라이벌/원수/복수전 후보). 결정론·거울 회귀.
+- **범위:** 영속 저장·자동 매치메이킹·명성 소비자 = Phase 3. 질투/집착/존경/친구 본격 전투분기·성격 변화 = Phase 3~4. 분류 수치는 초안.
+
+---
+
 ## 8. 전투 수식 (`CombatMath.cs` — 순수 함수)
 
 ```
@@ -235,13 +261,14 @@ dotnet run -c Release -- [명령]
 | **판단주기 지터** | DecisionJitterMin/Max 0.4~1.6 | 전술판단 간격 매번 추첨(불규칙 리듬). 중앙1.0로 평균 보존(밸런스 격리). |
 | **도발 메타** | PersonalityData·TauntProbMult | 능동 도발 + 피도발 반응(WasTaunted) 성격별 분기. |
 | **감정(T10)** | EmotionData·FighterRuntime·MatchSim | 경기 결과로 생성되는 일시적 심리 상태(8종). **의사선택만**(트리거 확률+Directive 가중치), 데미지·스탯 배율 무관. → [10]은 관중, 감정은 §아래. |
+| **관계(T11)** | RelationData·FighterRuntime·MatchSim | 특정 상대를 향한 누적 관계(7종). 메타 영속 그래프(RelationLedger) + 인매치 **트리거 게이트**(원수→OppIsNemesis 복수 도발 등). decision-only. → §7.6. |
 
 ---
 
 ## 10. 미구현 / Phase 2+ 예약
 
 - **감정(T10):** ✅ 구현(decision-only, → §7.5). **영속 이월(Phase 3)·성격 변화 입력(Phase 4)은 미구현.**
-- **관계(T11):** `OppIsNemesis`(항상 false). 미구현. (트라우마·원한이 상대 식별을 쓰나 관계 게이지 −100~+100은 별도.)
+- **관계(T11):** ✅ 구현(메타 그래프 + 트리거 게이트, → §7.6). **영속 저장·자동 매치메이킹·명성 소비자(Phase 3)·성격 변화(Phase 4)는 미구현.**
 - **스킬·계급(T12/T13):** 설계만(→ [6][7]). 패시브=트리거 엔진 재사용, 액티브=모션 추가. 슬롯경제 미구현.
 - **나이/성장:** 특성 "20세 +1 부여", 잠재력→성장엔진, 노화(RCT 하락) 미구현.
 - **CSV 데이터 파이프라인:** 현재 C# 정적 테이블. 25칸 동시튜닝이 고통스러워지면 착수(백로그).
