@@ -103,6 +103,23 @@ public sealed class RelationLedger
         return st;
     }
 
+    /// <summary>영속 저장용 스냅샷 항목 (Phase 3 world.json — [2]§2.6).</summary>
+    public sealed record Entry(string Self, string Opp, float Affinity, int Encounters, int Wins, int Losses, int KoLosses, int CloseGames);
+
+    public IReadOnlyList<Entry> Snapshot() =>
+        _map.Select(kv => new Entry(kv.Key.Item1, kv.Key.Item2,
+            kv.Value.Affinity, kv.Value.Encounters, kv.Value.Wins, kv.Value.Losses, kv.Value.KoLosses, kv.Value.CloseGames)).ToList();
+
+    public void Load(IEnumerable<Entry> entries)
+    {
+        foreach (var e in entries)
+        {
+            var st = Get(e.Self, e.Opp);
+            st.Affinity = e.Affinity; st.Encounters = e.Encounters;
+            st.Wins = e.Wins; st.Losses = e.Losses; st.KoLosses = e.KoLosses; st.CloseGames = e.CloseGames;
+        }
+    }
+
     /// <summary>경기 결과를 양방향으로 누적. winner: 0=a / 1=b / -1=무승부.</summary>
     public void RecordMatch(string aId, string bId, int winner, bool wasKo, float aMinHp, float bMinHp)
     {

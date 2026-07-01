@@ -28,7 +28,13 @@ Morituri/Morituri.Headless/viewer.json
 match.json
 highlights.json
 viewer.json
+world.json
+Morituri/world.json
+Morituri/Morituri.Headless/world.json
 Morituri/Morituri.Headless/matchup_report.csv
+
+# ── 테스트 결과 ──
+Morituri/Morituri.Sim.Tests/TestResults/
 
 # ── 로컬 프리뷰 설정 (디버그 뷰어 서빙용, 머신별) ──
 .claude/launch.json
