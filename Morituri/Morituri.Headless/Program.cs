@@ -18,6 +18,7 @@ using Morituri.Sim.Serialization;
 //       dotnet run -- emotionprobe [N]          감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 (기본 500)
 //       dotnet run -- emotiongen [N]            감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 (기본 30)
 //       dotnet run -- relations [N]             관계(T11) 메타 데모 — 라운드로빈 누적 관계 그래프·복수전 후보 (기본 20)
+//       dotnet run -- season [rounds] [seed]    Phase 3 시즌 엔진 — 라운드로빈 시즌: 순위·관계·감정·서사 창발 (기본 6회)
 
 if (args.Length > 0 && args[0] == "matrix")
 {
@@ -60,6 +61,14 @@ if (args.Length > 0 && args[0] == "emotiongen")
 if (args.Length > 0 && args[0] == "relations")
 {
     RelationProbe.Run(args.Length > 1 && int.TryParse(args[1], out int rl) ? rl : 20);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "season")
+{
+    int rounds = args.Length > 1 && int.TryParse(args[1], out int sr) ? sr : 6;
+    ulong sseed = args.Length > 2 && ulong.TryParse(args[2], out ulong ss) ? ss : 1;
+    Season.Run(rounds, sseed);
     return;
 }
 

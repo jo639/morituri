@@ -238,7 +238,7 @@ MatchSim.Run(snapA, snapB, seed)  →  MatchResult (+ 관중 export)
 
 ## 7. Phase 3 착수 순서 (이 문서 확정 후)
 ```
-P3-A  Season 엔진: 영속 로스터 + 라운드로빈 자동 스케줄 + 감정(다음 1경기)·관계(영속) + 순위 → verify: 시즌 리포트에 라이벌·복수극·챔피언 창발
+P3-A ✅ Season 엔진(2026-06-29, `Season.cs` / `season` 데모): 영속 로스터 + 라운드로빈 자동 스케줄 + 감정(다음 1경기)·관계(영속) + 순위. 검증: 8인×6R=168경기에서 챔피언·숙적·복수극 11건(R2~R5)·이변·대역전 창발. 결정론(시드 고정). — Headless 시작(추후 Meta 분리)
 P3-B  Fame/인기: crowd export → 명성 누적 → 이벤트 매치 가중 → verify: 이변·연승이 인기로 측정
 P3-C  저장/로드: world.json 영속(constantsVer 포함) → verify: 세션 넘어 세계 지속
 P3-D  (추후) 매치메이킹 권한: 자동 스케줄 위에 플레이어 대진 개입(간접 개입 1호) → 복수전·라이벌전 성사
