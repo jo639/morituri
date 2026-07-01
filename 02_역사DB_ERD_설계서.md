@@ -76,8 +76,9 @@
 |---|---|---|
 | id | string | `MTCH_*` |
 | schemaVer | int | `MatchSerializer.SchemaVersion` |
+| constantsVer | int/string | **밸런스 상수 버전** (§6-7) — 재현 게이트·"어느 밸런스로 치른 경기인가" 표시 |
 | seasonId / round | string / int | 소속 시즌·라운드 |
-| seed | ulong | 재현 키 |
+| seed | ulong | 재현 키 (constantsVer 동일할 때만 바이트 재현 보장) |
 | fighterA / fighterB | **FighterSnapshot** | §2.3 — 경기 시점 선수 상태(재현 필수) |
 | winner | int | 0 / 1 / -1 |
 | reason | enum | KO / Judgement / Draw |
@@ -109,7 +110,7 @@
 |---|---|---|
 | id | string | `SEA_*` |
 | name / index | string / int | |
-| scheduleType | enum | RoundRobin / Ladder / Bracket (v1=RoundRobin) |
+| scheduleType | enum | RoundRobin / Ladder / Bracket — **v1 = RoundRobin 자동 편성**(§6-6, 플레이어 매치메이킹 권한은 추후) |
 | participantIds | string[] | 로스터 |
 | status | enum | Scheduled / InProgress / Finished |
 | championId | string? | 종료 시 |
@@ -137,20 +138,17 @@
 
 > `RelationLedger`가 이 테이블의 인메모리 뷰. 시즌 진행마다 `RecordMatch` → upsert.
 
-### 2.7 Emotion (감정 인스턴스) ★ — 이월/감쇠
-현 감정은 인매치 1경기 고정이었으나, Phase 3에서 **일시 상태가 다음 경기로 이월**된다(감정의 진짜 수명).
+### 2.7 Emotion (감정 인스턴스) ★ — 한 경기 수명 (§6-1)
+**감정은 다중 경기 이월·누적하지 않는다.** 경기 결과로 생성된 감정은 **다음 1경기에만** 실려 그 경기 후 소멸한다. 영속 엔티티가 아니라 "다음 경기 대기열"의 1회성 항목.
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| id | string | |
 | gladiatorId | string | 보유자 |
 | emotionId | enum | T10 (자신감/원한/트라우마…) |
 | sourceMatchId | string | 생성 계기 |
-| targetGladiatorId | string? | 원한·트라우마는 특정 상대 귀속 |
-| createdSeasonMatchIdx | int | 감쇠 기준점 |
-| decayRemaining | int | 남은 경기 수(또는 시즌) — `EmotionDef.DecaySec`의 경기 단위 대응 |
+| targetGladiatorId | string? | 원한·트라우마는 특정 상대 귀속 (그 상대와의 다음 경기에 우선 적용) |
 
-> **생성:** `EmotionGen.Roll`(경기 결과 → 감정, 확률 발생 ~15%). **소비:** 다음 경기의 `FighterSnapshot.emotionIds`로 주입. **감쇠:** N경기 후 소멸. **성격 변화(Phase 4):** 누적 감정 → 성격 드리프트 입력.
+> **생성:** 경기 종료 시 `EmotionGen.Roll`(결과 → 감정, 확률 ~15%). **적용:** *다음 1경기*의 `FighterSnapshot.emotionIds`로 주입. **소멸:** 그 경기 종료 시(스택·career 이월 없음). **인매치 지속:** 한 경기 내에서도 경기 시간 전체가 아닐 수 있음 — intra-match 발동/감쇠(정교화 추후, 현 구현은 whole-match 상수). **성격 변화(Phase 4):** 감정 *이벤트 이력*(어떤 감정이 얼마나 자주 생겼나)이 드리프트 입력 — 감정 상태 자체의 누적이 아님.
 
 ### 2.8 Fame (인기·명성) — [10]§8 훅 구체화
 | 컬럼 | 타입 | 설명 |
@@ -193,7 +191,7 @@ MatchSim.Run(snapA, snapB, seed)  →  MatchResult (+ 관중 export)
   ① Match 레코드 저장 (seed + 스냅샷 + 요약 + 태그)
   ② Standing 갱신 (승패·승점·streak)
   ③ RelationLedger.RecordMatch → Relation upsert (관계 누적)
-  ④ EmotionGen.Roll(결과) → Emotion 인스턴스 생성(확률) → 다음 경기 이월
+  ④ EmotionGen.Roll(결과) → Emotion 생성(확률) → 다음 1경기 대기열(적용 후 소멸 — 누적 없음, §6-1)
   ⑤ Fame 갱신 (관중장악·스펙터클·이변·streak)
   ⑥ NarrativeEvent 발행 (comeback/revenge/upset…) → 하이라이트·서사
 ```
@@ -226,23 +224,23 @@ MatchSim.Run(snapA, snapB, seed)  →  MatchResult (+ 관중 export)
 
 ---
 
-## 6. 미해결 결정 (구현 전 확정)
+## 6. 결정 로그 (라니스타 확정 2026-06-29 · 나머지 추후)
 
-1. **감정 이월 수명 단위** — 경기 수 N vs 시즌. 감쇠율(현 `DecaySec`의 경기 단위 환산).
-2. **성장/노화 곡선** — 매 경기 소량 vs 훈련 이벤트. 노화 시작 나이·RCT 하락률([11]§7).
-3. **승점·순위 규칙** — 승 3/무 1? KO 보너스? 시즌 길이·스케줄(라운드로빈 vs 사다리).
-4. **Fame 공식** — 관중장악·스펙터클·이변 가중치([10]§11-6).
-5. **계급 상승 트리거** — 어떤 업적·아이템·전당이 +1 계급([6]§7, [11]§7-4).
-6. **매치메이킹 권한 범위** — 플레이어가 짜는 대진 vs 자동 스케줄 + 개입(기획시안 디벨롭 2).
-7. **재현 vs 스냅샷 비용** — 밸런스 상수(`BalanceConstants`)가 바뀌면 과거 재현이 달라짐 → 스냅샷에 상수 버전도 박제할지(schemaVer로 게이트).
+1. ✅ **감정 수명 = 한 경기 이내.** 감정은 **다중 경기 이월·누적하지 않는다.** 경기 결과로 생성된 감정은 **다음 1경기에만** 적용되고 그 경기 후 소멸(career 스택 없음). 게다가 **한 경기 내에서도 반드시 경기 시간 전체가 아니다** — intra-match로 일시(발동/감쇠 가능; 정교화는 추후). → §2.7 Emotion은 `decayRemaining`(다중경기) 대신 **1경기 소비 + 인매치 지속창**으로 정의.
+2. ⏳ **성장/노화 곡선** — 추후. 매 경기 소량 vs 훈련 이벤트. 노화 시작 나이·RCT 하락률([11]§7).
+3. ⏳ **승점·순위 규칙** — 추후. 승 3/무 1? KO 보너스?
+4. ⏳ **Fame 공식** — 추후. 관중장악·스펙터클·이변 가중치([10]§11-6).
+5. ⏳ **계급 상승 트리거** — 추후. 어떤 업적·아이템·전당이 +1 계급([6]§7, [11]§7-4).
+6. ✅ **매치메이킹 = 자동 스케줄 (v1).** 시즌은 자동 편성(라운드로빈)으로 진행. 플레이어 대진 편성 권한(기획시안 디벨롭 2)은 **추후**(자동 스케줄 위에 나중에 얹음).
+7. ✅ **재현 = 상수 버전 박제/표시.** Match(및 스냅샷)에 `constantsVer`를 기록한다 — `BalanceConstants`가 바뀌어도 과거 경기가 어느 밸런스로 치러졌는지 명시되고, 재현은 그 버전으로 게이트(§2.2).
 
 ---
 
 ## 7. Phase 3 착수 순서 (이 문서 확정 후)
 ```
-P3-A  Season 엔진: 영속 로스터 + 라운드로빈 + 경기간 감정/관계 이월 + 순위 → verify: 시즌 리포트에 라이벌·복수극·챔피언 창발
+P3-A  Season 엔진: 영속 로스터 + 라운드로빈 자동 스케줄 + 감정(다음 1경기)·관계(영속) + 순위 → verify: 시즌 리포트에 라이벌·복수극·챔피언 창발
 P3-B  Fame/인기: crowd export → 명성 누적 → 이벤트 매치 가중 → verify: 이변·연승이 인기로 측정
-P3-C  매치메이킹 권한: 플레이어 대진 편성(간접 개입 1호) → verify: 복수전·라이벌전을 플레이어가 성사
-P3-D  저장/로드: world.json 영속 → verify: 세션 넘어 세계 지속
+P3-C  저장/로드: world.json 영속(constantsVer 포함) → verify: 세션 넘어 세계 지속
+P3-D  (추후) 매치메이킹 권한: 자동 스케줄 위에 플레이어 대진 개입(간접 개입 1호) → 복수전·라이벌전 성사
 ```
 > 로드맵[0] Phase 3 착수 조건("문서[2] ERD") **충족**. 다음 = P3-A 시즌 엔진(승인 시).
