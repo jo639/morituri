@@ -1,44 +1,62 @@
+using System.Text.Json;
 using Morituri.Headless;
 using Photino.NET;
 
 namespace Morituri.Client;
 
-// W1 (배포 로드맵[12]) — 게임 셸.
+// W2 (배포 로드맵[12]) — 감독(루두스) 모드 게임 셸.
 // Game(상태 기계)이 이 프로세스 안에 살고, 웹 UI(index.html)가 로컬 API로 조작한다:
-//   GET  /api/state      현재 시즌 상태 (season.json과 동일 스키마)
-//   POST /api/next       다음 경기 1판 실행 → viewer.json/season.json 갱신, 요약 반환
-//   POST /api/newcareer  세계 초기화 후 새 커리어
-// 화면: 메인메뉴 오버레이 → 리그(league.html) / 로스터 / 관전(viewer.html) 탭 전환.
+//   GET  /api/state       루두스·시즌·다음경기 상태
+//   POST /api/next        다음 경기 (body {tacticId} = 내 선수 전술)
+//   POST /api/gacha       뽑기 → 마스킹된 후보 3명
+//   POST /api/recruit     영입 (body {idx})
+//   POST /api/train       훈련 분배 (body {id, axis})
+//   POST /api/build       시설 구매 (body {facility})
+//   POST /api/newcareer   세계 초기화
 internal static class Program
 {
     [STAThread]
     private static void Main()
     {
-        // 출력 폴더 = 작업 디렉터리 (웹 UI 파일 + world/season/viewer.json이 여기 모임).
         Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
-        // 시즌당 정규 1라운드로빈(28경기) + 이벤트 4경기 — 클릭 진행에 맞춘 페이스.
-        var game = new Game(roundsPerSeason: 1, seasonSeed: null, fresh: false, interactive: true);
+        // 시즌당 정규 1라운드로빈 — 클릭 진행 페이스. world.json v2가 있으면 미드시즌 그대로 재개.
+        var game = new Game(roundsPerSeason: 1);
 
-        int port = ViewerServer.StartBackground(AppContext.BaseDirectory, 5173, (method, path) => path switch
+        int port = ViewerServer.StartBackground(AppContext.BaseDirectory, 5173, (method, path, body) => path switch
         {
             "/api/state" => game.StateJson(),
-            "/api/next" when method == "POST" => game.PlayNextJson(),
+            "/api/next" when method == "POST" => game.PlayNextJson(body),
+            "/api/gacha" when method == "POST" => game.GachaJson(),
+            "/api/recruit" when method == "POST" => game.RecruitJson(IntOf(body ?? "", "idx")),
+            "/api/train" when method == "POST" => game.TrainJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "axis")),
+            "/api/build" when method == "POST" => game.BuildJson(StrOf(body ?? "", "facility")),
             "/api/newcareer" when method == "POST" => NewCareer(),
             _ => null,
         });
 
         string NewCareer()
         {
-            try { File.Delete("world.json"); } catch { }   // 새 커리어 = 영속 세계 삭제
-            game = new Game(roundsPerSeason: 1, seasonSeed: null, fresh: true, interactive: true);
+            try { File.Delete("world.json"); } catch { }
+            game = new Game(roundsPerSeason: 1, fresh: true);
             return game.StateJson();
+        }
+
+        static int IntOf(string body, string key)
+        {
+            try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetInt32(); }
+            catch { return -1; }
+        }
+        static string StrOf(string body, string key)
+        {
+            try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetString() ?? ""; }
+            catch { return ""; }
         }
 
         new PhotinoWindow()
             .SetTitle("MORITURI · 검투장")
             .SetUseOsDefaultSize(false)
-            .SetSize(1120, 840)
+            .SetSize(1180, 860)
             .Center()
             .SetContextMenuEnabled(false)
             .Load($"http://localhost:{port}/index.html")

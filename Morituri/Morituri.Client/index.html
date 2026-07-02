@@ -5,50 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI</title>
 <style>
-  :root{ --bg:#231a12; --panel:#2f2418; --ink:#f0e6d6; --dim:#a89576; --gold:#c9a84c; --a:#5b9be0; --b:#e0685f; }
+  :root{ --bg:#231a12; --panel:#2f2418; --panel2:#3a2d1d; --ink:#f0e6d6; --dim:#a89576; --gold:#c9a84c;
+         --a:#5b9be0; --b:#e0685f; --grn:#8fc98f; }
   *{ box-sizing:border-box; }
   html,body{ height:100%; }
   body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,"Segoe UI","Malgun Gothic",sans-serif;
         display:flex; flex-direction:column; }
+  button{ font:inherit; cursor:pointer; }
   /* ── 상단 바 ── */
-  #top{ display:flex; align-items:center; gap:14px; padding:8px 16px; background:var(--panel);
+  #top{ display:flex; align-items:center; gap:12px; padding:8px 16px; background:var(--panel);
         border-bottom:1px solid #4a3a26; flex:0 0 auto; }
   #logo{ font-weight:800; letter-spacing:1px; color:var(--gold); cursor:pointer; }
-  nav{ display:flex; gap:4px; }
-  nav button{ background:none; border:none; color:var(--dim); font:inherit; padding:6px 14px; cursor:pointer; border-radius:7px; }
+  nav{ display:flex; gap:2px; }
+  nav button{ background:none; border:none; color:var(--dim); padding:6px 12px; border-radius:7px; }
   nav button.on{ background:#3a2d1d; color:var(--ink); font-weight:700; }
+  #gold{ color:var(--gold); font-weight:700; }
   #status{ margin-left:auto; color:var(--dim); font-size:12px; }
-  #next{ background:var(--gold); color:#231a12; border:none; font:inherit; font-weight:800; padding:7px 18px;
-         border-radius:8px; cursor:pointer; }
+  #next{ background:var(--gold); color:#231a12; border:none; font-weight:800; padding:7px 16px; border-radius:8px; }
   #next:disabled{ opacity:.4; cursor:default; }
   /* ── 화면 ── */
   #screens{ flex:1 1 auto; position:relative; min-height:0; }
-  .screen{ position:absolute; inset:0; display:none; }
+  .screen{ position:absolute; inset:0; display:none; overflow:auto; }
   .screen.on{ display:block; }
+  .screen > .pad{ padding:16px; max-width:1100px; margin:0 auto; }
   iframe{ width:100%; height:100%; border:0; background:var(--bg); }
-  /* 관전 배너 */
+  h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
+  .note{ color:var(--dim); font-size:12px; }
+  .err{ color:var(--b); font-size:12px; min-height:16px; }
+  /* 배너(수입) */
+  #incomeBar{ display:none; margin:10px 0; padding:8px 14px; background:var(--panel2); border-left:3px solid var(--gold);
+              border-radius:7px; font-size:13px; }
+  /* 관전 */
   #watchbar{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:12px;
              padding:6px 16px; background:rgba(35,26,18,.92); border-bottom:1px solid #4a3a26; z-index:5; }
   #watchbar .card{ font-weight:700; }
   #watchbar .tag{ font-size:11px; color:var(--gold); border:1px solid var(--gold); border-radius:4px; padding:0 6px; }
-  #watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26;
-                    font:inherit; padding:4px 12px; border-radius:7px; cursor:pointer; }
+  #watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26; padding:4px 12px; border-radius:7px; }
   #watch iframe{ padding-top:36px; }
-  /* 로스터 */
-  #roster{ overflow:auto; padding:18px; }
-  .rgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; max-width:1080px; margin:0 auto; }
+  /* 카드 그리드 */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
   .fc{ background:var(--panel); border-radius:11px; padding:12px 14px; border-top:3px solid var(--gold); }
-  .fc h3{ margin:0; font-size:16px; } .fc .bd{ color:var(--dim); font-size:11px; margin:2px 0 8px; }
-  .fc .row{ display:flex; justify-content:space-between; font-size:12px; padding:2px 0; }
+  .fc.ai{ border-top-color:#5a4a32; }
+  .fc h3{ margin:0; font-size:16px; display:flex; align-items:center; gap:6px; }
+  .fc h3 .old{ color:var(--b); font-size:11px; }
+  .fc .bd{ color:var(--dim); font-size:11px; margin:2px 0 6px; }
+  .fc .row{ display:flex; justify-content:space-between; font-size:12px; padding:1px 0; }
   .fc .row b{ color:var(--gold); font-weight:600; }
-  .fc .rel{ font-size:11px; color:var(--b); margin-top:6px; }
-  /* ── 메인 메뉴 오버레이 ── */
+  .chips{ margin-top:5px; }
+  .chip{ display:inline-block; font-size:10px; background:rgba(120,170,90,.18); color:#9bd17a; border-radius:3px; padding:0 5px; margin:1px 3px 0 0; }
+  .chip.tac{ background:rgba(91,155,224,.15); color:#9bc4ec; cursor:default; }
+  .chip.tac.cur{ outline:1px solid var(--a); font-weight:700; }
+  .chip.hid{ background:rgba(160,140,110,.15); color:var(--dim); }
+  /* 스탯 훈련 그리드 */
+  .stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px 10px; margin-top:6px; font-size:12px; }
+  .stats .st{ display:flex; justify-content:space-between; align-items:center; gap:4px; }
+  .stats .st span{ color:var(--dim); }
+  .stats .st button{ background:#4a3a26; border:none; color:var(--gold); border-radius:4px; padding:0 6px; font-size:12px; line-height:18px; }
+  .cap{ height:6px; background:#0c0f14; border-radius:3px; margin-top:6px; overflow:hidden; }
+  .cap > i{ display:block; height:100%; background:linear-gradient(90deg,#8a6a2a,var(--gold)); }
+  /* 시설 */
+  .fac{ display:flex; gap:10px; flex-wrap:wrap; }
+  .fac .f{ flex:1 1 240px; background:var(--panel); border-radius:10px; padding:10px 12px; }
+  .fac .f b{ color:var(--gold); }
+  .fac .f button{ margin-top:6px; background:#4a3a26; border:none; color:var(--ink); border-radius:6px; padding:4px 10px; }
+  /* 영입 */
+  #gachaBtn{ background:var(--gold); color:#231a12; border:none; font-weight:800; padding:9px 20px; border-radius:9px; }
+  .cand{ border-top-color:var(--a); }
+  .cand .recruit{ margin-top:8px; width:100%; background:#3a5a3a; border:none; color:#d6f0d6; font-weight:700; padding:6px; border-radius:7px; }
+  /* 전술 모달 */
+  .modal{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:60; }
+  .modal.on{ display:flex; }
+  .mbox{ background:var(--panel); border:1px solid #4a3a26; border-radius:14px; padding:20px 22px; width:min(560px,92vw); }
+  .mbox h3{ margin:0 0 4px; color:var(--gold); }
+  .mbox .vsline{ font-size:13px; color:var(--dim); margin-bottom:12px; }
+  .tacbtn{ display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid #4a3a26;
+           color:var(--ink); border-radius:9px; padding:9px 12px; margin-top:8px; }
+  .tacbtn:hover{ border-color:var(--gold); }
+  .tacbtn b{ color:var(--gold); }
+  .tacbtn .d{ font-size:11px; color:var(--dim); }
+  /* 메뉴 */
   #menu{ position:fixed; inset:0; background:radial-gradient(circle at 50% 42%, #2a2016, #16100a);
          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; z-index:50; }
   #menu h1{ font-size:52px; letter-spacing:10px; color:var(--gold); margin:0 0 4px; font-weight:800; }
   #menu .tag{ color:var(--dim); letter-spacing:3px; font-size:12px; margin-bottom:28px; }
-  #menu button{ width:240px; padding:12px; font:inherit; font-size:15px; font-weight:700; border-radius:9px;
-                border:1px solid #4a3a26; background:var(--panel); color:var(--ink); cursor:pointer; }
+  #menu button{ width:240px; padding:12px; font-size:15px; font-weight:700; border-radius:9px;
+                border:1px solid #4a3a26; background:var(--panel); color:var(--ink); }
   #menu button:hover{ border-color:var(--gold); }
   #menu .info{ color:var(--dim); font-size:12px; margin-top:20px; }
 </style>
@@ -58,22 +99,55 @@
   <span id="logo">⚔ MORITURI</span>
   <nav>
     <button data-s="league" class="on">리그</button>
+    <button data-s="ludus">루두스</button>
+    <button data-s="market">영입</button>
     <button data-s="roster">로스터</button>
     <button data-s="watch">관전</button>
   </nav>
+  <span id="gold">💰 —</span>
   <span id="status">—</span>
   <button id="next">다음 경기 ▶</button>
 </div>
 
 <div id="screens">
-  <div class="screen on" id="league"><iframe id="leagueF" src="league.html"></iframe></div>
-  <div class="screen" id="roster"><div class="rgrid" id="rgrid"></div></div>
+  <div class="screen on" id="league">
+    <div class="pad" style="padding-bottom:0"><div id="incomeBar"></div></div>
+    <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
+  </div>
+
+  <div class="screen" id="ludus"><div class="pad">
+    <h2>내 루두스 <span class="note" id="ludusNote"></span></h2>
+    <div class="grid" id="myGrid"></div>
+    <h2>시설</h2>
+    <div class="fac" id="facRow"></div>
+    <div class="err" id="ludusErr"></div>
+  </div></div>
+
+  <div class="screen" id="market"><div class="pad">
+    <h2>검투사 시장 <span class="note" id="marketNote"></span></h2>
+    <button id="gachaBtn">🎲 뽑기</button>
+    <span class="note">  후보 3명 — 무기·성격·전술 하나만 공개. 천부·잠재력·특성은 영입해야 안다.</span>
+    <div class="err" id="marketErr"></div>
+    <div class="grid" id="candGrid" style="margin-top:12px"></div>
+  </div></div>
+
+  <div class="screen" id="roster"><div class="pad">
+    <h2>리그 로스터 <span class="note">(공개 정보)</span></h2>
+    <div class="grid" id="rosterGrid"></div>
+  </div></div>
+
   <div class="screen" id="watch">
-    <div id="watchbar"><span class="card" id="watchCard">—</span><span class="tag" id="watchTag" hidden>이벤트 매치</span>
+    <div id="watchbar"><span class="card" id="watchCard">—</span><span class="tag" id="watchTag" hidden>이벤트</span>
       <button onclick="go('league')">결과 반영된 리그 보기 →</button></div>
     <iframe id="watchF" src="about:blank"></iframe>
   </div>
 </div>
+
+<div class="modal" id="tacModal"><div class="mbox">
+  <h3 id="tmTitle">전술 지시</h3>
+  <div class="vsline" id="tmVs"></div>
+  <div id="tmOpts"></div>
+</div></div>
 
 <div id="menu">
   <h1>MORITURI</h1>
@@ -84,73 +158,168 @@
 </div>
 
 <script>
-let state = null;
+const WPN={SWORD:'검',SPEAR:'창',AXE:'도끼',GREATSWORD:'대검',DUALBLADES:'쌍검',HAMMER:'망치',WHIP:'채찍',SHIELD:'방패'};
+const PER={CALM:'냉철',RECKLESS:'충동',ARROGANT:'오만',HONORABLE:'고결',COWARD:'겁쟁이',SHOWMAN:'쇼맨',OPPORTUNIST:'기회주의',CRUEL:'잔혹',BOLD:'대담',WARY:'신중'};
+const TAC={BALANCED:'균형',PRESSURE:'압박',COUNTER:'카운터',ZONER:'견제',BRAWLER:'난전',DEFENDER:'방어',DECISION:'결단',HUNTER:'사냥꾼',GAMBLER:'도박',EVADER:'회피'};
+const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 사냥',COUNTER:'거리 유지·후딜 반격',ZONER:'최장거리 견제',BRAWLER:'초근접 난타',DEFENDER:'가드 중심 수비',DECISION:'신중한 판정 노림',HUNTER:'약해진 사냥감 추적',GAMBLER:'고위험 도박',EVADER:'회피 중심'};
+const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
+const $=id=>document.getElementById(id);
+let st=null;
 
 function go(s){
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
+  if (s==='league') $('leagueF').src='league.html?t='+Date.now();
+  if (s==='ludus') renderLudus();
+  if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
-  if (s==='league') document.getElementById('leagueF').src = 'league.html?t='+Date.now();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
-document.getElementById('logo').onclick = ()=> document.getElementById('menu').style.display='flex';
+$('logo').onclick=()=> $('menu').style.display='flex';
+
+async function api(path, body){
+  const r = await fetch(path, body!==undefined ? {method:'POST', body:JSON.stringify(body||{})} : {cache:'no-store'});
+  return r.json();
+}
 
 async function refresh(){
-  state = await (await fetch('/api/state', {cache:'no-store'})).json();
-  const s = state;
-  const prog = s.Completed ? '시즌 종료' : `${s.Matches}/${s.TotalMatches} 경기`;
-  document.getElementById('status').textContent = `시즌 ${s.SeasonNo} · ${prog}`;
-  const nx = document.getElementById('next');
-  nx.textContent = s.Completed ? '새 시즌 개막 ▶'
-                 : s.NextA ? (s.NextIsEvent ? `🎪 ${s.NextA} vs ${s.NextB} ▶` : `다음: ${s.NextA} vs ${s.NextB} ▶`)
-                 : '🎪 이벤트 매치 편성 ▶';
-  document.getElementById('mInfo').textContent =
-    `시즌 ${s.SeasonNo} · 선두 ${s.Champion} · 통산 ${s.Fighters.reduce((a,f)=>a+f.CW,0)}경기 누적`;
-  return s;
+  st = await api('/api/state');
+  const S = st.Season;
+  $('gold').textContent = `💰 ${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'');
+  $('status').textContent = st.SeasonActive ? `시즌 ${S.SeasonNo} · ${S.Matches}/${S.TotalMatches}` : `시즌 ${S.SeasonNo} 종료 — 프리시즌`;
+  const nm = st.NextMatch;
+  $('next').textContent = !st.SeasonActive ? `🏛 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
+    : nm ? (nm.IsPlayerMatch?'⚔ ':'')+(nm.IsEvent?'🎪 ':'')+`${nm.AName} vs ${nm.BName} ▶` : '🎪 이벤트 편성 ▶';
+  $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
+  return st;
 }
 
-document.getElementById('next').onclick = async ()=>{
-  const nx = document.getElementById('next'); nx.disabled = true;
-  try{
-    const m = await (await fetch('/api/next', {method:'POST', body:''})).json();   // http.sys는 Content-Length 필수(411)
-    // 승자는 스포일하지 않는다 — 관전으로 확인.
-    document.getElementById('watchCard').textContent =
-      (m.NewSeasonStarted ? `시즌 ${m.SeasonNo} 개막 — ` : '') + `R${m.Round} · ${m.A} vs ${m.B}`;
-    document.getElementById('watchTag').hidden = !m.IsEvent;
-    document.getElementById('watchF').src = 'viewer.html?t='+Date.now();
-    go('watch');
-    await refresh();
-  } finally { nx.disabled = false; }
+// ── 다음 경기 (전술 모달 게이트) ──
+$('next').onclick = async ()=>{
+  if (!st) await refresh();
+  if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
+  const nm = st.NextMatch;
+  if (nm && nm.IsPlayerMatch) openTacModal(nm);
+  else doPlay(null);
 };
 
+function openTacModal(nm){
+  $('tmTitle').textContent = `전술 지시 — ${nm.MyName}`;
+  const o = nm.Opp;
+  $('tmVs').textContent = `상대: ${o.Name} · ${w(o.Weapon)} · ${p(o.Personality)} · ${o.Age}세 · 통산 ${o.Career} · 명성 ${o.Fame}` + (nm.IsEvent?'  [🎪 이벤트]':'');
+  $('tmOpts').innerHTML = nm.MyPool.map(tc=>
+    `<button class="tacbtn" onclick="pickTac('${tc}')"><b>${t(tc)}</b>${tc===nm.MyTactic?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('');
+  $('tacModal').classList.add('on');
+}
+window.pickTac = tc => { $('tacModal').classList.remove('on'); doPlay(tc); };
+$('tacModal').onclick = e => { if(e.target===$('tacModal')) $('tacModal').classList.remove('on'); };
+
+async function doPlay(tacticId){
+  const nx=$('next'); nx.disabled=true;
+  try{
+    const m = await api('/api/next', tacticId?{tacticId}:{});
+    // 승자·수입은 스포일하지 않는다 — 리그 복귀 시 공개.
+    $('watchCard').textContent = `R${m.Round} · ${m.A} vs ${m.B}`;
+    $('watchTag').hidden = !m.IsEvent;
+    $('watchF').src = 'viewer.html?t='+Date.now();
+    lastIncome = m.WasPlayerMatch ? {inc:m.Income, note:m.IncomeNote} : null;
+    go('watch');
+    await refresh();
+  } finally { nx.disabled=false; }
+}
+let lastIncome=null;
+// 리그 화면 진입 시 지난 경기 수입 공개
+const _go = go;
+go = function(s){ _go(s);
+  if (s==='league' && lastIncome){ $('incomeBar').style.display='block';
+    $('incomeBar').textContent = `💰 +${Math.round(lastIncome.inc)} — ${lastIncome.note}`; lastIncome=null;
+  } else if (s==='league') $('incomeBar').style.display='none';
+};
+
+// ── 루두스 ──
+function renderLudus(){
+  if (!st) return;
+  $('ludusNote').textContent = `(${st.MyFighters.length}/${st.RosterCap}명)`;
+  $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
+    const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
+    const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
+    return `<div class="fc"><h3>${f.Name} ${f.Aging?'<span class="old">노쇠</span>':''}</h3>
+      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
+      <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}</div>
+      <div class="chips">${f.TacticPool.map(x=>`<span class="chip tac${x===f.Tactic?' cur':''}">${t(x)}</span>`).join('')}</div>
+      <div class="stats">${axes.map(([a,v])=>`<div class="st"><span>${a==='Hp'?'HP':a.toUpperCase()}</span> ${Math.round(v)}
+        ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')">+</button>`:''}</div>`).join('')}</div>
+      <div class="cap" title="성장 ${f.BudgetUsed}/${f.PotentialBudget}"><i style="width:${cap}%"></i></div>
+      <div class="row" style="margin-top:6px"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
+      <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
+      <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`;
+  }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
+
+  const facs=[['training','훈련장',st.TrainingLv,3,'3경기당 훈련 포인트 '+st.TrainingLv+'pt',[200,500]],
+              ['medical','의무실',st.MedicalLv,3,'노화 감속 −'+(25*(st.MedicalLv-1))+'%',[200,500]],
+              ['quarters','숙소',st.QuartersLv,2,'로스터 상한 '+st.RosterCap+'명',[300,600]]];
+  $('facRow').innerHTML = facs.map(([id,nm,lv,max,eff,costs])=>{
+    const step = id==='quarters'?lv:lv-1;
+    const can = lv<max;
+    return `<div class="f"><b>${nm}</b> Lv${lv}<div class="note">${eff}</div>
+      ${can?`<button onclick="build('${id}')">증축 (💰${costs[step]})</button>`:'<div class="note">최대</div>'}</div>`;
+  }).join('');
+}
+window.train = async (id,axis)=>{
+  const r = await api('/api/train',{id,axis});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+window.build = async (fac)=>{
+  const r = await api('/api/build',{facility:fac});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+function refreshTop(){ $('gold').textContent=`💰 ${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:''); }
+
+// ── 영입 ──
+function renderMarket(){
+  if (!st) return;
+  $('marketNote').textContent = `잔고 💰${st.Gold} · 뽑기 ${st.FreeGachas>0?'무료 '+st.FreeGachas+'회':'💰'+st.GachaCost}`;
+  $('gachaBtn').disabled = st.MyFighters.length >= st.RosterCap;
+  $('candGrid').innerHTML = st.Candidates.length ? st.Candidates.map(c=>
+    `<div class="fc cand"><h3>${c.Name}</h3>
+     <div class="bd">${w(c.Weapon)} · ${p(c.Personality)} · 전술 일부: <b>${t(c.RevealedTactic)}</b></div>
+     <div class="chips"><span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">전술 2종 ???</span></div>
+     <button class="recruit" onclick="recruit(${c.Idx})">📜 영입</button></div>`).join('')
+    : '<div class="note">후보 없음 — 뽑기를 돌려라.</div>';
+}
+$('gachaBtn').onclick = async ()=>{
+  const r = await api('/api/gacha',{});
+  if (r.error){ $('marketErr').textContent=r.error; return; }
+  $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
+};
+window.recruit = async (idx)=>{
+  const r = await api('/api/recruit',{idx});
+  if (r.error){ $('marketErr').textContent=r.error; return; }
+  $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
+  go('ludus');   // 영입 → 전체 공개된 카드 확인
+};
+
+// ── 로스터 (리그 전체, 공개 정보) ──
 function renderRoster(){
-  if (!state) return;
-  const relByOwner = {};
-  for (const r of (state.Relations||[])){
-    (relByOwner[r.Self] ??= []).push(r);
-  }
-  document.getElementById('rgrid').innerHTML = [...state.Fighters]
-    .sort((a,b)=>b.Fame-a.Fame)
-    .map(f=>{
-      const rels = (relByOwner[f.Name]||[]).sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,2)
-        .map(r=>`${r.Type}: ${r.Opp}`).join(' · ');
-      const stk = f.Streak>0?`${f.Streak}연승`:f.Streak<0?`${-f.Streak}연패`:'-';
-      return `<div class="fc"><h3>${f.Name}</h3><div class="bd">${f.Weapon} · ${f.Tactic} · ${f.Personality}</div>
-        <div class="row"><span>이번 시즌</span><b>${f.W}-${f.L}-${f.D} (${stk})</b></div>
-        <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
-        <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
-        ${rels?`<div class="rel">${rels}</div>`:''}</div>`;
-    }).join('');
+  if (!st) return;
+  $('rosterGrid').innerHTML = [...st.Season.Fighters].sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame).map(f=>
+    `<div class="fc ${f.IsPlayer?'':'ai'}"><h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
+     <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
+     <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
+     <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
+     <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`).join('');
 }
 
-// ── 메인 메뉴 ──
-document.getElementById('mCont').onclick = ()=> document.getElementById('menu').style.display='none';
-document.getElementById('mNew').onclick = async ()=>{
-  await fetch('/api/newcareer', {method:'POST', body:''});
+// ── 메뉴 ──
+$('mCont').onclick = ()=> $('menu').style.display='none';
+$('mNew').onclick = async ()=>{
+  st = await api('/api/newcareer',{});
   await refresh();
-  document.getElementById('leagueF').src = 'league.html?t='+Date.now();
-  document.getElementById('menu').style.display='none';
-  go('league');
+  $('leagueF').src='league.html?t='+Date.now();
+  $('menu').style.display='none';
+  go('market');   // 새 커리어 = 영입부터
 };
 
 refresh();

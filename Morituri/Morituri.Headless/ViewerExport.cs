@@ -35,6 +35,9 @@ public static class ViewerExport
     private static readonly string[] TalentNames  = { "노예", "투사", "챔피언", "집정관", "불멸자", "카이사르" };
     private static readonly string[] PotNames     = { "잿불", "불씨", "횃불", "화염", "봉화", "태양" };
 
+    public static string TalentName(TalentGrade t) => TalentNames[(int)t];
+    public static string PotentialName(PotentialGrade p) => PotNames[(int)p];
+
     public static void Run(FighterDef a, FighterDef b, ulong seed, string outPath,
                            ulong? talentSeedA = null, ulong? talentSeedB = null)
     {
@@ -65,12 +68,14 @@ public static class ViewerExport
         Console.WriteLine($"   viewer.html을 브라우저로 열고 이 파일을 끌어다 놓으세요.");
     }
 
-    /// <summary>이미 실행된 경기(수집된 프레임·이벤트)를 viewer.json으로. Game.PlayNext가 재실행 없이 사용 (W1).</summary>
+    /// <summary>이미 실행된 경기(수집된 프레임·이벤트)를 viewer.json으로. Game.PlayNext가 재실행 없이 사용 (W1).
+    /// endowA/B를 주면 관전 화면에 천부·실스탯 패널 표시 (감독 모드 — 성장한 현재 스탯).</summary>
     public static void WriteDoc(FighterDef a, FighterDef b, ulong seed, MatchResult result,
-        IReadOnlyList<ReplayFrame> frames, IReadOnlyList<SimEvent> events, string outPath)
+        IReadOnlyList<ReplayFrame> frames, IReadOnlyList<SimEvent> events, string outPath,
+        ViewerEndowment? endowA = null, ViewerEndowment? endowB = null)
     {
         var doc = new ViewerDoc(MatchSerializer.SchemaVersion, seed,
-            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, null), Describe(b, null)),
+            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, endowA), Describe(b, endowB)),
             frames, events, result);
         var opts = MatchSerializer.CreateEventAwareOptions(writeIndented: false);
         opts.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;

@@ -15,7 +15,7 @@
   Phase 2  특성/감정/관계/스킬 — 특성(T09)·천부(StatGen)·관중게이지 일부 선구현, 감정/관계/스킬 인터페이스만 예약
   Phase 3  리그/역사 — [2] ERD v0.1 + P3-A/B/C ✅(시즌·명성·영속) + 자동 매치메이킹(이벤트 빅매치 자동 편성). 플레이어 간접개입만 보류
   Phase 4  혈통/감독 — 미착수
-  배포     [W0 셸 ✅][W1 게임 셸 ✅ 메뉴·리그·로스터·관전+API] 웹 래핑→Godot4(하이브리드, → [12]). 다음 W2 게임 루프
+  배포     [W0 셸 ✅][W1 게임 셸 ✅][W2 감독 모드 ✅ 영입·전술·성장·노화·경제·미드시즌세이브] → [12]. 다음 W3 폴리시
   ```
 - **테스트:** 73개 (`[Test]` 기준, 7개 파일) 전부 통과 기조.
 
@@ -47,8 +47,10 @@ Morituri/  (.sln)
 │  └─ Serialization/MatchSerializer.cs  MatchRecord ↔ JSON (schemaVer, 결정론)
 ├─ Morituri.Sim.Tests/           오프라인 자체 러너(NUnitShim) — 테스트 62개
 ├─ Morituri.Headless/            CLI 배치 러너 + 분석 도구 + viewer.html/league.html 서버
-└─ Morituri.Client/              Photino 게임 셸(Morituri.exe) — Game 상태기계 in-process + 로컬 API(/api/state·next·newcareer)
-                                   + index.html(메뉴/리그/로스터/관전 탭). 배포 W0~W1, → [12]. 시즌 로직 = Headless/Game.cs(구 Season 흡수)
+└─ Morituri.Client/              Photino 게임 셸(Morituri.exe) — 감독(루두스) 모드. Game 상태기계 in-process
+                                   + API(/api/state·next·gacha·recruit·train·build·newcareer)
+                                   + index.html(리그/루두스/영입/로스터/관전 + 전술 모달). 배포 W0~W2, → [12]
+                                   시즌·감독 로직 = Headless/Game.cs (전 선수 StatGen/TraitGen 롤·전술풀·경제·노화·world v2)
 ```
 
 **의존 규칙(절대):** `Headless/Unity → Sim` 단방향. Sim은 렌더·Unity의 존재를 모른다.
@@ -275,7 +277,7 @@ dotnet run -c Release -- [명령]
 - **관계(T11):** ✅ 구현(메타 그래프 + 트리거 게이트, → §7.6). **영속 저장·자동 매치메이킹·명성 소비자(Phase 3)·성격 변화(Phase 4)는 미구현.**
 - **Phase 3 시즌(P3-A/B/C):** ✅ `season` 엔진 — 라운드로빈 자동 스케줄 + 감정(다음 1경기)·관계(누적) + 순위·챔피언·복수극 창발(P3-A) + **명성/인기**(승·KO·역전·이변·스펙터클 → Fame → 이벤트 매치 가중, P3-B) + **world.json 영속**(재실행 시 다시즌 커리어·관계·명성 누적, constantsVer 박제, P3-C). + **자동 매치메이킹**(정규시즌 뒤 흥행지수 상위 카드를 이벤트 빅매치로 시스템이 자동 개최). **플레이어 간접 개입(대진 직접 편성)만 보류.** ERD → [2].
 - **스킬·계급(T12/T13):** 설계만(→ [6][7]). 패시브=트리거 엔진 재사용, 액티브=모션 추가. 슬롯경제 미구현.
-- **나이/성장:** 특성 "20세 +1 부여", 잠재력→성장엔진, 노화(RCT 하락) 미구현.
+- **나이/성장/노화:** ✅ **Meta층 구현(감독 모드, Game.cs)** — 경기 자동 성장+훈련 분배(상한=잠재력 버짓), 시즌당 +1세, 노화 시작 나이(30~36)부터 상한 점진 감소(RCT 가중 차감). *특성 "20세 +1 부여"·성격 변화(Phase 4)는 미구현.*
 - **CSV 데이터 파이프라인:** 현재 C# 정적 테이블. 25칸 동시튜닝이 고통스러워지면 착수(백로그).
 - **치명타 상한:** Crit% 상한 20% 도달불가(스탯범위상). Phase 2 감정보정과 함께 재설계(백로그).
 - **거울전 선공편향:** 2D화로 ~50/50 근방으로 해소됨. 잔여 미세편향은 동시성 전면재작성 필요(저ROI 백로그).

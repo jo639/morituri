@@ -18,8 +18,8 @@ public static class ViewerServer
     }
 
     /// <summary>백그라운드 스레드 서빙 (브라우저 자동열기·콘솔출력 없음). Photino 클라이언트 in-process 용.
-    /// api: "/api/*" 경로 처리기 (method, path) → JSON 응답 (null=404). 게임 셸의 액션(/api/next 등).</summary>
-    public static int StartBackground(string dir, int port = 5173, Func<string, string, string?>? api = null)
+    /// api: "/api/*" 경로 처리기 (method, path, body) → JSON 응답 (null=404). 게임 셸의 액션(/api/next 등).</summary>
+    public static int StartBackground(string dir, int port = 5173, Func<string, string, string?, string?>? api = null)
     {
         var listener = Bind(ref port);
         new Thread(() => Loop(listener, dir, api)) { IsBackground = true }.Start();
@@ -41,7 +41,7 @@ public static class ViewerServer
         return listener;
     }
 
-    private static void Loop(HttpListener listener, string dir, Func<string, string, string?>? api = null)
+    private static void Loop(HttpListener listener, string dir, Func<string, string, string?, string?>? api = null)
     {
         while (true)
         {
@@ -57,7 +57,12 @@ public static class ViewerServer
             if (api != null && path.StartsWith("api/"))
             {
                 string? json = null;
-                try { json = api(ctx.Request.HttpMethod, "/" + path); }
+                try
+                {
+                    string body = ctx.Request.HasEntityBody
+                        ? new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding).ReadToEnd() : "";
+                    json = api(ctx.Request.HttpMethod, "/" + path, body);
+                }
                 catch (Exception ex)   // 처리기 예외 = 500 + 메시지(디버그 가능하게)
                 {
                     res.StatusCode = 500;
