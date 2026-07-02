@@ -38,6 +38,16 @@
   .story{ display:flex; flex-direction:column; gap:4px; }
   .ev{ padding:5px 10px; border-radius:6px; background:var(--panel); font-size:13px; }
   .ev.revenge{ border-left:3px solid var(--nem); } .ev.upset{ border-left:3px solid var(--rival); } .ev.comeback{ border-left:3px solid var(--gold); }
+  /* 경기 결과 목록 */
+  #matchlog{ display:flex; flex-direction:column; gap:3px; max-height:320px; overflow:auto; }
+  .ml{ display:flex; gap:10px; align-items:baseline; padding:4px 10px; border-radius:6px; background:var(--panel);
+       font-size:13px; cursor:pointer; }
+  .ml:hover{ background:var(--panel2); }
+  .ml.mine{ border-left:3px solid var(--gold); }
+  .ml .rd{ color:var(--dim); font-size:11px; min-width:44px; }
+  .ml .win{ color:var(--gold); font-weight:600; margin-left:auto; }
+  .ml .ko{ font-size:11px; color:var(--dim); }
+  .sub{ color:var(--dim); font-size:11px; font-weight:400; }
   .legend{ display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--dim); margin-bottom:6px; }
   .legend span{ display:inline-flex; align-items:center; gap:4px; }
   .legend i{ width:14px; height:3px; border-radius:2px; display:inline-block; }
@@ -70,6 +80,9 @@
         <div class="cards" id="events"></div>
       </div>
     </div>
+
+    <h2>경기 결과 <span class="sub" id="mlHint"></span></h2>
+    <div id="matchlog"></div>
 
     <h2>관계 그래프 (누적)</h2>
     <div class="legend" id="legend"></div>
@@ -120,6 +133,16 @@ function load(d){
     `<div class="card"><span class="sc">흥행 ${m.Score.toFixed(0)}</span><div class="vs">${m.A} vs ${m.B}</div>`+
     `<div class="res">→ ${m.Winner} 승${m.Ko?' (KO)':''}</div></div>`).join('') : '<div class="empty">없음</div>';
 
+  // 경기 결과 목록 (최근 위) — 클릭 시 부모(게임 셸)에 관전 요청. 단독 열람(CLI serve)에선 클릭 무동작.
+  const ml = d.MatchLog || [];
+  const inShell = window.parent !== window;
+  document.getElementById('mlHint').textContent = ml.length ? (inShell ? '(클릭 = 관전)' : `(${ml.length}경기)`) : '';
+  document.getElementById('matchlog').innerHTML = [...ml].reverse().map(m=>
+    `<div class="ml${m.IsPlayerMatch?' mine':''}" onclick="watchIt(${m.Idx})">`+
+    `<span class="rd">${m.IsEvent?'🎪':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
+    `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
+    || '<div class="empty">아직 경기 없음</div>';
+
   drawGraph(d);
 
   // 서사
@@ -157,6 +180,8 @@ function drawGraph(d){
   document.getElementById('graph').innerHTML = svg;
   document.getElementById('legend').innerHTML = [...show].map(t=>`<span><i style="background:${css(RELCOLOR[t])}"></i>${t}</span>`).join('');
 }
+
+function watchIt(idx){ if (window.parent !== window) window.parent.postMessage({watchIdx: idx}, '*'); }
 
 // 로드: 서버면 fetch, 아니면 드래그드롭
 fetch('season.json', {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(load).catch(()=>{

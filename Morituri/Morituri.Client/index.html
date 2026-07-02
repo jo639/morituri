@@ -83,6 +83,10 @@
   .tacbtn:hover{ border-color:var(--gold); }
   .tacbtn b{ color:var(--gold); }
   .tacbtn .d{ font-size:11px; color:var(--dim); }
+  .rrow{ display:flex; gap:8px; align-items:baseline; padding:3px 0; font-size:13px; }
+  .rrow span:first-child{ min-width:110px; color:var(--dim); }
+  .rrow b{ color:var(--gold); }
+  .rrow .d{ font-size:11px; color:var(--dim); }
   /* 메뉴 */
   #menu{ position:fixed; inset:0; background:radial-gradient(circle at 50% 42%, #2a2016, #16100a);
          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; z-index:50; }
@@ -149,6 +153,16 @@
   <div id="tmOpts"></div>
 </div></div>
 
+<div class="modal" id="resModal"><div class="mbox">
+  <h3 id="resTitle" style="font-size:24px">—</h3>
+  <div class="vsline" id="resVs"></div>
+  <div id="resBody"></div>
+  <div style="display:flex; gap:8px; margin-top:14px">
+    <button class="tacbtn" style="flex:1; text-align:center" onclick="watchReplay()">🎬 리플레이 관전</button>
+    <button class="tacbtn" style="flex:1; text-align:center" onclick="closeResult()">확인</button>
+  </div>
+</div></div>
+
 <div id="menu">
   <h1>MORITURI</h1>
   <div class="tag">MORITURI TE SALUTANT — 곧 죽을 자들이 경례합니다</div>
@@ -189,19 +203,27 @@ async function refresh(){
   $('status').textContent = st.SeasonActive ? `시즌 ${S.SeasonNo} · ${S.Matches}/${S.TotalMatches}` : `시즌 ${S.SeasonNo} 종료 — 프리시즌`;
   const nm = st.NextMatch;
   $('next').textContent = !st.SeasonActive ? `🏛 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
-    : nm ? (nm.IsPlayerMatch?'⚔ ':'')+(nm.IsEvent?'🎪 ':'')+`${nm.AName} vs ${nm.BName} ▶` : '🎪 이벤트 편성 ▶';
+    : nm && nm.IsPlayerMatch ? `⚔ ${nm.IsEvent?'🎪 ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
+    : '▶▶ 다음 내 경기까지 진행';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
   return st;
 }
 
-// ── 다음 경기 (전술 모달 게이트) ──
+// ── 다음 경기: 내 경기 = 전술 모달 → 결과 화면 / AI 경기 = 자동 시뮬(내 경기 직전 정지) ──
 $('next').onclick = async ()=>{
   if (!st) await refresh();
-  if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
-  const nm = st.NextMatch;
-  if (nm && nm.IsPlayerMatch) openTacModal(nm);
-  else doPlay(null);
+  const nx=$('next'); nx.disabled=true;
+  try{
+    if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
+    const nm = st.NextMatch;
+    if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
+    const r = await api('/api/simto',{});
+    await refresh();
+    simNote = `▶▶ ${r.played}경기 자동 진행` + (r.seasonDone ? ' · 시즌 종료 — 정산·노화 반영' : ' · 다음은 내 경기');
+    go('league');
+  } finally { nx.disabled=false; }
 };
+let simNote=null;
 
 function openTacModal(nm){
   $('tmTitle').textContent = `전술 지시 — ${nm.MyName}`;
@@ -218,22 +240,54 @@ async function doPlay(tacticId){
   const nx=$('next'); nx.disabled=true;
   try{
     const m = await api('/api/next', tacticId?{tacticId}:{});
-    // 승자·수입은 스포일하지 않는다 — 리그 복귀 시 공개.
-    $('watchCard').textContent = `R${m.Round} · ${m.A} vs ${m.B}`;
-    $('watchTag').hidden = !m.IsEvent;
-    $('watchF').src = 'viewer.html?t='+Date.now();
-    lastIncome = m.WasPlayerMatch ? {inc:m.Income, note:m.IncomeNote} : null;
-    go('watch');
     await refresh();
+    showResult(m);          // 내 경기 = 즉시 결과 화면(승/패 + 변경사항). 관전은 리플레이.
   } finally { nx.disabled=false; }
 }
-let lastIncome=null;
-// 리그 화면 진입 시 지난 경기 수입 공개
+
+// ── 결과 화면 (내 경기 종료 시 — 승/패 + 능력치·재화·인기 변경사항) ──
+function showResult(m){
+  const mine = m.Mine || [];
+  const d0 = mine[0];
+  const title = mine.length===2 ? `내전 종료 — ${m.Winner} 승리`
+    : !d0 ? `${m.Winner} 승` : d0.Draw ? '무승부' : d0.Won ? '🏆 승리!' : '💀 패배';
+  $('resTitle').textContent = title;
+  $('resTitle').style.color = d0 && !d0.Draw ? (d0.Won ? 'var(--grn)' : 'var(--b)') : 'var(--gold)';
+  $('resVs').textContent = `R${m.Round} · ${m.A} vs ${m.B} → ${m.Winner} (${m.Reason})` + (m.IsEvent?'  [🎪 이벤트]':'');
+  const sign = v => (v>=0?'+':'')+Math.round(v*10)/10;
+  $('resBody').innerHTML = mine.map(d=>`
+    <div class="rrow"><b>${d.Name}</b> — ${d.Draw?'무승부':d.Won?'승리':'패배'}</div>
+    ${d.Income>0?`<div class="rrow"><span>💰 수입</span><b>+${Math.round(d.Income)}</b> <span class="d">${d.IncomeNote}</span></div>`:''}
+    ${d.GrowthAxis?`<div class="rrow"><span>📈 성장</span><b>${d.GrowthAxis.toUpperCase()} +0.5</b></div>`:'<div class="rrow"><span>📈 성장</span><span class="d">상한 도달</span></div>'}
+    ${d.TrainingGained>0?`<div class="rrow"><span>🏋 훈련 포인트</span><b>+${d.TrainingGained}</b> <span class="d">(루두스에서 분배)</span></div>`:''}
+    <div class="rrow"><span>⭐ 명성</span><b>${sign(d.FameDelta)}</b></div>
+    <div class="rrow"><span>🔥 인기</span><b>${sign(d.PopDelta)}</b></div>
+    ${d.Emotion?`<div class="rrow"><span>💭 감정</span><b>${d.Emotion}</b> <span class="d">(다음 경기에 영향)</span></div>`:''}
+  `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>';
+  $('resModal').classList.add('on');
+}
+window.closeResult = ()=>{ $('resModal').classList.remove('on'); go('league'); };
+window.watchReplay = async ()=>{
+  $('resModal').classList.remove('on');
+  await openWatch(-1);
+};
+async function openWatch(idx){
+  const r = await api('/api/watch',{idx});
+  if (r.error) return;
+  $('watchCard').textContent = `R${r.round} · ${r.a} vs ${r.b}`;
+  $('watchTag').hidden = !r.isEvent;
+  $('watchF').src = 'viewer.html?t='+Date.now();
+  go('watch');
+}
+// 리그 iframe의 경기 목록 클릭 → 관전 (postMessage)
+window.addEventListener('message', e=>{
+  if (e.data && typeof e.data.watchIdx === 'number') openWatch(e.data.watchIdx);
+});
+// 리그 진입 시 자동 진행 안내
 const _go = go;
 go = function(s){ _go(s);
-  if (s==='league' && lastIncome){ $('incomeBar').style.display='block';
-    $('incomeBar').textContent = `💰 +${Math.round(lastIncome.inc)} — ${lastIncome.note}`; lastIncome=null;
-  } else if (s==='league') $('incomeBar').style.display='none';
+  if (s==='league' && simNote){ $('incomeBar').style.display='block'; $('incomeBar').textContent = simNote; simNote=null; }
+  else if (s==='league') $('incomeBar').style.display='none';
 };
 
 // ── 루두스 ──
@@ -243,14 +297,16 @@ function renderLudus(){
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
     const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
     const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
-    return `<div class="fc"><h3>${f.Name} ${f.Aging?'<span class="old">노쇠</span>':''}</h3>
+    return `<div class="fc"><h3>${f.Name} ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}</h3>
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
       <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}</div>
-      <div class="chips">${f.TacticPool.map(x=>`<span class="chip tac${x===f.Tactic?' cur':''}">${t(x)}</span>`).join('')}</div>
+      <div class="chips" title="클릭 = 기본 전술 변경 (경기 직전 모달에서도 변경 가능)">${f.TacticPool.map(x=>
+        `<span class="chip tac${x===f.Tactic?' cur':''}" style="cursor:pointer" onclick="setTac('${f.Id}','${x}')">${t(x)}</span>`).join('')}</div>
       <div class="stats">${axes.map(([a,v])=>`<div class="st"><span>${a==='Hp'?'HP':a.toUpperCase()}</span> ${Math.round(v)}
         ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')">+</button>`:''}</div>`).join('')}</div>
-      <div class="cap" title="성장 ${f.BudgetUsed}/${f.PotentialBudget}"><i style="width:${cap}%"></i></div>
-      <div class="row" style="margin-top:6px"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
+      <div class="cap"><i style="width:${cap}%"></i></div>
+      <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
+      <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
@@ -269,6 +325,11 @@ window.train = async (id,axis)=>{
   const r = await api('/api/train',{id,axis});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+window.setTac = async (id,tacticId)=>{
+  const r = await api('/api/tactic',{id,tacticId});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus();
 };
 window.build = async (fac)=>{
   const r = await api('/api/build',{facility:fac});

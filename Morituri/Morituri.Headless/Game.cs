@@ -64,7 +64,8 @@ public sealed class Game
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
         List<SchedRec>? Schedule, List<StoryDoc>? Story, List<EventDoc>? Events,
-        List<GladRec> Gladiators, List<GladRec>? Candidates, List<RelationLedger.Entry> Relations);
+        List<GladRec> Gladiators, List<GladRec>? Candidates, List<RelationLedger.Entry> Relations,
+        List<LogEntry>? MatchLog = null);
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -74,7 +75,8 @@ public sealed class Game
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
         string? NextA, string? NextB, bool NextIsEvent, string Champion,
-        List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story);
+        List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story,
+        List<MatchLogDoc> MatchLog);
 
     private sealed record StatsDoc(float Atk, float Def, float Hp, float Spd, float Aspd, float Rct);
     private sealed record MyFighterDoc(string Id, string Name, string Weapon, string Personality, int Age, bool Aging,
@@ -89,10 +91,19 @@ public sealed class Game
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch);
 
+    /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
+    public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
+        float FameDelta, float PopDelta, string? GrowthAxis, int TrainingGained, string? Emotion);
+
     /// <summary>PlayNext 요약 (/api/next 응답).</summary>
     public sealed record MatchSummary(int SeasonNo, int Round, bool IsEvent, string A, string B,
         string Winner, string Reason, bool SeasonCompleted, bool NewSeasonStarted, bool WasPlayerMatch,
-        float Income, string IncomeNote);
+        float Income, string IncomeNote, List<MyDelta>? Mine = null);
+
+    /// <summary>경기 로그 1건 — 당시 선수 스냅샷 + 시드 = 결정론 재관전([2] ERD FighterSnapshot 원칙).</summary>
+    private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
+        string Winner, string Reason, bool IsPlayerMatch, ulong Seed, FighterDef DefA, FighterDef DefB);
+    private sealed record MatchLogDoc(int Idx, int Round, bool IsEvent, string A, string B, string Winner, string Reason, bool IsPlayerMatch);
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -116,6 +127,7 @@ public sealed class Game
     private readonly List<SchedRec> _schedule = new();
     private readonly List<(int Round, string Kind, string Text)> _story = new();
     private readonly List<EventDoc> _eventDocs = new();
+    private readonly List<LogEntry> _matchLog = new();   // 이번 시즌 경기 기록(스냅샷+시드 = 재관전)
     private int _emoGen;
 
     private int RosterCap => 3 + _quartersLv;
@@ -225,7 +237,7 @@ public sealed class Game
     {
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
-        _story.Clear(); _eventDocs.Clear(); _schedule.Clear();
+        _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); }
 
@@ -295,13 +307,7 @@ public sealed class Game
             return new MatchSummary(_seasonNo, 0, false, "", "", "", "개막", false, true, false, 0f, "");
         }
         bool newSeason = false;
-
-        if (_cursor >= _schedule.Count && !_eventsAppended)
-        {
-            foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
-                _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score));
-            _eventsAppended = true;
-        }
+        EnsureEvents();
 
         var s = _schedule[_cursor++];
         var A = ById(s.A); var B = ById(s.B);
@@ -313,7 +319,7 @@ public sealed class Game
         if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
         else B.TacticId = SelectTacticAi(B, A, tacRng);
 
-        var res = Play(A, B, s.Round, s.IsEvent, out float income, out string incomeNote);
+        var res = Play(A, B, s.Round, s.IsEvent, out float income, out string incomeNote, out var mine);
         if (s.IsEvent)
             _eventDocs.Add(new EventDoc(A.Name, B.Name, s.Score,
                 res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason == "KO"));
@@ -325,7 +331,66 @@ public sealed class Game
 
         return new MatchSummary(_seasonNo, s.Round, s.IsEvent, A.Name, B.Name,
             res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason, last, newSeason,
-            A.IsPlayer || B.IsPlayer, income, incomeNote);
+            A.IsPlayer || B.IsPlayer, income, incomeNote, mine);
+    }
+
+    /// <summary>정규 소진 시 이벤트 빅매치 편성 (PlayNext·미리보기 공용 — 내 이벤트 경기도 전술 선택 기회를 갖게).</summary>
+    private void EnsureEvents()
+    {
+        if (!SeasonActive || _cursor < _schedule.Count || _eventsAppended) return;
+        foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
+            _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score));
+        _eventsAppended = true;
+    }
+
+    /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
+    public string PlayUntilMineJson()
+    {
+        int played = 0; bool seasonDone = false;
+        for (int guard = 0; guard < 600; guard++)
+        {
+            if (!SeasonActive) { PlayNext(); continue; }        // 개막 (경기 아님)
+            EnsureEvents();
+            if (_cursor >= _schedule.Count) break;
+            var s = _schedule[_cursor];
+            if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) break; // 내 경기 발견 — 멈춰서 감독에게
+            var m = PlayNext(); played++;
+            if (m.SeasonCompleted) { seasonDone = true; break; }
+        }
+        return JsonSerializer.Serialize(new { played, seasonDone }, JsonOpts);
+    }
+
+    /// <summary>경기 재관전: 로그의 스냅샷+시드로 결정론 재시뮬 → viewer.json. idx<0 = 최근 경기.</summary>
+    public string WatchJson(int idx)
+    {
+        var e = idx < 0 ? _matchLog.LastOrDefault() : _matchLog.FirstOrDefault(x => x.Idx == idx);
+        if (e == null) return Err("경기 기록 없음");
+        var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
+        var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
+        ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+        return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
+    }
+
+    private ViewerEndowment? EndowOf(string id, FighterDef def)
+    {
+        var g = _cast.FirstOrDefault(x => x.Id == id);
+        if (g == null) return null;
+        return new(ViewerExport.TalentName(g.Talent), ViewerExport.PotentialName(g.Potential),
+            g.TalentBudget, g.PotentialBudget,
+            def.Stats.Atk, def.Stats.Def, def.Stats.HpMax, def.Stats.Spd, def.Stats.Aspd, def.Stats.Rct);
+    }
+
+    /// <summary>루두스 상세에서 전술 변경 (다음 경기 기본값 — 경기 직전 모달과 별개 경로).</summary>
+    public string TacticJson(string fighterId, string tacticId)
+    {
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        string tid = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
+        if (!g.TacticPool.Contains(tid)) return Err("보유 전술 아님");
+        g.TacticId = tid;
+        SaveWorld();
+        return StateJson();
     }
 
     /// <summary>AI 전술 선택: 상대 무기 사거리 카운터 + 자기 무기 시너지 + 노이즈 → 풀에서 argmax.</summary>
@@ -350,23 +415,19 @@ public sealed class Game
         return best;
     }
 
-    private MatchResult Play(Gladiator A, Gladiator B, int round, bool isEvent, out float income, out string incomeNote)
+    private MatchResult Play(Gladiator A, Gladiator B, int round, bool isEvent,
+                             out float income, out string incomeNote, out List<MyDelta>? mine)
     {
         var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
         var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
         var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
         var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
         A.PendingEmotions.Clear(); B.PendingEmotions.Clear();   // 감정 소비 → 소멸 ([2]§6-1)
+        float fameA0 = A.Fame, popA0 = A.Popularity, fameB0 = B.Fame, popB0 = B.Popularity;
 
+        // 관전은 로그의 스냅샷+시드로 결정론 재시뮬(WatchJson) — 여기선 시뮬만.
         ulong seed = SeasonSeed + (ulong)(++_matchIdx);
-        MatchResult res;
-        if (_interactive)
-        {
-            var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
-            res = new MatchSim().Run(defA, defB, seed, events, frames);
-            ViewerExport.WriteDoc(defA, defB, seed, res, frames, events, "viewer.json", Endow(A), Endow(B));
-        }
-        else res = new MatchSim().Run(defA, defB, seed);
+        var res = new MatchSim().Run(defA, defB, seed);
 
         bool ko = res.Reason == "KO";
         bool comeback = false, upset = false, revenge = false;
@@ -400,33 +461,49 @@ public sealed class Game
         UpdatePopularity(B, res.StatsB, res.StatsA, res.Winner == 1, res.Winner < 0, ko, comeback, upset, revenge, isEvent);
 
         // 경제: 내 선수 출전 시 경기별 수입 (출전료 = hype)
-        income = 0f; var notes = new List<string>();
-        foreach (var (mine, other) in new[] { (A, B), (B, A) })
+        income = 0f; float incA = 0f, incB = 0f; string noteA = "", noteB = "";
+        foreach (var (self, other) in new[] { (A, B), (B, A) })
         {
-            if (_playerless || !mine.IsPlayer) continue;
-            float fee = (FeeBase + (mine.Popularity + other.Popularity) * FeePopScale) * (isEvent ? 2f : 1f);
-            income += fee; notes.Add($"출전료 +{fee:F0}");
-            if (win == mine)
+            if (_playerless || !self.IsPlayer) continue;
+            float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (isEvent ? 2f : 1f);
+            var notes = new List<string> { $"출전료 +{own:F0}" };
+            if (win == self)
             {
                 float bonus = WinBonus + (ko ? KoBonus : 0f) + (comeback ? DramaBonus : 0f) + (upset ? DramaBonus : 0f);
-                income += bonus; notes.Add($"승리 +{bonus:F0}");
+                own += bonus; notes.Add($"승리 +{bonus:F0}");
             }
+            income += own;
+            if (self == A) { incA = own; noteA = string.Join(" · ", notes); } else { incB = own; noteB = string.Join(" · ", notes); }
         }
         _gold += income;
-        incomeNote = string.Join(" · ", notes);
+        incomeNote = string.Join(" · ", new[] { noteA, noteB }.Where(n => n.Length > 0));
 
         // 순위/커리어 + 관계 + 감정 (경기 인덱스 파생 스트림 = 미드시즌 재개 결정론)
         Record(A, B, res, standing: !isEvent);
         _ledger.RecordMatch(A.Id, B.Id, res.Winner, ko, res.StatsA.MinHpPct, res.StatsB.MinHpPct);
         var emoRng = new SimRandom(SeasonSeed ^ 0x5EA5_04EDUL + (ulong)_matchIdx * 17UL);
-        if (EmotionGen.Roll(emoRng, res.Winner, 0, ko, res.StatsA.MinHpPct, A.Pers) is { } eA) { A.PendingEmotions.Add(eA); _emoGen++; }
-        if (EmotionGen.Roll(emoRng, res.Winner, 1, ko, res.StatsB.MinHpPct, B.Pers) is { } eB) { B.PendingEmotions.Add(eB); _emoGen++; }
+        string? eA = EmotionGen.Roll(emoRng, res.Winner, 0, ko, res.StatsA.MinHpPct, A.Pers);
+        string? eB = EmotionGen.Roll(emoRng, res.Winner, 1, ko, res.StatsB.MinHpPct, B.Pers);
+        if (eA != null) { A.PendingEmotions.Add(eA); _emoGen++; }
+        if (eB != null) { B.PendingEmotions.Add(eB); _emoGen++; }
 
         // 성장: 경기 자동 소량 + 3경기당 훈련 포인트
         var growRng = new SimRandom(SeasonSeed ^ 0x6120_6120UL + (ulong)_matchIdx * 13UL);
-        Grow(A, growRng); Grow(B, growRng);
-        TickTraining(A, growRng); TickTraining(B, growRng);
+        string? growA = Grow(A, growRng); string? growB = Grow(B, growRng);
+        int trA = TickTraining(A, growRng); int trB = TickTraining(B, growRng);
 
+        // 경기 로그 (스냅샷+시드 = 재관전) + 내 선수 변경사항(결과 화면)
+        string winner = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name);
+        _matchLog.Add(new LogEntry(_matchIdx, round, isEvent, A.Id, B.Id, A.Name, B.Name,
+            winner, res.Reason, A.IsPlayer || B.IsPlayer, seed, defA, defB));
+        mine = null;
+        if (!_playerless)
+        {
+            if (A.IsPlayer) (mine ??= new()).Add(new MyDelta(A.Name, win == A, res.Winner < 0, incA, noteA,
+                A.Fame - fameA0, A.Popularity - popA0, growA, trA, eA != null ? EmotionTable.Get(eA).Name : null));
+            if (B.IsPlayer) (mine ??= new()).Add(new MyDelta(B.Name, win == B, res.Winner < 0, incB, noteB,
+                B.Fame - fameB0, B.Popularity - popB0, growB, trB, eB != null ? EmotionTable.Get(eB).Name : null));
+        }
         return res;
     }
 
@@ -444,20 +521,24 @@ public sealed class Game
         g.Popularity = MathF.Max(0f, g.Popularity * 0.95f + matchPop);
     }
 
-    private void Grow(Gladiator g, SimRandom rng)
+    /// <summary>경기 자동 성장 +0.5pt. 성장한 축 이름 반환(결과 화면 표시용), 상한 도달 시 null.</summary>
+    private string? Grow(Gladiator g, SimRandom rng)
     {
-        if (BudgetUsed(g.Stats) + 0.5f > g.PotentialBudget) return;   // 상한 도달 — 더 안 큼
+        if (BudgetUsed(g.Stats) + 0.5f > g.PotentialBudget) return null;   // 상한 도달 — 더 안 큼
         int axis = (int)(rng.NextFloat01() * 6f);
         g.Stats = WithAxis(g.Stats, axis, 0.5f);
+        return AxisNames[axis];
     }
 
-    private void TickTraining(Gladiator g, SimRandom rng)
+    /// <summary>3경기 주기 훈련. 내 선수는 포인트 지급(반환값), AI는 자동 분배.</summary>
+    private int TickTraining(Gladiator g, SimRandom rng)
     {
-        if (++g.MatchCounter < TrainEveryMatches) return;
+        if (++g.MatchCounter < TrainEveryMatches) return 0;
         g.MatchCounter = 0;
         int pts = g.IsPlayer ? _trainingLv : 1;
-        if (g.IsPlayer) g.TrainingPoints += pts;                      // 감독이 분배
-        else for (int i = 0; i < pts; i++) Grow(g, rng);              // AI 자동 (같은 리듬, 형평)
+        if (g.IsPlayer) { g.TrainingPoints += pts; return pts; }      // 감독이 분배
+        for (int i = 0; i < pts; i++) Grow(g, rng);                   // AI 자동 (같은 리듬, 형평)
+        return 0;
     }
 
     private List<(string A, string B, float Score)> TopEventCards(int count)
@@ -613,6 +694,7 @@ public sealed class Game
         _eventDocs.Clear(); if (w.Events != null) _eventDocs.AddRange(w.Events);
         _cast.Clear(); _cast.AddRange(w.Gladiators.Select(FromRec));
         _candidates.Clear(); if (w.Candidates != null) _candidates.AddRange(w.Candidates.Select(FromRec));
+        _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
         _ledger.Load(w.Relations);
         return true;
     }
@@ -627,7 +709,8 @@ public sealed class Game
             _eventDocs.ToList(),
             _cast.Select(ToRec).ToList(),
             _candidates.Count > 0 ? _candidates.Select(ToRec).ToList() : null,
-            _ledger.Snapshot().ToList()), JsonOpts));
+            _ledger.Snapshot().ToList(),
+            _matchLog.Count > 0 ? _matchLog.ToList() : null), JsonOpts));
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
         g.TacticPool, g.TacticId,
@@ -672,7 +755,8 @@ public sealed class Game
         return new SeasonDoc(SchemaVer, Math.Max(1, _seasonNo), _rounds, _matchIdx, total, !SeasonActive,
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
             standings[0].Name, fighters, rels, _eventDocs.ToList(),
-            _story.Select(s => new StoryDoc(s.Round, s.Kind, s.Text)).ToList());
+            _story.Select(s => new StoryDoc(s.Round, s.Kind, s.Text)).ToList(),
+            _matchLog.Select(e => new MatchLogDoc(e.Idx, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch)).ToList());
     }
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
