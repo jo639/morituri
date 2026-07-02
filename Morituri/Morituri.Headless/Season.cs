@@ -37,6 +37,15 @@ public static class Season
     private sealed record WorldState(int SchemaVer, int ConstantsVer, int SeasonsPlayed,
                                      List<GladRec> Gladiators, List<RelationLedger.Entry> Relations);
 
+    // league.html 대시보드 입력 (season.json).
+    private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
+    private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality,
+        int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity);
+    private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
+    private sealed record StoryDoc(int Round, string Kind, string Text);
+    private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, string Champion,
+        List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story);
+
     private static List<Gladiator> BuildCast() => new()
     {
         new() { Id = "GLA_MAXIMUS", Name = "막시무스",   WeaponId = "WPN_SWORD",      TacticsId = "TAC_PRESSURE", PersonalityId = "PER_BOLD" },
@@ -49,7 +58,7 @@ public static class Season
         new() { Id = "GLA_NAEVIA",  Name = "나이비아",   WeaponId = "WPN_SHIELD",     TacticsId = "TAC_DEFENDER", PersonalityId = "PER_HONORABLE" },
     };
 
-    public static void Run(int rounds, ulong seasonSeed, bool fresh = false)
+    public static void Run(int rounds, ulong seasonSeed, bool fresh = false, bool serve = false)
     {
         var cast = BuildCast();
         var byId = cast.ToDictionary(g => g.Id);
@@ -60,7 +69,7 @@ public static class Season
 
         var emoRng = new SimRandom(seasonSeed ^ 0x5EA5_04ED);
         var story = new List<(int Round, string Kind, string Text)>();
-        var bigMatches = new List<string>();
+        var bigMatches = new List<EventDoc>();
         int matchIdx = 0, emoGen = 0;
 
         // 한 경기 실행(재사용) — standing=false면 시즌 순위 미반영(이벤트 매치는 커리어·명성·관계만).
@@ -114,13 +123,19 @@ public static class Season
         {
             var A = byId[a]; var B = byId[b];
             var res = Play(A, B, round: rounds + 1, standing: false);   // 이벤트(순위 무관, 커리어·명성·서사엔 반영)
-            string w = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name) + " 승" + (res.Reason == "KO" ? "(KO)" : "");
-            bigMatches.Add($"{A.Name} vs {B.Name} (흥행 {score:F0}) → {w}");
+            string w = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name);
+            bigMatches.Add(new EventDoc(A.Name, B.Name, score, w, res.Reason == "KO"));
         }
 
         int seasonNo = seasonsPlayed + 1;
         SaveWorld(cast, ledger, seasonNo);
+        WriteSeasonJson(cast, ledger, PersOf, story, bigMatches, rounds, matchIdx, seasonNo);
         PrintReport(cast, ledger, PersOf, story, bigMatches, rounds, matchIdx, emoGen, seasonNo);
+        if (serve)
+        {
+            Console.WriteLine("\n  🌐 브라우저에서 http://localhost:5173/league.html 열기 (Ctrl+C로 종료)");
+            ViewerServer.Serve(Directory.GetCurrentDirectory());
+        }
     }
 
     private static string Rd(int round) => $"R{round}";
@@ -183,8 +198,26 @@ public static class Season
         File.WriteAllText(WorldPath, JsonSerializer.Serialize(state, JsonOpts));
     }
 
+    private static void WriteSeasonJson(List<Gladiator> cast, RelationLedger ledger, Func<string, string> persOf,
+        List<(int Round, string Kind, string Text)> story, List<EventDoc> events, int rounds, int matches, int seasonNo)
+    {
+        string NameOf(string id) => cast.First(g => g.Id == id).Name;
+        var champ = cast.OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).First().Name;
+        var fighters = cast.Select(g => new FighterDoc(g.Id, g.Name,
+            WPNShort(g.WeaponId), g.TacticsId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""),
+            g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD, MathF.Round(g.Fame), MathF.Round(g.Popularity))).ToList();
+        var rels = ledger.AllRelations(persOf)
+            .Select(x => new RelDoc(NameOf(x.Self), NameOf(x.Opp), RelationTable.Get(x.Type).Name, MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses))
+            .ToList();
+        var storyDocs = story.Select(s => new StoryDoc(s.Round, s.Kind, s.Text)).ToList();
+        var doc = new SeasonDoc(SchemaVer, seasonNo, rounds, matches, champ, fighters, rels, events, storyDocs);
+        File.WriteAllText("season.json", JsonSerializer.Serialize(doc, JsonOpts));
+    }
+
+    private static string WPNShort(string id) => id.Replace("WPN_", "");
+
     private static void PrintReport(List<Gladiator> cast, RelationLedger ledger, Func<string, string> persOf,
-                                    List<(int Round, string Kind, string Text)> story, List<string> bigMatches,
+                                    List<(int Round, string Kind, string Text)> story, List<EventDoc> bigMatches,
                                     int rounds, int matches, int emoGen, int seasonNo)
     {
         static string Streak(int s) => s > 0 ? $"{s}연승" : s < 0 ? $"{-s}연패" : "-";
@@ -202,7 +235,8 @@ public static class Season
         Console.WriteLine($"\n  🏆 시즌 {seasonNo} 챔피언: {season[0].Name}\n");
 
         Console.WriteLine("  [🎪 이벤트 매치 — 자동 편성] (흥행지수 = 라이벌리 × 인기, 시스템이 선정)");
-        foreach (var m in bigMatches) Console.WriteLine($"    {m}");
+        foreach (var m in bigMatches)
+            Console.WriteLine($"    {m.A} vs {m.B} (흥행 {m.Score:F0}) → {m.Winner} 승{(m.Ko ? "(KO)" : "")}");
 
         Console.WriteLine("\n  [통산 명성 리더보드] (여러 시즌 누적)");
         Console.WriteLine($"    {"선수",-12}{"명성",7}{"인기",7}{"통산전적",12}");

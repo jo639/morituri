@@ -31,6 +31,9 @@ viewer.json
 world.json
 Morituri/world.json
 Morituri/Morituri.Headless/world.json
+season.json
+Morituri/season.json
+Morituri/Morituri.Headless/season.json
 Morituri/Morituri.Headless/matchup_report.csv
 
 # ── 테스트 결과 ──

@@ -76,7 +76,7 @@ dotnet run -c Release -- [명령]
 | `emotionprobe [N]` | 감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 |
 | `emotiongen [N]` | 감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 |
 | `relations [N]` | 관계(T11) 메타 데모 — 라운드로빈 누적 관계 그래프·복수전 후보 |
-| `season [rounds] [seed] [fresh]` | Phase 3 시즌 — 순위·관계·감정·명성·서사. world.json 영속(재실행=누적, `fresh`=초기화) |
+| `season [rounds] [seed] [fresh] [serve]` | Phase 3 시즌 — 순위·관계·감정·명성·서사. world.json 영속(재실행=누적, `fresh`=초기화). `season.json` 내보냄 · `serve`=league.html 대시보드 서버(localhost:5173/league.html) |
 | `taunt [N]` / `tauntfreq [N]` | 도발 역전·빈도 프로브 |
 | `weaponsweep` / `sweep` / `tune` / `tunetac` | 자동 밸런스 스윕(좌표하강) |
 
