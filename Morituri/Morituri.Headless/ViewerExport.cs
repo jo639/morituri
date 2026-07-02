@@ -65,6 +65,18 @@ public static class ViewerExport
         Console.WriteLine($"   viewer.html을 브라우저로 열고 이 파일을 끌어다 놓으세요.");
     }
 
+    /// <summary>이미 실행된 경기(수집된 프레임·이벤트)를 viewer.json으로. Game.PlayNext가 재실행 없이 사용 (W1).</summary>
+    public static void WriteDoc(FighterDef a, FighterDef b, ulong seed, MatchResult result,
+        IReadOnlyList<ReplayFrame> frames, IReadOnlyList<SimEvent> events, string outPath)
+    {
+        var doc = new ViewerDoc(MatchSerializer.SchemaVersion, seed,
+            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, null), Describe(b, null)),
+            frames, events, result);
+        var opts = MatchSerializer.CreateEventAwareOptions(writeIndented: false);
+        opts.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+        File.WriteAllText(outPath, JsonSerializer.Serialize(doc, opts));
+    }
+
     private static ViewerEndowment ToViewer(Endowment e)
     {
         var s = e.Stats;

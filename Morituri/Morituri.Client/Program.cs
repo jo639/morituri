@@ -3,33 +3,45 @@ using Photino.NET;
 
 namespace Morituri.Client;
 
-// W0 (배포 로드맵[12]) — Photino 셸 스파이크.
-// 목적: Sim이 이 프로세스 안에서 돌고(시즌 생성), 네이티브 창으로 게임 UI(대시보드)를 띄운다.
-//       콘솔 없이 더블클릭 실행되는 "프로그램". 웹 래핑 개발 트랙의 뼈대.
+// W1 (배포 로드맵[12]) — 게임 셸.
+// Game(상태 기계)이 이 프로세스 안에 살고, 웹 UI(index.html)가 로컬 API로 조작한다:
+//   GET  /api/state      현재 시즌 상태 (season.json과 동일 스키마)
+//   POST /api/next       다음 경기 1판 실행 → viewer.json/season.json 갱신, 요약 반환
+//   POST /api/newcareer  세계 초기화 후 새 커리어
+// 화면: 메인메뉴 오버레이 → 리그(league.html) / 로스터 / 관전(viewer.html) 탭 전환.
 internal static class Program
 {
     [STAThread]
     private static void Main()
     {
-        // 출력 폴더를 작업 디렉터리로 (복사된 league.html + 생성될 season/world.json이 여기 모임).
+        // 출력 폴더 = 작업 디렉터리 (웹 UI 파일 + world/season/viewer.json이 여기 모임).
         Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
-        // ── Sim in-process: 시즌 한 판을 이 프로세스에서 실행 → season.json 생성 ──
-        var prevOut = Console.Out;
-        Console.SetOut(TextWriter.Null);              // WinExe: 콘솔 없음, 출력 무시
-        try { Season.Run(rounds: 4, seasonSeed: 1, fresh: true); }
-        finally { Console.SetOut(prevOut); }
+        // 시즌당 정규 1라운드로빈(28경기) + 이벤트 4경기 — 클릭 진행에 맞춘 페이스.
+        var game = new Game(roundsPerSeason: 1, seasonSeed: null, fresh: false, interactive: true);
 
-        // ── 내장 서버 + 네이티브 웹뷰 창 ──
-        int port = ViewerServer.StartBackground(AppContext.BaseDirectory);
+        int port = ViewerServer.StartBackground(AppContext.BaseDirectory, 5173, (method, path) => path switch
+        {
+            "/api/state" => game.StateJson(),
+            "/api/next" when method == "POST" => game.PlayNextJson(),
+            "/api/newcareer" when method == "POST" => NewCareer(),
+            _ => null,
+        });
+
+        string NewCareer()
+        {
+            try { File.Delete("world.json"); } catch { }   // 새 커리어 = 영속 세계 삭제
+            game = new Game(roundsPerSeason: 1, seasonSeed: null, fresh: true, interactive: true);
+            return game.StateJson();
+        }
 
         new PhotinoWindow()
             .SetTitle("MORITURI · 검투장")
             .SetUseOsDefaultSize(false)
-            .SetSize(1120, 820)
+            .SetSize(1120, 840)
             .Center()
             .SetContextMenuEnabled(false)
-            .Load($"http://localhost:{port}/league.html")
+            .Load($"http://localhost:{port}/index.html")
             .WaitForClose();
     }
 }

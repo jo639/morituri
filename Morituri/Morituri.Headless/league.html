@@ -88,12 +88,14 @@ const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).
 function load(d){
   document.getElementById('drop').hidden = true;
   document.getElementById('content').hidden = false;
-  document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${d.Matches}경기 (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
+  const inProgress = d.Completed === false;   // 구 파일(필드 없음)은 완료 취급
+  const prog = inProgress && d.TotalMatches ? `${d.Matches}/${d.TotalMatches}경기 진행중` : `${d.Matches}경기`;
+  document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${prog} (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
 
   const champ = d.Fighters.find(f=>f.Name===d.Champion) || d.Fighters[0];
   document.getElementById('champ').innerHTML =
-    `<div class="crown">👑</div><div><div class="who">${d.Champion}</div>`+
-    `<div class="meta">시즌 ${d.SeasonNo} 챔피언 · ${champ.W}승 ${champ.L}패 · 승점 ${champ.Points} · 명성 ${champ.Fame}</div></div>`;
+    `<div class="crown">${inProgress?'🏛':'👑'}</div><div><div class="who">${d.Champion}</div>`+
+    `<div class="meta">시즌 ${d.SeasonNo} ${inProgress?'현재 선두':'챔피언'} · ${champ.W}승 ${champ.L}패 · 승점 ${champ.Points} · 명성 ${champ.Fame}</div></div>`;
 
   // 순위
   const st = [...d.Fighters].sort((a,b)=> b.Points-a.Points || b.W-a.W);
@@ -157,7 +159,7 @@ function drawGraph(d){
 }
 
 // 로드: 서버면 fetch, 아니면 드래그드롭
-fetch('season.json').then(r=>r.ok?r.json():Promise.reject()).then(load).catch(()=>{
+fetch('season.json', {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(load).catch(()=>{
   document.getElementById('sub').textContent = 'season.json을 끌어다 놓으세요';
 });
 const fileEl=document.getElementById('file'), dropEl=document.getElementById('drop');

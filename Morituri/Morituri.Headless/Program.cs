@@ -71,7 +71,7 @@ if (args.Length > 0 && args[0] == "season")
     ulong sseed = args.Length > 2 && ulong.TryParse(args[2], out ulong ss) ? ss : 1;
     bool fresh = args.Any(a => a == "fresh");   // world.json 무시하고 새 세계 시작
     bool serve = args.Any(a => a == "serve");   // season.json 내보내고 league.html 서버 기동
-    Season.Run(rounds, sseed, fresh, serve);
+    Game.RunCli(rounds, sseed, fresh, serve);   // W1: Season.Run을 상태 기계 Game이 흡수
     return;
 }
 

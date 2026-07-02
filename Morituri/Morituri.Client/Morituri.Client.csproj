@@ -21,8 +21,10 @@
 
   <ItemGroup>
     <!-- 웹 UI를 출력 디렉터리로 복사 → 내장 서버가 서빙 -->
+    <Content Include="index.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\league.html" Link="league.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\viewer.html" Link="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

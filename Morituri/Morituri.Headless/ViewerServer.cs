@@ -17,11 +17,12 @@ public static class ViewerServer
         Loop(listener, dir);
     }
 
-    /// <summary>백그라운드 스레드 서빙 (브라우저 자동열기·콘솔출력 없음). Photino 클라이언트 in-process 용.</summary>
-    public static int StartBackground(string dir, int port = 5173)
+    /// <summary>백그라운드 스레드 서빙 (브라우저 자동열기·콘솔출력 없음). Photino 클라이언트 in-process 용.
+    /// api: "/api/*" 경로 처리기 (method, path) → JSON 응답 (null=404). 게임 셸의 액션(/api/next 등).</summary>
+    public static int StartBackground(string dir, int port = 5173, Func<string, string, string?>? api = null)
     {
         var listener = Bind(ref port);
-        new Thread(() => Loop(listener, dir)) { IsBackground = true }.Start();
+        new Thread(() => Loop(listener, dir, api)) { IsBackground = true }.Start();
         return port;
     }
 
@@ -40,7 +41,7 @@ public static class ViewerServer
         return listener;
     }
 
-    private static void Loop(HttpListener listener, string dir)
+    private static void Loop(HttpListener listener, string dir, Func<string, string, string?>? api = null)
     {
         while (true)
         {
@@ -51,6 +52,28 @@ public static class ViewerServer
             var res = ctx.Response;
             var path = ctx.Request.Url?.LocalPath.TrimStart('/') ?? "";
             if (path == "") path = "viewer.html";
+
+            // 게임 API (클라이언트 셸의 액션 경로 — 파일보다 우선)
+            if (api != null && path.StartsWith("api/"))
+            {
+                string? json = null;
+                try { json = api(ctx.Request.HttpMethod, "/" + path); }
+                catch (Exception ex)   // 처리기 예외 = 500 + 메시지(디버그 가능하게)
+                {
+                    res.StatusCode = 500;
+                    json = "{\"error\":\"" + ex.Message.Replace("\\", "/").Replace("\"", "'") + "\"}";
+                }
+                if (json != null)
+                {
+                    res.ContentType = "application/json; charset=utf-8";
+                    var body = System.Text.Encoding.UTF8.GetBytes(json);
+                    res.ContentLength64 = body.Length;
+                    res.OutputStream.Write(body);
+                }
+                else if (res.StatusCode != 500) res.StatusCode = 404;
+                res.OutputStream.Close();
+                continue;
+            }
 
             var full = Path.Combine(dir, path.Replace('/', Path.DirectorySeparatorChar));
             if (File.Exists(full))

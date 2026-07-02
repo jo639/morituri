@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MORITURI</title>
+<style>
+  :root{ --bg:#231a12; --panel:#2f2418; --ink:#f0e6d6; --dim:#a89576; --gold:#c9a84c; --a:#5b9be0; --b:#e0685f; }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,"Segoe UI","Malgun Gothic",sans-serif;
+        display:flex; flex-direction:column; }
+  /* ── 상단 바 ── */
+  #top{ display:flex; align-items:center; gap:14px; padding:8px 16px; background:var(--panel);
+        border-bottom:1px solid #4a3a26; flex:0 0 auto; }
+  #logo{ font-weight:800; letter-spacing:1px; color:var(--gold); cursor:pointer; }
+  nav{ display:flex; gap:4px; }
+  nav button{ background:none; border:none; color:var(--dim); font:inherit; padding:6px 14px; cursor:pointer; border-radius:7px; }
+  nav button.on{ background:#3a2d1d; color:var(--ink); font-weight:700; }
+  #status{ margin-left:auto; color:var(--dim); font-size:12px; }
+  #next{ background:var(--gold); color:#231a12; border:none; font:inherit; font-weight:800; padding:7px 18px;
+         border-radius:8px; cursor:pointer; }
+  #next:disabled{ opacity:.4; cursor:default; }
+  /* ── 화면 ── */
+  #screens{ flex:1 1 auto; position:relative; min-height:0; }
+  .screen{ position:absolute; inset:0; display:none; }
+  .screen.on{ display:block; }
+  iframe{ width:100%; height:100%; border:0; background:var(--bg); }
+  /* 관전 배너 */
+  #watchbar{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:12px;
+             padding:6px 16px; background:rgba(35,26,18,.92); border-bottom:1px solid #4a3a26; z-index:5; }
+  #watchbar .card{ font-weight:700; }
+  #watchbar .tag{ font-size:11px; color:var(--gold); border:1px solid var(--gold); border-radius:4px; padding:0 6px; }
+  #watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26;
+                    font:inherit; padding:4px 12px; border-radius:7px; cursor:pointer; }
+  #watch iframe{ padding-top:36px; }
+  /* 로스터 */
+  #roster{ overflow:auto; padding:18px; }
+  .rgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; max-width:1080px; margin:0 auto; }
+  .fc{ background:var(--panel); border-radius:11px; padding:12px 14px; border-top:3px solid var(--gold); }
+  .fc h3{ margin:0; font-size:16px; } .fc .bd{ color:var(--dim); font-size:11px; margin:2px 0 8px; }
+  .fc .row{ display:flex; justify-content:space-between; font-size:12px; padding:2px 0; }
+  .fc .row b{ color:var(--gold); font-weight:600; }
+  .fc .rel{ font-size:11px; color:var(--b); margin-top:6px; }
+  /* ── 메인 메뉴 오버레이 ── */
+  #menu{ position:fixed; inset:0; background:radial-gradient(circle at 50% 42%, #2a2016, #16100a);
+         display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; z-index:50; }
+  #menu h1{ font-size:52px; letter-spacing:10px; color:var(--gold); margin:0 0 4px; font-weight:800; }
+  #menu .tag{ color:var(--dim); letter-spacing:3px; font-size:12px; margin-bottom:28px; }
+  #menu button{ width:240px; padding:12px; font:inherit; font-size:15px; font-weight:700; border-radius:9px;
+                border:1px solid #4a3a26; background:var(--panel); color:var(--ink); cursor:pointer; }
+  #menu button:hover{ border-color:var(--gold); }
+  #menu .info{ color:var(--dim); font-size:12px; margin-top:20px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <span id="logo">⚔ MORITURI</span>
+  <nav>
+    <button data-s="league" class="on">리그</button>
+    <button data-s="roster">로스터</button>
+    <button data-s="watch">관전</button>
+  </nav>
+  <span id="status">—</span>
+  <button id="next">다음 경기 ▶</button>
+</div>
+
+<div id="screens">
+  <div class="screen on" id="league"><iframe id="leagueF" src="league.html"></iframe></div>
+  <div class="screen" id="roster"><div class="rgrid" id="rgrid"></div></div>
+  <div class="screen" id="watch">
+    <div id="watchbar"><span class="card" id="watchCard">—</span><span class="tag" id="watchTag" hidden>이벤트 매치</span>
+      <button onclick="go('league')">결과 반영된 리그 보기 →</button></div>
+    <iframe id="watchF" src="about:blank"></iframe>
+  </div>
+</div>
+
+<div id="menu">
+  <h1>MORITURI</h1>
+  <div class="tag">MORITURI TE SALUTANT — 곧 죽을 자들이 경례합니다</div>
+  <button id="mCont">계속하기</button>
+  <button id="mNew">새 커리어</button>
+  <div class="info" id="mInfo">—</div>
+</div>
+
+<script>
+let state = null;
+
+function go(s){
+  document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
+  if (s==='roster') renderRoster();
+  if (s==='league') document.getElementById('leagueF').src = 'league.html?t='+Date.now();
+}
+document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
+document.getElementById('logo').onclick = ()=> document.getElementById('menu').style.display='flex';
+
+async function refresh(){
+  state = await (await fetch('/api/state', {cache:'no-store'})).json();
+  const s = state;
+  const prog = s.Completed ? '시즌 종료' : `${s.Matches}/${s.TotalMatches} 경기`;
+  document.getElementById('status').textContent = `시즌 ${s.SeasonNo} · ${prog}`;
+  const nx = document.getElementById('next');
+  nx.textContent = s.Completed ? '새 시즌 개막 ▶'
+                 : s.NextA ? (s.NextIsEvent ? `🎪 ${s.NextA} vs ${s.NextB} ▶` : `다음: ${s.NextA} vs ${s.NextB} ▶`)
+                 : '🎪 이벤트 매치 편성 ▶';
+  document.getElementById('mInfo').textContent =
+    `시즌 ${s.SeasonNo} · 선두 ${s.Champion} · 통산 ${s.Fighters.reduce((a,f)=>a+f.CW,0)}경기 누적`;
+  return s;
+}
+
+document.getElementById('next').onclick = async ()=>{
+  const nx = document.getElementById('next'); nx.disabled = true;
+  try{
+    const m = await (await fetch('/api/next', {method:'POST', body:''})).json();   // http.sys는 Content-Length 필수(411)
+    // 승자는 스포일하지 않는다 — 관전으로 확인.
+    document.getElementById('watchCard').textContent =
+      (m.NewSeasonStarted ? `시즌 ${m.SeasonNo} 개막 — ` : '') + `R${m.Round} · ${m.A} vs ${m.B}`;
+    document.getElementById('watchTag').hidden = !m.IsEvent;
+    document.getElementById('watchF').src = 'viewer.html?t='+Date.now();
+    go('watch');
+    await refresh();
+  } finally { nx.disabled = false; }
+};
+
+function renderRoster(){
+  if (!state) return;
+  const relByOwner = {};
+  for (const r of (state.Relations||[])){
+    (relByOwner[r.Self] ??= []).push(r);
+  }
+  document.getElementById('rgrid').innerHTML = [...state.Fighters]
+    .sort((a,b)=>b.Fame-a.Fame)
+    .map(f=>{
+      const rels = (relByOwner[f.Name]||[]).sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,2)
+        .map(r=>`${r.Type}: ${r.Opp}`).join(' · ');
+      const stk = f.Streak>0?`${f.Streak}연승`:f.Streak<0?`${-f.Streak}연패`:'-';
+      return `<div class="fc"><h3>${f.Name}</h3><div class="bd">${f.Weapon} · ${f.Tactic} · ${f.Personality}</div>
+        <div class="row"><span>이번 시즌</span><b>${f.W}-${f.L}-${f.D} (${stk})</b></div>
+        <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
+        <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
+        ${rels?`<div class="rel">${rels}</div>`:''}</div>`;
+    }).join('');
+}
+
+// ── 메인 메뉴 ──
+document.getElementById('mCont').onclick = ()=> document.getElementById('menu').style.display='none';
+document.getElementById('mNew').onclick = async ()=>{
+  await fetch('/api/newcareer', {method:'POST', body:''});
+  await refresh();
+  document.getElementById('leagueF').src = 'league.html?t='+Date.now();
+  document.getElementById('menu').style.display='none';
+  go('league');
+};
+
+refresh();
+</script>
+</body>
+</html>

@@ -15,7 +15,7 @@
   Phase 2  특성/감정/관계/스킬 — 특성(T09)·천부(StatGen)·관중게이지 일부 선구현, 감정/관계/스킬 인터페이스만 예약
   Phase 3  리그/역사 — [2] ERD v0.1 + P3-A/B/C ✅(시즌·명성·영속) + 자동 매치메이킹(이벤트 빅매치 자동 편성). 플레이어 간접개입만 보류
   Phase 4  혈통/감독 — 미착수
-  배포     [W0 Photino 셸 ✅ Morituri.exe] 웹 래핑 개발→Godot4 완성(하이브리드, → [12]). 다음 W1 화면 승격
+  배포     [W0 셸 ✅][W1 게임 셸 ✅ 메뉴·리그·로스터·관전+API] 웹 래핑→Godot4(하이브리드, → [12]). 다음 W2 게임 루프
   ```
 - **테스트:** 73개 (`[Test]` 기준, 7개 파일) 전부 통과 기조.
 
@@ -47,7 +47,8 @@ Morituri/  (.sln)
 │  └─ Serialization/MatchSerializer.cs  MatchRecord ↔ JSON (schemaVer, 결정론)
 ├─ Morituri.Sim.Tests/           오프라인 자체 러너(NUnitShim) — 테스트 62개
 ├─ Morituri.Headless/            CLI 배치 러너 + 분석 도구 + viewer.html/league.html 서버
-└─ Morituri.Client/              Photino 데스크톱 셸(Morituri.exe) — Sim in-process + 웹 UI 창 (배포 W0, → [12])
+└─ Morituri.Client/              Photino 게임 셸(Morituri.exe) — Game 상태기계 in-process + 로컬 API(/api/state·next·newcareer)
+                                   + index.html(메뉴/리그/로스터/관전 탭). 배포 W0~W1, → [12]. 시즌 로직 = Headless/Game.cs(구 Season 흡수)
 ```
 
 **의존 규칙(절대):** `Headless/Unity → Sim` 단방향. Sim은 렌더·Unity의 존재를 모른다.

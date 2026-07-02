@@ -846,7 +846,7 @@ window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getEl
 
 // 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
 loadDefaultSprites().finally(()=>
-  fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{}));
+  fetch('viewer.json', {cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{}));
 requestAnimationFrame(tick);
 </script>
 </body>
