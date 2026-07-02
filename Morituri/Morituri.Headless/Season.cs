@@ -133,8 +133,8 @@ public static class Season
         PrintReport(cast, ledger, PersOf, story, bigMatches, rounds, matchIdx, emoGen, seasonNo);
         if (serve)
         {
-            Console.WriteLine("\n  🌐 브라우저에서 http://localhost:5173/league.html 열기 (Ctrl+C로 종료)");
-            ViewerServer.Serve(Directory.GetCurrentDirectory());
+            Console.WriteLine("\n  🌐 시즌 대시보드 서버 기동 (Ctrl+C로 종료)");
+            ViewerServer.Serve(Directory.GetCurrentDirectory(), 5173, "league.html");
         }
     }
 

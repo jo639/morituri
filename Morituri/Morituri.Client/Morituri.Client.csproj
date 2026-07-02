@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>       <!-- 콘솔 없이 창으로 실행 -->
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Morituri.Client</RootNamespace>
+    <AssemblyName>Morituri</AssemblyName>  <!-- Morituri.exe -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 네이티브 웹뷰 셸 (Windows=WebView2). Sim·시즌은 이 프로세스 안에서 in-process 실행. -->
+    <PackageReference Include="Photino.NET" Version="*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- W0 스파이크: 기존 Season·ViewerServer 재사용 (추후 Meta 어셈블리로 분리). -->
+    <ProjectReference Include="..\Morituri.Headless\Morituri.Headless.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 웹 UI를 출력 디렉터리로 복사 → 내장 서버가 서빙 -->
+    <Content Include="..\Morituri.Headless\league.html" Link="league.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\viewer.html" Link="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
