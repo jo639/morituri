@@ -120,6 +120,13 @@ public sealed class RelationLedger
         }
     }
 
+    /// <summary>리그를 떠난 선수(방출·은퇴)의 관계를 청산 — 남은 엔트리가 사라진 id를 참조하지 않게.</summary>
+    public void RemoveFighter(string id)
+    {
+        foreach (var key in _map.Keys.Where(k => k.Item1 == id || k.Item2 == id).ToList())
+            _map.Remove(key);
+    }
+
     /// <summary>경기 결과를 양방향으로 누적. winner: 0=a / 1=b / -1=무승부.</summary>
     public void RecordMatch(string aId, string bId, int winner, bool wasKo, float aMinHp, float bMinHp)
     {

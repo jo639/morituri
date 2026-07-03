@@ -131,6 +131,59 @@ function postMatchEnded(){
   if (matchEndPosted) return; matchEndPosted = true;
   if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
 }
+
+// ── 합성 효과음 (에셋 없음 — WebAudio 신시사이즈. 설정 mor_settings.sound=false로 끔) ──
+let AC = null, lastSfxT = 0, koSlowT = -1;
+function sndOn(){ return AC && SET.sound !== false; }
+function sndInit(){
+  if (AC || SET.sound === false) return;
+  try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+}
+['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev, ()=>{ sndInit(); if (AC&&AC.state==='suspended') AC.resume(); }));
+function beep(freq, dur, type, vol, slide){
+  if (!sndOn()) return;
+  const t0=AC.currentTime, o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t0);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), t0+dur);
+  g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+  o.connect(g).connect(AC.destination); o.start(t0); o.stop(t0+dur);
+}
+function noiseHit(dur, vol, lo, hi){
+  if (!sndOn()) return;
+  const len=Math.floor(AC.sampleRate*dur), buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=(lo+hi)/2; bp.Q.value=0.7;
+  const g=AC.createGain(); g.gain.value=vol;
+  src.connect(bp); bp.connect(g); g.connect(AC.destination); src.start();
+}
+function sfx(kind){
+  switch(kind){
+    case 'hit':   noiseHit(0.06,0.16,600,2500); beep(150,0.05,'triangle',0.10,-80); break;
+    case 'crit':  noiseHit(0.10,0.22,900,4000); beep(320,0.12,'sawtooth',0.13,-200); break;
+    case 'guard': beep(900,0.05,'square',0.07,300); break;                     // 금속성 챙
+    case 'break': noiseHit(0.15,0.22,300,1500); beep(120,0.2,'sawtooth',0.15,-60); break;
+    case 'down':  beep(90,0.25,'triangle',0.20,-50); noiseHit(0.2,0.13,100,500); break;
+    case 'ko':    beep(70,0.5,'sawtooth',0.24,-40); noiseHit(0.4,0.26,80,600); break;
+    case 'crowd': noiseHit(0.8,0.09,200,1200); break;                          // 함성 스웰
+    case 'taunt': beep(500,0.1,'square',0.09,200); beep(660,0.1,'square',0.08,0); break;
+  }
+}
+// 재생 t가 지나간 이벤트를 소리로 (스크럽 등 큰 점프는 무음 스킵)
+function playSfxRange(t0, t1){
+  lastSfxT = t1;
+  if (!doc || !sndOn() || t1 - t0 > 1.0) return;
+  for (const e of doc.Events){
+    if (e.Time <= t0 || e.Time > t1) continue;
+    switch(e.type){
+      case 'HitLanded':   sfx(e.IsCrit ? 'crit' : e.IsGuarded ? 'guard' : 'hit'); break;
+      case 'GuardBroken': case 'PoiseBroken': sfx('break'); break;
+      case 'KnockedDown': sfx('down'); sfx('crowd'); break;
+      case 'MatchEnded':  if (e.Reason === 'KO'){ sfx('ko'); sfx('crowd'); } break;
+      case 'Decision':    if (e.ReasonTag === 'TAUNT') sfx('taunt'); break;
+    }
+  }
+}
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
@@ -172,6 +225,12 @@ function load(json){
   sc.disabled = false; sc.value = 0;
   document.getElementById('drop').classList.add('hidden');
   t = 0; postGame = false; postGameElapsed = 0; vScrA = null; vScrB = null; hitstopUntil = 0; setPlaying(true);
+  lastSfxT = 0;
+  // KO 슬로모션: 결정타(마지막 유효타) 주변에서 시간이 느려진다
+  koSlowT = -1;
+  if (r.Reason === 'KO'){
+    for (const e of doc.Events) if (e.type === 'HitLanded' && !e.IsGuarded) koSlowT = e.Time;
+  }
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
   TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
@@ -827,9 +886,13 @@ function tick(now){
     const dt = (now-lastWall)/1000; lastWall = now;
     if (now >= hitstopUntil){            // 히트스톱 중이 아니면 진행
       let adv = dt*speed;
+      // KO 슬로모션: 결정타 전후 0.15~0.5s 구간은 시간이 1/4로 흐른다 (마지막 일격의 무게)
+      if (koSlowT >= 0 && t > koSlowT - 0.15 && t < koSlowT + 0.5) adv *= 0.25;
       // 무게 있는 타격 직전까지만 전진 → 그 지점에서 짧게 정지(임팩트에 눈을 멈추게).
       for (const im of impacts){ if (im.stop>0 && im.t>t && im.t<=t+adv){ adv=im.t-t; hitstopUntil=now+im.stop; break; } }
+      const prevT = t;
       t += adv;
+      playSfxRange(prevT, t);            // 지나간 이벤트 효과음 (합성)
       if (t >= duration){
         t = duration; setPlaying(false);
         revealWinner();   // 재생 완료 — 이제 승자 공개 (스포일러 방지)

@@ -65,7 +65,8 @@ public sealed class Game
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
         List<SchedRec>? Schedule, List<StoryDoc>? Story, List<EventDoc>? Events,
         List<GladRec> Gladiators, List<GladRec>? Candidates, List<RelationLedger.Entry> Relations,
-        List<LogEntry>? MatchLog = null, SeasonSummaryDoc? LastSummary = null);
+        List<LogEntry>? MatchLog = null, SeasonSummaryDoc? LastSummary = null,
+        List<ChampionRec>? Champions = null, List<HallRec>? Hall = null);
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -76,17 +77,22 @@ public sealed class Game
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
         string? NextA, string? NextB, bool NextIsEvent, string Champion,
         List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story,
-        List<MatchLogDoc> MatchLog);
+        List<MatchLogDoc> MatchLog, List<ChampionRec>? Champions = null, List<HallRec>? Hall = null);
 
     private sealed record StatsDoc(float Atk, float Def, float Hp, float Spd, float Aspd, float Rct);
     private sealed record MyFighterDoc(string Id, string Name, string Weapon, string Personality, int Age, bool Aging,
         string Talent, string Potential, float PotentialBudget, float BudgetUsed,
         StatsDoc Stats, string[] Traits, string[] TacticPool, string Tactic, int TrainingPoints,
-        int W, int L, int D, int CW, int CL, int CD, float Fame, float Popularity);
+        int W, int L, int D, int CW, int CL, int CD, float Fame, float Popularity,
+        string[] Emotions);   // 다음 경기에 실릴 감정 (💭 예고)
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic); // 마스킹!
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
     private sealed record NextMatchDoc(int Round, bool IsEvent, bool IsPlayerMatch,
-        string AName, string BName, string? MyId, string? MyName, string[]? MyPool, string? MyTactic, OppPreview? Opp);
+        string AName, string BName, string? MyId, string? MyName, string[]? MyPool, string? MyTactic, OppPreview? Opp,
+        string? MyVsOpp = null,       // 이 상대와의 상대전적 "2승 1패"
+        string? MyRelation = null,    // 내가 상대를 보는 관계 (원수/공포/라이벌…) — 복수전 예고
+        string[]? MyEmotions = null,  // 이번 경기에 실리는 감정
+        bool OppIsKiter = false);     // 상성 힌트: 상대가 장거리 카이터인가
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -110,7 +116,12 @@ public sealed class Game
     private sealed record RankRow(int Rank, string Name, int W, int L, int D, int Points, bool IsPlayer);
     private sealed record SeasonSummaryDoc(int SeasonNo, string Champion, bool ChampionIsMine, List<RankRow> Standings,
         int MyBestRank, float RankBonus, float Salary, float GoldAfter,
-        List<string> AgingNotes, int Revenge, int Upsets, int Comebacks, string TopFame);
+        List<string> AgingNotes, int Revenge, int Upsets, int Comebacks, string TopFame,
+        List<string>? Retirements = null);
+
+    /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
+    private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
+    private sealed record HallRec(string Name, string Weapon, float Fame, string Career, int Age, int RetiredSeason, bool IsPlayer);
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -136,6 +147,8 @@ public sealed class Game
     private readonly List<EventDoc> _eventDocs = new();
     private readonly List<LogEntry> _matchLog = new();   // 이번 시즌 경기 기록(스냅샷+시드 = 재관전)
     private SeasonSummaryDoc? _lastSummary;              // 최근 종료 시즌 요약 (연출 화면, 영속)
+    private readonly List<ChampionRec> _champions = new();   // 역대 챔피언 (세계 역사)
+    private readonly List<HallRec> _hall = new();            // 명예의 전당 (은퇴자)
     private int _emoGen;
 
     private int RosterCap => 3 + _quartersLv;
@@ -304,14 +317,55 @@ public sealed class Game
             g.Popularity *= 0.6f;   // 시즌 사이 화제성 감쇠
         }
 
+        // 세계 역사: 역대 챔피언 기록
+        _champions.Add(new ChampionRec(_seasonNo, champ.Name, $"{champ.W}-{champ.L}-{champ.D}", champ.IsPlayer));
+
+        // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
+        // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
+        var retirements = new List<string>();
+        var rookieRng = new SimRandom(_worldSeed ^ 0xA1A1_A1A1UL + (ulong)_seasonNo * 97UL);
+        foreach (var old in _cast.Where(g => !g.IsPlayer &&
+                     (g.Age >= g.AgingStartAge + 6 || g.PotentialBudget <= MinPotentialBudget + 0.5f)).ToList())
+        {
+            _cast.Remove(old);
+            _ledger.RemoveFighter(old.Id);
+            _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
+                $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
+            var usedNames = _cast.Select(g => g.Name).ToHashSet();
+            var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
+            var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
+            var rookie = RollGladiator(rookieRng, $"GLA_N{_seasonNo}_{_cast.Count}", PickName(rookieRng, usedNames),
+                wpns[(int)(rookieRng.NextFloat01() * wpns.Length)], pers[(int)(rookieRng.NextFloat01() * pers.Length)],
+                sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24);
+            _cast.Add(rookie);
+            string note = $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔";
+            retirements.Add(note);
+            _story.Add((_rounds + 1, "retire", $"🏛 {note} — 명예의 전당 등재"));
+        }
+
         // 시즌 요약 (연출 화면 — 프리시즌 동안 표시)
         _lastSummary = new SeasonSummaryDoc(_seasonNo, champ.Name, champ.IsPlayer,
             standings.Select((g, i) => new RankRow(i + 1, g.Name, g.W, g.L, g.D, g.SeasonPoints, g.IsPlayer)).ToList(),
             bestRank, bonusPaid, salaryPaid, MathF.Round(_gold), agingNotes,
             _story.Count(s => s.Kind == "revenge"), _story.Count(s => s.Kind == "upset"), _story.Count(s => s.Kind == "comeback"),
-            _cast.OrderByDescending(g => g.Fame).First().Name);
+            _cast.OrderByDescending(g => g.Fame).First().Name,
+            retirements.Count > 0 ? retirements : null);
 
         SaveWorld();
+    }
+
+    /// <summary>방출: 프리시즌에만(시즌 중엔 스케줄 고정). 관계 청산 포함.</summary>
+    public string ReleaseJson(string fighterId)
+    {
+        if (SeasonActive) return Err("시즌 중엔 방출 불가 — 시즌 종료 후에");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        _cast.Remove(g);
+        _ledger.RemoveFighter(g.Id);
+        _story.Add((0, "release", $"👋 방출 — {g.Name}이(가) 루두스를 떠났다"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
     }
 
     private List<Gladiator> Standings() =>
@@ -697,12 +751,23 @@ public sealed class Game
 
     private bool LoadWorld()
     {
-        if (!File.Exists(WorldPath)) return false;
-        WorldV2? w;
-        try { w = JsonSerializer.Deserialize<WorldV2>(File.ReadAllText(WorldPath), JsonOpts); }
-        catch { Console.WriteLine("  ⚠ world.json 해석 실패 — 새 세계로 시작."); return false; }
-        if (w is null || w.SchemaVer != SchemaVer)
-        { Console.WriteLine($"  ⚠ world.json 스키마 v{w?.SchemaVer} ≠ v{SchemaVer} (감독 모드 개편) — 새 세계로 시작."); return false; }
+        // 손상 대비: 본 파일 실패 시 직전 백업(world.bak — 매 저장 전 스냅샷)으로 복구 시도.
+        WorldV2? w = TryRead(WorldPath);
+        if (w == null && File.Exists(WorldPath + ".bak"))
+        {
+            w = TryRead(WorldPath + ".bak");
+            if (w != null) Console.WriteLine("  ⚠ world.json 손상 — 백업(world.json.bak)에서 복구.");
+        }
+        if (w is null) return false;
+        if (w.SchemaVer != SchemaVer)
+        { Console.WriteLine($"  ⚠ world.json 스키마 v{w.SchemaVer} ≠ v{SchemaVer} (감독 모드 개편) — 새 세계로 시작."); return false; }
+
+        static WorldV2? TryRead(string path)
+        {
+            if (!File.Exists(path)) return null;
+            try { return JsonSerializer.Deserialize<WorldV2>(File.ReadAllText(path), JsonOpts); }
+            catch { return null; }
+        }
         if (w.ConstantsVer != ConstantsVer)
             Console.WriteLine($"  ⚠ 상수버전 {w.ConstantsVer} ≠ {ConstantsVer} — 과거 경기는 다른 밸런스.");
 
@@ -719,11 +784,15 @@ public sealed class Game
         _candidates.Clear(); if (w.Candidates != null) _candidates.AddRange(w.Candidates.Select(FromRec));
         _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
         _lastSummary = w.LastSummary;
+        _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
+        _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
         _ledger.Load(w.Relations);
         return true;
     }
 
-    private void SaveWorld() =>
+    private void SaveWorld()
+    {
+        try { if (File.Exists(WorldPath)) File.Copy(WorldPath, WorldPath + ".bak", true); } catch { }   // 저장 전 스냅샷
         File.WriteAllText(WorldPath, JsonSerializer.Serialize(new WorldV2(
             SchemaVer, ConstantsVer, _worldSeed, _gold, _gachaCount, _freeGachas,
             _trainingLv, _medicalLv, _quartersLv, _seasonsPlayed,
@@ -735,7 +804,10 @@ public sealed class Game
             _candidates.Count > 0 ? _candidates.Select(ToRec).ToList() : null,
             _ledger.Snapshot().ToList(),
             _matchLog.Count > 0 ? _matchLog.ToList() : null,
-            _lastSummary), JsonOpts));
+            _lastSummary,
+            _champions.Count > 0 ? _champions.ToList() : null,
+            _hall.Count > 0 ? _hall.ToList() : null), JsonOpts));
+    }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
         g.TacticPool, g.TacticId,
@@ -781,7 +853,9 @@ public sealed class Game
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
             standings[0].Name, fighters, rels, _eventDocs.ToList(),
             _story.Select(s => new StoryDoc(s.Round, s.Kind, s.Text)).ToList(),
-            _matchLog.Select(e => new MatchLogDoc(e.Idx, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch)).ToList());
+            _matchLog.Select(e => new MatchLogDoc(e.Idx, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch)).ToList(),
+            _champions.Count > 0 ? _champions.ToList() : null,
+            _hall.Count > 0 ? _hall.OrderByDescending(h => h.Fame).ToList() : null);
     }
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
@@ -797,7 +871,8 @@ public sealed class Game
             g.TraitIds.Select(t => TraitTable.Get(t).Name).ToArray(),
             g.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(), g.TacticId.Replace("TAC_", ""),
             g.TrainingPoints, g.W, g.L, g.D, g.CW, g.CL, g.CD,
-            MathF.Round(g.Fame), MathF.Round(g.Popularity))).ToList();
+            MathF.Round(g.Fame), MathF.Round(g.Popularity),
+            g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray())).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),
@@ -810,13 +885,23 @@ public sealed class Game
             var A = ById(s.A); var B = ById(s.B);
             var mine = A.IsPlayer ? A : B.IsPlayer ? B : null;
             var opp = mine == A ? B : A;
+            string? vsRecord = null, relName = null; string[]? myEmo = null; bool oppKiter = false;
+            if (mine != null)
+            {
+                var h2h = _ledger.Get(mine.Id, opp.Id);
+                vsRecord = h2h.Encounters > 0 ? $"{h2h.Wins}승 {h2h.Losses}패" : "첫 대결";
+                relName = h2h.Classify(mine.PersonalityId) is { } rt ? RelationTable.Get(rt).Name : null;
+                myEmo = mine.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray();
+                oppKiter = WeaponTable.Get(opp.WeaponId).Range >= 3.0f;
+            }
             nm = new NextMatchDoc(s.Round, s.IsEvent, mine != null, A.Name, B.Name,
                 mine?.Id, mine?.Name,
                 mine?.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(),
                 mine?.TacticId.Replace("TAC_", ""),
                 mine != null ? new OppPreview(opp.Name, opp.WeaponId.Replace("WPN_", ""),
                     opp.PersonalityId.Replace("PER_", ""), opp.Age,
-                    MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null);
+                    MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null,
+                vsRecord, relName, myEmo, oppKiter);
         }
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,

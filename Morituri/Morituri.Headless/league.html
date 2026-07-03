@@ -90,6 +90,17 @@
 
     <h2>시즌 서사</h2>
     <div class="story" id="story"></div>
+
+    <div class="grid2" id="historyWrap" hidden>
+      <div>
+        <h2>👑 역대 챔피언</h2>
+        <table id="champs"><thead><tr><th>시즌</th><th>챔피언</th><th>전적</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <h2>🏛 명예의 전당 <span class="sub">(은퇴)</span></h2>
+        <table id="hall"><thead><tr><th>이름</th><th>명성</th><th>통산</th><th>은퇴</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
   </div>
   <label id="drop">season.json을 여기로 끌어다 놓기 (또는 <code>dotnet run -- season 6 1 serve</code> 후 이 페이지가 자동 로드)
     <input type="file" id="file" accept=".json" hidden></label>
@@ -132,6 +143,16 @@ function load(d){
   ev.innerHTML = d.Events.length ? d.Events.map(m=>
     `<div class="card"><span class="sc">흥행 ${m.Score.toFixed(0)}</span><div class="vs">${m.A} vs ${m.B}</div>`+
     `<div class="res">→ ${m.Winner} 승${m.Ko?' (KO)':''}</div></div>`).join('') : '<div class="empty">없음</div>';
+
+  // 세계 역사: 역대 챔피언 + 명예의 전당 (은퇴자, 명성순)
+  const champs = d.Champions||[], hall = d.Hall||[];
+  document.getElementById('historyWrap').hidden = !(champs.length || hall.length);
+  document.querySelector('#champs tbody').innerHTML = [...champs].reverse().map(c=>
+    `<tr style="${c.IsPlayer?'color:var(--gold);font-weight:700':''}"><td>S${c.SeasonNo}</td><td>${c.Name}${c.IsPlayer?' ★':''}</td><td class="bd">${c.Record}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="empty">아직 없음</td></tr>';
+  document.querySelector('#hall tbody').innerHTML = hall.map(h=>
+    `<tr><td class="nm">${h.Name}</td><td>${h.Fame}</td><td class="bd">${h.Career}</td><td class="bd">S${h.RetiredSeason}·${h.Age}세</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">아직 없음</td></tr>';
 
   // 경기 결과 목록 (최근 위) — 클릭 시 부모(게임 셸)에 관전 요청. 단독 열람(CLI serve)에선 클릭 무동작.
   const ml = d.MatchLog || [];

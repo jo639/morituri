@@ -41,3 +41,8 @@ Morituri/Morituri.Sim.Tests/TestResults/
 
 # ── 로컬 프리뷰 설정 (디버그 뷰어 서빙용, 머신별) ──
 .claude/launch.json
+
+# ── 게시 산출물 (dotnet publish) ──
+Morituri/publish/
+publish/
+*.bak
