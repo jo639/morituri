@@ -118,6 +118,14 @@ let doc = null, frames = null, popups = [], decisions = [], impacts = [], durati
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
+// 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
+const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
+let winTextA = '', winTextB = '', winnerRevealed = false;
+function revealWinner(){
+  if (winnerRevealed) return; winnerRevealed = true;
+  document.getElementById('winA').textContent = winTextA;
+  document.getElementById('winB').textContent = winTextB;
+}
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
@@ -148,9 +156,13 @@ function load(json){
   fillTraits('traitB', B.Traits);
   const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
       : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
-  document.getElementById('winA').textContent = r.Winner === 0 ? '🏆 ' + wtext : '';
-  document.getElementById('winB').textContent = r.Winner === 1 ? '🏆 ' + wtext : '';
-  if (r.Winner < 0){ document.getElementById('winA').textContent = wtext; }
+  // 승자 스포일러 방지: 기본은 재생 완료 시 공개(설정 mor_settings.spoiler=true면 즉시 표시)
+  winTextA = r.Winner === 0 ? '🏆 ' + wtext : (r.Winner < 0 ? wtext : '');
+  winTextB = r.Winner === 1 ? '🏆 ' + wtext : '';
+  winnerRevealed = false;
+  document.getElementById('winA').textContent = '';
+  document.getElementById('winB').textContent = '';
+  if (SET.spoiler) revealWinner();
   const sc = document.getElementById('scrub');
   sc.disabled = false; sc.value = 0;
   document.getElementById('drop').classList.add('hidden');
@@ -815,6 +827,7 @@ function tick(now){
       t += adv;
       if (t >= duration){
         t = duration; setPlaying(false);
+        revealWinner();   // 재생 완료 — 이제 승자 공개 (스포일러 방지)
         if (doc?.Result?.Winner >= 0){ postGame=true; postGameElapsed=0; }
       }
     }
@@ -832,8 +845,12 @@ function setPlaying(p){ playing = p && t < duration;
 
 // ── 입력 ──
 document.getElementById('play').onclick = ()=>{ if (t>=duration) t=0; setPlaying(!playing); };
-document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false); };
+document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false);
+  if (t >= duration - 0.01) revealWinner(); };   // 끝까지 스크럽해도 공개
 document.getElementById('speed').onchange = e=>{ speed = parseFloat(e.target.value); };
+// 설정: 기본 배속 적용 (index.html 설정 모달 → localStorage)
+if (SET.speed){ speed = parseFloat(SET.speed) || 1;
+  const sel = document.getElementById('speed'); if ([...sel.options].some(o=>o.value==String(SET.speed))) sel.value = String(SET.speed); }
 document.getElementById('viewmode').onclick = e=>{ viewMode = viewMode==='basic' ? 'zoom' : 'basic';
   e.target.textContent = viewMode==='zoom' ? '🔍 줌 추적' : '🎥 기본'; };
 const fileEl = document.getElementById('file');

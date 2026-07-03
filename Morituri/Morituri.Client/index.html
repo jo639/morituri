@@ -111,6 +111,7 @@
   <span id="gold">💰 —</span>
   <span id="status">—</span>
   <button id="next">다음 경기 ▶</button>
+  <button id="cfgBtn" title="설정" style="background:none;border:none;color:var(--dim);font-size:16px">⚙</button>
 </div>
 
 <div id="screens">
@@ -151,6 +152,30 @@
   <h3 id="tmTitle">전술 지시</h3>
   <div class="vsline" id="tmVs"></div>
   <div id="tmOpts"></div>
+</div></div>
+
+<div class="modal" id="seasonModal"><div class="mbox">
+  <h3 id="ssTitle" style="font-size:22px; color:var(--gold)">—</h3>
+  <div class="vsline" id="ssChamp"></div>
+  <table style="width:100%; border-collapse:collapse; font-size:13px; margin:6px 0" id="ssTable"></table>
+  <div id="ssMoney" class="rrow"></div>
+  <div id="ssAging"></div>
+  <div id="ssStory" class="rrow"></div>
+  <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('seasonModal').classList.remove('on'); go('league')">다음 시즌으로 →</button>
+</div></div>
+
+<div class="modal" id="cfgModal"><div class="mbox">
+  <h3 style="color:var(--gold)">⚙ 설정</h3>
+  <div class="rrow" style="margin-top:8px"><span>관전 기본 배속</span>
+    <select id="cfgSpeed" style="background:var(--panel2);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:3px 8px">
+      <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+    </select></div>
+  <div class="rrow"><span>승자 미리 표시</span>
+    <label><input type="checkbox" id="cfgSpoiler"> <span class="d">관전 시작부터 승자 공개 (기본: 재생 완료 후 공개)</span></label></div>
+  <div style="display:flex; gap:8px; margin-top:14px">
+    <button class="tacbtn" style="flex:1; text-align:center" onclick="$('menu').style.display='flex'; $('cfgModal').classList.remove('on')">메인 메뉴</button>
+    <button class="tacbtn" style="flex:1; text-align:center" onclick="$('cfgModal').classList.remove('on')">닫기</button>
+  </div>
 </div></div>
 
 <div class="modal" id="resModal"><div class="mbox">
@@ -219,11 +244,38 @@ $('next').onclick = async ()=>{
     if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
     const r = await api('/api/simto',{});
     await refresh();
-    simNote = `▶▶ ${r.played}경기 자동 진행` + (r.seasonDone ? ' · 시즌 종료 — 정산·노화 반영' : ' · 다음은 내 경기');
-    go('league');
+    if (r.seasonDone){ simNote = `▶▶ ${r.played}경기 자동 진행 · 시즌 종료`; showSeason(); }
+    else { simNote = `▶▶ ${r.played}경기 자동 진행 · 다음은 내 경기`; go('league'); }
   } finally { nx.disabled=false; }
 };
-let simNote=null;
+let simNote=null, pendingSeason=false;
+
+// ── 시즌 요약 연출 (시즌 종료 시 — 챔피언·순위·정산·노화·서사) ──
+function showSeason(){
+  const s = st && st.LastSeason; if (!s) { go('league'); return; }
+  $('ssTitle').textContent = `🏛 시즌 ${s.SeasonNo} 종료`;
+  $('ssChamp').textContent = `👑 챔피언: ${s.Champion}` + (s.ChampionIsMine ? ' — 내 루두스의 영광!' : '');
+  $('ssTable').innerHTML = s.Standings.map(r=>
+    `<tr style="${r.IsPlayer?'color:var(--gold);font-weight:700':''}">`+
+    `<td style="padding:2px 8px 2px 2px">${r.Rank}</td><td>${r.Name}${r.Rank===1?' 👑':''}</td>`+
+    `<td style="text-align:right">${r.W}-${r.L}-${r.D}</td><td style="text-align:right; padding-left:10px">${r.Points}점</td></tr>`).join('');
+  $('ssMoney').innerHTML = s.MyBestRank>0
+    ? `<span>💰 정산</span><b>+${Math.round(s.RankBonus)}</b> <span class="d">(${s.MyBestRank}위 보너스)</span> <b>−${Math.round(s.Salary)}</b> <span class="d">(급여)</span> → <b>잔고 ${Math.round(s.GoldAfter)}</b>` : '';
+  $('ssAging').innerHTML = (s.AgingNotes||[]).map(n=>`<div class="rrow"><span>⏳ 노화</span><span class="d">${n}</span></div>`).join('');
+  $('ssStory').innerHTML = `<span>이번 시즌 서사</span><span class="d">복수 ${s.Revenge} · 이변 ${s.Upsets} · 대역전 ${s.Comebacks} · 최고 명성 ${s.TopFame}</span>`;
+  $('seasonModal').classList.add('on');
+}
+
+// ── 설정 (localStorage 'mor_settings' — viewer.html이 배속·스포일러를 읽음) ──
+const CFG = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings'))||{}; }catch(e){ return {}; } })();
+$('cfgSpeed').value = String(CFG.speed||1);
+$('cfgSpoiler').checked = !!CFG.spoiler;
+function saveCfg(){ localStorage.setItem('mor_settings',
+  JSON.stringify({speed: parseFloat($('cfgSpeed').value), spoiler: $('cfgSpoiler').checked})); }
+$('cfgSpeed').onchange = saveCfg;
+$('cfgSpoiler').onchange = saveCfg;
+$('cfgBtn').onclick = ()=> $('cfgModal').classList.add('on');
+$('cfgModal').onclick = e=>{ if(e.target===$('cfgModal')) $('cfgModal').classList.remove('on'); };
 
 function openTacModal(nm){
   $('tmTitle').textContent = `전술 지시 — ${nm.MyName}`;
@@ -241,6 +293,7 @@ async function doPlay(tacticId){
   try{
     const m = await api('/api/next', tacticId?{tacticId}:{});
     await refresh();
+    pendingSeason = !!m.SeasonCompleted;   // 마지막 경기였으면 결과 확인 후 시즌 요약 연출
     showResult(m);          // 내 경기 = 즉시 결과 화면(승/패 + 변경사항). 관전은 리플레이.
   } finally { nx.disabled=false; }
 }
@@ -266,7 +319,8 @@ function showResult(m){
   `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>';
   $('resModal').classList.add('on');
 }
-window.closeResult = ()=>{ $('resModal').classList.remove('on'); go('league'); };
+window.closeResult = ()=>{ $('resModal').classList.remove('on');
+  if (pendingSeason){ pendingSeason=false; showSeason(); } else go('league'); };
 window.watchReplay = async ()=>{
   $('resModal').classList.remove('on');
   await openWatch(-1);

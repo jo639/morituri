@@ -65,7 +65,7 @@ public sealed class Game
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
         List<SchedRec>? Schedule, List<StoryDoc>? Story, List<EventDoc>? Events,
         List<GladRec> Gladiators, List<GladRec>? Candidates, List<RelationLedger.Entry> Relations,
-        List<LogEntry>? MatchLog = null);
+        List<LogEntry>? MatchLog = null, SeasonSummaryDoc? LastSummary = null);
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -89,7 +89,8 @@ public sealed class Game
         string AName, string BName, string? MyId, string? MyName, string[]? MyPool, string? MyTactic, OppPreview? Opp);
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
-        List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch);
+        List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
+        SeasonSummaryDoc? LastSeason);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -104,6 +105,12 @@ public sealed class Game
     private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
         string Winner, string Reason, bool IsPlayerMatch, ulong Seed, FighterDef DefA, FighterDef DefB);
     private sealed record MatchLogDoc(int Idx, int Round, bool IsEvent, string A, string B, string Winner, string Reason, bool IsPlayerMatch);
+
+    /// <summary>시즌 종료 요약 (연출 화면용 — 프리시즌 동안 표시, 영속).</summary>
+    private sealed record RankRow(int Rank, string Name, int W, int L, int D, int Points, bool IsPlayer);
+    private sealed record SeasonSummaryDoc(int SeasonNo, string Champion, bool ChampionIsMine, List<RankRow> Standings,
+        int MyBestRank, float RankBonus, float Salary, float GoldAfter,
+        List<string> AgingNotes, int Revenge, int Upsets, int Comebacks, string TopFame);
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -128,6 +135,7 @@ public sealed class Game
     private readonly List<(int Round, string Kind, string Text)> _story = new();
     private readonly List<EventDoc> _eventDocs = new();
     private readonly List<LogEntry> _matchLog = new();   // 이번 시즌 경기 기록(스냅샷+시드 = 재관전)
+    private SeasonSummaryDoc? _lastSummary;              // 최근 종료 시즌 요약 (연출 화면, 영속)
     private int _emoGen;
 
     private int RosterCap => 3 + _quartersLv;
@@ -256,19 +264,22 @@ public sealed class Game
         var champ = standings[0];
         _story.Add((_rounds + 1, "season", $"🏆 시즌 {_seasonNo} 종료 — 챔피언 {champ.Name} ({champ.W}승 {champ.L}패)"));
 
-        // 시즌 순위 보너스 (내 최고 순위 기준)
+        // 시즌 순위 보너스 (내 최고 순위 기준) + 급여
+        int bestRank = -1; float bonusPaid = 0f, salaryPaid = 0f;
         if (!_playerless && _cast.Any(g => g.IsPlayer))
         {
             int best = standings.FindIndex(g => g.IsPlayer);
-            float bonus = best >= 0 && best < RankBonus.Length ? RankBonus[best] : 20f;
-            _gold += bonus;
+            bestRank = best + 1;
+            bonusPaid = best >= 0 && best < RankBonus.Length ? RankBonus[best] : 20f;
+            _gold += bonusPaid;
             // 급여 공제 (스타는 비싸다)
-            float salary = _cast.Where(g => g.IsPlayer).Sum(g => SalaryBase + g.Fame * SalaryFameScale);
-            _gold = MathF.Max(0f, _gold - salary);
-            _story.Add((_rounds + 1, "season", $"💰 시즌 정산 — 순위 보너스 +{bonus:F0} · 급여 −{salary:F0} (잔고 {_gold:F0})"));
+            salaryPaid = _cast.Where(g => g.IsPlayer).Sum(g => SalaryBase + g.Fame * SalaryFameScale);
+            _gold = MathF.Max(0f, _gold - salaryPaid);
+            _story.Add((_rounds + 1, "season", $"💰 시즌 정산 — 순위 보너스 +{bonusPaid:F0} · 급여 −{salaryPaid:F0} (잔고 {_gold:F0})"));
         }
 
         // 나이/노화: 시즌당 +1세, 노화 시작 후 잠재력 상한 점진 감소 (의무실은 내 선수만 감면)
+        var agingNotes = new List<string>();
         foreach (var g in _cast)
         {
             g.Age++;
@@ -282,11 +293,23 @@ public sealed class Game
                     // 상한 아래로 — 현재 스탯도 깎인다. RCT 가중 50%([3]6.3 노화는 반응속도부터) + 나머지 균등.
                     g.Stats = WithAxis(g.Stats, 5, -excess * 0.5f);
                     for (int a = 0; a < 5; a++) g.Stats = WithAxis(g.Stats, a, -excess * 0.1f);
-                    if (g.IsPlayer) _story.Add((_rounds + 1, "aging", $"⏳ {g.Name}({g.Age}세) — 세월이 몸을 갉아먹는다 (상한 {g.PotentialBudget:F0})"));
+                    if (g.IsPlayer)
+                    {
+                        _story.Add((_rounds + 1, "aging", $"⏳ {g.Name}({g.Age}세) — 세월이 몸을 갉아먹는다 (상한 {g.PotentialBudget:F0})"));
+                        agingNotes.Add($"{g.Name} ({g.Age}세) — 능력 하락, 상한 {g.PotentialBudget:F0}");
+                    }
                 }
+                else if (g.IsPlayer) agingNotes.Add($"{g.Name} ({g.Age}세) — 노쇠 진행 중 (상한 {g.PotentialBudget:F0})");
             }
             g.Popularity *= 0.6f;   // 시즌 사이 화제성 감쇠
         }
+
+        // 시즌 요약 (연출 화면 — 프리시즌 동안 표시)
+        _lastSummary = new SeasonSummaryDoc(_seasonNo, champ.Name, champ.IsPlayer,
+            standings.Select((g, i) => new RankRow(i + 1, g.Name, g.W, g.L, g.D, g.SeasonPoints, g.IsPlayer)).ToList(),
+            bestRank, bonusPaid, salaryPaid, MathF.Round(_gold), agingNotes,
+            _story.Count(s => s.Kind == "revenge"), _story.Count(s => s.Kind == "upset"), _story.Count(s => s.Kind == "comeback"),
+            _cast.OrderByDescending(g => g.Fame).First().Name);
 
         SaveWorld();
     }
@@ -695,6 +718,7 @@ public sealed class Game
         _cast.Clear(); _cast.AddRange(w.Gladiators.Select(FromRec));
         _candidates.Clear(); if (w.Candidates != null) _candidates.AddRange(w.Candidates.Select(FromRec));
         _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
+        _lastSummary = w.LastSummary;
         _ledger.Load(w.Relations);
         return true;
     }
@@ -710,7 +734,8 @@ public sealed class Game
             _cast.Select(ToRec).ToList(),
             _candidates.Count > 0 ? _candidates.Select(ToRec).ToList() : null,
             _ledger.Snapshot().ToList(),
-            _matchLog.Count > 0 ? _matchLog.ToList() : null), JsonOpts));
+            _matchLog.Count > 0 ? _matchLog.ToList() : null,
+            _lastSummary), JsonOpts));
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
         g.TacticPool, g.TacticId,
@@ -795,7 +820,7 @@ public sealed class Game
         }
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
-            _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm), JsonOpts);
+            _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary), JsonOpts);
     }
 
     public string PlayNextJson(string? body)
