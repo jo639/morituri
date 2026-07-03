@@ -120,11 +120,16 @@ let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 // 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
 const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
-let winTextA = '', winTextB = '', winnerRevealed = false;
+let winTextA = '', winTextB = '', winnerRevealed = false, matchEndPosted = false;
 function revealWinner(){
   if (winnerRevealed) return; winnerRevealed = true;
   document.getElementById('winA').textContent = winTextA;
   document.getElementById('winB').textContent = winTextB;
+}
+// 재생이 실제로 끝났음을 게임 셸(부모)에 통지 — 셸이 결과창을 띄운다 (관전 후 결과 흐름)
+function postMatchEnded(){
+  if (matchEndPosted) return; matchEndPosted = true;
+  if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
 }
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
@@ -159,7 +164,7 @@ function load(json){
   // 승자 스포일러 방지: 기본은 재생 완료 시 공개(설정 mor_settings.spoiler=true면 즉시 표시)
   winTextA = r.Winner === 0 ? '🏆 ' + wtext : (r.Winner < 0 ? wtext : '');
   winTextB = r.Winner === 1 ? '🏆 ' + wtext : '';
-  winnerRevealed = false;
+  winnerRevealed = false; matchEndPosted = false;
   document.getElementById('winA').textContent = '';
   document.getElementById('winB').textContent = '';
   if (SET.spoiler) revealWinner();
@@ -828,6 +833,7 @@ function tick(now){
       if (t >= duration){
         t = duration; setPlaying(false);
         revealWinner();   // 재생 완료 — 이제 승자 공개 (스포일러 방지)
+        postMatchEnded(); // 게임 셸에 통지 → 결과창
         if (doc?.Result?.Winner >= 0){ postGame=true; postGameElapsed=0; }
       }
     }
@@ -846,7 +852,7 @@ function setPlaying(p){ playing = p && t < duration;
 // ── 입력 ──
 document.getElementById('play').onclick = ()=>{ if (t>=duration) t=0; setPlaying(!playing); };
 document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false);
-  if (t >= duration - 0.01) revealWinner(); };   // 끝까지 스크럽해도 공개
+  if (t >= duration - 0.01){ revealWinner(); postMatchEnded(); } };   // 끝까지 스크럽 = 관전 종료 취급
 document.getElementById('speed').onchange = e=>{ speed = parseFloat(e.target.value); };
 // 설정: 기본 배속 적용 (index.html 설정 모달 → localStorage)
 if (SET.speed){ speed = parseFloat(SET.speed) || 1;

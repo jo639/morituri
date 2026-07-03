@@ -143,7 +143,8 @@
 
   <div class="screen" id="watch">
     <div id="watchbar"><span class="card" id="watchCard">—</span><span class="tag" id="watchTag" hidden>이벤트</span>
-      <button onclick="go('league')">결과 반영된 리그 보기 →</button></div>
+      <button id="skipBtn" hidden onclick="fireResult()">⏭ 결과 보기</button>
+      <button onclick="go('league')">리그로 →</button></div>
     <iframe id="watchF" src="about:blank"></iframe>
   </div>
 </div>
@@ -294,8 +295,16 @@ async function doPlay(tacticId){
     const m = await api('/api/next', tacticId?{tacticId}:{});
     await refresh();
     pendingSeason = !!m.SeasonCompleted;   // 마지막 경기였으면 결과 확인 후 시즌 요약 연출
-    showResult(m);          // 내 경기 = 즉시 결과 화면(승/패 + 변경사항). 관전은 리플레이.
+    pendingResult = m;                     // 결과는 관전이 끝난 뒤에 (viewer가 matchEnded 통지)
+    await openWatch(-1);                   // 방금 경기 라이브 관전 (승자 숨김)
   } finally { nx.disabled=false; }
+}
+let pendingResult = null;
+function fireResult(){
+  if (!pendingResult) return;
+  const m = pendingResult; pendingResult = null;
+  $('skipBtn').hidden = true;
+  showResult(m);
 }
 
 // ── 결과 화면 (내 경기 종료 시 — 승/패 + 능력치·재화·인기 변경사항) ──
@@ -330,12 +339,15 @@ async function openWatch(idx){
   if (r.error) return;
   $('watchCard').textContent = `R${r.round} · ${r.a} vs ${r.b}`;
   $('watchTag').hidden = !r.isEvent;
+  $('skipBtn').hidden = !pendingResult;   // 내 경기 관전 중에만 "결과 보기" 스킵 제공
   $('watchF').src = 'viewer.html?t='+Date.now();
   go('watch');
 }
-// 리그 iframe의 경기 목록 클릭 → 관전 (postMessage)
+// viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 재생 완료=결과창
 window.addEventListener('message', e=>{
-  if (e.data && typeof e.data.watchIdx === 'number') openWatch(e.data.watchIdx);
+  if (!e.data) return;
+  if (typeof e.data.watchIdx === 'number') openWatch(e.data.watchIdx);
+  if (e.data.matchEnded) fireResult();    // 관전이 끝났다 — 이제 결과 화면
 });
 // 리그 진입 시 자동 진행 안내
 const _go = go;
