@@ -36,6 +36,7 @@ internal static class Program
             "/api/build" when method == "POST" => game.BuildJson(StrOf(body ?? "", "facility")),
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
+            "/api/choose" when method == "POST" => game.ChooseEventJson(IntOf(body ?? "", "choice")),
             "/api/newcareer" when method == "POST" => NewCareer(),
             _ => null,
         });

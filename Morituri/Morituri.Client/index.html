@@ -178,6 +178,14 @@
   <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('profModal').classList.remove('on')">닫기</button>
 </div></div>
 
+<div class="modal" id="evtModal"><div class="mbox">
+  <h3 id="evtTitle" style="color:var(--gold)">—</h3>
+  <div id="evtBody" class="vsline" style="margin:6px 0 10px"></div>
+  <div id="evtChoices"></div>
+  <div id="evtOutcome" class="rrow" style="display:none; margin-top:10px"></div>
+  <button id="evtClose" class="tacbtn" style="text-align:center; margin-top:12px; display:none" onclick="$('evtModal').classList.remove('on'); go('league')">계속 →</button>
+</div></div>
+
 <div class="modal" id="cfgModal"><div class="mbox">
   <h3 style="color:var(--gold)">⚙ 설정</h3>
   <div class="rrow" style="margin-top:8px"><span>관전 기본 배속</span>
@@ -281,6 +289,7 @@ async function refresh(){
 // ── 다음 경기: 내 경기 = 전술 모달 → 결과 화면 / AI 경기 = 자동 시뮬(내 경기 직전 정지) ──
 $('next').onclick = async ()=>{
   if (!st) await refresh();
+  if (st && st.PendingEvent){ showEvent(); return; }   // 대기 중 이벤트(앱 재시작 포함) 먼저 해결
   const nx=$('next'); nx.disabled=true;
   try{
     if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
@@ -392,7 +401,28 @@ function showResult(m){
   $('resModal').classList.add('on');
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
-  if (pendingSeason){ pendingSeason=false; showSeason(); } else go('league'); };
+  if (pendingSeason){ pendingSeason=false; showSeason(); }
+  else if (st && st.PendingEvent){ go('league'); showEvent(); }
+  else go('league'); };
+
+// ── 시즌 중 텍스트 이벤트(감독의 선택) ──
+function showEvent(){
+  const ev = st && st.PendingEvent; if (!ev) return;
+  $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
+  $('evtBody').textContent = ev.Body;
+  $('evtOutcome').style.display='none'; $('evtClose').style.display='none';
+  $('evtChoices').style.display='';
+  $('evtChoices').innerHTML = ev.Choices.map((c,i)=>`<button class="tacbtn" onclick="chooseEvent(${i})">${c}</button>`).join('');
+  $('evtModal').classList.add('on');
+}
+window.chooseEvent = async (i)=>{
+  const r = await api('/api/choose',{choice:i});
+  await refresh();
+  $('evtChoices').style.display='none';
+  $('evtOutcome').style.display='flex';
+  $('evtOutcome').innerHTML = `<span>결정</span><b style="color:var(--gold)">${r.outcome||''}</b>`;
+  $('evtClose').style.display='';
+};
 window.watchReplay = async ()=>{
   $('resModal').classList.remove('on');
   await openWatch(-1);

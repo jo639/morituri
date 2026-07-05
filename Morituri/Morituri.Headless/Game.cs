@@ -77,7 +77,8 @@ public sealed class Game
         List<LogEntry>? MatchLog = null, SeasonSummaryDoc? LastSummary = null,
         List<ChampionRec>? Champions = null, List<HallRec>? Hall = null,
         float LudusRep = 0f, List<string>? Achievements = null,       // 커리어 목표(A)
-        List<string>? CupSeeds = null, int CupStage = 0, string? CupChampion = null);
+        List<string>? CupSeeds = null, int CupStage = 0, string? CupChampion = null,
+        string? PendingEventId = null, string? PendingEventFighter = null);   // 시즌 중 텍스트 이벤트(2b)
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -119,7 +120,8 @@ public sealed class Game
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
-        SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup);
+        SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
+        TextEventDoc? PendingEvent);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -178,6 +180,7 @@ public sealed class Game
     private List<string> _cupSeeds = new();                  // 컵 시드 (top4 id, 컵 시작 시)
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
     private string? _cupChampion;                            // 최근 컵 우승자 이름
+    private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
     private int _emoGen;
 
     // ── 업적 정의 (조건은 코드에서 체크) ──
@@ -273,6 +276,100 @@ public sealed class Game
             g.W, g.L, g.D, g.CW, g.CL, g.CD, g.CKoW, TitlesOf(g), MathF.Round(g.Fame), MathF.Round(g.Popularity),
             rels, g.PendingEmotions.Select(x => EmotionTable.Get(x).Name).ToArray(), chron.ToArray());
         return JsonSerializer.Serialize(doc, JsonOpts);
+    }
+
+    // ── 시즌 중 텍스트 이벤트(2b) — 감독의 선택. 효과는 전부 기존 메커니즘(재화·명성·인기·훈련·감정·스탯). ──
+    private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices);
+    private sealed class EvtTemplate
+    {
+        public required string Id, Icon, Title;
+        public required bool NeedsFighter;
+        public required Func<string, string> Body;                       // 대상 이름 → 본문
+        public required (string Label, Func<Gladiator?, string> Apply)[] Choices;
+    }
+
+    /// <summary>스탯을 상한(잠재력 버짓) 내에서 영구 조정 — 여유 없으면 훈련 포인트로 환급. axis: Atk/Def/Rct.</summary>
+    private string NudgeStat(Gladiator g, string axis, float amt)
+    {
+        if (BudgetUsed(g.Stats) + amt > g.PotentialBudget) { g.TrainingPoints += 1; return "상한이 꽉 차 훈련 포인트로 전환"; }
+        int idx = axis switch { "Atk" => 0, "Def" => 1, "Rct" => 5, _ => 0 };
+        g.Stats = WithAxis(g.Stats, idx, amt);
+        return $"{axis} +{amt:F0}";
+    }
+
+    private List<EvtTemplate> EvtTemplates() => new()
+    {
+        new EvtTemplate { Id = "training", Icon = "🏋", Title = "혹독한 훈련", NeedsFighter = true,
+            Body = n => $"{n}이(가) 한계를 넘는 훈련을 자청한다. 몸을 갈아 실력을 얻을 것인가, 팬 앞의 컨디션을 지킬 것인가.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("강행군 (훈련 포인트 +2, 인기 −5)", g => { g!.TrainingPoints += 2; g.Popularity = MathF.Max(0, g.Popularity - 5); return $"{g.Name} 훈련 포인트 +2, 인기 −5"; }),
+                ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
+
+        new EvtTemplate { Id = "patron", Icon = "💰", Title = "후원자의 제안", NeedsFighter = false,
+            Body = _ => "부유한 후원자가 두둑한 금화를 내밀며 루두스의 이름을 빌리려 한다. 실리인가 명예인가.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("받는다 (골드 +80, 명성 −15)", _ => { _gold += 80f; _ludusRep = MathF.Max(0, _ludusRep - 15f); return "골드 +80, 루두스 명성 −15"; }),
+                ("거절한다 (명성 +20)", _ => { AddRep(20f); return "루두스 명성 +20"; }) } },
+
+        new EvtTemplate { Id = "crowd", Icon = "🎭", Title = "군중의 갈망", NeedsFighter = true,
+            Body = n => $"관중이 {n}의 화끈한 경기를 원한다. 흥행에 응할 것인가, 실속을 챙길 것인가.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("응한다 (인기 +12, 다음 경기 흥분)", g => { g!.Popularity += 12f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +12, 다음 경기 '동기부여'"; }),
+                ("침착하게 (명성 +8)", g => { g!.Fame += 8f; return $"{g.Name} 명성 +8"; }) } },
+
+        new EvtTemplate { Id = "taunt", Icon = "😤", Title = "라이벌의 조롱", NeedsFighter = true,
+            Body = n => $"타 검투사가 {n}을(를) 공개적으로 조롱했다. 응수할 것인가, 검으로 답할 것인가.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("맞받아친다 (인기 +6, 다음 경기 원한)", g => { g!.Popularity += 6f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Grudge); return $"{g.Name} 인기 +6, 다음 경기 '원한'"; }),
+                ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
+
+        new EvtTemplate { Id = "mentor", Icon = "📜", Title = "노장의 지도", NeedsFighter = true,
+            Body = n => $"은퇴한 전설이 {n}을(를) 지도하겠다 한다. 사례가 필요하지만 기예가 는다.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("수련한다 (골드 −40, 반응 성장)", g => { _gold = MathF.Max(0, _gold - 40f); var r = NudgeStat(g!, "Rct", 3f); return $"골드 −40, {g!.Name} {r}"; }),
+                ("사양한다", g => "정중히 사양했다.") } },
+
+        new EvtTemplate { Id = "blackmarket", Icon = "🗡", Title = "암시장 무기상", NeedsFighter = true,
+            Body = n => $"뒷골목 상인이 {n}에게 은밀히 예리한 검을 제안한다. 이점인가 명예인가.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("산다 (골드 −60, 공격 성장)", g => { _gold = MathF.Max(0, _gold - 60f); var r = NudgeStat(g!, "Atk", 3f); return $"골드 −60, {g!.Name} {r}"; }),
+                ("정직하게 (명성 +10)", g => { AddRep(10f); return "루두스 명성 +10"; }) } },
+    };
+
+    /// <summary>플레이어 경기 후 확률적으로 이벤트 스폰(결정론 — 시드 파생). 대상=방금 싸운 내 선수.</summary>
+    private void MaybeSpawnEvent(Gladiator? subject)
+    {
+        if (_pendingEventId != null || subject == null || !subject.IsPlayer) return;
+        var rng = new SimRandom(SeasonSeed ^ 0xE7E7_0A11UL + (ulong)_matchIdx * 131UL);
+        if (!rng.Roll(0.22f)) return;                             // ~22% 발생
+        var pool = EvtTemplates();
+        var t = pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
+        _pendingEventId = t.Id;
+        _pendingEventFighter = t.NeedsFighter ? subject.Id : null;
+    }
+
+    private TextEventDoc? PendingEventDoc()
+    {
+        if (_pendingEventId == null) return null;
+        var t = EvtTemplates().FirstOrDefault(x => x.Id == _pendingEventId);
+        if (t == null) return null;
+        string nm = _pendingEventFighter != null ? (_cast.FirstOrDefault(g => g.Id == _pendingEventFighter)?.Name ?? "선수") : "";
+        return new TextEventDoc(t.Id, t.Icon, t.Title, t.Body(nm), t.Choices.Select(c => c.Label).ToArray());
+    }
+
+    /// <summary>이벤트 선택 적용 → 결과 문구. 대상 선수가 사라졌으면(방출 등) 이벤트 취소.</summary>
+    public string ChooseEventJson(int choiceIdx)
+    {
+        var t = _pendingEventId == null ? null : EvtTemplates().FirstOrDefault(x => x.Id == _pendingEventId);
+        if (t == null) return Err("대기 중인 이벤트가 없다");
+        if (choiceIdx < 0 || choiceIdx >= t.Choices.Length) return Err("잘못된 선택");
+        Gladiator? subj = _pendingEventFighter != null ? _cast.FirstOrDefault(g => g.Id == _pendingEventFighter) : null;
+        if (t.NeedsFighter && subj == null) { _pendingEventId = _pendingEventFighter = null; SaveWorld(); return Err("대상 선수가 없다 — 이벤트 취소"); }
+        string outcome = t.Choices[choiceIdx].Apply(subj);
+        _story.Add((0, "event_choice", $"{t.Icon} {t.Title} — {outcome}"));
+        _pendingEventId = _pendingEventFighter = null;
+        SaveWorld();
+        return JsonSerializer.Serialize(new { ok = true, title = t.Title, outcome }, JsonOpts);
     }
 
     public Game(int roundsPerSeason, ulong? worldSeed = null, bool fresh = false,
@@ -548,6 +645,7 @@ public sealed class Game
 
         EnsureSchedule();   // 다음 페이즈 편성(예: 4강 후 결승) — 종료 판정 전에
         bool last = _cursor >= _schedule.Count && _cupStage == 3;
+        if (!last) MaybeSpawnEvent(A.IsPlayer ? A : B.IsPlayer ? B : null);   // 내 경기 후 서사 이벤트(2b)
         if (last) FinalizeSeason();
         else SaveWorld();
         if (_interactive) WriteSeasonJson();
@@ -977,6 +1075,7 @@ public sealed class Game
         _ludusRep = w.LudusRep;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
+        _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
         _ledger.Load(w.Relations);
         return true;
     }
@@ -999,7 +1098,8 @@ public sealed class Game
             _champions.Count > 0 ? _champions.ToList() : null,
             _hall.Count > 0 ? _hall.ToList() : null,
             _ludusRep, _achievements.Count > 0 ? _achievements.ToList() : null,
-            _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion), JsonOpts));
+            _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion,
+            _pendingEventId, _pendingEventFighter), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1128,7 +1228,7 @@ public sealed class Game
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
             _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
-            ludus, ach, cup), JsonOpts);
+            ludus, ach, cup, PendingEventDoc()), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

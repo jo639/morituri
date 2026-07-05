@@ -140,6 +140,37 @@ public class GameTests
     }
 
     [Test]
+    public void Game_TextEvent_Spawns_Persists_AndResolves()
+    {
+        TempDir("event");
+        var g = new Game(1, 5, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        // 내 경기를 진행하며 이벤트 스폰을 기다림(최대 2시즌)
+        bool spawned = false; int guard = 0;
+        while (guard++ < 800)
+        {
+            g.PlayNext();
+            if (Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind != JsonValueKind.Null) { spawned = true; break; }
+        }
+        Assert.That(spawned, Is.True, "플레이어 경기 후 텍스트 이벤트 스폰");
+
+        // 앱 재시작 재현 — 세이브에서 재로드해도 대기 이벤트 유지
+        var g2 = new Game(1, 5, fresh: false, interactive: false, playerless: false);
+        var ev = Parse(g2.StateJson()).GetProperty("PendingEvent");
+        Assert.That(ev.ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "이벤트가 세이브에 영속(미드시즌 재개)");
+        int nChoices = ev.GetProperty("Choices").GetArrayLength();
+        Assert.That(nChoices, Is.GreaterThan(1));
+
+        // 선택 → 결과 + 이벤트 소거
+        var res = Parse(g2.ChooseEventJson(0));
+        Assert.That(res.GetProperty("ok").GetBoolean(), Is.True);
+        Assert.That(Parse(g2.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null), "선택 후 이벤트 소거");
+        // 이미 소거된 이벤트 재선택 → 오류
+        Assert.That(Parse(g2.ChooseEventJson(0)).TryGetProperty("error", out _), Is.True);
+    }
+
+    [Test]
     public void Game_Profile_ExposesEpithetsAndRelations()
     {
         TempDir("profile");
