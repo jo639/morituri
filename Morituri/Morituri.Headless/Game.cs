@@ -55,7 +55,7 @@ public sealed class Game
         public int TrainingPoints, MatchCounter;                    // 3경기 주기 훈련
         public int CW, CL, CD, CKoW; public float Fame, Popularity;
         public int W, L, D, Streak;
-        public int Condition = 100, InjuryMatches;                  // 컨디션(피로,메타)·부상 잔여 경기(스탯 영향)
+        public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
         public readonly List<string> PendingEmotions = new();
         public int SeasonPoints => W * 3 + D;
         public int CareerPoints => CW * 3 + CD;
@@ -70,7 +70,7 @@ public sealed class Game
         string[] Traits, bool IsPlayer, int Age, int AgingStartAge, int TrainingPoints, int MatchCounter,
         int CW, int CL, int CD, int CKoW, float Fame, float Popularity,
         int W, int L, int D, int Streak, string[] PendingEmotions,
-        int Condition = 100, int InjuryMatches = 0, string LudusId = "PLAYER");
+        int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER");
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular");
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
@@ -89,7 +89,7 @@ public sealed class Game
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
     private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality, int Age,
         int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer,
-        string[]? Epithets = null, int Condition = 100, bool Injured = false);
+        string[]? Epithets = null, int Fatigue = 0, bool Injured = false);
     private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
@@ -104,7 +104,7 @@ public sealed class Game
         int W, int L, int D, int CW, int CL, int CD, float Fame, float Popularity,
         string[] Emotions,    // 다음 경기에 실릴 감정 (💭 예고)
         string[]? Epithets = null,    // 획득 이명
-        int Condition = 100, bool Injured = false);   // 컨디션(피로)·부상 여부
+        int Fatigue = 0, bool Injured = false);   // 피로도(0쌩쌩~100탈진)·부상 여부
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic); // 마스킹!
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
     private sealed record NextMatchDoc(int Round, bool IsEvent, bool IsPlayerMatch,
@@ -126,7 +126,7 @@ public sealed class Game
         bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
         StatsDoc Stats, string[] Traits, string[] Epithets, string[] TacticPool, string Tactic,
         int W, int L, int D, int CW, int CL, int CD, int CKoW, int Titles, float Fame, float Popularity,
-        RelRow[] Relations, string[] Emotions, string[] Chronicle, int Condition, bool Injured, string Ludus);
+        RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus);
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -313,7 +313,7 @@ public sealed class Game
             g.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(), g.TacticId.Replace("TAC_", ""),
             g.W, g.L, g.D, g.CW, g.CL, g.CD, g.CKoW, TitlesOf(g), MathF.Round(g.Fame), MathF.Round(g.Popularity),
             rels, g.PendingEmotions.Select(x => EmotionTable.Get(x).Name).ToArray(), chron.ToArray(),
-            g.Condition, g.InjuryMatches > 0, LudusNameOf(g.LudusId));
+            g.Fatigue, g.InjuryMatches > 0, LudusNameOf(g.LudusId));
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 
@@ -339,7 +339,7 @@ public sealed class Game
     private List<EvtTemplate> EvtTemplates() => new()
     {
         new EvtTemplate { Id = "training", Icon = "🏋", Title = "혹독한 훈련", NeedsFighter = true,
-            Body = n => $"{n}이(가) 한계를 넘는 훈련을 자청한다. 몸을 갈아 실력을 얻을 것인가, 팬 앞의 컨디션을 지킬 것인가.",
+            Body = n => $"{n}이(가) 한계를 넘는 훈련을 자청한다. 몸을 갈아 실력을 얻을 것인가, 팬 앞의 몸 상태를 지킬 것인가.",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("강행군 (훈련 포인트 +2, 인기 −5)", g => { g!.TrainingPoints += 2; g.Popularity = MathF.Max(0, g.Popularity - 5); return $"{g.Name} 훈련 포인트 +2, 인기 −5"; }),
                 ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
@@ -537,7 +537,7 @@ public sealed class Game
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear();
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
-        foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Condition = 100; g.InjuryMatches = 0; }   // 시즌 사이 휴식 = 완전 회복
+        foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; }   // 시즌 사이 휴식 = 완전 회복
 
         for (int r = 1; r <= _rounds; r++)
             for (int i = 0; i < _cast.Count; i++)
@@ -914,8 +914,8 @@ public sealed class Game
         // 순위/커리어 + 관계 + 감정 (경기 인덱스 파생 스트림 = 미드시즌 재개 결정론)
         Record(A, B, res, standing: !isEvent);
         _ledger.RecordMatch(A.Id, B.Id, res.Winner, ko, res.StatsA.MinHpPct, res.StatsB.MinHpPct);
-        ProcessCondition(A, res.StatsA, res, 0, round);   // 피로 누적(메타) + 부상 판정(드묾, 부상만 스탯 영향)
-        ProcessCondition(B, res.StatsB, res, 1, round);
+        ProcessFatigue(A, res.StatsA, res, 0, round);   // 피로 누적(메타) + 부상 판정(드묾, 부상만 스탯 영향)
+        ProcessFatigue(B, res.StatsB, res, 1, round);
         var emoRng = new SimRandom(SeasonSeed ^ 0x5EA5_04EDUL + (ulong)_matchIdx * 17UL);
         string? eA = EmotionGen.Roll(emoRng, res.Winner, 0, ko, res.StatsA.MinHpPct, A.Pers);
         string? eB = EmotionGen.Roll(emoRng, res.Winner, 1, ko, res.StatsB.MinHpPct, B.Pers);
@@ -959,18 +959,18 @@ public sealed class Game
     }
 
     /// <summary>경기 후 피로 누적(메타) + 드문 부상 판정. 부상 중엔 향후 몇 경기 실효 스탯 하락(ToDef). 의무실=플레이어 부상 완화.</summary>
-    private void ProcessCondition(Gladiator g, MatchFighterStats st, MatchResult res, int side, int round)
+    private void ProcessFatigue(Gladiator g, MatchFighterStats st, MatchResult res, int side, int round)
     {
         if (g.InjuryMatches > 0) g.InjuryMatches--;                     // 경기 소화 = 회복 1진행
         bool lostKo = res.Reason == "KO" && res.Winner >= 0 && res.Winner != side;
         bool brutal = lostKo || st.MinHpPct <= 0.15f;                   // 격전 = KO패 또는 빈사
-        g.Condition = Math.Max(0, g.Condition - (5 + (brutal ? 7 : 0)));  // 피로 누적(메타) — 격전일수록 큼
+        g.Fatigue = Math.Min(100, g.Fatigue + (5 + (brutal ? 7 : 0)));  // 피로 누적(메타) — 격전일수록 큼
 
-        // 부상은 '격전에서만' 드물게 발생(부상=중상). 낮은 컨디션·의무실이 확률 조정.
+        // 부상은 '격전에서만' 드물게 발생(부상=중상). 높은 피로도·의무실이 확률 조정.
         if (brutal && g.InjuryMatches == 0)
         {
             var rng = new SimRandom(SeasonSeed ^ 0x1234_9A11UL + (ulong)_matchIdx * 7UL + (ulong)side);
-            float chance = 0.15f * (g.Condition < 40 ? 1.6f : 1f);
+            float chance = 0.15f * (g.Fatigue > 60 ? 1.6f : 1f);
             if (g.IsPlayer) chance *= 1f - 0.25f * (_medicalLv - 1);     // 의무실 Lv → 부상률 감소
             if (rng.Roll(chance))
             {
@@ -1227,7 +1227,7 @@ public sealed class Game
         (int)g.Talent, (int)g.Potential, g.TalentBudget, g.PotentialBudget,
         g.TraitIds, g.IsPlayer, g.Age, g.AgingStartAge, g.TrainingPoints, g.MatchCounter,
         g.CW, g.CL, g.CD, g.CKoW, g.Fame, g.Popularity,
-        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Condition, g.InjuryMatches, g.LudusId);
+        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -1241,7 +1241,7 @@ public sealed class Game
             TraitIds = r.Traits, IsPlayer = r.IsPlayer, Age = r.Age, AgingStartAge = r.AgingStartAge,
             TrainingPoints = r.TrainingPoints, MatchCounter = r.MatchCounter,
             CW = r.CW, CL = r.CL, CD = r.CD, CKoW = r.CKoW, Fame = r.Fame, Popularity = r.Popularity,
-            W = r.W, L = r.L, D = r.D, Streak = r.Streak, Condition = r.Condition, InjuryMatches = r.InjuryMatches,
+            W = r.W, L = r.L, D = r.D, Streak = r.Streak, Fatigue = r.Fatigue, InjuryMatches = r.InjuryMatches,
             LudusId = r.LudusId,
         };
         g.PendingEmotions.AddRange(r.PendingEmotions);
@@ -1258,7 +1258,7 @@ public sealed class Game
             g.WeaponId.Replace("WPN_", ""), g.TacticId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""), g.Age,
             g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer, Epithets(g),
-            g.Condition, g.InjuryMatches > 0)).ToList();
+            g.Fatigue, g.InjuryMatches > 0)).ToList();
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();
@@ -1292,7 +1292,7 @@ public sealed class Game
             g.TrainingPoints, g.W, g.L, g.D, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity),
             g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray(), Epithets(g),
-            g.Condition, g.InjuryMatches > 0)).ToList();
+            g.Fatigue, g.InjuryMatches > 0)).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),

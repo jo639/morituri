@@ -242,7 +242,7 @@ const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
 const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
 const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
-const condColor=v=> v>60?'var(--grn)': v>30?'#d8b24a':'var(--b)';
+const fatColor=v=> v<40?'var(--grn)': v<70?'#d8b24a':'var(--b)';   // 피로도: 낮을수록 좋음(초록)
 const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;border-radius:4px;padding:0 5px;font-size:11px">🩹 부상</span>':'';
 let st=null;
 
@@ -260,7 +260,7 @@ async function openProfile(id){
     ${epi(f.Epithets)}
     <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 ${f.Aging?'<span class="old">노쇠</span>':''}${injBadge(f)} · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
     <div class="row"><span>소속</span><b>${f.Ludus}</b></div>
-    <div class="row"><span>컨디션</span><b style="color:${condColor(f.Condition)}">${f.Condition}${f.Injured?' 🩹':''}</b></div>
+    <div class="row"><span>피로도</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}${f.Injured?' 🩹':''}</b></div>
     <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)">💭 ${x}</span>`).join('')}</div>
     <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st" title="${STATH[a.charAt(0)+a.slice(1).toLowerCase()]||''}"><span>${a}</span> ${v}</div>`).join('')}</div>
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
@@ -397,13 +397,12 @@ function portraitSvg(weaponId, perId, side){
     <path d="M81 59 L66 57 L66 66 L80 67 Z" fill="#150e07"/>
   </svg>`;
 }
-function condLine(cond, injured){
-  const c = cond==null?'?':cond;
-  if (injured) return `<div class="row"><span>컨디션</span><b style="color:var(--b)">${c} 🩹</b></div>
+function condLine(fat, injured){
+  const f = fat==null?'?':fat;
+  if (injured) return `<div class="row"><span>피로도</span><b style="color:var(--b)">${f} 🩹</b></div>
     <div class="note" style="color:#e0a89f">부상 — 반응 −10% · 공속 −8% · 이속 −6%</div>`;
-  const col = cond>60?'var(--grn)':cond>30?'#d8b24a':'var(--b)';
-  return `<div class="row"><span>컨디션</span><b style="color:${col}">${c}</b></div>
-    <div class="note">${cond!=null&&cond<40?'피로 — 부상 위험↑ (스탯 영향 없음)':'정상 (부상 아니면 스탯 영향 없음)'}</div>`;
+  return `<div class="row"><span>피로도</span><b style="color:${fatColor(f)}">${f}</b></div>
+    <div class="note">${fat!=null&&fat>60?'피로 누적 — 부상 위험↑ (스탯 영향 없음)':'양호 (부상 아니면 스탯 영향 없음)'}</div>`;
 }
 function openTacModal(nm){
   const o = nm.Opp;
@@ -417,7 +416,7 @@ function openTacModal(nm){
     ${portraitSvg(me.Weapon,me.Personality,'a')}
     <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${nm.MyName}</b> <span class="chip">내 루두스</span></div>
     <div class="bd" style="text-align:center">${w(me.Weapon)} · ${p(me.Personality)} · ${me.Age}세</div>
-    ${condLine(me.Condition,me.Injured)}
+    ${condLine(me.Fatigue,me.Injured)}
     <div class="note" style="margin-top:6px">🗡 ${cx('무기',me.Weapon)}</div>
     <div class="note" style="margin-top:3px">🧠 ${cx('성격',me.Personality)}</div>
     ${myTraits}${myEmo}
@@ -428,7 +427,7 @@ function openTacModal(nm){
     ${portraitSvg(o.Weapon,o.Personality,'b')}
     <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${o.Name}</b></div>
     <div class="bd" style="text-align:center">${w(o.Weapon)} · ${p(o.Personality)} · ${o.Age}세</div>
-    ${condLine(oppF.Condition,oppF.Injured)}
+    ${condLine(oppF.Fatigue,oppF.Injured)}
     <div class="note" style="margin-top:6px">🗡 ${cx('무기',o.Weapon)}</div>
     <div class="note" style="margin-top:3px">🧠 ${cx('성격',o.Personality)}</div>
     ${relBadge}
@@ -569,7 +568,7 @@ function renderLudus(){
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
-      <div class="row"><span>컨디션${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${condColor(f.Condition)}">${f.Condition}</b></div>
+      <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       ${!st.SeasonActive?`<button onclick="release('${f.Id}','${f.Name}')" style="margin-top:8px;width:100%;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button>`:''}</div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
