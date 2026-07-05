@@ -118,6 +118,12 @@ let doc = null, frames = null, popups = [], decisions = [], impacts = [], durati
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
+// 성격 지시(Decision) 태그 → 가독 라벨. 관중게이지 버프와 별개인 '행동 지시'임을 명확히.
+const TAGKR = { SHOWTIME:'🎭 쇼타임·화려한 강공', TAUNT:'🤡 도발', ENRAGED:'😡 격노', RAGED:'😡 도발에 격노',
+  RECKLESS:'⚡ 폭주', FEAR:'😨 위축', FLINCH:'😰 주춤', CRUEL:'🔪 잔혹', EXPLOIT:'🎯 허점 공략', HONOR:'🙏 경의',
+  BOLD:'🔥 결단', COOL:'❄ 냉정', WARY:'🛡 신중',
+  REL_NEMESIS:'⚔ 원수', REL_FEAR:'😨 공포', REL_ENVY:'😤 질투', REL_OBSESSION:'🌀 집착',
+  REL_RIVAL:'🔥 라이벌', REL_RESPECT:'🤝 존경', REL_FRIEND:'🫂 친구' };
 // 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
 const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
 let winTextA = '', winTextB = '', winnerRevealed = false, matchEndPosted = false;
@@ -829,7 +835,7 @@ function render(){
     ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
-    const txt='🧠 '+d.tag; ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
+    const txt=TAGKR[d.tag]||('🧠 '+d.tag); ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 
@@ -866,7 +872,14 @@ function render(){
     else        { ctx.fillStyle=getCSS('--b'); ctx.fillRect(cx+half*frac, my, -half*frac, mh); }
     ctx.fillStyle='#f0e6d6'; ctx.fillRect(cx-1, my-2, 2, mh+4);   // 중앙선
     ctx.textAlign='center'; ctx.font='9px system-ui'; ctx.fillStyle=getCSS('--dim');
-    ctx.fillText('⚑ 관중', cx, my-5);
+    ctx.fillText('⚑ 관중게이지', cx, my-5);
+    // 관중 페이오프 가시화: 데드존(±15) 위에서 유리한 쪽 실제 버프(피해 최대 +12%·이속 +8%)를 수치로.
+    const a=Math.abs(crowd), norm=a<=15?0:Math.min(1,(a-15)/(100-15));
+    if (norm>0){
+      const favName = crowd>=0 ? doc.Meta.A.Name : doc.Meta.B.Name;
+      ctx.font='bold 10px system-ui'; ctx.fillStyle=getCSS(crowd>=0?'--a':'--b');
+      ctx.fillText(`${favName} 유리 — 피해 +${Math.round(norm*12)}% · 이속 +${Math.round(norm*8)}%`, cx, my+mh+11);
+    }
   }
 
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
