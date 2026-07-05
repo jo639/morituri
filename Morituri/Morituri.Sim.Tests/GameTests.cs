@@ -171,6 +171,28 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Condition_DeclinesWithMatches_AndInjuriesOccur()
+    {
+        TempDir("cond");
+        var g = new Game(1, 21, fresh: true, interactive: false, playerless: true);
+        g.PlayNext();   // 개막
+        // 경기를 진행하며 컨디션 하락·부상 발생 관찰(여러 시즌)
+        bool condDropped = false, injurySeen = false; int guard = 0;
+        while (guard++ < 300 && !(condDropped && injurySeen))
+        {
+            g.PlayNext();
+            var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
+            foreach (var f in fs.EnumerateArray())
+            {
+                if (f.GetProperty("Condition").GetInt32() < 100) condDropped = true;
+                if (f.GetProperty("Injured").GetBoolean()) injurySeen = true;
+            }
+        }
+        Assert.That(condDropped, Is.True, "경기 소화 → 컨디션(피로) 하락");
+        Assert.That(injurySeen, Is.True, "격전에서 부상 발생");
+    }
+
+    [Test]
     public void Game_Profile_ExposesEpithetsAndRelations()
     {
         TempDir("profile");

@@ -229,6 +229,8 @@ const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 �
 const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
 const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
+const condColor=v=> v>60?'var(--grn)': v>30?'#d8b24a':'var(--b)';
+const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;border-radius:4px;padding:0 5px;font-size:11px">🩹 부상</span>':'';
 let st=null;
 
 // ── 선수 상세(서사) 창 ──
@@ -243,7 +245,8 @@ async function openProfile(id){
   $('profBody').innerHTML = `
     <h3 style="color:var(--gold);font-size:20px;margin:0">${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
     ${epi(f.Epithets)}
-    <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 ${f.Aging?'<span class="old">노쇠</span>':''} · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
+    <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 ${f.Aging?'<span class="old">노쇠</span>':''}${injBadge(f)} · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
+    <div class="row"><span>컨디션</span><b style="color:${condColor(f.Condition)}">${f.Condition}${f.Injured?' 🩹':''}</b></div>
     <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)">💭 ${x}</span>`).join('')}</div>
     <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st"><span>${a}</span> ${v}</div>`).join('')}</div>
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
@@ -465,7 +468,7 @@ function renderLudus(){
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
     const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
     const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
-    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}</h3>
+    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}</h3>
       ${epi(f.Epithets)}
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
       <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${
@@ -479,11 +482,12 @@ function renderLudus(){
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
+      <div class="row"><span>컨디션${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${condColor(f.Condition)}">${f.Condition}</b></div>
       ${!st.SeasonActive?`<button onclick="release('${f.Id}','${f.Name}')" style="margin-top:8px;width:100%;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button>`:''}</div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
   const facs=[['training','훈련장',st.TrainingLv,3,'3경기당 훈련 포인트 '+st.TrainingLv+'pt',[200,500]],
-              ['medical','의무실',st.MedicalLv,3,'노화 감속 −'+(25*(st.MedicalLv-1))+'%',[200,500]],
+              ['medical','의무실',st.MedicalLv,3,'노화·부상 감속 −'+(25*(st.MedicalLv-1))+'%',[200,500]],
               ['quarters','숙소',st.QuartersLv,2,'로스터 상한 '+st.RosterCap+'명',[300,600]]];
   $('facRow').innerHTML = facs.map(([id,nm,lv,max,eff,costs])=>{
     const step = id==='quarters'?lv:lv-1;
@@ -560,7 +564,7 @@ function renderRoster(){
   if (!st) return;
   $('rosterGrid').innerHTML = [...st.Season.Fighters].sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame).map(f=>
     `<div class="fc ${f.IsPlayer?'':'ai'}" style="cursor:pointer" onclick="openProfile('${f.Id}')" title="상세 보기">
-     <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
+     <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}</h3>
      ${epi(f.Epithets)}
      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
