@@ -111,6 +111,7 @@
   </nav>
   <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
   <span id="gold">💰 —</span>
+  <span id="glory" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="color:#c94ca8;font-weight:700"></span>
   <span id="status">—</span>
   <button id="autoBtn" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">⏩ 자동완주</button>
   <button id="next">다음 경기 ▶</button>
@@ -292,6 +293,7 @@ async function refresh(){
   st = await api('/api/state');
   const S = st.Season;
   $('gold').textContent = `💰 ${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'');
+  $('glory').textContent = st.Glory>0 ? `✨ ${st.Glory}` : '';
   const L = st.Ludus;
   $('ludus').textContent = L ? `🏛 ${L.TierName}` : '';
   $('ludus').title = L ? `루두스 명성 ${Math.round(L.Rep)}` + (L.NextTierName?` · 다음 등급 「${L.NextTierName}」까지 ${Math.max(0,Math.round(L.NextTierRep-L.Rep))}` : ' · 최고 등급') + ` · 수입 ×${L.IncomeMult.toFixed(2)}` : '';
@@ -565,6 +567,7 @@ function renderLudus(){
         ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')" title="훈련 포인트로 ${STATH[a]||a} +1">+</button>`:''}</div>`).join('')}</div>
       <div class="cap"><i style="width:${cap}%"></i></div>
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
+      ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px;background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>💥 잠재력 돌파 (✨${f.BreakthroughCost})</button>`:''}
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
@@ -603,6 +606,11 @@ window.train = async (id,axis)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
+window.breakthrough = async (id)=>{
+  const r = await api('/api/breakthrough',{id});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
 window.setTac = async (id,tacticId)=>{
   const r = await api('/api/tactic',{id,tacticId});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
@@ -619,7 +627,7 @@ window.build = async (fac)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-function refreshTop(){ $('gold').textContent=`💰 ${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:''); }
+function refreshTop(){ $('gold').textContent=`💰 ${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:''); $('glory').textContent=st.Glory>0?`✨ ${st.Glory}`:''; }
 
 // ── 영입 ──
 function renderMarket(){

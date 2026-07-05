@@ -188,6 +188,28 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Glory_AccruesFromFeats_AndBreakthroughRaisesCap()
+    {
+        TempDir("glory");
+        var g = new Game(1, 19, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
+        // 업적(첫 승 등)으로 영광이 쌓일 때까지 여러 시즌
+        for (int s = 0; s < 4; s++) RunFullSeason(g);
+        var st = Parse(g.StateJson());
+        float glory = st.GetProperty("Glory").GetSingle();
+        Assert.That(glory, Is.GreaterThan(0f), "위신 업적/타이틀로 영광 획득");
+
+        // 잠재력 돌파 — 영광 소모, 상한 상승
+        string id = st.GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
+        float budBefore = st.GetProperty("MyFighters")[0].GetProperty("PotentialBudget").GetSingle();
+        var after = Parse(g.BreakthroughJson(id));
+        Assert.That(after.TryGetProperty("error", out _), Is.False, "영광 충분 → 돌파 성공");
+        float budAfter = after.GetProperty("MyFighters").EnumerateArray().First(f => f.GetProperty("Id").GetString() == id).GetProperty("PotentialBudget").GetSingle();
+        Assert.That(budAfter, Is.GreaterThan(budBefore), "잠재력 상한 상승");
+        Assert.That(after.GetProperty("Glory").GetSingle(), Is.LessThan(glory), "영광 소모");
+    }
+
+    [Test]
     public void Game_Divisions_SplitByFame_AndMatchWithinDivision()
     {
         TempDir("div");
