@@ -652,6 +652,24 @@ public sealed class MatchSim
         bool bothInRange = dist <= f.EffRange && dist <= oppRt.EffRange;
         bool iWantMoreSpace = d.PreferredDistance > oppRt.Dir.PreferredDistance && gap < -0.05f;
         if (bothInRange && iWantMoreSpace && impulse < 0.5f) score[(int)ActionRequest.Retreat] = MathF.Max(score[(int)ActionRequest.Retreat], 0.7f);
+        // [스태미나 자멸 브레이크] 카이팅 세금을 무는 장사거리 무기가 스태미나 열세로 스스로 가스아웃 중이면,
+        // 무한 후퇴/선회(−1.5/s) 대신 Hold(제자리 Idle 회복 +6, 세금 0)로 숨을 고른다 — 대검·창 카운터의
+        // '버티다 반격' 정체성 복원. 매트릭스 안전: 낮은 스태미나(<KiteBrakeStamFrac)에서만 발동, 세금 값·게이트 불변.
+        if (_c.KiteBrakeStamFrac > 0f && f.Weapon.Range >= _c.KiteCostMinRange)
+        {
+            float stamFrac = f.Stamina / MathF.Max(1f, f.StaminaMax);
+            // 리치 감쇠: 리치가 길수록(창·채찍) 'Hold 회복'이 리치 지배를 되살리므로 브레이크를 약화 → 카이팅 세금 보존.
+            float reachF = Math.Clamp(1f - (f.Weapon.Range - _c.KiteCostMinRange) / _c.KiteBrakeReachSpan, 0f, 1f);
+            if (stamFrac < _c.KiteBrakeStamFrac && reachF > 0f)
+            {
+                float brake = stamFrac / _c.KiteBrakeStamFrac;          // 0(바닥)~1(문턱)
+                float dampFull = 0.25f + 0.75f * brake;                 // 리치F=1일 때 문턱=무영향, 바닥≈0.25배
+                float damp = 1f - (1f - dampFull) * reachF;             // 리치F=0 → damp=1(무영향)
+                score[(int)ActionRequest.Retreat] *= damp;
+                score[(int)ActionRequest.Strafe] *= damp;
+                score[(int)ActionRequest.Hold] = MathF.Max(score[(int)ActionRequest.Hold], 0.5f * (1f - brake) * reachF);
+            }
+        }
         score[(int)ActionRequest.AttackLight] = light;
         score[(int)ActionRequest.AttackHeavy] = heavy;
         score[(int)ActionRequest.Feint] = feint;

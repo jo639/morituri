@@ -62,6 +62,8 @@ public readonly record struct BalanceConstants
     public float StamRegenMoving     { get; init; }
     public float KiteStamCostPerSec  { get; init; }  // 존형이 거리 유지(후퇴/선회)로 빠질 때 소모 (B: 카이팅 비용)
     public float KiteCostMinRange    { get; init; }  // 카이팅 비용 적용 최소 사거리 — 이 이상 무기만 과금. 3.0=장사거리전용 / 0=전무기(튜닝 스윕 차원)
+    public float KiteBrakeStamFrac   { get; init; }  // 이 스태미나 비율 미만이면 장사거리 카이터가 무한 후퇴 대신 Hold(회복)로 전환 — 자멸 카이팅 방지. 0=끔
+    public float KiteBrakeReachSpan  { get; init; }  // 브레이크 리치 감쇠폭: (사거리−KiteCostMinRange)이 이만큼이면 브레이크 0. 대검엔 적용·창/채찍은 세금 보존
     public float ExhaustDurationSec  { get; init; }
     public float ExhaustMoveSpeedMult{ get; init; }
     public float ExhaustDamageTakenMult { get; init; }  // 지친 방어자가 받는 피해 배수 (무너진 몸 = 처벌 강화)
@@ -196,6 +198,8 @@ public readonly record struct BalanceConstants
         StamRegenMoving = 3f,
         KiteStamCostPerSec = 1.5f,   // B 재튜닝: 카이팅 비용 노브 (0→창78% / 1.5→48% / 5→0%). 정확값은 트위치, 1.5 = 근접 균형
         KiteCostMinRange = 3.0f,      // 기본=장사거리(MinLongRange)만 카이팅 과금 (기존 동작 보존). 튜닝 스윕이 낮춰 전무기로 확장
+        KiteBrakeStamFrac = 0.35f,    // 스태미나 35% 미만 = 가스아웃 임박 → 후퇴/선회 대신 Hold(회복+6, 세금0)
+        KiteBrakeReachSpan = 1.2f,    // 리치 스케일: 사거리가 KiteCostMinRange보다 이만큼 길면 브레이크 0 (대검=full·창≈0.25·채찍=0 — 장리치 카이팅 세금 보존)
         ExhaustDurationSec = 3.0f,   // M3-A: 문서[4] 원값으로 복귀 (아래 주석)
         ExhaustMoveSpeedMult = 0.6f,
         // M3-A: 2.2→1.3 — 지침 중처벌(4.5s/×2.2)은 가드 프레임불리·헛스윙 처벌이 없던 시절의

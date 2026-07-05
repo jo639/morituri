@@ -263,6 +263,7 @@ dotnet run -c Release -- [명령]
 | **충돌 disc** | CollisionRadius 0.6 | 두 선수 통과·위치교환 금지. 비대칭 충돌(파고든 쪽만 밀림). |
 | **인내심(Patience)** | MatchSim | 무교전 길어지면 소모(`Drain×(0.5+Aggr)`)→공격충동(카이터 한정). 거울 영원대치 해소. (→ [9]§7) |
 | **카이팅 비용** | KiteStamCostPerSec 1.5 | 장거리무기 거리유지 시 스태미나 소모(가스아웃)·`KiteCostMinRange 3.0` |
+| **카이팅 자멸 브레이크** | KiteBrakeStamFrac 0.35 | 스태미나<35%인 장거리 카이터가 무한후퇴 대신 Hold(회복+6,세금0)로 전환 — 대검-카운터 자멸 방지. **리치스케일**(`KiteBrakeReachSpan 1.2`)로 대검(3.0)만 적용·창/채찍은 세금지배 보존. 검·창·채찍 매트릭스 불변 검증(matrix CLI), 대검-카운터 0%→52~72% |
 | **하이퍼아머** | WeaponDef·MatchSim | 대검·망치 강공선딜 중 약공 관철. |
 | **출혈** | AXE BleedDps·MatchSim | 도끼 클린히트당 1스택(최대3), 스택당 1.0/s, 4s 지속·갱신. |
 | **패링** | SHIELD ParryWindow·BalanceConstants | 가드진입 0.15s 내 피격=자격, `ParryChance 0.4` 롤 성공 시 무효+환급+프레임우위. 기절스택(3·감쇠3s)·붕괴완화(0.5s). |
