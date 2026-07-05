@@ -31,6 +31,15 @@ public sealed class Game
     private const float AgingDecayPerSeason = 10f, MinPotentialBudget = 120f;
     private const int TrainEveryMatches = 3;
 
+    // ── 루두스 등급(명성) — 승리·우승·흥행으로 축적. 뽑기 질·수입 배율에 영향. ──
+    private static readonly (float Rep, string Name)[] LudusTiers =
+    {
+        (0f, "무명 양성소"), (120f, "신흥 루두스"), (350f, "이름난 루두스"),
+        (800f, "명문 루두스"), (1600f, "제국의 자랑"), (3200f, "콜로세움의 지배자"),
+    };
+    private const float RepWin = 2f, RepDrama = 4f, RepLeagueTitle = 60f, RepCupTitle = 90f;
+    private const float CupWinPrize = 120f, CupSemiPrize = 40f;   // 컵 우승 상금 / 4강 진출 상금
+
     private sealed class Gladiator
     {
         public required string Id, Name, WeaponId, PersonalityId;   // 고정 정체성
@@ -59,14 +68,16 @@ public sealed class Game
         string[] Traits, bool IsPlayer, int Age, int AgingStartAge, int TrainingPoints, int MatchCounter,
         int CW, int CL, int CD, int CKoW, float Fame, float Popularity,
         int W, int L, int D, int Streak, string[] PendingEmotions);
-    private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score);
+    private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular");
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
         List<SchedRec>? Schedule, List<StoryDoc>? Story, List<EventDoc>? Events,
         List<GladRec> Gladiators, List<GladRec>? Candidates, List<RelationLedger.Entry> Relations,
         List<LogEntry>? MatchLog = null, SeasonSummaryDoc? LastSummary = null,
-        List<ChampionRec>? Champions = null, List<HallRec>? Hall = null);
+        List<ChampionRec>? Champions = null, List<HallRec>? Hall = null,
+        float LudusRep = 0f, List<string>? Achievements = null,       // 커리어 목표(A)
+        List<string>? CupSeeds = null, int CupStage = 0, string? CupChampion = null);
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -92,11 +103,15 @@ public sealed class Game
         string? MyVsOpp = null,       // 이 상대와의 상대전적 "2승 1패"
         string? MyRelation = null,    // 내가 상대를 보는 관계 (원수/공포/라이벌…) — 복수전 예고
         string[]? MyEmotions = null,  // 이번 경기에 실리는 감정
-        bool OppIsKiter = false);     // 상성 힌트: 상대가 장거리 카이터인가
+        bool OppIsKiter = false,      // 상성 힌트: 상대가 장거리 카이터인가
+        string? Stage = null);        // 컵 단계 라벨 (4강 결승) — 정규경기는 null
+    private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
+    private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
+    private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
-        SeasonSummaryDoc? LastSeason);
+        SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -117,7 +132,8 @@ public sealed class Game
     private sealed record SeasonSummaryDoc(int SeasonNo, string Champion, bool ChampionIsMine, List<RankRow> Standings,
         int MyBestRank, float RankBonus, float Salary, float GoldAfter,
         List<string> AgingNotes, int Revenge, int Upsets, int Comebacks, string TopFame,
-        List<string>? Retirements = null);
+        List<string>? Retirements = null,
+        string? CupChampion = null, bool CupChampionMine = false, List<string>? NewAchievements = null);
 
     /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
     private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
@@ -149,7 +165,44 @@ public sealed class Game
     private SeasonSummaryDoc? _lastSummary;              // 최근 종료 시즌 요약 (연출 화면, 영속)
     private readonly List<ChampionRec> _champions = new();   // 역대 챔피언 (세계 역사)
     private readonly List<HallRec> _hall = new();            // 명예의 전당 (은퇴자)
+    private float _ludusRep;                                 // 루두스 등급 명성 (A)
+    private readonly HashSet<string> _achievements = new();  // 달성 업적 id
+    private List<string> _cupSeeds = new();                  // 컵 시드 (top4 id, 컵 시작 시)
+    private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
+    private string? _cupChampion;                            // 최근 컵 우승자 이름
     private int _emoGen;
+
+    // ── 업적 정의 (조건은 코드에서 체크) ──
+    private static readonly (string Id, string Name, string Desc)[] AchievementDefs =
+    {
+        ("first_win",    "첫 승리",       "내 검투사의 첫 승"),
+        ("first_title",  "리그 제패",     "리그 시즌 우승"),
+        ("first_cup",    "챔피언십 정복", "챔피언십 컵 우승"),
+        ("caesar",       "카이사르 발굴", "카이사르 천부 영입"),
+        ("legend",       "살아있는 전설", "내 검투사 명성 100 돌파"),
+        ("streak10",     "무패의 투사",   "내 검투사 10연승"),
+        ("empire",       "제국의 정점",   "루두스 최고 등급 달성"),
+        ("dynasty",      "왕조",          "리그 3연패"),
+    };
+
+    private readonly List<string> _seasonNewAch = new();   // 이번 시즌 신규 업적 (요약용)
+
+    private int LudusTier()
+    {
+        int t = 0;
+        for (int i = 0; i < LudusTiers.Length; i++) if (_ludusRep >= LudusTiers[i].Rep) t = i;
+        return t;
+    }
+    private float IncomeMult => _playerless ? 1f : 1f + LudusTier() * 0.08f;
+    private void AddRep(float r) { if (!_playerless) _ludusRep += r; }
+    private void Unlock(string id)
+    {
+        if (_playerless || !_achievements.Add(id)) return;   // 이미 달성/CLI
+        var def = AchievementDefs.First(a => a.Id == id);
+        _seasonNewAch.Add(def.Name);
+        _story.Add((0, "achievement", $"🏅 업적 — {def.Name}: {def.Desc}"));
+        _ludusRep += 20f;
+    }
 
     private int RosterCap => 3 + _quartersLv;
     private ulong SeasonSeed => _worldSeed + (ulong)_seasonNo * 1000003UL;
@@ -205,11 +258,17 @@ public sealed class Game
         }
     }
 
-    /// <summary>선수 1명 롤: 천부/잠재력(StatGen) + 특성(TraitGen) + 전술풀 3종 + 나이/노화 시작 나이.</summary>
+    /// <summary>선수 1명 롤: 천부/잠재력(StatGen) + 특성(TraitGen) + 전술풀 3종 + 나이/노화 시작 나이.
+    /// talentRolls>1이면 천부를 여러 번 굴려 버짓 최대치를 취함(루두스 스카우팅 안목 — 등급이 높을수록 좋은 원석).</summary>
     private static Gladiator RollGladiator(SimRandom rng, string id, string name, string wpn, string per,
-                                           string? sigTactic, bool isPlayer, int ageMin, int ageMax)
+                                           string? sigTactic, bool isPlayer, int ageMin, int ageMax, int talentRolls = 1)
     {
         var end = StatGen.Roll(rng);
+        for (int r = 1; r < talentRolls; r++)
+        {
+            var alt = StatGen.Roll(rng);
+            if (alt.TalentBudget > end.TalentBudget) end = alt;   // 더 나은 원석 채택
+        }
         var traits = TraitGen.Roll(rng);
         var pool = RollTacticPool(rng, sigTactic);
         return new Gladiator
@@ -258,6 +317,7 @@ public sealed class Game
     {
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
+        _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear();
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); }
@@ -317,8 +377,10 @@ public sealed class Game
             g.Popularity *= 0.6f;   // 시즌 사이 화제성 감쇠
         }
 
-        // 세계 역사: 역대 챔피언 기록
+        // 세계 역사: 역대 챔피언 기록 + 루두스 명성/업적(리그 우승·왕조)
         _champions.Add(new ChampionRec(_seasonNo, champ.Name, $"{champ.W}-{champ.L}-{champ.D}", champ.IsPlayer));
+        if (champ.IsPlayer) { AddRep(RepLeagueTitle); Unlock("first_title"); }
+        if (_champions.Count >= 3 && _champions.TakeLast(3).All(c => c.IsPlayer)) Unlock("dynasty");
 
         // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
         // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
@@ -349,7 +411,9 @@ public sealed class Game
             bestRank, bonusPaid, salaryPaid, MathF.Round(_gold), agingNotes,
             _story.Count(s => s.Kind == "revenge"), _story.Count(s => s.Kind == "upset"), _story.Count(s => s.Kind == "comeback"),
             _cast.OrderByDescending(g => g.Fame).First().Name,
-            retirements.Count > 0 ? retirements : null);
+            retirements.Count > 0 ? retirements : null,
+            _cupChampion, _cupChampion != null && _cast.Any(g => g.IsPlayer && g.Name == _cupChampion),
+            _seasonNewAch.Count > 0 ? _seasonNewAch.ToList() : null);
 
         SaveWorld();
     }
@@ -384,7 +448,7 @@ public sealed class Game
             return new MatchSummary(_seasonNo, 0, false, "", "", "", "개막", false, true, false, 0f, "");
         }
         bool newSeason = false;
-        EnsureEvents();
+        EnsureSchedule();
 
         var s = _schedule[_cursor++];
         var A = ById(s.A); var B = ById(s.B);
@@ -396,12 +460,28 @@ public sealed class Game
         if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
         else B.TacticId = SelectTacticAi(B, A, tacRng);
 
-        var res = Play(A, B, s.Round, s.IsEvent, out float income, out string incomeNote, out var mine);
+        var res = Play(A, B, s.Round, s.Kind, out float income, out string incomeNote, out var mine);
         if (s.IsEvent)
             _eventDocs.Add(new EventDoc(A.Name, B.Name, s.Score,
                 res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason == "KO"));
 
-        bool last = _cursor >= _schedule.Count && _eventsAppended;
+        // 컵 결승: 우승자 확정 + 상금·명성·업적
+        if (s.Kind == "cup_final" && res.Winner >= 0)
+        {
+            var cupW = res.Winner == 0 ? A : B;
+            _cupChampion = cupW.Name;
+            cupW.Fame += 10f;
+            _story.Add((s.Round, "cup", $"🏆 챔피언십 컵 우승 — {cupW.Name}!"));
+            if (cupW.IsPlayer) { _gold += CupWinPrize; AddRep(RepCupTitle); Unlock("first_cup"); }
+        }
+        else if (s.Kind == "cup_sf" && res.Winner >= 0)   // 4강 진출 상금(내 선수)
+        {
+            var w = res.Winner == 0 ? A : B;
+            if (w.IsPlayer) _gold += CupSemiPrize;
+        }
+
+        EnsureSchedule();   // 다음 페이즈 편성(예: 4강 후 결승) — 종료 판정 전에
+        bool last = _cursor >= _schedule.Count && _cupStage == 3;
         if (last) FinalizeSeason();
         else SaveWorld();
         if (_interactive) WriteSeasonJson();
@@ -411,13 +491,45 @@ public sealed class Game
             A.IsPlayer || B.IsPlayer, income, incomeNote, mine);
     }
 
-    /// <summary>정규 소진 시 이벤트 빅매치 편성 (PlayNext·미리보기 공용 — 내 이벤트 경기도 전술 선택 기회를 갖게).</summary>
-    private void EnsureEvents()
+    /// <summary>
+    /// 다음 경기가 없으면 다음 페이즈를 편성: 정규 소진 → 이벤트 빅매치 → 챔피언십 컵(4강→결승).
+    /// 각 단계는 감독이 전술을 고를 수 있게 한 페이즈씩 채운다. 시즌 종료 판정 = 컵까지 끝(_cupStage==3).
+    /// </summary>
+    private void EnsureSchedule()
     {
-        if (!SeasonActive || _cursor < _schedule.Count || _eventsAppended) return;
-        foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
-            _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score));
-        _eventsAppended = true;
+        if (!SeasonActive || _cursor < _schedule.Count) return;
+
+        // 정규 소진 → 이벤트 빅매치
+        if (!_eventsAppended)
+        {
+            foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
+                _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score, "event"));
+            _eventsAppended = true;
+            if (_cursor < _schedule.Count) return;
+        }
+
+        // 이벤트 소진 → 챔피언십 컵
+        if (_cupStage == 0)
+        {
+            var top = Standings().Take(4).ToList();
+            if (top.Count < 4) { _cupStage = 3; return; }   // 선수 부족 → 컵 생략
+            _cupSeeds = top.Select(g => g.Id).ToList();
+            _story.Add((_rounds + 2, "cup", $"🏛 챔피언십 컵 개막 — {top[0].Name}·{top[1].Name}·{top[2].Name}·{top[3].Name}"));
+            _schedule.Add(new SchedRec(_rounds + 2, _cupSeeds[0], _cupSeeds[3], false, 0f, "cup_sf"));  // 1v4
+            _schedule.Add(new SchedRec(_rounds + 2, _cupSeeds[1], _cupSeeds[2], false, 0f, "cup_sf"));  // 2v3
+            _cupStage = 1;
+            return;
+        }
+        if (_cupStage == 1)   // 4강 둘 다 끝 → 결승 편성
+        {
+            var sfWinners = _matchLog.Where(m => m.Round == _rounds + 2).TakeLast(2)
+                .Select(m => m.Winner == m.AName ? m.AId : m.BId).ToList();
+            if (sfWinners.Count == 2)
+                _schedule.Add(new SchedRec(_rounds + 3, sfWinners[0], sfWinners[1], false, 0f, "cup_final"));
+            _cupStage = 2;
+            return;
+        }
+        if (_cupStage == 2) _cupStage = 3;   // 결승 끝 → 컵 종료
     }
 
     /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
@@ -427,7 +539,7 @@ public sealed class Game
         for (int guard = 0; guard < 600; guard++)
         {
             if (!SeasonActive) { PlayNext(); continue; }        // 개막 (경기 아님)
-            EnsureEvents();
+            EnsureSchedule();
             if (_cursor >= _schedule.Count) break;
             var s = _schedule[_cursor];
             if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) break; // 내 경기 발견 — 멈춰서 감독에게
@@ -492,9 +604,10 @@ public sealed class Game
         return best;
     }
 
-    private MatchResult Play(Gladiator A, Gladiator B, int round, bool isEvent,
+    private MatchResult Play(Gladiator A, Gladiator B, int round, string kind,
                              out float income, out string incomeNote, out List<MyDelta>? mine)
     {
+        bool isEvent = kind != "regular";   // 이벤트·컵 = 순위 무관(exhibition), 흥행 배수
         var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
         var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
         var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
@@ -542,13 +655,18 @@ public sealed class Game
         foreach (var (self, other) in new[] { (A, B), (B, A) })
         {
             if (_playerless || !self.IsPlayer) continue;
-            float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (isEvent ? 2f : 1f);
+            float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (isEvent ? 2f : 1f) * IncomeMult;
             var notes = new List<string> { $"출전료 +{own:F0}" };
             if (win == self)
             {
-                float bonus = WinBonus + (ko ? KoBonus : 0f) + (comeback ? DramaBonus : 0f) + (upset ? DramaBonus : 0f);
+                float bonus = (WinBonus + (ko ? KoBonus : 0f) + (comeback ? DramaBonus : 0f) + (upset ? DramaBonus : 0f)) * IncomeMult;
                 own += bonus; notes.Add($"승리 +{bonus:F0}");
+                // 루두스 등급 명성 (A): 내 승리·드라마
+                AddRep(RepWin + (comeback || upset || revenge ? RepDrama : 0f));
+                Unlock("first_win");
+                if (self.Streak >= 9) Unlock("streak10");   // 이번 승으로 10연승(Record는 이후 반영)
             }
+            if (self.Fame >= 100f) Unlock("legend");
             income += own;
             if (self == A) { incA = own; noteA = string.Join(" · ", notes); } else { incB = own; noteB = string.Join(" · ", notes); }
         }
@@ -568,6 +686,8 @@ public sealed class Game
         var growRng = new SimRandom(SeasonSeed ^ 0x6120_6120UL + (ulong)_matchIdx * 13UL);
         string? growA = Grow(A, growRng); string? growB = Grow(B, growRng);
         int trA = TickTraining(A, growRng); int trB = TickTraining(B, growRng);
+
+        if (LudusTier() >= LudusTiers.Length - 1) Unlock("empire");
 
         // 경기 로그 (스냅샷+시드 = 재관전) + 내 선수 변경사항(결과 화면)
         string winner = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name);
@@ -668,6 +788,7 @@ public sealed class Game
         var usedNames = _cast.Select(g => g.Name).Concat(_candidates.Select(c => c.Name)).ToHashSet();
         var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
         var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
+        int scouting = 1 + LudusTier();   // 루두스 등급 = 스카우팅 안목: 천부를 (1+등급)번 굴려 최고를 취함
         for (int i = 0; i < 3; i++)
         {
             string name = PickName(rng, usedNames); usedNames.Add(name);
@@ -675,7 +796,7 @@ public sealed class Game
                 id: $"GLA_R{_gachaCount}_{i}", name,
                 wpn: wpns[(int)(rng.NextFloat01() * wpns.Length)],
                 per: pers[(int)(rng.NextFloat01() * pers.Length)],
-                sigTactic: null, isPlayer: true, ageMin: 18, ageMax: 24);
+                sigTactic: null, isPlayer: true, ageMin: 18, ageMax: 24, talentRolls: scouting);
             _candidates.Add(g);
         }
         SaveWorld();
@@ -700,6 +821,7 @@ public sealed class Game
         var g = _candidates[idx];
         _candidates.Clear();          // 나머지 후보는 떠난다
         _cast.Add(g);                 // 스케줄은 시즌 개막 시 고정 → 시즌 중 영입은 다음 시즌부터
+        if (g.Talent == TalentGrade.Caesar) Unlock("caesar");
         _story.Add((0, "recruit", $"📜 영입! {g.Name} ({ViewerExport.TalentName(g.Talent)}·{g.Age}세) 루두스 합류" +
                                    (SeasonActive ? " — 다음 시즌부터 출전" : "")));
         SaveWorld();
@@ -786,6 +908,9 @@ public sealed class Game
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
+        _ludusRep = w.LudusRep;
+        _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
+        _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _ledger.Load(w.Relations);
         return true;
     }
@@ -806,7 +931,9 @@ public sealed class Game
             _matchLog.Count > 0 ? _matchLog.ToList() : null,
             _lastSummary,
             _champions.Count > 0 ? _champions.ToList() : null,
-            _hall.Count > 0 ? _hall.ToList() : null), JsonOpts));
+            _hall.Count > 0 ? _hall.ToList() : null,
+            _ludusRep, _achievements.Count > 0 ? _achievements.ToList() : null,
+            _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -848,7 +975,12 @@ public sealed class Game
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();
-        int total = _schedule.Count + (_eventsAppended || !SeasonActive ? 0 : Math.Max(2, _cast.Count / 2));
+        int total = _schedule.Count;
+        if (SeasonActive)
+        {
+            if (!_eventsAppended) total += Math.Max(2, _cast.Count / 2);   // 이벤트 미편성분
+            if (_cupStage == 0 && _cast.Count >= 4) total += 3;           // 컵 미편성분(4강2+결승1)
+        }
         return new SeasonDoc(SchemaVer, Math.Max(1, _seasonNo), _rounds, _matchIdx, total, !SeasonActive,
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
             standings[0].Name, fighters, rels, _eventDocs.ToList(),
@@ -901,11 +1033,36 @@ public sealed class Game
                 mine != null ? new OppPreview(opp.Name, opp.WeaponId.Replace("WPN_", ""),
                     opp.PersonalityId.Replace("PER_", ""), opp.Age,
                     MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null,
-                vsRecord, relName, myEmo, oppKiter);
+                vsRecord, relName, myEmo, oppKiter,
+                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강" : null);
+        }
+
+        // 루두스 등급
+        int tier = LudusTier();
+        var ludus = new LudusDoc(MathF.Round(_ludusRep), tier, LudusTiers[tier].Name,
+            tier + 1 < LudusTiers.Length ? LudusTiers[tier + 1].Name : null,
+            tier + 1 < LudusTiers.Length ? LudusTiers[tier + 1].Rep : LudusTiers[tier].Rep,
+            MathF.Round(IncomeMult * 100f) / 100f);
+
+        // 업적 (달성/미달성 전부)
+        var ach = AchievementDefs.Select(a => new AchDoc(a.Id, a.Name, a.Desc, _achievements.Contains(a.Id))).ToList();
+
+        // 챔피언십 컵 대진 (진행 중이거나 방금 끝난 것)
+        List<CupMatchDoc>? cup = null;
+        if (_cupSeeds.Count > 0)
+        {
+            string Nm(string id) => _cast.FirstOrDefault(g => g.Id == id)?.Name ?? id;
+            cup = _schedule.Where(s => s.Kind.StartsWith("cup")).Select(s =>
+            {
+                var log = _matchLog.FirstOrDefault(m => m.AId == s.A && m.BId == s.B && m.Round == s.Round);
+                return new CupMatchDoc(s.Kind == "cup_final" ? "결승" : "4강", Nm(s.A), Nm(s.B),
+                    log != null && log.Winner != "무승부" ? log.Winner : null);
+            }).ToList();
         }
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
-            _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary), JsonOpts);
+            _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
+            ludus, ach, cup), JsonOpts);
     }
 
     public string PlayNextJson(string? body)
@@ -952,7 +1109,7 @@ public sealed class Game
             Console.WriteLine($"    {k + 1}. {g.Name,-12}{g.SeasonPoints,4}점 {$"{g.W}-{g.L}-{g.D}",9} {Streak(g.Streak),6}" +
                 $"  {ViewerExport.TalentName(g.Talent)}·{g.Age}세·[{string.Join(",", g.TraitIds.Select(t => TraitTable.Get(t).Name))}]{(k == 0 ? " 👑" : "")}");
         }
-        Console.WriteLine($"\n  🏆 챔피언: {season[0].Name}\n");
+        Console.WriteLine($"\n  🏆 리그 챔피언: {season[0].Name}" + (_cupChampion != null ? $"  ·  🏆 컵 우승: {_cupChampion}" : "") + "\n");
 
         Console.WriteLine("  [🎪 이벤트 매치]");
         foreach (var m in _eventDocs)

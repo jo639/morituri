@@ -110,6 +110,36 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Cup_ChampionCrownedEachSeason()
+    {
+        TempDir("cup");
+        var g = new Game(1, 9, fresh: true, interactive: true, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        RunFullSeason(g);
+        var st = Parse(g.StateJson());
+        // 시즌 종료 → 컵 대진 8개... 최소 리그 챔피언 + 컵 챔피언이 요약에 존재
+        var last = st.GetProperty("LastSeason");
+        Assert.That(last.ValueKind, Is.Not.EqualTo(JsonValueKind.Null));
+        Assert.That(last.GetProperty("CupChampion").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "컵 우승자 확정");
+        var cup = st.GetProperty("Cup");
+        Assert.That(cup.ValueKind, Is.EqualTo(JsonValueKind.Array), "컵 대진 노출");
+        Assert.That(cup.GetArrayLength(), Is.EqualTo(3), "4강 2 + 결승 1");
+        Assert.That(cup[2].GetProperty("Winner").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "결승 승자");
+    }
+
+    [Test]
+    public void Game_LudusRep_RisesWithMyWins()
+    {
+        TempDir("rep");
+        var g = new Game(1, 11, fresh: true, interactive: true, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        float rep0 = Parse(g.StateJson()).GetProperty("Ludus").GetProperty("Rep").GetSingle();
+        for (int s = 0; s < 3; s++) RunFullSeason(g);
+        float rep1 = Parse(g.StateJson()).GetProperty("Ludus").GetProperty("Rep").GetSingle();
+        Assert.That(rep1, Is.GreaterThan(rep0), "승리·활동으로 루두스 명성 상승");
+    }
+
+    [Test]
     public void Game_ManySeasons_AgingRotation_KeepsLeagueAlive()
     {
         // 25시즌 연속 — 노쇠 AI(노화+6시즌 = 36~42세)는 은퇴(명전)하고 신인이 와 리그는 6명 유지.
