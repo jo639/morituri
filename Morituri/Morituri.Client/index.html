@@ -658,14 +658,20 @@ function renderRoster(){
         <td style="padding-left:10px">${l.TopFighter||'—'}</td>
         <td style="text-align:right;padding-left:10px">${l.SeasonW}-${l.SeasonL}-${l.SeasonD}</td></tr>`).join('')
     + `</table>`;
-  $('rosterGrid').innerHTML = [...st.Season.Fighters].sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame).map(f=>
+  const card = f=>
     `<div class="fc ${f.IsPlayer?'':'ai'}" style="cursor:pointer" onclick="openProfile('${f.Id}')" title="상세 보기">
      <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}</h3>
      ${epi(f.Epithets)}
      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
      <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
-     <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`).join('');
+     <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`;
+  const divName = d=> d===1?'🏛 1부 콜로세움':'⚔ 2부 투기장';
+  const byDiv = d=> [...st.Season.Fighters].filter(f=>(f.Division||1)===d).sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame);
+  $('rosterGrid').innerHTML = [1,2].map(d=>{
+    const fs = byDiv(d); if (!fs.length) return '';
+    return `<h3 style="grid-column:1/-1;color:var(--gold);border-bottom:1px solid #4a3a26;padding-bottom:4px;margin:6px 0">${divName(d)} <span class="note" style="font-weight:400">${fs.length}인</span></h3>` + fs.map(card).join('');
+  }).join('');
 }
 
 // ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──

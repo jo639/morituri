@@ -51,6 +51,7 @@ public sealed class Game
         public required string[] TraitIds;
         public bool IsPlayer;
         public string LudusId = "PLAYER";                           // 소속 루두스(라이벌 경쟁)
+        public int Division = 1;                                    // 1부(콜로세움)/2부(투기장) — 명성 랭킹 배치, 시즌말 승강
         public int Age, AgingStartAge;
         public int TrainingPoints, MatchCounter;                    // 3경기 주기 훈련
         public int CW, CL, CD, CKoW; public float Fame, Popularity;
@@ -70,7 +71,7 @@ public sealed class Game
         string[] Traits, bool IsPlayer, int Age, int AgingStartAge, int TrainingPoints, int MatchCounter,
         int CW, int CL, int CD, int CKoW, float Fame, float Popularity,
         int W, int L, int D, int Streak, string[] PendingEmotions,
-        int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER");
+        int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1);
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular");
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
@@ -89,7 +90,7 @@ public sealed class Game
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
     private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality, int Age,
         int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer,
-        string[]? Epithets = null, int Fatigue = 0, bool Injured = false);
+        string[]? Epithets = null, int Fatigue = 0, bool Injured = false, int Division = 1);
     private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
@@ -530,6 +531,22 @@ public sealed class Game
 
     // ── 시즌 수명주기 ──
 
+    // ── 디비전(승강제) — 명성 랭킹으로 1부/2부 배치, 시즌마다 재산정(승격/강등 서사) ──
+    private static string DivName(int d) => d == 1 ? "1부 콜로세움" : "2부 투기장";
+    private void AssignDivisions()
+    {
+        var ranked = _cast.OrderByDescending(g => g.Fame).ThenByDescending(g => g.CareerPoints).ThenBy(g => g.Id).ToList();
+        int topSize = (ranked.Count + 1) / 2;   // 1부 = 상위 절반(홀수면 1부가 큼)
+        for (int i = 0; i < ranked.Count; i++)
+        {
+            int nd = i < topSize ? 1 : 2;
+            if (ranked[i].Division != nd && _seasonNo > 1)   // 승강 서사(첫 시즌 제외)
+                _story.Add((0, nd < ranked[i].Division ? "promote" : "relegate",
+                    $"{(nd < ranked[i].Division ? "⬆ 승격" : "⬇ 강등")} — {ranked[i].Name} → {DivName(nd)}"));
+            ranked[i].Division = nd;
+        }
+    }
+
     private void StartSeason()
     {
         _seasonNo = _seasonsPlayed + 1;
@@ -538,27 +555,35 @@ public sealed class Game
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; }   // 시즌 사이 휴식 = 완전 회복
+        AssignDivisions();
 
+        // 파이트 카드: 같은 부 안에서만 대진(라운드로빈 ×_rounds). 부가 나뉘어 대진이 압축·집중된다.
         for (int r = 1; r <= _rounds; r++)
             for (int i = 0; i < _cast.Count; i++)
                 for (int j = i + 1; j < _cast.Count; j++)
-                    _schedule.Add(new SchedRec(r, _cast[i].Id, _cast[j].Id, false, 0f));
-        _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {_cast.Count}인 리그"));
+                    if (_cast[i].Division == _cast[j].Division)
+                        _schedule.Add(new SchedRec(r, _cast[i].Id, _cast[j].Id, false, 0f));
+        int d1 = _cast.Count(g => g.Division == 1);
+        _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {DivName(1)} {d1}인 · {DivName(2)} {_cast.Count - d1}인"));
     }
 
     private void FinalizeSeason()
     {
         SeasonActive = false;
         _seasonsPlayed = _seasonNo;
-        var standings = Standings();
+        var standings = Standings(1);                       // 리그 챔피언 = 1부 우승자
         var champ = standings[0];
-        _story.Add((_rounds + 1, "season", $"🏆 시즌 {_seasonNo} 종료 — 챔피언 {champ.Name} ({champ.W}승 {champ.L}패)"));
+        var d2 = Standings(2);
+        _story.Add((_rounds + 1, "season", $"🏆 시즌 {_seasonNo} 종료 — {DivName(1)} 챔피언 {champ.Name} ({champ.W}승 {champ.L}패)"));
+        if (d2.Count > 0) _story.Add((_rounds + 1, "season", $"🏆 {DivName(2)} 우승 — {d2[0].Name}"));
 
         // 시즌 순위 보너스 (내 최고 순위 기준) + 급여
         int bestRank = -1; float bonusPaid = 0f, salaryPaid = 0f;
         if (!_playerless && _cast.Any(g => g.IsPlayer))
         {
-            int best = standings.FindIndex(g => g.IsPlayer);
+            // 종합 순위(1부 먼저·부내 승점순) 기준 — 내 선수가 2부여도 위치 반영
+            var overall = _cast.OrderBy(g => g.Division).ThenByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).ToList();
+            int best = overall.FindIndex(g => g.IsPlayer);
             bestRank = best + 1;
             bonusPaid = best >= 0 && best < RankBonus.Length ? RankBonus[best] : 20f;
             _gold += bonusPaid;
@@ -651,8 +676,9 @@ public sealed class Game
         return StateJson();
     }
 
-    private List<Gladiator> Standings() =>
-        _cast.OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).ToList();
+    private List<Gladiator> Standings(int? division = null) =>
+        _cast.Where(g => division == null || g.Division == division)
+             .OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).ToList();
 
     // ── 진행 ──
 
@@ -732,7 +758,7 @@ public sealed class Game
         // 이벤트 소진 → 챔피언십 컵
         if (_cupStage == 0)
         {
-            var top = Standings().Take(4).ToList();
+            var top = Standings(1).Take(4).ToList();          // 컵 = 1부 상위 4인
             if (top.Count < 4) { _cupStage = 3; return; }   // 선수 부족 → 컵 생략
             _cupSeeds = top.Select(g => g.Id).ToList();
             _story.Add((_rounds + 2, "cup", $"🏛 챔피언십 컵 개막 — {top[0].Name}·{top[1].Name}·{top[2].Name}·{top[3].Name}"));
@@ -1227,7 +1253,7 @@ public sealed class Game
         (int)g.Talent, (int)g.Potential, g.TalentBudget, g.PotentialBudget,
         g.TraitIds, g.IsPlayer, g.Age, g.AgingStartAge, g.TrainingPoints, g.MatchCounter,
         g.CW, g.CL, g.CD, g.CKoW, g.Fame, g.Popularity,
-        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId);
+        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -1242,7 +1268,7 @@ public sealed class Game
             TrainingPoints = r.TrainingPoints, MatchCounter = r.MatchCounter,
             CW = r.CW, CL = r.CL, CD = r.CD, CKoW = r.CKoW, Fame = r.Fame, Popularity = r.Popularity,
             W = r.W, L = r.L, D = r.D, Streak = r.Streak, Fatigue = r.Fatigue, InjuryMatches = r.InjuryMatches,
-            LudusId = r.LudusId,
+            LudusId = r.LudusId, Division = r.Division,
         };
         g.PendingEmotions.AddRange(r.PendingEmotions);
         return g;
@@ -1252,13 +1278,13 @@ public sealed class Game
 
     private SeasonDoc BuildSeasonDoc()
     {
-        var standings = Standings();
+        var standings = Standings(1);   // 헤더 챔피언 = 1부 선두
         SchedRec? next = SeasonActive && _cursor < _schedule.Count ? _schedule[_cursor] : null;
         var fighters = _cast.Select(g => new FighterDoc(g.Id, g.Name,
             g.WeaponId.Replace("WPN_", ""), g.TacticId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""), g.Age,
             g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer, Epithets(g),
-            g.Fatigue, g.InjuryMatches > 0)).ToList();
+            g.Fatigue, g.InjuryMatches > 0, g.Division)).ToList();
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();
