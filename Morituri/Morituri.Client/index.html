@@ -107,6 +107,7 @@
     <button data-s="market">영입</button>
     <button data-s="roster">로스터</button>
     <button data-s="watch">관전</button>
+    <button data-s="codex">📖 도감</button>
   </nav>
   <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
   <span id="gold">💰 —</span>
@@ -156,6 +157,12 @@
       <button onclick="go('league')">리그로 →</button></div>
     <iframe id="watchF" src="about:blank"></iframe>
   </div>
+
+  <div class="screen" id="codex"><div class="pad">
+    <h2>📖 도감 <span class="note">무기·전술·성격·특성 설명</span></h2>
+    <div id="codexTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div id="codexBody"></div>
+  </div></div>
 </div>
 
 <div class="modal" id="tacModal"><div class="mbox">
@@ -269,6 +276,7 @@ function go(s){
   if (s==='ludus') renderLudus();
   if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
+  if (s==='codex') renderCodex();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
 $('logo').onclick=()=> $('menu').style.display='flex';
@@ -363,8 +371,8 @@ window.addEventListener('keydown', e=>{
   if ($('menu').style.display !== 'none') return;   // 메뉴(초기 '' 포함) 열림 = 무시
   if (document.querySelector('.modal.on')) return;
   if (e.code === 'Space' || e.key === 'n' || e.key === 'N'){ e.preventDefault(); $('next').click(); }
-  const tabs = ['league','ludus','market','roster','watch'];
-  if (e.key >= '1' && e.key <= '5') go(tabs[+e.key - 1]);
+  const tabs = ['league','ludus','market','roster','watch','codex'];
+  if (e.key >= '1' && e.key <= '6') go(tabs[+e.key - 1]);
 });
 
 function openTacModal(nm){
@@ -604,6 +612,70 @@ function renderRoster(){
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
      <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
      <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`).join('');
+}
+
+// ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──
+const CODEX = {
+  무기: [
+    {n:'검', id:'SWORD', s:'피해 33 · 사거리 2.4 · 후딜 0.45', d:'기준 무기. 균형잡힌 근접 표준 — 빠르고 안전한 약공.'},
+    {n:'창', id:'SPEAR', s:'피해 38 · 사거리 3.9 · 후딜 0.55', d:'장거리 카이터. 찌르고 빠짐(공격 후 0.5s 강제 후퇴). 리치로 일방 견제.'},
+    {n:'도끼', id:'AXE', s:'피해 64 · 사거리 2.1 · 후딜 0.85', d:'최고 화력 + 출혈(클린히트당 스택, 최대 3, 1.0/s). 하이퍼아머 없음 = 끊길 수 있는 고위험 한방.'},
+    {n:'대검', id:'GREATSWORD', s:'피해 55 · 사거리 3.0 · 후딜 0.75', d:'하이퍼아머(강공 중 안 끊김) + 강공 선호. 묵직한 리치 파워.'},
+    {n:'쌍검', id:'DUALBLADES', s:'피해 18×2 · 사거리 1.65 · 후딜 0.42', d:'2타 초근접 난전. 최단 후딜·최고 기동.'},
+    {n:'망치', id:'HAMMER', s:'피해 58 · 사거리 1.95 · 후딜 0.90', d:'최대 경직 + 하이퍼아머. 느리지만 멈출 수 없는 일격.'},
+    {n:'채찍', id:'WHIP', s:'피해 35 · 사거리 4.5 · 후딜 0.50', d:'최장거리 견제. 가드 우회 0.10. 찌르고 빠짐(0.6s 후퇴).'},
+    {n:'방패', id:'SHIELD', s:'피해 30 · 사거리 2.25 · 후딜 0.50', d:'가드 보너스 +0.60 + 패링(0.15s 자격창). 방어·반격 특화.'},
+  ],
+  전술: [
+    {n:'압박', id:'PRESSURE', s:'선호거리 1.5 · 공격성 0.70', d:'근접 압박 — 파고들어 카이터를 사냥.'},
+    {n:'카운터', id:'COUNTER', s:'선호거리 3.0 · 카운터 0.80 · 가드 0.65', d:'거리 유지·후딜 반격. 창 시그니처. 버티다 처벌.'},
+    {n:'견제', id:'ZONER', s:'선호거리 4.2 · 페인트 0.50', d:'최장거리 견제. 채찍 시그니처. 스윗스팟 유지.'},
+    {n:'난전', id:'BRAWLER', s:'선호거리 1.05 · 리스크 0.70', d:'초근접 난타. 쌍검·도끼 시그니처. 고위험 고화력.'},
+    {n:'결단', id:'DECISION', s:'선호거리 3.3 · 가드 0.55', d:'신중한 판정 노림. 가드·페인트로 확정 기회 대기.'},
+    {n:'사냥꾼', id:'HUNTER', s:'선호거리 2.4 · Commit 0.65', d:'약해진 사냥감 추적 — 상대 HP≤35% 시 공격성 +0.3.'},
+    {n:'도박', id:'GAMBLER', s:'선호거리 1.8 · 리스크 0.90', d:'고위험 도박. 모 아니면 도.'},
+    {n:'회피', id:'EVADER', s:'선호거리 3.75 · 공격성 0.25', d:'회피 중심. 낮은 공격성·긴 허용오차.'},
+    {n:'방어', id:'DEFENDER', s:'선호거리 2.1 · 가드 0.40', d:'가드 중심 수비. 방패 시그니처.'},
+    {n:'균형', id:'BALANCED', s:'선호거리 2.4 · 공격성 0.50', d:'범용 만능형. 기본값.'},
+  ],
+  성격: [
+    {n:'냉철', id:'CALM', d:'트리거 확률 절반 · 도발 위축 상쇄. 감정에 흔들리지 않는 전술가.'},
+    {n:'충동', id:'RECKLESS', d:'HP≤30% 폭주 · 연속 피격 분노. 도발당하면 격노.'},
+    {n:'오만', id:'ARROGANT', d:'우세+상대 스태거 시 도발(역전 위험). 우세하면 태만.'},
+    {n:'고결', id:'HONORABLE', d:'다운된 상대엔 추가타 자제. 드문 경의의 도발.'},
+    {n:'겁쟁이', id:'COWARD', d:'강공 윈드업 회피 · 치명타 후 위축. 도발당하면 더 물러남.'},
+    {n:'잔혹', id:'CRUEL', d:'취약 상태(가드붕괴·빈사·지침)에 공격성 폭발. 다운 추가타.'},
+    {n:'대담', id:'BOLD', d:'시간 부족+열세 시 전력. 역전을 노린 도발.'},
+    {n:'신중', id:'WARY', d:'Commit +0.20 · 스태미나 낮으면 공격성 −0.3. 자원 관리형.'},
+    {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리. 관중게이지의 동력(관중 민감 최고).'},
+    {n:'기회주의', id:'OPPORTUNIST', d:'평소 신중, 가드붕괴·지침 허점에 계산적으로 폭발.'},
+  ],
+  특성: [
+    {n:'유리몸', id:'BRITTLE', s:'받는 피해 ×1.20', d:'순수 페널티. 질긴가죽·둔감과 배타.'},
+    {n:'질긴가죽', id:'TOUGHHIDE', s:'받는 피해 ×0.88 · 이속 ×0.92', d:'맷집형. 유리몸과 배타.'},
+    {n:'둔감', id:'DULL', s:'받는 피해 ×0.85 · 인지지연 +0.06', d:'맷집 ↔ 반응 트레이드오프.'},
+    {n:'마르지않는샘', id:'SPRING', s:'스태미나max ×1.25 · 회복 ×1.20', d:'지구력형. 허약체질과 배타.'},
+    {n:'허약체질', id:'FRAIL', s:'스태미나max ×0.75 · 회복 ×0.70', d:'순수 페널티. 카이팅 가스아웃에 취약.'},
+    {n:'민첩', id:'FLEET', s:'이속 ×1.12 · HP ×0.90', d:'속도 ↔ 체력 교환.'},
+    {n:'불굴', id:'STAND', s:'포이즈 ×1.30', d:'경직 저항. 잘 안 무너짐.'},
+    {n:'봉쇄자', id:'STONEWALL', s:'가드 시 받피 ×0.5', d:'가드 한정 경감(일반 받피와 별개).'},
+    {n:'유리턱', id:'GLASSJAW', s:'포이즈 ×0.60', d:'기절 잘 걸림.'},
+    {n:'거인', id:'GIANT', s:'HP ×1.25 · 사거리 ×1.25 · 크기 ×1.30', d:'비례 리치 우위. 선타 유리.'},
+    {n:'좀비', id:'ZOMBIE', s:'이속 ×0.85 + HP≤30% 디버프 면역', d:'위기에 강한 고유 행동.'},
+    {n:'숨고르기', id:'CATCHBREATH', s:'스태미나≥80% 시 모든 공격 확정 크리', d:'고스태미나 폭딜 고유 행동.'},
+    {n:'초상비', id:'LIGHTFOOT', s:'대시 ST소모 ×0.5 + 대시 후 1s 이속↑', d:'회피·기동 고유 행동.'},
+    {n:'선취점', id:'FIRSTBLOOD', s:'첫 클린히트 ×1.25 + 흡수 쉴드 50/8s', d:'선제 이득 고유 행동.'},
+  ],
+};
+let codexCat = '무기';
+function renderCodex(){
+  const cats = Object.keys(CODEX);
+  $('codexTabs').innerHTML = cats.map(c=>
+    `<button class="tacbtn" style="width:auto;padding:6px 16px;${c===codexCat?'border-color:var(--gold);color:var(--gold);background:#3a2d1d':''}" onclick="codexCat='${c}';renderCodex()">${c} <span class="d">${CODEX[c].length}</span></button>`).join('');
+  $('codexBody').innerHTML = `<div class="grid">${CODEX[codexCat].map(e=>
+    `<div class="fc"><h3>${e.n} <span class="note" style="font-weight:400;font-size:11px">${e.id}</span></h3>
+      ${e.s?`<div class="chips"><span class="chip" style="background:rgba(201,168,76,.14);color:var(--gold)">${e.s}</span></div>`:''}
+      <div class="bd" style="margin-top:4px">${e.d}</div></div>`).join('')}</div>`;
 }
 
 // ── 메뉴 ──
