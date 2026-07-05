@@ -165,9 +165,11 @@
   </div></div>
 </div>
 
-<div class="modal" id="tacModal"><div class="mbox">
-  <h3 id="tmTitle">전술 지시</h3>
-  <div class="vsline" id="tmVs"></div>
+<div class="modal" id="tacModal"><div class="mbox" style="max-width:780px;max-height:92vh;overflow:auto">
+  <h3 id="tmTitle" style="text-align:center">경기 전 — 전력 비교</h3>
+  <div id="tmVersus" style="display:flex;gap:10px;align-items:stretch;margin:8px 0"></div>
+  <div id="tmOdds" style="text-align:center"></div>
+  <h4 style="color:var(--gold);margin:12px 0 6px;font-size:12px">⚔ 전술 선택 <span class="note" style="font-weight:400">— 상대 공개 정보를 보고 결정</span></h4>
   <div id="tmOpts"></div>
 </div></div>
 
@@ -375,20 +377,73 @@ window.addEventListener('keydown', e=>{
   if (e.key >= '1' && e.key <= '6') go(tabs[+e.key - 1]);
 });
 
+// 성격별 투구 볏 색(절차적 초상화 악센트)
+const PERCOL={CALM:'#5b9be0',RECKLESS:'#e0685f',ARROGANT:'#c9a84c',HONORABLE:'#e8e0d0',COWARD:'#8a8f98',CRUEL:'#a03a5a',BOLD:'#e08a3a',WARY:'#6a8a6a',SHOWMAN:'#c94ca8',OPPORTUNIST:'#4ca8a0'};
+const cx=(cat,id)=>(CODEX[cat].find(e=>e.id===id)||{}).d||'';
+// 절차적 검투사 초상(투구+볏) — 진영색·성격색. 에셋 없이 코드 합성.
+function portraitSvg(weaponId, perId, side){
+  const [r,g,b]= side==='a'?[91,155,224]:[224,104,95];
+  const mid=`rgb(${r},${g},${b})`, dark=`rgb(${r*0.45|0},${g*0.45|0},${b*0.45|0})`, lite=`rgb(${Math.min(255,r+45)},${Math.min(255,g+45)},${Math.min(255,b+45)})`;
+  const crest=PERCOL[perId]||'#c9a84c';
+  return `<svg viewBox="0 0 120 130" style="width:100%;max-width:140px;display:block;margin:0 auto">
+    <rect width="120" height="130" rx="10" fill="#241a10"/>
+    <ellipse cx="60" cy="124" rx="40" ry="7" fill="rgba(0,0,0,.35)"/>
+    <path d="M60 6 C 94 4 98 30 82 46 C 76 30 66 27 60 35 Z" fill="${crest}" opacity=".92"/>
+    <path d="M20 130 Q 28 99 60 99 Q 92 99 100 130 Z" fill="${dark}"/>
+    <path d="M34 57 Q 34 25 60 23 Q 86 25 86 57 L86 73 Q 86 95 60 99 Q 34 95 34 73 Z" fill="${mid}"/>
+    <path d="M40 39 Q 55 29 60 30 Q 50 40 44 53 Z" fill="${lite}" opacity=".4"/>
+    <path d="M57 49 L63 49 L62 91 L58 91 Z" fill="${dark}"/>
+    <path d="M39 59 L54 57 L54 66 L40 67 Z" fill="#150e07"/>
+    <path d="M81 59 L66 57 L66 66 L80 67 Z" fill="#150e07"/>
+  </svg>`;
+}
+function condLine(cond, injured){
+  const c = cond==null?'?':cond;
+  if (injured) return `<div class="row"><span>컨디션</span><b style="color:var(--b)">${c} 🩹</b></div>
+    <div class="note" style="color:#e0a89f">부상 — 반응 −10% · 공속 −8% · 이속 −6%</div>`;
+  const col = cond>60?'var(--grn)':cond>30?'#d8b24a':'var(--b)';
+  return `<div class="row"><span>컨디션</span><b style="color:${col}">${c}</b></div>
+    <div class="note">${cond!=null&&cond<40?'피로 — 부상 위험↑ (스탯 영향 없음)':'정상 (부상 아니면 스탯 영향 없음)'}</div>`;
+}
 function openTacModal(nm){
-  $('tmTitle').textContent = (nm.Stage?nm.Stage+' — ':'전술 지시 — ') + nm.MyName;
   const o = nm.Opp;
-  const relBadge = nm.MyRelation ? ` · <span style="color:var(--b);font-weight:700">${nm.MyRelation==='원수'?'⚔':nm.MyRelation==='공포'?'😨':nm.MyRelation==='라이벌'?'🔥':'🔗'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</span>` : '';
-  const emo = (nm.MyEmotions&&nm.MyEmotions.length) ? `<div style="margin-top:3px">💭 <span style="color:var(--gold)">${nm.MyEmotions.join(', ')}</span> <span style="color:var(--dim);font-size:11px">상태로 출전</span></div>` : '';
-  const hint = o ? `<div style="margin-top:3px;font-size:11px;color:var(--dim)">📐 상대는 ${nm.OppIsKiter?'장거리 카이터 — 파고드는 전술(압박·난전·사냥꾼)이 유리한 경향':'근접형 — 거리 유지·반격 전술(카운터·견제·방어)이 유리한 경향'}</div>` : '';
+  $('tmTitle').textContent = (nm.Stage? nm.Stage+' — ':'경기 전 — ') + `${nm.MyName} vs ${o.Name}`;
+  const me = (st.MyFighters||[]).find(f=>f.Id===nm.MyId) || {};
+  const oppF = (st.Season.Fighters||[]).find(f=>f.Name===o.Name) || {};
+
+  const myTraits = (me.Traits&&me.Traits.length)? `<div class="chips" style="justify-content:center;margin-top:4px">${me.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}</div>`:'';
+  const myEmo = (nm.MyEmotions&&nm.MyEmotions.length)? `<div class="note" style="text-align:center;color:var(--gold);margin-top:3px">💭 ${nm.MyEmotions.join(', ')} 상태</div>`:'';
+  const myCol = `<div style="flex:1;background:var(--panel);border-radius:10px;padding:10px;border-top:3px solid var(--a)">
+    ${portraitSvg(me.Weapon,me.Personality,'a')}
+    <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${nm.MyName}</b> <span class="chip">내 루두스</span></div>
+    <div class="bd" style="text-align:center">${w(me.Weapon)} · ${p(me.Personality)} · ${me.Age}세</div>
+    ${condLine(me.Condition,me.Injured)}
+    <div class="note" style="margin-top:6px">🗡 ${cx('무기',me.Weapon)}</div>
+    <div class="note" style="margin-top:3px">🧠 ${cx('성격',me.Personality)}</div>
+    ${myTraits}${myEmo}
+    <div class="row" style="margin-top:4px"><span>선택 전술</span><b style="color:var(--gold)">${t(nm.MyTactic)}</b></div></div>`;
+
+  const relBadge = nm.MyRelation ? `<div class="note" style="text-align:center;color:var(--b);font-weight:700;margin-top:3px">${nm.MyRelation==='원수'?'⚔':nm.MyRelation==='공포'?'😨':nm.MyRelation==='라이벌'?'🔥':'🔗'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</div>`:'';
+  const oppCol = `<div style="flex:1;background:var(--panel);border-radius:10px;padding:10px;border-top:3px solid var(--b)">
+    ${portraitSvg(o.Weapon,o.Personality,'b')}
+    <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${o.Name}</b></div>
+    <div class="bd" style="text-align:center">${w(o.Weapon)} · ${p(o.Personality)} · ${o.Age}세</div>
+    ${condLine(oppF.Condition,oppF.Injured)}
+    <div class="note" style="margin-top:6px">🗡 ${cx('무기',o.Weapon)}</div>
+    <div class="note" style="margin-top:3px">🧠 ${cx('성격',o.Personality)}</div>
+    ${relBadge}
+    <div class="row" style="margin-top:4px"><span>통산 / 명성</span><b>${o.Career} / ${o.Fame}</b></div>
+    <div class="row"><span>상대전적</span><b style="color:var(--gold)">${nm.MyVsOpp||'첫 대결'}</b></div>
+    <div class="row"><span>전술</span><b class="note">??? 비공개</b></div></div>`;
+
+  $('tmVersus').innerHTML = myCol + `<div style="display:flex;align-items:center;font-weight:800;color:var(--gold);font-size:20px">VS</div>` + oppCol;
+
   const und = nm.MyWinPct < 40;
-  const odds = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #4a3a26;font-size:12px">
-      📊 배당 <b style="color:var(--gold)">${nm.MyName} ${nm.MyOdds.toFixed(2)}배</b> <span class="d">vs</span> <b>${o.Name} ${nm.OppOdds.toFixed(2)}배</b>
-      <span class="note"> · 예상 승률 ${nm.MyWinPct}%</span>${und?' <b style="color:var(--b)">⚡ 언더독 — 이변의 배당!</b>':''}
-      <div style="margin-top:2px" class="note">🎭 군중은 ${nm.CrowdFavorsMe?'<b style="color:var(--gold)">우리 편</b>':'상대 편'} · 흥행지수 ${nm.Hype}</div></div>`;
-  $('tmVs').innerHTML = `상대: <b>${o.Name}</b> · ${w(o.Weapon)} · ${p(o.Personality)} · ${o.Age}세 · 통산 ${o.Career} · 명성 ${o.Fame}`
-    + (nm.IsEvent?'  <span class="tag" style="border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:0 5px;font-size:11px">🎪 이벤트</span>':'')
-    + `<div style="margin-top:3px">상대전적: <b style="color:var(--gold)">${nm.MyVsOpp||'첫 대결'}</b>${relBadge}</div>` + emo + hint + odds;
+  $('tmOdds').innerHTML = `<div style="font-size:12px">📊 배당 <b style="color:var(--a)">${nm.MyOdds.toFixed(2)}배</b> <span class="d">vs</span> <b style="color:var(--b)">${nm.OppOdds.toFixed(2)}배</b>
+    <span class="note"> · 예상 승률 ${nm.MyWinPct}%</span>${und?' <b style="color:var(--b)">⚡ 언더독!</b>':''}
+    <span class="note"> · 🎭 군중 ${nm.CrowdFavorsMe?'우리 편':'상대 편'}(흥행 ${nm.Hype})</span>${nm.IsEvent?' <span class="tag" style="border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:0 5px">🎪 이벤트</span>':''}</div>
+    <div class="note" style="margin-top:2px">📐 ${nm.OppIsKiter?'상대는 장거리 카이터 — 파고드는 전술(압박·난전·사냥꾼) 유리':'상대는 근접형 — 거리·반격 전술(카운터·견제·방어) 유리'}</div>`;
+
   $('tmOpts').innerHTML = nm.MyPool.map(tc=>
     `<button class="tacbtn" onclick="pickTac('${tc}')"><b>${t(tc)}</b>${tc===nm.MyTactic?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('');
   $('tacModal').classList.add('on');
