@@ -171,6 +171,30 @@ public class GameTests
     }
 
     [Test]
+    public void Game_RivalLudi_CompeteRankAndPersist()
+    {
+        TempDir("rival");
+        var g = new Game(1, 7, fresh: true, interactive: false, playerless: true);
+        for (int s = 0; s < 3; s++) RunFullSeason(g);
+        var lt = Parse(g.StateJson()).GetProperty("LudusTable");
+        Assert.That(lt.GetArrayLength(), Is.EqualTo(3), "playerless = 라이벌 루두스 3개");
+        float prev = float.MaxValue; bool anyRep = false;
+        foreach (var l in lt.EnumerateArray())
+        {
+            float rep = l.GetProperty("Rep").GetSingle();
+            Assert.That(rep <= prev, Is.True, "명성 내림차순 정렬");
+            if (rep > 0f) anyRep = true;
+            prev = rep;
+        }
+        Assert.That(anyRep, Is.True, "경기·우승으로 라이벌 루두스 명성 누적");
+
+        // 세이브 재개 후에도 순위·명성 유지
+        var g2 = new Game(1, 7, fresh: false, interactive: false, playerless: true);
+        var lt2 = Parse(g2.StateJson()).GetProperty("LudusTable");
+        Assert.That(lt2[0].GetProperty("Rep").GetSingle(), Is.EqualTo(lt[0].GetProperty("Rep").GetSingle()), "재개 후 명성 보존");
+    }
+
+    [Test]
     public void Game_Odds_ExposedForPlayerMatch_Consistent()
     {
         TempDir("odds");

@@ -143,7 +143,9 @@
   </div></div>
 
   <div class="screen" id="roster"><div class="pad">
-    <h2>리그 로스터 <span class="note">(공개 정보)</span></h2>
+    <h2>🏛 루두스 순위 <span class="note">(라이벌 검투소 경쟁 — 명성)</span></h2>
+    <div id="ludusTable"></div>
+    <h2>리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
     <div class="grid" id="rosterGrid"></div>
   </div></div>
 
@@ -246,6 +248,7 @@ async function openProfile(id){
     <h3 style="color:var(--gold);font-size:20px;margin:0">${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
     ${epi(f.Epithets)}
     <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 ${f.Aging?'<span class="old">노쇠</span>':''}${injBadge(f)} · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
+    <div class="row"><span>소속</span><b>${f.Ludus}</b></div>
     <div class="row"><span>컨디션</span><b style="color:${condColor(f.Condition)}">${f.Condition}${f.Injured?' 🩹':''}</b></div>
     <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)">💭 ${x}</span>`).join('')}</div>
     <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st"><span>${a}</span> ${v}</div>`).join('')}</div>
@@ -564,9 +567,19 @@ window.recruit = async (idx)=>{
   go('ludus');   // 영입 → 전체 공개된 카드 확인
 };
 
-// ── 로스터 (리그 전체, 공개 정보) ──
+// ── 로스터 (리그 전체, 공개 정보) + 루두스 순위 ──
 function renderRoster(){
   if (!st) return;
+  const lt = st.LudusTable||[];
+  $('ludusTable').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">
+    <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
+    + lt.map((l,i)=>`<tr style="${l.IsPlayer?'color:var(--gold);font-weight:700':''}">
+        <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}</td>
+        <td class="note">${l.TierName}</td><td style="text-align:right">${l.Rep}</td>
+        <td style="text-align:right;padding-left:10px">${l.Members}</td>
+        <td style="padding-left:10px">${l.TopFighter||'—'}</td>
+        <td style="text-align:right;padding-left:10px">${l.SeasonW}-${l.SeasonL}-${l.SeasonD}</td></tr>`).join('')
+    + `</table>`;
   $('rosterGrid').innerHTML = [...st.Season.Fighters].sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame).map(f=>
     `<div class="fc ${f.IsPlayer?'':'ai'}" style="cursor:pointer" onclick="openProfile('${f.Id}')" title="상세 보기">
      <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}</h3>
