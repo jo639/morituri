@@ -354,9 +354,14 @@ function openTacModal(nm){
   const relBadge = nm.MyRelation ? ` · <span style="color:var(--b);font-weight:700">${nm.MyRelation==='원수'?'⚔':nm.MyRelation==='공포'?'😨':nm.MyRelation==='라이벌'?'🔥':'🔗'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</span>` : '';
   const emo = (nm.MyEmotions&&nm.MyEmotions.length) ? `<div style="margin-top:3px">💭 <span style="color:var(--gold)">${nm.MyEmotions.join(', ')}</span> <span style="color:var(--dim);font-size:11px">상태로 출전</span></div>` : '';
   const hint = o ? `<div style="margin-top:3px;font-size:11px;color:var(--dim)">📐 상대는 ${nm.OppIsKiter?'장거리 카이터 — 파고드는 전술(압박·난전·사냥꾼)이 유리한 경향':'근접형 — 거리 유지·반격 전술(카운터·견제·방어)이 유리한 경향'}</div>` : '';
+  const und = nm.MyWinPct < 40;
+  const odds = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #4a3a26;font-size:12px">
+      📊 배당 <b style="color:var(--gold)">${nm.MyName} ${nm.MyOdds.toFixed(2)}배</b> <span class="d">vs</span> <b>${o.Name} ${nm.OppOdds.toFixed(2)}배</b>
+      <span class="note"> · 예상 승률 ${nm.MyWinPct}%</span>${und?' <b style="color:var(--b)">⚡ 언더독 — 이변의 배당!</b>':''}
+      <div style="margin-top:2px" class="note">🎭 군중은 ${nm.CrowdFavorsMe?'<b style="color:var(--gold)">우리 편</b>':'상대 편'} · 흥행지수 ${nm.Hype}</div></div>`;
   $('tmVs').innerHTML = `상대: <b>${o.Name}</b> · ${w(o.Weapon)} · ${p(o.Personality)} · ${o.Age}세 · 통산 ${o.Career} · 명성 ${o.Fame}`
     + (nm.IsEvent?'  <span class="tag" style="border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:0 5px;font-size:11px">🎪 이벤트</span>':'')
-    + `<div style="margin-top:3px">상대전적: <b style="color:var(--gold)">${nm.MyVsOpp||'첫 대결'}</b>${relBadge}</div>` + emo + hint;
+    + `<div style="margin-top:3px">상대전적: <b style="color:var(--gold)">${nm.MyVsOpp||'첫 대결'}</b>${relBadge}</div>` + emo + hint + odds;
   $('tmOpts').innerHTML = nm.MyPool.map(tc=>
     `<button class="tacbtn" onclick="pickTac('${tc}')"><b>${t(tc)}</b>${tc===nm.MyTactic?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('');
   $('tacModal').classList.add('on');

@@ -171,6 +171,30 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Odds_ExposedForPlayerMatch_Consistent()
+    {
+        TempDir("odds");
+        var g = new Game(1, 15, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        JsonElement nm = default; bool found = false; int guard = 0;
+        while (guard++ < 60)
+        {
+            nm = Parse(g.StateJson()).GetProperty("NextMatch");
+            if (nm.ValueKind != JsonValueKind.Null && nm.GetProperty("IsPlayerMatch").GetBoolean()) { found = true; break; }
+            g.PlayNext();
+        }
+        Assert.That(found, Is.True, "내 경기 프리뷰 도달");
+        float pct = nm.GetProperty("MyWinPct").GetSingle();
+        float myOdds = nm.GetProperty("MyOdds").GetSingle();
+        Assert.That(pct, Is.GreaterThan(14f)); Assert.That(pct, Is.LessThan(86f));   // 극단 클램프
+        Assert.That(myOdds, Is.GreaterThan(1f), "배당 > 1");
+        // 배당 ≈ 100/승률 (표시용 근사) — ±0.15 허용
+        Assert.That(MathF.Abs(myOdds - 100f / pct), Is.LessThan(0.15f), "배당·승률 정합");
+        Assert.That(nm.GetProperty("Hype").GetSingle(), Is.GreaterThan(-1f));
+    }
+
+    [Test]
     public void Game_Condition_DeclinesWithMatches_AndInjuriesOccur()
     {
         TempDir("cond");

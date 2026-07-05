@@ -110,7 +110,9 @@ public sealed class Game
         string? MyRelation = null,    // 내가 상대를 보는 관계 (원수/공포/라이벌…) — 복수전 예고
         string[]? MyEmotions = null,  // 이번 경기에 실리는 감정
         bool OppIsKiter = false,      // 상성 힌트: 상대가 장거리 카이터인가
-        string? Stage = null);        // 컵 단계 라벨 (4강 결승) — 정규경기는 null
+        string? Stage = null,         // 컵 단계 라벨 (4강 결승) — 정규경기는 null
+        float MyWinPct = 50f, float MyOdds = 2f, float OppOdds = 2f,   // 배당(파워 모델 — 표시용)
+        bool CrowdFavorsMe = false, float Hype = 0f);   // 군중 선호(인기)·흥행지수
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -964,6 +966,16 @@ public sealed class Game
     private float Intensity(string self, string opp)
         => Math.Clamp(MathF.Abs(_ledger.Get(self, opp).Affinity) / 100f, 0f, 1f);
 
+    /// <summary>배당용 전력 근사(표시 전용) — 스탯 합 + 명성·최근 폼(연승) + 부상 페널티.</summary>
+    private static float Power(Gladiator g)
+    {
+        float s = g.Stats.Atk + g.Stats.Def + g.Stats.HpMax / 10f + g.Stats.Spd + g.Stats.Aspd + g.Stats.Rct;
+        return s + g.Fame * 0.15f + g.Streak * 2f - (g.InjuryMatches > 0 ? 15f : 0f);
+    }
+    /// <summary>내 선수 관점 승률(0~1) — 극단 방지 클램프.</summary>
+    private static float WinProb(Gladiator me, Gladiator opp)
+        => Math.Clamp(Power(me) / MathF.Max(1f, Power(me) + Power(opp)), 0.15f, 0.85f);
+
     private static void Record(Gladiator a, Gladiator b, MatchResult r, bool standing)
     {
         if (r.Winner == 0) { a.CW++; b.CL++; if (r.Reason == "KO") a.CKoW++; if (standing) { a.W++; b.L++; a.Streak = a.Streak >= 0 ? a.Streak + 1 : 1; b.Streak = b.Streak <= 0 ? b.Streak - 1 : -1; } }
@@ -1229,6 +1241,7 @@ public sealed class Game
                 myEmo = mine.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray();
                 oppKiter = WeaponTable.Get(opp.WeaponId).Range >= 3.0f;
             }
+            float myP = mine != null ? WinProb(mine, opp) : 0.5f;
             nm = new NextMatchDoc(s.Round, s.IsEvent, mine != null, A.Name, B.Name,
                 mine?.Id, mine?.Name,
                 mine?.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(),
@@ -1237,7 +1250,9 @@ public sealed class Game
                     opp.PersonalityId.Replace("PER_", ""), opp.Age,
                     MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null,
                 vsRecord, relName, myEmo, oppKiter,
-                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강" : null);
+                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강" : null,
+                MathF.Round(myP * 100f), MathF.Round(1f / myP * 100f) / 100f, MathF.Round(1f / (1f - myP) * 100f) / 100f,
+                mine != null && mine.Popularity >= opp.Popularity, mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f);
         }
 
         // 루두스 등급
