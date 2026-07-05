@@ -82,7 +82,8 @@ public sealed class Game
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
     private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality, int Age,
-        int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer);
+        int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer,
+        string[]? Epithets = null);
     private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
@@ -95,7 +96,8 @@ public sealed class Game
         string Talent, string Potential, float PotentialBudget, float BudgetUsed,
         StatsDoc Stats, string[] Traits, string[] TacticPool, string Tactic, int TrainingPoints,
         int W, int L, int D, int CW, int CL, int CD, float Fame, float Popularity,
-        string[] Emotions);   // 다음 경기에 실릴 감정 (💭 예고)
+        string[] Emotions,    // 다음 경기에 실릴 감정 (💭 예고)
+        string[]? Epithets = null);   // 획득 이명
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic); // 마스킹!
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
     private sealed record NextMatchDoc(int Round, bool IsEvent, bool IsPlayerMatch,
@@ -108,6 +110,12 @@ public sealed class Game
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
+    private sealed record RelRow(string OppName, string RelName, string RelIcon, int W, int L, int Enc, bool OppIsMine);
+    private sealed record FighterProfileDoc(string Id, string Name, string Weapon, string Personality, int Age,
+        bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
+        StatsDoc Stats, string[] Traits, string[] Epithets, string[] TacticPool, string Tactic,
+        int W, int L, int D, int CW, int CL, int CD, int CKoW, int Titles, float Fame, float Popularity,
+        RelRow[] Relations, string[] Emotions, string[] Chronicle);
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -208,6 +216,64 @@ public sealed class Game
     private ulong SeasonSeed => _worldSeed + (ulong)_seasonNo * 1000003UL;
     private Gladiator ById(string id) => _cast.First(g => g.Id == id);
     private string PersOf(string id) => ById(id).PersonalityId;
+    private int TitlesOf(Gladiator g) => _champions.Count(c => c.Name == g.Name);
+
+    /// <summary>획득 이명 — 통산 전적·KO·연승·우승·연륜에서 파생(저장 안 함, 읽을 때 계산). 넴시스 서사의 표지.</summary>
+    private string[] Epithets(Gladiator g)
+    {
+        var e = new List<string>();
+        int games = g.CW + g.CL + g.CD, titles = TitlesOf(g);
+        if (titles >= 3) e.Add("👑 패왕");
+        else if (titles >= 1) e.Add("👑 챔피언");
+        if (g.CL == 0 && g.CW >= 5) e.Add("🛡 불패");
+        if (g.Streak >= 6) e.Add("⚡ 파죽지세");
+        if (g.CKoW >= 4 && g.CKoW * 2 >= Math.Max(1, g.CW)) e.Add("💀 처형자");
+        if (g.Fame >= 120f) e.Add("🌟 전설");
+        if (g.Popularity >= 60f) e.Add("🎭 군중의 연인");
+        if (g.Age >= 34 || games >= 40) e.Add("⚔ 백전노장");
+        if (games == 0) e.Add("🌱 신예");
+        return e.Take(3).ToArray();
+    }
+
+    /// <summary>선수 상세(서사) — 이명·관계·감정·연대기. 기존 데이터 파생, 스키마 무변경.</summary>
+    public string ProfileJson(string id)
+    {
+        var g = _cast.FirstOrDefault(x => x.Id == id);
+        if (g == null) return Err("선수를 찾을 수 없다");
+
+        var rels = _ledger.Snapshot().Where(x => x.Self == g.Id && x.Encounters > 0)
+            .Select(x => (x, type: _ledger.Get(g.Id, x.Opp).Classify(g.PersonalityId)))
+            .Where(t => t.type is { })
+            .OrderByDescending(t => RelationTable.Get(t.type!.Value).DramaWeight * (1 + t.x.Encounters))
+            .Take(6)
+            .Select(t => { var rd = RelationTable.Get(t.type!.Value);
+                var icon = t.type switch { RelationType.Nemesis => "⚔", RelationType.Fear => "😨",
+                    RelationType.Rival => "🔥", RelationType.Obsession => "🌀", RelationType.Envy => "😤",
+                    RelationType.Respect => "🤝", RelationType.Friend => "🫂", _ => "🔗" };
+                var opp = _cast.FirstOrDefault(c => c.Id == t.x.Opp);
+                return new RelRow(opp?.Name ?? t.x.Opp, rd.Name, icon, t.x.Wins, t.x.Losses, t.x.Encounters,
+                    opp?.IsPlayer ?? false); })
+            .ToArray();
+
+        // 연대기: 통산 우승 이력(영속) + 현 시즌 이 선수가 등장한 서사
+        var chron = new List<string>();
+        foreach (var c in _champions.Where(c => c.Name == g.Name))
+            chron.Add($"🏆 시즌 {c.SeasonNo} 리그 챔피언 ({c.Record})");
+        foreach (var s in _story.Where(s => s.Text.Contains(g.Name) && s.Kind is "revenge" or "upset" or "comeback" or "cup").TakeLast(6))
+            chron.Add(s.Text);
+
+        var doc = new FighterProfileDoc(g.Id, g.Name, g.WeaponId.Replace("WPN_", ""), g.PersonalityId.Replace("PER_", ""),
+            g.Age, g.IsPlayer, g.Age >= g.AgingStartAge,
+            ViewerExport.TalentName(g.Talent), ViewerExport.PotentialName(g.Potential),
+            MathF.Round(g.PotentialBudget), MathF.Round(BudgetUsed(g.Stats)),
+            new StatsDoc(MathF.Round(g.Stats.Atk), MathF.Round(g.Stats.Def), MathF.Round(g.Stats.HpMax),
+                         MathF.Round(g.Stats.Spd), MathF.Round(g.Stats.Aspd), MathF.Round(g.Stats.Rct)),
+            g.TraitIds.Select(t => TraitTable.Get(t).Name).ToArray(), Epithets(g),
+            g.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(), g.TacticId.Replace("TAC_", ""),
+            g.W, g.L, g.D, g.CW, g.CL, g.CD, g.CKoW, TitlesOf(g), MathF.Round(g.Fame), MathF.Round(g.Popularity),
+            rels, g.PendingEmotions.Select(x => EmotionTable.Get(x).Name).ToArray(), chron.ToArray());
+        return JsonSerializer.Serialize(doc, JsonOpts);
+    }
 
     public Game(int roundsPerSeason, ulong? worldSeed = null, bool fresh = false,
                 bool interactive = true, bool playerless = false)
@@ -971,7 +1037,7 @@ public sealed class Game
         var fighters = _cast.Select(g => new FighterDoc(g.Id, g.Name,
             g.WeaponId.Replace("WPN_", ""), g.TacticId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""), g.Age,
             g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD,
-            MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer)).ToList();
+            MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer, Epithets(g))).ToList();
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();
@@ -1004,7 +1070,7 @@ public sealed class Game
             g.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(), g.TacticId.Replace("TAC_", ""),
             g.TrainingPoints, g.W, g.L, g.D, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity),
-            g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray())).ToList();
+            g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray(), Epithets(g))).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),

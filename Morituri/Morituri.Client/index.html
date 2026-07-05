@@ -173,6 +173,11 @@
   <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('seasonModal').classList.remove('on'); go('league')">다음 시즌으로 →</button>
 </div></div>
 
+<div class="modal" id="profModal"><div class="mbox" style="max-width:560px">
+  <div id="profBody"></div>
+  <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('profModal').classList.remove('on')">닫기</button>
+</div></div>
+
 <div class="modal" id="cfgModal"><div class="mbox">
   <h3 style="color:var(--gold)">⚙ 설정</h3>
   <div class="rrow" style="margin-top:8px"><span>관전 기본 배속</span>
@@ -215,7 +220,31 @@ const TAC={BALANCED:'균형',PRESSURE:'압박',COUNTER:'카운터',ZONER:'견제
 const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 사냥',COUNTER:'거리 유지·후딜 반격',ZONER:'최장거리 견제',BRAWLER:'초근접 난타',DEFENDER:'가드 중심 수비',DECISION:'신중한 판정 노림',HUNTER:'약해진 사냥감 추적',GAMBLER:'고위험 도박',EVADER:'회피 중심'};
 const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
+const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
 let st=null;
+
+// ── 선수 상세(서사) 창 ──
+async function openProfile(id){
+  const f = await api('/api/fighter',{id});
+  if (f.error) return;
+  const S=f.Stats, axes=[['ATK',S.Atk],['DEF',S.Def],['HP',S.Hp],['SPD',S.Spd],['ASPD',S.Aspd],['RCT',S.Rct]];
+  const rel = f.Relations.length ? f.Relations.map(r=>
+    `<div class="row"><span>${r.RelIcon} <b style="color:var(--b)">${r.RelName}</b> — ${r.OppName}${r.OppIsMine?' <span class="chip">우리</span>':''}</span><b>${r.W}-${r.L} (${r.Enc}전)</b></div>`).join('')
+    : '<div class="note">아직 특별한 인연이 없다.</div>';
+  const chron = f.Chronicle.length ? f.Chronicle.map(c=>`<div class="rrow"><span class="d">${c}</span></div>`).join('') : '<div class="note">기록될 무용담이 아직 없다.</div>';
+  $('profBody').innerHTML = `
+    <h3 style="color:var(--gold);font-size:20px;margin:0">${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
+    ${epi(f.Epithets)}
+    <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 ${f.Aging?'<span class="old">노쇠</span>':''} · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
+    <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)">💭 ${x}</span>`).join('')}</div>
+    <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st"><span>${a}</span> ${v}</div>`).join('')}</div>
+    <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
+    <div class="row"><span>명성 / 인기 / 우승</span><b>${f.Fame} / ${f.Popularity} / 🏆${f.Titles}</b></div>
+    <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
+    <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">⚔ 관계</h4>${rel}
+    <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">📜 연대기</h4>${chron}`;
+  $('profModal').classList.add('on');
+}
 
 function go(s){
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
@@ -296,6 +325,7 @@ $('cfgSpoiler').onchange = saveCfg;
 $('cfgSound').onchange = saveCfg;
 $('cfgBtn').onclick = ()=> $('cfgModal').classList.add('on');
 $('cfgModal').onclick = e=>{ if(e.target===$('cfgModal')) $('cfgModal').classList.remove('on'); };
+$('profModal').onclick = e=>{ if(e.target===$('profModal')) $('profModal').classList.remove('on'); };
 
 // ── 단축키: Space/N = 다음 경기 · 1~5 = 탭 (모달·메뉴 열려있으면 무시) ──
 window.addEventListener('keydown', e=>{
@@ -405,7 +435,8 @@ function renderLudus(){
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
     const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
     const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
-    return `<div class="fc"><h3>${f.Name} ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}</h3>
+    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}</h3>
+      ${epi(f.Epithets)}
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
       <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${
         (f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)" title="다음 경기에 영향">💭 ${x}</span>`).join('')}</div>
@@ -498,7 +529,9 @@ window.recruit = async (idx)=>{
 function renderRoster(){
   if (!st) return;
   $('rosterGrid').innerHTML = [...st.Season.Fighters].sort((a,b)=>b.Points-a.Points||b.Fame-a.Fame).map(f=>
-    `<div class="fc ${f.IsPlayer?'':'ai'}"><h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
+    `<div class="fc ${f.IsPlayer?'':'ai'}" style="cursor:pointer" onclick="openProfile('${f.Id}')" title="상세 보기">
+     <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}</h3>
+     ${epi(f.Epithets)}
      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
      <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>

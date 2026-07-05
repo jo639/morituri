@@ -140,6 +140,23 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Profile_ExposesEpithetsAndRelations()
+    {
+        TempDir("profile");
+        var g = new Game(1, 13, fresh: true, interactive: false, playerless: true);
+        for (int s = 0; s < 3; s++) RunFullSeason(g);   // 전적·관계·이명이 쌓이도록 3시즌
+        var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
+        string id = fs[0].GetProperty("Id").GetString()!;
+        var prof = Parse(g.ProfileJson(id));
+        Assert.That(prof.GetProperty("Name").GetString()!.Length, Is.GreaterThan(0));
+        Assert.That(prof.GetProperty("Epithets").ValueKind, Is.EqualTo(JsonValueKind.Array), "이명 배열 노출");
+        Assert.That(prof.GetProperty("Relations").ValueKind, Is.EqualTo(JsonValueKind.Array), "관계 배열 노출");
+        Assert.That(prof.GetProperty("Stats").GetProperty("Atk").GetSingle(), Is.GreaterThan(0), "실스탯 노출");
+        // 없는 id → 오류
+        Assert.That(Parse(g.ProfileJson("NOPE")).TryGetProperty("error", out _), Is.True);
+    }
+
+    [Test]
     public void Game_ManySeasons_AgingRotation_KeepsLeagueAlive()
     {
         // 25시즌 연속 — 노쇠 AI(노화+6시즌 = 36~42세)는 은퇴(명전)하고 신인이 와 리그는 6명 유지.
