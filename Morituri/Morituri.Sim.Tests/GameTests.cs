@@ -171,6 +171,23 @@ public class GameTests
     }
 
     [Test]
+    public void Game_AutoFinish_CompletesSeason_ResolvingEvents()
+    {
+        TempDir("auto");
+        var g = new Game(1, 3, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        int guard = 0;
+        while (g.SeasonActive && guard++ < 50)
+        {
+            var r = Parse(g.AutoFinishJson());
+            if (r.TryGetProperty("eventPending", out var ep) && ep.GetBoolean()) g.ChooseEventJson(0);
+        }
+        Assert.That(g.SeasonActive, Is.False, "자동완주로 시즌 종료");
+        Assert.That(Parse(g.StateJson()).GetProperty("LastSeason").ValueKind, Is.Not.EqualTo(JsonValueKind.Null));
+    }
+
+    [Test]
     public void Game_RivalLudi_CompeteRankAndPersist()
     {
         TempDir("rival");

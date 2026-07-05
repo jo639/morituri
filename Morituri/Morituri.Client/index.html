@@ -111,6 +111,7 @@
   <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
   <span id="gold">💰 —</span>
   <span id="status">—</span>
+  <button id="autoBtn" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">⏩ 자동완주</button>
   <button id="next">다음 경기 ▶</button>
   <button id="cfgBtn" title="설정" style="background:none;border:none;color:var(--dim);font-size:16px">⚙</button>
 </div>
@@ -231,6 +232,7 @@ const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 �
 const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
 const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
+const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
 const condColor=v=> v>60?'var(--grn)': v>30?'#d8b24a':'var(--b)';
 const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;border-radius:4px;padding:0 5px;font-size:11px">🩹 부상</span>':'';
 let st=null;
@@ -251,7 +253,7 @@ async function openProfile(id){
     <div class="row"><span>소속</span><b>${f.Ludus}</b></div>
     <div class="row"><span>컨디션</span><b style="color:${condColor(f.Condition)}">${f.Condition}${f.Injured?' 🩹':''}</b></div>
     <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)">💭 ${x}</span>`).join('')}</div>
-    <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st"><span>${a}</span> ${v}</div>`).join('')}</div>
+    <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st" title="${STATH[a.charAt(0)+a.slice(1).toLowerCase()]||''}"><span>${a}</span> ${v}</div>`).join('')}</div>
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
     <div class="row"><span>명성 / 인기 / 우승</span><b>${f.Fame} / ${f.Popularity} / 🏆${f.Titles}</b></div>
     <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
@@ -289,8 +291,22 @@ async function refresh(){
     : nm && nm.IsPlayerMatch ? `⚔ ${nm.IsEvent?'🎪 ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
     : '▶▶ 다음 내 경기까지 진행';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
+  $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   return st;
 }
+$('autoBtn').onclick = async ()=>{
+  if (!st) await refresh();
+  if (!st.SeasonActive) return;
+  if (st.PendingEvent){ showEvent(); return; }
+  const b=$('autoBtn'); b.disabled=true;
+  try{
+    const r = await api('/api/autofinish',{});
+    await refresh();
+    if (r.eventPending){ go('league'); showEvent(); }
+    else if (r.seasonDone){ simNote=`⏩ 시즌 자동완주 — ${r.played}경기`; showSeason(); }
+    else { simNote=`⏩ ${r.played}경기 진행`; go('league'); }
+  } finally { b.disabled=false; }
+};
 
 // ── 다음 경기: 내 경기 = 전술 모달 → 결과 화면 / AI 경기 = 자동 시뮬(내 경기 직전 정지) ──
 $('next').onclick = async ()=>{
@@ -483,8 +499,8 @@ function renderLudus(){
         (f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)" title="다음 경기에 영향">💭 ${x}</span>`).join('')}</div>
       <div class="chips" title="클릭 = 기본 전술 변경 (경기 직전 모달에서도 변경 가능)">${f.TacticPool.map(x=>
         `<span class="chip tac${x===f.Tactic?' cur':''}" style="cursor:pointer" onclick="setTac('${f.Id}','${x}')">${t(x)}</span>`).join('')}</div>
-      <div class="stats">${axes.map(([a,v])=>`<div class="st"><span>${a==='Hp'?'HP':a.toUpperCase()}</span> ${Math.round(v)}
-        ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')">+</button>`:''}</div>`).join('')}</div>
+      <div class="stats">${axes.map(([a,v])=>`<div class="st" title="${STATH[a]||''}"><span>${a==='Hp'?'HP':a.toUpperCase()}</span> ${Math.round(v)}
+        ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')" title="훈련 포인트로 ${STATH[a]||a} +1">+</button>`:''}</div>`).join('')}</div>
       <div class="cap"><i style="width:${cap}%"></i></div>
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>

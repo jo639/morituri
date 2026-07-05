@@ -770,6 +770,20 @@ public sealed class Game
         return JsonSerializer.Serialize(new { played, seasonDone }, JsonOpts);
     }
 
+    /// <summary>시즌 자동완주(편의): 내 경기 포함 남은 전 경기를 현재 전술로 진행. 이벤트 발생 시 멈춰서 감독에게 결정 위임.</summary>
+    public string AutoFinishJson()
+    {
+        if (!SeasonActive) return Err("시즌 진행 중이 아니다");
+        int played = 0, guard = 0;
+        while (SeasonActive && _pendingEventId == null && guard++ < 600)
+        {
+            PlayNext();   // 각 선수 현재(기본) 전술로 — 관전·모달 없이 빠르게
+            played++;
+        }
+        return JsonSerializer.Serialize(new { ok = true, played, seasonDone = !SeasonActive,
+            eventPending = _pendingEventId != null }, JsonOpts);
+    }
+
     /// <summary>경기 재관전: 로그의 스냅샷+시드로 결정론 재시뮬 → viewer.json. idx<0 = 최근 경기.</summary>
     public string WatchJson(int idx)
     {
