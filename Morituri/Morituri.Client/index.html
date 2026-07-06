@@ -199,6 +199,14 @@
   <button id="evtClose" class="tacbtn" style="text-align:center; margin-top:12px; display:none" onclick="$('evtModal').classList.remove('on'); go('league')">계속 →</button>
 </div></div>
 
+<div class="modal" id="propModal"><div class="mbox">
+  <h3 style="color:var(--gold)">🎤 빅매치 제안</h3>
+  <div id="propBody" class="vsline" style="margin:6px 0 10px"></div>
+  <h4 style="color:var(--gold);margin:8px 0 6px;font-size:12px">누구를 내보낼까?</h4>
+  <div id="propRoster"></div>
+  <button class="tacbtn" style="text-align:center;margin-top:10px;opacity:.7" onclick="pickProposal('')">거절한다</button>
+</div></div>
+
 <div class="modal" id="cfgModal"><div class="mbox">
   <h3 style="color:var(--gold)">⚙ 설정</h3>
   <div class="rrow" style="margin-top:8px"><span>관전 기본 배속</span>
@@ -309,6 +317,7 @@ async function refresh(){
 $('autoBtn').onclick = async ()=>{
   if (!st) await refresh();
   if (!st.SeasonActive) return;
+  if (st.PendingProposal){ showProposal(); return; }
   if (st.PendingEvent){ showEvent(); return; }
   const b=$('autoBtn'); b.disabled=true;
   try{
@@ -323,6 +332,7 @@ $('autoBtn').onclick = async ()=>{
 // ── 다음 경기: 내 경기 = 전술 모달 → 결과 화면 / AI 경기 = 자동 시뮬(내 경기 직전 정지) ──
 $('next').onclick = async ()=>{
   if (!st) await refresh();
+  if (st && st.PendingProposal){ showProposal(); return; }   // 빅매치 제안 먼저 결정
   if (st && st.PendingEvent){ showEvent(); return; }   // 대기 중 이벤트(앱 재시작 포함) 먼저 해결
   const nx=$('next'); nx.disabled=true;
   try{
@@ -513,6 +523,18 @@ window.chooseEvent = async (i)=>{
   $('evtOutcome').style.display='flex';
   $('evtOutcome').innerHTML = `<span>결정</span><b style="color:var(--gold)">${r.outcome||''}</b>`;
   $('evtClose').style.display='';
+};
+// ── 빅매치 제안(감독 개입) ──
+function showProposal(){
+  const pr = st && st.PendingProposal; if (!pr) return;
+  $('propBody').innerHTML = `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 감독이 결정한다(전시 경기).</span>`;
+  $('propRoster').innerHTML = pr.Roster.map(f=>
+    `<button class="tacbtn" onclick="pickProposal('${f.Id}')"><b>${f.Name}</b> <span class="d">${w(f.Weapon)} · ${p(f.Personality)}${f.Injured?' 🩹':''} · 피로 ${f.Fatigue}</span></button>`).join('');
+  $('propModal').classList.add('on');
+}
+window.pickProposal = async (id)=>{
+  await api('/api/pick',{id}); await refresh();
+  $('propModal').classList.remove('on'); go('league');
 };
 window.watchReplay = async ()=>{
   $('resModal').classList.remove('on');

@@ -84,7 +84,8 @@ public sealed class Game
         List<string>? CupSeeds = null, int CupStage = 0, string? CupChampion = null,
         string? PendingEventId = null, string? PendingEventFighter = null,   // 시즌 중 텍스트 이벤트(2b)
         List<LudusRepRec>? RivalReps = null,   // 라이벌 루두스 명성(경쟁 메타)
-        float Glory = 0f);   // 영광 하드 화폐
+        float Glory = 0f,   // 영광 하드 화폐
+        string? PendingProposalOpp = null);   // 빅매치 제안 대기 상대
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -134,7 +135,7 @@ public sealed class Game
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
         SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
-        TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory);
+        TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -195,6 +196,7 @@ public sealed class Game
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
     private string? _cupChampion;                            // 최근 컵 우승자 이름
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
+    private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
     private readonly Dictionary<string, float> _rivalRep = new();   // 라이벌 루두스별 명성(경쟁 순위표)
     private int _emoGen;
 
@@ -329,6 +331,9 @@ public sealed class Game
 
     // ── 시즌 중 텍스트 이벤트(2b) — 감독의 선택. 효과는 전부 기존 메커니즘(재화·명성·인기·훈련·감정·스탯). ──
     private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices);
+    private sealed record ProposalPickDoc(string Id, string Name, string Weapon, string Personality, int Fatigue, bool Injured);
+    private sealed record ProposalDoc(string OppName, string OppWeapon, string OppPersonality, int OppAge, float OppFame,
+        string OppCareer, ProposalPickDoc[] Roster);
     private sealed class EvtTemplate
     {
         public required string Id, Icon, Title;
@@ -404,6 +409,35 @@ public sealed class Game
         if (t == null) return null;
         string nm = _pendingEventFighter != null ? (_cast.FirstOrDefault(g => g.Id == _pendingEventFighter)?.Name ?? "선수") : "";
         return new TextEventDoc(t.Id, t.Icon, t.Title, t.Body(nm), t.Choices.Select(c => c.Label).ToArray());
+    }
+
+    private ProposalDoc? PendingProposalDoc()
+    {
+        if (_pendingProposalOpp == null) return null;
+        var o = _cast.FirstOrDefault(g => g.Id == _pendingProposalOpp);
+        if (o == null) return null;
+        var roster = _cast.Where(g => g.IsPlayer).Select(g => new ProposalPickDoc(g.Id, g.Name,
+            g.WeaponId.Replace("WPN_", ""), g.PersonalityId.Replace("PER_", ""), g.Fatigue, g.InjuryMatches > 0)).ToArray();
+        return new ProposalDoc(o.Name, o.WeaponId.Replace("WPN_", ""), o.PersonalityId.Replace("PER_", ""),
+            o.Age, MathF.Round(o.Fame), $"{o.CW}-{o.CL}-{o.CD}", roster);
+    }
+
+    /// <summary>빅매치 제안에 응해 출전 선수를 선택 → 커서 위치에 전시(exhibition) 카드 삽입. 빈 id = 거절.</summary>
+    public string PickProposalJson(string fighterId)
+    {
+        if (_pendingProposalOpp == null) return Err("대기 중인 제안이 없다");
+        var opp = _cast.FirstOrDefault(g => g.Id == _pendingProposalOpp);
+        if (string.IsNullOrEmpty(fighterId) || opp == null)   // 거절 또는 상대 소멸
+        {
+            _pendingProposalOpp = null; SaveWorld(); return StateJson();
+        }
+        var me = _cast.FirstOrDefault(g => g.Id == fighterId && g.IsPlayer);
+        if (me == null) return Err("내 선수 아님");
+        int round = SeasonActive && _cursor < _schedule.Count ? _schedule[_cursor].Round : _rounds + 1;
+        _schedule.Insert(_cursor, new SchedRec(round, me.Id, opp.Id, true, 0f, "proposal"));   // 다음 경기로 삽입(전시)
+        _story.Add((0, "proposal", $"🎤 빅매치 성사 — {me.Name} vs {opp.Name}(도전장)"));
+        _pendingProposalOpp = null; SaveWorld();
+        return StateJson();
     }
 
     /// <summary>이벤트 선택 적용 → 결과 문구. 대상 선수가 사라졌으면(방출 등) 이벤트 취소.</summary>
@@ -607,6 +641,11 @@ public sealed class Game
         BuildDivisionCards(2);
         int d1 = _cast.Count(g => g.Division == 1);
         _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {DivName(1)} {d1}인 · {DivName(2)} {_cast.Count - d1}인"));
+
+        // 빅매치 제안(감독 개입): 내 선수 2명+ & 결정론 확률 → 명망 있는 도전 상대. 감독이 누구를 내보낼지 선택.
+        _pendingProposalOpp = null;
+        if (!_playerless && _cast.Count(g => g.IsPlayer) >= 2 && new SimRandom(SeasonSeed ^ 0x0B16_A7C4UL).Roll(0.6f))
+            _pendingProposalOpp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault()?.Id;
     }
 
     private void FinalizeSeason()
@@ -1270,7 +1309,7 @@ public sealed class Game
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
-        _ludusRep = w.LudusRep; _glory = w.Glory;
+        _ludusRep = w.LudusRep; _glory = w.Glory; _pendingProposalOpp = w.PendingProposalOpp;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1302,7 +1341,7 @@ public sealed class Game
             _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion,
             _pendingEventId, _pendingEventFighter,
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _glory), JsonOpts));
+            _glory, _pendingProposalOpp), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1438,7 +1477,7 @@ public sealed class Game
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
             _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
-            ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory)), JsonOpts);
+            ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory), PendingProposalDoc()), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

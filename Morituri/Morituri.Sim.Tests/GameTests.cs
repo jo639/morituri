@@ -188,6 +188,35 @@ public class GameTests
     }
 
     [Test]
+    public void Game_BigMatchProposal_OffersPick_AndSchedulesCard()
+    {
+        TempDir("proposal");
+        var g = new Game(1, 23, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
+        // 제안(빅매치)이 뜨는 시즌 개막까지(결정론 60%/시즌)
+        JsonElement prop = default; bool found = false; int guard = 0;
+        while (guard++ < 20 && !found)
+        {
+            g.PlayNext();   // 개막
+            var st = Parse(g.StateJson());
+            var pp = st.GetProperty("PendingProposal");
+            if (pp.ValueKind != JsonValueKind.Null) { prop = pp; found = true; break; }
+            while (g.SeasonActive) g.PlayNext();   // 시즌 소화 후 다음 개막
+        }
+        Assert.That(found, Is.True, "빅매치 제안 발생");
+        Assert.That(prop.GetProperty("Roster").GetArrayLength(), Is.GreaterThan(1), "로스터 선택지");
+
+        int before = Parse(g.StateJson()).GetProperty("Season").GetProperty("TotalMatches").GetInt32();
+        string pick = prop.GetProperty("Roster")[0].GetProperty("Id").GetString()!;
+        var after = Parse(g.PickProposalJson(pick));
+        Assert.That(after.GetProperty("PendingProposal").ValueKind, Is.EqualTo(JsonValueKind.Null), "선택 후 제안 소거");
+        int afterN = after.GetProperty("Season").GetProperty("TotalMatches").GetInt32();
+        Assert.That(afterN, Is.EqualTo(before + 1), "전시 카드 1장 편성");
+        // 거절 경로: 다시 제안 상태가 아니면 오류
+        Assert.That(Parse(g.PickProposalJson("")).TryGetProperty("error", out _), Is.True);
+    }
+
+    [Test]
     public void Game_Glory_AccruesFromFeats_AndBreakthroughRaisesCap()
     {
         TempDir("glory");
