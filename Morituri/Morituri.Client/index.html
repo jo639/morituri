@@ -312,12 +312,12 @@ async function api(path, body){
 async function refresh(){
   st = await api('/api/state');
   const S = st.Season;
-  $('gold').textContent = `💰 ${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'');
+  $('gold').textContent = `💰 ${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'') + (st.Debt>0?` · 💸빚 ${st.Debt}`:'');
   $('glory').textContent = st.Glory>0 ? `✨ ${st.Glory}` : '';
   const L = st.Ludus;
   $('ludus').textContent = L ? `🏛 ${L.TierName}` : '';
   $('ludus').title = L ? `루두스 명성 ${Math.round(L.Rep)}` + (L.NextTierName?` · 다음 등급 「${L.NextTierName}」까지 ${Math.max(0,Math.round(L.NextTierRep-L.Rep))}` : ' · 최고 등급') + ` · 수입 ×${L.IncomeMult.toFixed(2)}` : '';
-  $('status').textContent = st.SeasonActive ? `시즌 ${S.SeasonNo} · ${S.Matches}/${S.TotalMatches}` : `시즌 ${S.SeasonNo} 종료 — 프리시즌`;
+  $('status').textContent = (st.RomanDate?st.RomanDate+' · ':'') + (st.SeasonActive ? `${S.Matches}/${S.TotalMatches}경기` : `시즌 ${S.SeasonNo} 종료`);
   const nm = st.NextMatch;
   $('next').textContent = !st.SeasonActive ? `🏛 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
     : nm && nm.IsPlayerMatch ? `⚔ ${nm.IsEvent?'🎪 ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
@@ -511,6 +511,9 @@ function showResult(m){
     <div class="rrow"><span>🔥 인기</span><b>${sign(d.PopDelta)}</b></div>
     ${d.Emotion?`<div class="rrow"><span>💭 감정</span><b>${d.Emotion}</b> <span class="d">(다음 경기에 영향)</span></div>`:''}
   `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>';
+  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 사망·중상·각성·성격변화·적응
+    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + m.Fates.map(f=>
+      `<div class="rrow" style="color:${f.startsWith('⚰')||f.startsWith('💀')?'var(--b)':'var(--gold)'};font-weight:700">${f}</div>`).join('');
   $('resModal').classList.add('on');
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
@@ -806,6 +809,16 @@ const CODEX = {
     {n:'신중', id:'WARY', d:'Commit +0.20 · 스태미나 낮으면 공격성 −0.3. 자원 관리형.'},
     {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리("🎭 쇼타임"=화려한 강공 지시, 데미지 직접증가 아님). 도발·스펙터클로 관중게이지를 잘 채운다 → 관중 유리 시 피해 최대 +12%·이속 +8%(모든 선수 공통, 쇼맨이 잘 채울 뿐). 관중 외면 시 가장 크게 위축.'},
     {n:'기회주의', id:'OPPORTUNIST', d:'평소 신중, 가드붕괴·지침 허점에 계산적으로 폭발.'},
+  ],
+  '천부·잠재력': [
+    {n:'천부 재능', id:'TALENT', s:'생성 시 결정 · 초기 스탯 총합(버짓)', d:'태어난 그릇. 최초 6스탯의 총합을 정한다 — 영입 전엔 비공개(뽑기 도박의 핵심). 루두스 등급·스승이 높으면 좋은 원석을 만날 확률↑(best-of-N 롤).'},
+    {n:'노예', id:'SLAVE', s:'확률 50% · 버짓 395', d:'다수. 평균 이하의 시작 — 하지만 잠재력이 크면 대기만성.'},
+    {n:'투사', id:'FIGHTER', s:'확률 28% · 버짓 410', d:'싸움깨나 하는 몸.'},
+    {n:'챔피언', id:'CHAMPION', s:'확률 14% · 버짓 425', d:'우승을 노릴 재목.'},
+    {n:'집정관', id:'CONSUL', s:'확률 6% · 버짓 442', d:'귀한 원석.'},
+    {n:'불멸자', id:'IMMORTAL', s:'확률 1.8% · 버짓 460', d:'한 세대에 한둘.'},
+    {n:'카이사르', id:'CAESAR', s:'확률 0.2% · 버짓 480', d:'전설 그 자체 — 발굴하면 업적.'},
+    {n:'잠재력', id:'POTENTIAL', s:'성장 상한(최대 버짓) — 잿불 420 · 불씨 445 · 횃불 470 · 화염 495 · 봉화 520 · 태양 545', d:'자랄 수 있는 한계. 경기 자동성장·훈련 포인트가 이 상한까지만 쌓인다. 상한 도달 후엔 ✨영광 돌파(상한 +25)·마스터리(비스탯)로 계속 성장. 노화가 시작되면 상한 자체가 시즌마다 깎인다.'},
   ],
   특성: [
     {n:'유리몸', id:'BRITTLE', s:'받는 피해 ×1.20', d:'순수 페널티. 질긴가죽·둔감과 배타.'},

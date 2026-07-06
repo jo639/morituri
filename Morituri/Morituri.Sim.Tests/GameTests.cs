@@ -231,6 +231,23 @@ public class GameTests
     }
 
     [Test]
+    public void Game_MidseasonRecruit_JoinsRemainingRounds()
+    {
+        TempDir("midjoin");
+        var g = new Game(1, 47, fresh: true, interactive: false, playerless: false);
+        g.PlayNext();   // 개막 (선수 0명이어도 AI 리그 진행)
+        g.PlayNext();   // 1경기 소화
+        int before = Parse(g.StateJson()).GetProperty("Season").GetProperty("TotalMatches").GetInt32();
+        g.GachaJson();
+        var st = Parse(g.RecruitJson(0));   // 시즌 중 영입 → 중도 투입
+        int after = st.GetProperty("Season").GetProperty("TotalMatches").GetInt32();
+        Assert.That(after, Is.GreaterThan(before), "잔여 라운드에 합류전 편성");
+        bool joinStory = st.GetProperty("Season").GetProperty("Story").EnumerateArray()
+            .Any(e => e.GetProperty("Text").GetString()!.Contains("중도 투입"));
+        Assert.That(joinStory, Is.True, "중도 투입 서사");
+    }
+
+    [Test]
     public void Game_Mastery_SpendsTrainingPoints_AndPersists()
     {
         TempDir("mastery");
