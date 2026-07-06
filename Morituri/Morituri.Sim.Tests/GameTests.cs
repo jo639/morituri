@@ -376,25 +376,30 @@ public class GameTests
     }
 
     [Test]
-    public void Game_Divisions_SplitByFame_AndMatchWithinDivision()
+    public void Game_Divisions_ChampionNeverRelegated_SwapByStandings()
     {
         TempDir("div");
         var g = new Game(1, 17, fresh: true, interactive: false, playerless: true);
-        for (int s = 0; s < 2; s++) RunFullSeason(g);   // 명성 벌어지도록
-        g.PlayNext();   // 다음 시즌 개막(디비전 재산정 반영)
-        var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
-        int d1 = 0, d2 = 0; float maxD2Fame = 0, minD1Fame = float.MaxValue;
-        foreach (var f in fs.EnumerateArray())
+        bool sawPromote = false;
+        for (int s = 0; s < 5; s++)
         {
-            int div = f.GetProperty("Division").GetInt32();
-            float fame = f.GetProperty("Fame").GetSingle();
-            if (div == 1) { d1++; minD1Fame = MathF.Min(minD1Fame, fame); }
-            else { d2++; maxD2Fame = MathF.Max(maxD2Fame, fame); }
+            RunFullSeason(g);
+            var st = Parse(g.StateJson());
+            string champ = st.GetProperty("LastSeason").GetProperty("Champion").GetString()!;
+            foreach (var e in st.GetProperty("Season").GetProperty("Story").EnumerateArray())
+            {
+                if (e.GetProperty("Kind").GetString() == "promote") sawPromote = true;
+                // 챔피언은 강등 서사에 절대 등장하지 않는다 (성적 스왑 — 1부 1위)
+                if (e.GetProperty("Kind").GetString() == "relegate")
+                    Assert.That(e.GetProperty("Text").GetString()!.Contains(champ), Is.False, "챔피언 강등 금지");
+            }
+            g.PlayNext();   // 다음 시즌 개막 — 챔피언(생존 시)은 여전히 1부
+            var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
+            foreach (var f in fs.EnumerateArray())
+                if (f.GetProperty("Name").GetString() == champ)
+                    Assert.That(f.GetProperty("Division").GetInt32(), Is.EqualTo(1), "전 시즌 챔피언은 1부 유지");
         }
-        Assert.That(d1, Is.GreaterThan(0)); Assert.That(d2, Is.GreaterThan(0), "두 디비전 모두 존재");
-        Assert.That(d1 - d2, Is.LessThan(2), "상위 절반 배치(균등)");
-        // 1부 최저 명성 >= 2부 최고 명성 (명성 랭킹 배치)
-        Assert.That(minD1Fame >= maxD2Fame, Is.True, "명성 랭킹으로 부 배치");
+        Assert.That(sawPromote, Is.True, "성적 기반 승격 발생");
     }
 
     [Test]

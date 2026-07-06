@@ -601,23 +601,40 @@ public sealed class Game
 
     // ── 시즌 수명주기 ──
 
-    // ── 디비전(승강제) — 명성 랭킹으로 1부/2부 배치, 시즌마다 재산정(승격/강등 서사) ──
+    // ── 디비전(승강제) — 첫 시즌만 명성으로 초기 배치. 이후 승강은 '시즌 성적'으로(FinalizeSeason의 SwapDivisions).
+    //    챔피언(=1부 승점 1위)은 정의상 강등 불가 — 통산 명성 재배치로 우승자가 강등되던 결함 수정. ──
     private static string DivName(int d) => d == 1 ? "1부 콜로세움" : "2부 투기장";
     private void AssignDivisions()
     {
         var ranked = _cast.OrderByDescending(g => g.Fame).ThenByDescending(g => g.CareerPoints).ThenBy(g => g.Id).ToList();
         int topSize = (ranked.Count + 1) / 2;   // 1부 = 상위 절반(홀수면 1부가 큼)
-        for (int i = 0; i < ranked.Count; i++)
+        for (int i = 0; i < ranked.Count; i++) ranked[i].Division = i < topSize ? 1 : 2;
+    }
+
+    /// <summary>시즌말 승강(성적 기반): 1부 최하위 2명 ⇄ 2부 상위 2명. 시즌 순위가 살아있을 때 실행.</summary>
+    private void SwapDivisions()
+    {
+        var d1 = Standings(1); var d2 = Standings(2);
+        int n = Math.Min(2, Math.Min(d1.Count - 1, d2.Count));   // 1부에 최소 1명은 남긴다
+        for (int i = 0; i < n; i++)
         {
-            int nd = i < topSize ? 1 : 2;
-            if (ranked[i].Division != nd && _seasonNo > 1)   // 승강 서사(첫 시즌 제외)
-            {
-                bool up = nd < ranked[i].Division;
-                _story.Add((0, up ? "promote" : "relegate",
-                    $"{(up ? "⬆ 승격" : "⬇ 강등")} — {ranked[i].Name} → {DivName(nd)}"));
-                if (up && ranked[i].IsPlayer) AddGlory(GloryPromote);   // 승격 = 위신
-            }
-            ranked[i].Division = nd;
+            var down = d1[^(i + 1)]; var up = d2[i];
+            down.Division = 2; up.Division = 1;
+            _story.Add((_rounds + 1, "relegate", $"⬇ 강등 — {down.Name}({down.W}승 {down.L}패) → {DivName(2)}"));
+            _story.Add((_rounds + 1, "promote", $"⬆ 승격 — {up.Name}({up.W}승 {up.L}패) → {DivName(1)}"));
+            if (up.IsPlayer) AddGlory(GloryPromote);   // 승격 = 위신
+        }
+    }
+
+    /// <summary>부 인원 편차 보정(영입·은퇴·방출로 어긋났을 때) — 명성 하위/상위를 이동.</summary>
+    private void RebalanceDivisions()
+    {
+        while (true)
+        {
+            int c1 = _cast.Count(g => g.Division == 1), c2 = _cast.Count(g => g.Division == 2);
+            if (c1 - c2 > 1) _cast.Where(g => g.Division == 1).OrderBy(g => g.Fame).First().Division = 2;
+            else if (c2 - c1 > 1) _cast.Where(g => g.Division == 2).OrderByDescending(g => g.Fame).First().Division = 1;
+            else break;
         }
     }
 
@@ -661,7 +678,8 @@ public sealed class Game
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; g.SeasonBrutals = 0; }   // 시즌 사이 휴식 = 완전 회복
-        AssignDivisions();
+        if (_seasonNo == 1) AssignDivisions();   // 초기 배치만 명성 — 이후 승강은 시즌말 성적 스왑
+        else RebalanceDivisions();               // 영입·은퇴로 어긋난 인원만 보정
 
         // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
         BuildDivisionCards(1);
@@ -733,6 +751,8 @@ public sealed class Game
         else AddRivalRep(champ.LudusId, RepLeagueTitle);   // 라이벌 우승 = 그 검투소 명성
         if (_champions.Count >= 3 && _champions.TakeLast(3).All(c => c.IsPlayer)) Unlock("dynasty");
 
+        SwapDivisions();   // 승강(성적 기반) — 다음 시즌 배치 확정. 챔피언은 1부 1위라 강등 불가
+
         // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
         // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
         var retirements = new List<string>();
@@ -740,7 +760,7 @@ public sealed class Game
         // 신인 파동(변칙성): 시즌마다 원석 품질이 출렁인다 — 풍년(20%)=천부 2롤, 평년=1롤
         bool rookieBoom = rookieRng.Roll(0.20f);
         if (rookieBoom) _story.Add((_rounds + 1, "season", "🌾 신인 풍년 — 이번 세대엔 유망한 원석이 많다"));
-        Gladiator SpawnRookie(string inheritLudus)
+        Gladiator SpawnRookie(string inheritLudus, int inheritDiv)
         {
             var usedNames = _cast.Select(g => g.Name).ToHashSet();
             var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
@@ -748,7 +768,8 @@ public sealed class Game
             var rk = RollGladiator(rookieRng, $"GLA_N{_seasonNo}R{retirements.Count}", PickName(rookieRng, usedNames),
                 wpns[(int)(rookieRng.NextFloat01() * wpns.Length)], pers[(int)(rookieRng.NextFloat01() * pers.Length)],
                 sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24, talentRolls: rookieBoom ? 2 : 1);
-            rk.LudusId = inheritLudus;   // 전임자의 검투소 승계(라이벌 루두스 존속)
+            rk.LudusId = inheritLudus;   // 전임자의 검투소·디비전 승계(라이벌 루두스·리그 구조 존속)
+            rk.Division = inheritDiv;
             _cast.Add(rk);
             return rk;
         }
@@ -766,7 +787,7 @@ public sealed class Game
                     $"{g.CW}-{g.CL}-{g.CD} ⚰전사", g.Age, _seasonNo, g.IsPlayer));
                 string dn = $"⚰ {g.Name}({g.Age}세) — 시즌의 상처가 깊었다. 검투사로 죽다";
                 retirements.Add(dn); _story.Add((_rounds + 1, "death", dn));
-                if (!g.IsPlayer) { var rk = SpawnRookie(g.LudusId); retirements.Add($"신인 {rk.Name} 데뷔(공석 승계)"); }
+                if (!g.IsPlayer) { var rk = SpawnRookie(g.LudusId, g.Division); retirements.Add($"신인 {rk.Name} 데뷔(공석 승계)"); }
                 continue;
             }
             // 💀 영구 중상: 격전을 겪고 부상/탈진으로 시즌을 마친 몸 — 상한 자체가 깎인다 (6%)
@@ -830,7 +851,7 @@ public sealed class Game
             if (aged)   // 명예의 전당은 은퇴자만 — 방출자는 조용히 사라진다
                 _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
                     $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
-            var rookie = SpawnRookie(old.LudusId);
+            var rookie = SpawnRookie(old.LudusId, old.Division);
             string note = aged
                 ? $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔"
                 : $"{old.Name}({old.CW}승 {old.CL}패) 방출 → 신인 {rookie.Name} 데뷔";
@@ -1370,7 +1391,8 @@ public sealed class Game
         if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err("로스터 가득참");
         var g = _candidates[idx];
         _candidates.Clear();          // 나머지 후보는 떠난다
-        _cast.Add(g);                 // 스케줄은 시즌 개막 시 고정 → 시즌 중 영입은 다음 시즌부터
+        g.Division = 2;               // 무명 신인은 2부 투기장부터 — 승격으로 증명하라
+        _cast.Add(g);
         if (_mentorName != null)      // 스승의 지도(혈통 유산) — 신인의 그릇이 넓어진다
         {
             g.PotentialBudget += 10f;
