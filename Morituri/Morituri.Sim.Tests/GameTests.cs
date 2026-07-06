@@ -188,6 +188,28 @@ public class GameTests
     }
 
     [Test]
+    public void Game_DramaticFates_OccurRarely_LeagueSurvives()
+    {
+        TempDir("fates");
+        var g = new Game(1, 33, fresh: true, interactive: false, playerless: true);
+        var fateKinds = new HashSet<string>();
+        for (int s = 0; s < 40; s++)
+        {
+            RunFullSeason(g);
+            var story = Parse(g.StateJson()).GetProperty("Season").GetProperty("Story");
+            foreach (var e in story.EnumerateArray())
+            {
+                string k = e.GetProperty("Kind").GetString()!;
+                if (k is "death" or "grave_injury" or "awakening" or "persona" or "tradeoff") fateKinds.Add(k);
+            }
+        }
+        Assert.That(fateKinds.Count, Is.GreaterThan(1), $"40시즌 동안 극적 운명 다종 발생 (발생: {string.Join(",", fateKinds)})");
+        // 사망·교체에도 리그는 6명 유지(공석 승계)
+        var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
+        Assert.That(fs.GetArrayLength(), Is.EqualTo(6), "사망·방출·은퇴에도 리그 인원 유지");
+    }
+
+    [Test]
     public void Game_WorldVariance_DifferentSeeds_DifferentCastAndLudi()
     {
         TempDir("varA");

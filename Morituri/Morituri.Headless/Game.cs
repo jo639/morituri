@@ -57,6 +57,7 @@ public sealed class Game
         public int CW, CL, CD, CKoW; public float Fame, Popularity;
         public int W, L, D, Streak;
         public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
+        public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
         public readonly List<string> PendingEmotions = new();
         public int SeasonPoints => W * 3 + D;
         public int CareerPoints => CW * 3 + CD;
@@ -71,7 +72,7 @@ public sealed class Game
         string[] Traits, bool IsPlayer, int Age, int AgingStartAge, int TrainingPoints, int MatchCounter,
         int CW, int CL, int CD, int CKoW, float Fame, float Popularity,
         int W, int L, int D, int Streak, string[] PendingEmotions,
-        int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1);
+        int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1, int SeasonBrutals = 0);
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular");
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
@@ -653,7 +654,7 @@ public sealed class Game
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear();
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
-        foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; }   // 시즌 사이 휴식 = 완전 회복
+        foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; g.SeasonBrutals = 0; }   // 시즌 사이 휴식 = 완전 회복
         AssignDivisions();
 
         // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
@@ -733,6 +734,83 @@ public sealed class Game
         // 신인 파동(변칙성): 시즌마다 원석 품질이 출렁인다 — 풍년(20%)=천부 2롤, 평년=1롤
         bool rookieBoom = rookieRng.Roll(0.20f);
         if (rookieBoom) _story.Add((_rounds + 1, "season", "🌾 신인 풍년 — 이번 세대엔 유망한 원석이 많다"));
+        Gladiator SpawnRookie(string inheritLudus)
+        {
+            var usedNames = _cast.Select(g => g.Name).ToHashSet();
+            var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
+            var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
+            var rk = RollGladiator(rookieRng, $"GLA_N{_seasonNo}R{retirements.Count}", PickName(rookieRng, usedNames),
+                wpns[(int)(rookieRng.NextFloat01() * wpns.Length)], pers[(int)(rookieRng.NextFloat01() * pers.Length)],
+                sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24, talentRolls: rookieBoom ? 2 : 1);
+            rk.LudusId = inheritLudus;   // 전임자의 검투소 승계(라이벌 루두스 존속)
+            _cast.Add(rk);
+            return rk;
+        }
+
+        // ── 극적 운명(드묾, 시즌시드 결정론) — 콜로세움은 자비가 없다 ──
+        var fateRng = new SimRandom(_worldSeed ^ 0xFA7E_FA7EUL + (ulong)_seasonNo * 31UL);
+        foreach (var g in _cast.ToList())
+        {
+            int games = g.W + g.L + g.D;
+            // ⚰ 사망: 격전(KO패·빈사) 2회+ 시즌을 보낸 몸은 회복하지 못할 수 있다 (4%)
+            if (g.SeasonBrutals >= 2 && fateRng.Roll(0.04f))
+            {
+                _cast.Remove(g); _ledger.RemoveFighter(g.Id);
+                _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
+                    $"{g.CW}-{g.CL}-{g.CD} ⚰전사", g.Age, _seasonNo, g.IsPlayer));
+                string dn = $"⚰ {g.Name}({g.Age}세) — 시즌의 상처가 깊었다. 검투사로 죽다";
+                retirements.Add(dn); _story.Add((_rounds + 1, "death", dn));
+                if (!g.IsPlayer) { var rk = SpawnRookie(g.LudusId); retirements.Add($"신인 {rk.Name} 데뷔(공석 승계)"); }
+                continue;
+            }
+            // 💀 영구 중상: 격전을 겪고 부상/탈진으로 시즌을 마친 몸 — 상한 자체가 깎인다 (6%)
+            if (g.SeasonBrutals >= 1 && (g.InjuryMatches > 0 || g.Fatigue > 70) && fateRng.Roll(0.06f))
+            {
+                g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - 12f);
+                float ex = BudgetUsed(g.Stats) - g.PotentialBudget;
+                if (ex > 0f) { g.Stats = WithAxis(g.Stats, 5, -ex * 0.5f); for (int a = 0; a < 5; a++) g.Stats = WithAxis(g.Stats, a, -ex * 0.1f); }
+                string note = $"💀 {g.Name} — 영구 중상, 몸이 예전 같지 않다 (상한 {g.PotentialBudget:F0})";
+                retirements.Add(note); _story.Add((_rounds + 1, "grave_injury", note));
+            }
+            // 🌟 각성: 젊은 몸으로 지배적 시즌을 보내면 한계가 열리기도 (5%)
+            else if (games >= 4 && g.W >= games * 0.7f && g.Age <= 30 && fateRng.Roll(0.05f))
+            {
+                g.PotentialBudget += 20f;
+                g.Stats = WithAxis(g.Stats, (int)(fateRng.NextFloat01() * 6), 2f);
+                g.Stats = WithAxis(g.Stats, (int)(fateRng.NextFloat01() * 6), 2f);
+                string note = $"🌟 {g.Name} — 각성! 한계가 열렸다 (상한 {g.PotentialBudget:F0})";
+                retirements.Add(note); _story.Add((_rounds + 1, "awakening", note));
+                // 개화: 각성이 소심한 성격을 대담하게 바꾸기도 (30%)
+                string? bloom = g.PersonalityId switch { "PER_COWARD" => "PER_BOLD", "PER_WARY" => "PER_BOLD", _ => null };
+                if (bloom != null && fateRng.Roll(0.30f))
+                { g.PersonalityId = bloom; retirements.Add($"🎭 {g.Name} — 성격 개화: 대담해졌다"); _story.Add((_rounds + 1, "persona", $"🎭 {g.Name} 성격 변화 — 대담")); }
+            }
+            // 🎭 트라우마 성격 변화: 격전 2회+ 생존자는 사람이 변하기도 (5%)
+            else if (g.SeasonBrutals >= 2 && fateRng.Roll(0.05f))
+            {
+                string? shift = g.PersonalityId switch
+                {
+                    "PER_RECKLESS" => "PER_WARY", "PER_BOLD" => "PER_CALM", "PER_ARROGANT" => "PER_WARY",
+                    "PER_SHOWMAN" => "PER_CALM", "PER_CRUEL" => "PER_WARY", "PER_OPPORTUNIST" => "PER_WARY",
+                    "PER_CALM" => "PER_WARY", "PER_WARY" => "PER_COWARD", _ => null,
+                };
+                if (shift != null)
+                {
+                    g.PersonalityId = shift;
+                    string note = $"🎭 {g.Name} — 사선을 넘나든 시즌이 사람을 바꿨다 ({PersonalityTable.Get(shift).Id.Replace("PER_", "")})";
+                    retirements.Add(note); _story.Add((_rounds + 1, "persona", note));
+                }
+            }
+            // ⚖ 강제 트레이드오프: 몸이 스스로 적응한다 — 한 축을 내주고 다른 축을 얻는다 (3%)
+            else if (fateRng.Roll(0.03f))
+            {
+                int a = (int)(fateRng.NextFloat01() * 6), b = (a + 1 + (int)(fateRng.NextFloat01() * 5)) % 6;
+                g.Stats = WithAxis(g.Stats, a, -3f); g.Stats = WithAxis(g.Stats, b, 3f);
+                string note = $"⚖ {g.Name} — 몸의 적응: {AxisNames[a]} −3 → {AxisNames[b]} +3";
+                retirements.Add(note); _story.Add((_rounds + 1, "tradeoff", note));
+            }
+        }
+
         foreach (var old in _cast.Where(g => !g.IsPlayer).ToList())
         {
             bool aged = old.Age >= old.AgingStartAge + 6 || old.PotentialBudget <= MinPotentialBudget + 0.5f;
@@ -746,14 +824,7 @@ public sealed class Game
             if (aged)   // 명예의 전당은 은퇴자만 — 방출자는 조용히 사라진다
                 _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
                     $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
-            var usedNames = _cast.Select(g => g.Name).ToHashSet();
-            var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
-            var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
-            var rookie = RollGladiator(rookieRng, $"GLA_N{_seasonNo}R{retirements.Count}", PickName(rookieRng, usedNames),
-                wpns[(int)(rookieRng.NextFloat01() * wpns.Length)], pers[(int)(rookieRng.NextFloat01() * pers.Length)],
-                sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24, talentRolls: rookieBoom ? 2 : 1);
-            rookie.LudusId = old.LudusId;   // 신인은 전임자의 검투소를 승계(라이벌 루두스 존속)
-            _cast.Add(rookie);
+            var rookie = SpawnRookie(old.LudusId);
             string note = aged
                 ? $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔"
                 : $"{old.Name}({old.CW}승 {old.CL}패) 방출 → 신인 {rookie.Name} 데뷔";
@@ -1104,6 +1175,7 @@ public sealed class Game
         bool lostKo = res.Reason == "KO" && res.Winner >= 0 && res.Winner != side;
         bool brutal = lostKo || st.MinHpPct <= 0.15f;                   // 격전 = KO패 또는 빈사
         g.Fatigue = Math.Min(100, g.Fatigue + (5 + (brutal ? 7 : 0)));  // 피로 누적(메타) — 격전일수록 큼
+        if (brutal) g.SeasonBrutals++;                                   // 극적 운명(사망·영구중상) 게이트 누적
 
         // 부상은 '격전에서만' 드물게 발생(부상=중상). 높은 피로도·의무실이 확률 조정.
         if (brutal && g.InjuryMatches == 0)
@@ -1404,7 +1476,7 @@ public sealed class Game
         (int)g.Talent, (int)g.Potential, g.TalentBudget, g.PotentialBudget,
         g.TraitIds, g.IsPlayer, g.Age, g.AgingStartAge, g.TrainingPoints, g.MatchCounter,
         g.CW, g.CL, g.CD, g.CKoW, g.Fame, g.Popularity,
-        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division);
+        g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division, g.SeasonBrutals);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -1419,7 +1491,7 @@ public sealed class Game
             TrainingPoints = r.TrainingPoints, MatchCounter = r.MatchCounter,
             CW = r.CW, CL = r.CL, CD = r.CD, CKoW = r.CKoW, Fame = r.Fame, Popularity = r.Popularity,
             W = r.W, L = r.L, D = r.D, Streak = r.Streak, Fatigue = r.Fatigue, InjuryMatches = r.InjuryMatches,
-            LudusId = r.LudusId, Division = r.Division,
+            LudusId = r.LudusId, Division = r.Division, SeasonBrutals = r.SeasonBrutals,
         };
         g.PendingEmotions.AddRange(r.PendingEmotions);
         return g;
