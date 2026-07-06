@@ -85,6 +85,7 @@ public sealed class MatchSim
             _now = _tick * Dt;
             RecordSnapshots();
             CrowdUpdate();   // 군중게이지 감쇠 + 기세/위축 강도 갱신 (이번 틱 데미지·이속·directive에 반영)
+            for (int i = 0; i < 2; i++) ApplyTacticSwitch(_f[i]);   // 감독 실시간 개입(예약 시각 도달 시 전술 교체)
 
             // 처리 순서 교대(_tick & 1): A/B가 같은 난수열에서 순차로 행동을 뽑는 비대칭을
             // 매 틱 상쇄 → disc 근접 고정 난타에서도 거울전 대칭 보존. (결정론은 _tick 기반이라 유지)
@@ -136,6 +137,7 @@ public sealed class MatchSim
             Index = idx, Def = def, Weapon = weapon,
             Profile = _tacticOverride != null && _tacticOverride.TryGetValue(def.TacticsId, out var tp) ? tp : TacticsTable.Get(def.TacticsId),
             Personality = PersonalityTable.Get(def.PersonalityId),
+            Switches = def.TacticSwitches,   // 감독 실시간 개입(시각 예약) — null이면 기존과 완전 동일
         };
         rt.HpMax = def.Stats.HpMax;
         rt.StaminaMax = CombatMath.StaminaMax(def.Stats, _c);
@@ -1222,6 +1224,20 @@ public sealed class MatchSim
 
     // ───────────────────────── 관중 (문서[10]) ─────────────────────────
     /// <summary>군중게이지 감쇠 + 기세(유리)/위축(불리) 강도 갱신. 매 틱 — 이번 틱 데미지·이속·directive에 반영.</summary>
+    /// <summary>감독 실시간 개입: 예약 시각 도달 시 전술 프로파일 교체 + 지시 재합성. 예약 없으면 완전 무비용.</summary>
+    private void ApplyTacticSwitch(FighterRuntime f)
+    {
+        if (f.Switches == null || f.SwitchIdx >= f.Switches.Length) return;
+        var sw = f.Switches[f.SwitchIdx];
+        if (_now < sw.Time) return;
+        f.SwitchIdx++;
+        var np = Array.Find(TacticsTable.All, t => t.Id == sw.TacticId);
+        if (np == null) return;   // 무효 id 방어
+        f.Profile = np;
+        f.RebuildDirective(_now);
+        Emit(new Decision(_now, f.Index, "TACTIC_" + sw.TacticId.Replace("TAC_", ""), "Strategy", 2.5f));
+    }
+
     private void CrowdUpdate()
     {
         // 감쇠: 0으로 회귀. 양쪽 비교전(소극)이면 ×2 가속(야유로 관중이 식음).

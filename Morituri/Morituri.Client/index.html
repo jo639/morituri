@@ -154,11 +154,19 @@
     <div class="grid" id="rosterGrid"></div>
   </div></div>
 
+  <div class="screen" id="livesc">
+    <div id="watchbar" style="background:#2f2418;border-bottom:2px solid var(--gold)">
+      <span class="card" id="liveCard" style="color:var(--gold);font-weight:800">⚔ LIVE</span>
+      <button id="liveTacBtn" onclick="liveAskTactic()" style="background:var(--gold);color:#231a12;border:none;font-weight:800;padding:5px 14px;border-radius:7px">⏸ 전술 변경 (2회)</button>
+      <button onclick="doSettle()" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button></div>
+    <iframe id="liveF" src="about:blank"></iframe>
+  </div>
+
   <div class="screen" id="watch">
-    <div id="watchbar"><span class="card" id="watchCard">—</span><span class="tag" id="watchTag" hidden>이벤트</span>
-      <button id="skipBtn" hidden onclick="fireResult()">⏭ 결과 보기</button>
+    <div id="watchbar"><span class="card" id="watchCard">지난 경기 다시보기</span><span class="tag" id="watchTag" hidden>이벤트</span>
       <button onclick="go('league')">리그로 →</button></div>
-    <iframe id="watchF" src="about:blank"></iframe>
+    <div class="pad" style="padding:6px 18px"><div id="watchList" style="display:flex;gap:6px;flex-wrap:wrap;max-height:96px;overflow:auto"></div></div>
+    <iframe id="watchF" src="about:blank" style="height:calc(100% - 150px)"></iframe>
   </div>
 
   <div class="screen" id="codex"><div class="pad">
@@ -299,6 +307,7 @@ function go(s){
   if (s==='ludus') renderLudus();
   if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
+  if (s==='watch') renderWatch();
   if (s==='codex') renderCodex();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
@@ -474,21 +483,58 @@ function openTacModal(nm){
 window.pickTac = tc => { $('tacModal').classList.remove('on'); doPlay(tc); };
 $('tacModal').onclick = e => { if(e.target===$('tacModal')) $('tacModal').classList.remove('on'); };
 
+// ── 라이브 경기(전용 화면): 잠정 시뮬 관전 → 전술 개입(2회) → 정산 ──
+let liveActive = false, liveRemaining = 2, livePool = null, liveTac = null;
 async function doPlay(tacticId){
   const nx=$('next'); nx.disabled=true;
   try{
-    const m = await api('/api/next', tacticId?{tacticId}:{});
-    await refresh();
-    pendingSeason = !!m.SeasonCompleted;   // 마지막 경기였으면 결과 확인 후 시즌 요약 연출
-    pendingResult = m;                     // 결과는 관전이 끝난 뒤에 (viewer가 matchEnded 통지)
-    await openWatch(-1);                   // 방금 경기 라이브 관전 (승자 숨김)
+    const r = await api('/api/live', tacticId?{tacticId}:{});
+    if (r.error){ alert(r.error); return; }
+    liveActive = true; liveRemaining = r.remaining ?? 2;
+    livePool = (st.NextMatch&&st.NextMatch.MyPool)||[]; liveTac = tacticId||(st.NextMatch&&st.NextMatch.MyTactic);
+    $('liveCard').textContent = `⚔ LIVE — ${r.a} vs ${r.b}` + (r.kind&&r.kind.startsWith('cup')?' 🏆':'');
+    $('liveTacBtn').disabled = false;
+    $('liveTacBtn').textContent = `⏸ 전술 변경 (${liveRemaining}회)`;
+    $('liveF').src = 'viewer.html?t=' + Date.now();
+    go('livesc');
   } finally { nx.disabled=false; }
 }
+window.liveAskTactic = ()=>{
+  if (!liveActive || liveRemaining<=0) return;
+  $('liveF').contentWindow.postMessage({cmd:'pauseGetTime'}, '*');   // viewer가 liveTime으로 응답
+};
+let liveT = 0;
+function liveTacModal(tm){
+  liveT = tm;
+  $('tmTitle').textContent = `⏸ ${tm.toFixed(1)}s — 전술 변경 (남은 ${liveRemaining}회)`;
+  $('tmVersus').innerHTML = ''; $('tmOdds').innerHTML = '<div class="note">지금 이 순간부터 새 전술로 싸운다 — 이후의 운명이 갈린다.</div>';
+  $('tmOpts').innerHTML = livePool.map(tc=>
+    `<button class="tacbtn" onclick="liveSwitch('${tc}')"><b>${t(tc)}</b>${tc===liveTac?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('')
+    + `<button class="tacbtn" style="opacity:.7;text-align:center" onclick="$('tacModal').classList.remove('on')">그대로 간다</button>`;
+  $('tacModal').classList.add('on');
+}
+window.liveSwitch = async (tc)=>{
+  $('tacModal').classList.remove('on');
+  const r = await api('/api/liveswitch',{time:liveT, tacticId:tc});
+  if (r.error){ alert(r.error); return; }
+  liveRemaining = r.remaining; liveTac = tc;
+  $('liveTacBtn').textContent = `⏸ 전술 변경 (${liveRemaining}회)`;
+  $('liveTacBtn').disabled = liveRemaining<=0;
+  $('liveF').src = `viewer.html?seek=${liveT.toFixed(2)}&t=${Date.now()}`;   // 그 시점부터 새 운명 재생
+};
+window.doSettle = async ()=>{
+  if (!liveActive) { go('league'); return; }
+  liveActive = false;
+  const m = await api('/api/settle', {});
+  if (m.error){ alert(m.error); go('league'); return; }
+  await refresh();
+  pendingSeason = !!m.SeasonCompleted;
+  showResult(m);
+};
 let pendingResult = null;
 function fireResult(){
   if (!pendingResult) return;
   const m = pendingResult; pendingResult = null;
-  $('skipBtn').hidden = true;
   showResult(m);
 }
 
@@ -560,15 +606,23 @@ async function openWatch(idx){
   if (r.error) return;
   $('watchCard').textContent = `R${r.round} · ${r.a} vs ${r.b}`;
   $('watchTag').hidden = !r.isEvent;
-  $('skipBtn').hidden = !pendingResult;   // 내 경기 관전 중에만 "결과 보기" 스킵 제공
   $('watchF').src = 'viewer.html?t='+Date.now();
   go('watch');
 }
-// viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 재생 완료=결과창
+// 관전탭 = 지난 경기 아카이브 (라이브는 전용 화면)
+function renderWatch(){
+  if (!st) return;
+  const ml = (st.Season.MatchLog||[]);
+  $('watchList').innerHTML = [...ml].reverse().map(m=>
+    `<button class="chip" style="cursor:pointer;${m.IsPlayerMatch?'border:1px solid var(--gold);color:var(--gold);':''}" onclick="openWatch(${m.Idx})">${m.IsEvent?'🎪':'R'+m.Round} ${m.A} vs ${m.B} · ${m.Winner}</button>`).join('')
+    || '<span class="note">아직 치른 경기가 없다.</span>';
+}
+// viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 라이브 재생 완료=정산→결과창
 window.addEventListener('message', e=>{
   if (!e.data) return;
   if (typeof e.data.watchIdx === 'number') openWatch(e.data.watchIdx);
-  if (e.data.matchEnded) fireResult();    // 관전이 끝났다 — 이제 결과 화면
+  if (typeof e.data.liveTime === 'number') liveTacModal(e.data.liveTime);   // 라이브 일시정지 응답
+  if (e.data.matchEnded && liveActive) doSettle();   // 라이브 관전 종료 → 정산 → 결과
 });
 // 리그 진입 시 자동 진행 안내
 const _go = go;

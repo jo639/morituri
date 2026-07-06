@@ -40,6 +40,9 @@ internal static class Program
             "/api/mastery" when method == "POST" => game.MasteryJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "track")),
             "/api/retire" when method == "POST" => game.RetireJson(StrOf(body ?? "", "id")),
             "/api/perk" when method == "POST" => game.PerkJson(StrOf(body ?? "", "id")),
+            "/api/live" when method == "POST" => game.LiveBeginJson(StrOf(body ?? "", "tacticId") is { Length: > 0 } lt ? lt : null),
+            "/api/liveswitch" when method == "POST" => game.LiveSwitchJson(FloatOf(body ?? "", "time"), StrOf(body ?? "", "tacticId")),
+            "/api/settle" when method == "POST" => game.LiveSettleJson(),
             "/api/build" when method == "POST" => game.BuildJson(StrOf(body ?? "", "facility")),
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
@@ -59,6 +62,11 @@ internal static class Program
         {
             try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetInt32(); }
             catch { return -1; }
+        }
+        static float FloatOf(string body, string key)
+        {
+            try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetSingle(); }
+            catch { return 0f; }
         }
         static string StrOf(string body, string key)
         {

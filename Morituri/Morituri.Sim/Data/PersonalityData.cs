@@ -266,12 +266,16 @@ public static class PersonalityTable
 
 // ───────────────────────── T07_FighterTemplates ─────────────────────────
 
+/// <summary>경기 중 전술 전환 지점(감독 실시간 개입) — Time 도달 시 TacticId로 교체.</summary>
+public sealed record TacticSwitch(float Time, string TacticId);
+
 /// <summary>테스트용 선수 정의 (스탯 + 무기 + 전술 + 성격 조합).</summary>
 public sealed record FighterDef(string Name, FighterStats Stats, string WeaponId, string TacticsId, string PersonalityId,
     string[]? TraitIds = null,    // T09 특성 (문서[7]§6) — 생성 시 TraitGen.Roll로 부여, 미지정 시 없음
     string[]? EmotionIds = null,  // T10 감정 (일시적 심리 상태) — 경기 전 주입(EmotionGen.FromResult 산물), 미지정 시 중립
     RelationType? RelationToOpp = null,  // T11 관계 — 상대를 향한 관계(1v1이라 단일). RelationLedger 누적 산물, 미지정 시 없음
-    float RelationIntensity = 1f)        // 관계 강도 0~1 (보통 |affinity|/100). 인매치 효과 배율
+    float RelationIntensity = 1f,        // 관계 강도 0~1 (보통 |affinity|/100). 인매치 효과 배율
+    TacticSwitch[]? TacticSwitches = null)  // 경기 중 전술 전환(감독 실시간 개입) — 시각 도달 시 Profile 교체. 입력의 일부 = 결정론 재생 보존
 {
     /// <summary>문서[4] 11장 검증 케이스: 버서커 (난전형 + 충동적 + 도끼)</summary>
     public static readonly FighterDef Berserker =

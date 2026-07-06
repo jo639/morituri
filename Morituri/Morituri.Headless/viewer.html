@@ -137,6 +137,13 @@ function postMatchEnded(){
   if (matchEndPosted) return; matchEndPosted = true;
   if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
 }
+// 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (감독의 "멈춰!")
+window.addEventListener('message', e=>{
+  if (e.data && e.data.cmd === 'pauseGetTime'){
+    setPlaying(false);
+    if (window.parent !== window) window.parent.postMessage({liveTime: t}, '*');
+  }
+});
 
 // ── 합성 효과음 (에셋 없음 — WebAudio 신시사이즈. 설정 mor_settings.sound=false로 끔) ──
 let AC = null, lastSfxT = 0, koSlowT = -1;
@@ -232,6 +239,9 @@ function load(json){
   document.getElementById('drop').classList.add('hidden');
   t = 0; postGame = false; postGameElapsed = 0; vScrA = null; vScrB = null; hitstopUntil = 0; setPlaying(true);
   lastSfxT = 0;
+  // 라이브 전술 개입: 재시뮬 후 ?seek= 시각부터 이어서 재생 (감독이 바꾼 그 순간부터 새 운명)
+  const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
+  if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; }
   // KO 슬로모션: 결정타(마지막 유효타) 주변에서 시간이 느려진다
   koSlowT = -1;
   if (r.Reason === 'KO'){
@@ -835,7 +845,8 @@ function render(){
     ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
-    const txt=TAGKR[d.tag]||('🧠 '+d.tag); ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
+    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '📣 감독 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
+      : (TAGKR[d.tag]||('🧠 '+d.tag)); ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 

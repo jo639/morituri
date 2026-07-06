@@ -31,7 +31,7 @@ public sealed class FighterRuntime
 {
     public required int Index { get; init; }
     public required FighterDef Def { get; init; }
-    public required TacticsProfile Profile { get; init; }
+    public required TacticsProfile Profile { get; set; }   // set: 경기 중 전술 전환(감독 개입) 허용
     public required PersonalityDef Personality { get; init; }
     public required WeaponDef Weapon { get; init; }
 
@@ -103,6 +103,8 @@ public sealed class FighterRuntime
 
     // --- 전략층 상태 ---
     public Directive Dir;                                  // 합성된 유효 지시
+    public TacticSwitch[]? Switches;                       // 경기 중 전술 전환 예약(감독 개입) — 입력의 일부(결정론)
+    public int SwitchIdx;                                  // 다음 적용할 전환 인덱스
     public readonly List<ActiveOverride> Overrides = new();
     public readonly Dictionary<string, float> CooldownUntil = new();
     public ActionRequest PendingForced = ActionRequest.None; // ForcedHeavy 인터럽트

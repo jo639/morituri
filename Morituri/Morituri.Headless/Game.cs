@@ -1039,6 +1039,81 @@ public sealed class Game
         return JsonSerializer.Serialize(new { played, seasonDone }, JsonOpts);
     }
 
+    // ── 라이브 매치(감독 실시간 개입) — 관전 먼저, 정산은 나중. 커서는 정산 시에만 전진(앱 종료 = 미개시로 복원, 세이브 안전) ──
+    private sealed class LiveMatch
+    {
+        public required string MyId; public required string[] MyPool;
+        public required List<TacticSwitch> Switches;
+    }
+    private LiveMatch? _live;                                       // 진행 중 라이브 매치(메모리 전용 — 영속 안 함)
+    private (string FighterId, TacticSwitch[] Switches)? _liveSwitches;   // 정산 시 Play가 def에 주입
+
+    /// <summary>내 경기 라이브 시작: 커서 전진 없이 잠정 시뮬 → viewer.json. 정산(/api/settle) 전까지 세계 무변이.</summary>
+    public string LiveBeginJson(string? tacticId)
+    {
+        if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
+        var s = _schedule[_cursor];
+        var A = ById(s.A); var B = ById(s.B);
+        var mine = A.IsPlayer ? A : B.IsPlayer ? B : null;
+        if (mine == null) return Err("내 경기가 아니다");
+
+        // PlayNext와 동일한 전술 결정(같은 rng 시드 → 정산 때 재현됨)
+        var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);
+        if (A.IsPlayer) { if (tacticId != null && A.TacticPool.Contains(tacticId)) A.TacticId = tacticId; }
+        else A.TacticId = SelectTacticAi(A, B, tacRng);
+        if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
+        else B.TacticId = SelectTacticAi(B, A, tacRng);
+
+        _live = new LiveMatch { MyId = mine.Id, MyPool = mine.TacticPool, Switches = new() };
+        LiveResim();
+        return JsonSerializer.Serialize(new { ok = true, a = A.Name, b = B.Name, round = s.Round,
+            kind = s.Kind, remaining = 2 }, JsonOpts);
+    }
+
+    /// <summary>라이브 재시뮬(같은 시드 + 현재 전환 예약) → viewer.json 재작성. Play와 동일한 def 조립 = 정산과 일치.</summary>
+    private void LiveResim()
+    {
+        var s = _schedule[_cursor];
+        var A = ById(s.A); var B = ById(s.B);
+        var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
+        var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
+        var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
+        var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
+        if (_live!.Switches.Count > 0)
+        {
+            var sw = _live.Switches.OrderBy(x => x.Time).ToArray();
+            if (A.Id == _live.MyId) defA = defA with { TacticSwitches = sw };
+            else defB = defB with { TacticSwitches = sw };
+        }
+        ulong seed = SeasonSeed + (ulong)(_matchIdx + 1);   // Play의 ++_matchIdx와 동일
+        var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
+        var res = new MatchSim().Run(defA, defB, seed, events, frames);
+        ViewerExport.WriteDoc(defA, defB, seed, res, frames, events, "viewer.json",
+            EndowOf(A.Id, defA), EndowOf(B.Id, defB));
+    }
+
+    /// <summary>관전 중 전술 변경(2회 한정): 그 시각부터 새 전술로 재시뮬 — 이후의 운명이 갈린다.</summary>
+    public string LiveSwitchJson(float time, string tacticId)
+    {
+        if (_live == null) return Err("라이브 경기가 없다");
+        if (_live.Switches.Count >= 2) return Err("전술 변경은 경기당 2회");
+        string full = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
+        if (!_live.MyPool.Contains(full)) return Err("전술풀에 없는 전술");
+        _live.Switches.Add(new TacticSwitch(MathF.Max(0.1f, time), full));
+        LiveResim();
+        return JsonSerializer.Serialize(new { ok = true, remaining = 2 - _live.Switches.Count }, JsonOpts);
+    }
+
+    /// <summary>라이브 정산: 예약된 전환을 주입해 정식 경기 처리(수입·명성·관계·운명·저장). 관전한 것과 같은 시드 = 같은 결과.</summary>
+    public string LiveSettleJson()
+    {
+        if (_live == null) return Err("정산할 라이브 경기가 없다");
+        if (_live.Switches.Count > 0)
+            _liveSwitches = (_live.MyId, _live.Switches.OrderBy(x => x.Time).ToArray());
+        _live = null;
+        return JsonSerializer.Serialize(PlayNext(null), JsonOpts);
+    }
+
     /// <summary>시즌 자동완주(편의): 내 경기 포함 남은 전 경기를 현재 전술로 진행. 이벤트 발생 시 멈춰서 감독에게 결정 위임.</summary>
     public string AutoFinishJson()
     {
@@ -1116,6 +1191,12 @@ public sealed class Game
         var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
         var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
         var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
+        if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
+        {
+            if (A.Id == li.FighterId) defA = defA with { TacticSwitches = li.Switches };
+            else if (B.Id == li.FighterId) defB = defB with { TacticSwitches = li.Switches };
+            _liveSwitches = null;
+        }
         A.PendingEmotions.Clear(); B.PendingEmotions.Clear();   // 감정 소비 → 소멸 ([2]§6-1)
         float fameA0 = A.Fame, popA0 = A.Popularity, fameB0 = B.Fame, popB0 = B.Popularity;
 

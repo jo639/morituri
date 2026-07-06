@@ -231,6 +231,41 @@ public class GameTests
     }
 
     [Test]
+    public void Game_LiveMatch_SwitchTactic_SettleMatchesWatched()
+    {
+        TempDir("live");
+        var g = new Game(1, 51, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        // 내 경기까지 전진
+        JsonElement nm = default; int guard = 0;
+        while (guard++ < 60)
+        {
+            nm = Parse(g.StateJson()).GetProperty("NextMatch");
+            if (nm.ValueKind != JsonValueKind.Null && nm.GetProperty("IsPlayerMatch").GetBoolean()) break;
+            g.PlayNext();
+        }
+        int before = Parse(g.StateJson()).GetProperty("Season").GetProperty("Matches").GetInt32();
+
+        var live = Parse(g.LiveBeginJson(null));
+        Assert.That(live.GetProperty("ok").GetBoolean(), Is.True, "라이브 시작(잠정 시뮬)");
+        Assert.That(Parse(g.StateJson()).GetProperty("Season").GetProperty("Matches").GetInt32(),
+            Is.EqualTo(before), "라이브 중 커서 무전진(세이브 안전)");
+
+        string alt = nm.GetProperty("MyPool").EnumerateArray().Select(x => x.GetString()!)
+            .First(t => t != nm.GetProperty("MyTactic").GetString());
+        Assert.That(Parse(g.LiveSwitchJson(10f, alt)).GetProperty("remaining").GetInt32(), Is.EqualTo(1), "전환 1회 소모");
+        Assert.That(Parse(g.LiveSwitchJson(30f, alt)).GetProperty("remaining").GetInt32(), Is.EqualTo(0), "전환 2회 소모");
+        Assert.That(Parse(g.LiveSwitchJson(50f, alt)).TryGetProperty("error", out _), Is.True, "3회째 거부");
+
+        var settle = Parse(g.LiveSettleJson());
+        Assert.That(settle.GetProperty("Winner").GetString()!.Length, Is.GreaterThan(0), "정산 완료");
+        Assert.That(Parse(g.StateJson()).GetProperty("Season").GetProperty("Matches").GetInt32(),
+            Is.EqualTo(before + 1), "정산 시 커서 전진");
+        Assert.That(Parse(g.LiveSettleJson()).TryGetProperty("error", out _), Is.True, "중복 정산 거부");
+    }
+
+    [Test]
     public void Game_MidseasonRecruit_JoinsRemainingRounds()
     {
         TempDir("midjoin");
