@@ -188,6 +188,33 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Mastery_SpendsTrainingPoints_AndPersists()
+    {
+        TempDir("mastery");
+        var g = new Game(1, 41, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        // 훈련 포인트가 쌓일 때까지 진행(3경기 주기)
+        string id = ""; int pts = 0, guard = 0;
+        while (guard++ < 200 && pts < 1)
+        {
+            g.PlayNext();
+            var f = Parse(g.StateJson()).GetProperty("MyFighters")[0];
+            id = f.GetProperty("Id").GetString()!; pts = f.GetProperty("TrainingPoints").GetInt32();
+        }
+        Assert.That(pts, Is.GreaterThan(0), "훈련 포인트 획득");
+
+        var after = Parse(g.MasteryJson(id, "grit"));
+        var f2 = after.GetProperty("MyFighters")[0];
+        Assert.That(f2.GetProperty("MGrit").GetInt32(), Is.EqualTo(1), "투혼 Lv1");
+        Assert.That(f2.GetProperty("TrainingPoints").GetInt32(), Is.EqualTo(pts - 1), "포인트 1 소모(Lv0→1)");
+        Assert.That(Parse(g.MasteryJson(id, "nope")).TryGetProperty("error", out _), Is.True);
+
+        var g2 = new Game(1, 41, fresh: false, interactive: false, playerless: false);   // 재시작
+        Assert.That(Parse(g2.StateJson()).GetProperty("MyFighters")[0].GetProperty("MGrit").GetInt32(), Is.EqualTo(1), "마스터리 영속");
+    }
+
+    [Test]
     public void Game_DramaticFates_OccurRarely_LeagueSurvives()
     {
         TempDir("fates");

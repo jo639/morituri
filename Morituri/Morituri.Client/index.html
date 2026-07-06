@@ -602,6 +602,7 @@ function renderLudus(){
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
       ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px;background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>💥 잠재력 돌파 (✨${f.BreakthroughCost})</button>`:''}
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
+      ${masteryRow(f)}
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
@@ -636,6 +637,24 @@ function renderLudus(){
 }
 window.train = async (id,axis)=>{
   const r = await api('/api/train',{id,axis});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+// ── 마스터리 (비스탯 성장 — 상한 후에도 훈련 포인트 사용처) ──
+const MASTERY=[['grit','🔥 투혼','피로 누적 −8%/Lv','MGrit'],['recover','🩹 회복력','부상률 −10%/Lv · Lv3+ 회복 1경기','MRecover'],
+               ['show','🎭 흥행','경기 인기 획득 +8%/Lv','MShow'],['pay','💰 협상','출전료 +8%/Lv','MPay']];
+function masteryRow(f){
+  const any = MASTERY.some(([,,,k])=>f[k]>0);
+  if (!any && f.TrainingPoints<=0) return '';
+  return `<div class="chips" style="margin-top:4px" title="마스터리 — 훈련 포인트로 수련하는 비스탯 성장">${
+    MASTERY.map(([tr,nm,desc,k])=>{
+      const lv=f[k]||0, cost=lv+1, can=f.TrainingPoints>=cost && lv<5;
+      return `<span class="chip" title="${desc} · 수련 비용 ${cost}pt" style="${lv>0?'color:var(--gold);border:1px solid rgba(201,168,76,.4);':''}">${nm} ${lv}${
+        can?`<button onclick="mastery('${f.Id}','${tr}')" style="background:#4a3a26;border:none;color:var(--gold);border-radius:4px;margin-left:3px;padding:0 5px;cursor:pointer">+</button>`:''}</span>`;
+    }).join('')}</div>`;
+}
+window.mastery = async (id,track)=>{
+  const r = await api('/api/mastery',{id,track});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
