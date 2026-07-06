@@ -560,6 +560,38 @@ public sealed class Game
         }
     }
 
+    /// <summary>파이트 카드 매치메이커 — 부 내에서 매 라운드 라이벌·랭킹근접·흥행 가중으로 대진 편성.
+    /// 전원 라운드로빈 대신 큐레이션된 소수 카드(라이벌은 자주, 지루한 매치업은 덜). 결정론(시즌시드 파생).</summary>
+    private void BuildDivisionCards(int div)
+    {
+        var pool = _cast.Where(g => g.Division == div).ToList();
+        if (pool.Count < 2) return;
+        int rounds = Math.Clamp(pool.Count, 3, 6);
+        var rankOf = pool.OrderByDescending(g => g.Fame).ThenBy(g => g.Id)
+                         .Select((g, i) => (g.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        for (int r = 1; r <= rounds; r++)
+        {
+            var rng = new SimRandom(SeasonSeed ^ (0xCA5D_0000UL + (ulong)(div * 100 + r)));
+            var avail = pool.OrderBy(_ => rng.NextUInt64()).ToList();   // 라운드별 결정론 셔플
+            while (avail.Count >= 2)
+            {
+                var a = avail[0]; avail.RemoveAt(0);
+                Gladiator best = avail[0]; float bestScore = float.MinValue;
+                foreach (var b in avail)
+                {
+                    float sc = 1f
+                        + _ledger.RivalryWeight(a.Id, b.Id, PersOf) * 2f          // 라이벌 우선
+                        + (a.Popularity + b.Popularity) / 40f                     // 흥행
+                        - MathF.Abs(rankOf[a.Id] - rankOf[b.Id]) * 0.3f           // 랭킹 근접
+                        + (rng.NextUInt64() % 100) / 200f;                        // 노이즈
+                    if (sc > bestScore) { bestScore = sc; best = b; }
+                }
+                avail.Remove(best);
+                _schedule.Add(new SchedRec(r, a.Id, best.Id, false, 0f));
+            }
+        }
+    }
+
     private void StartSeason()
     {
         _seasonNo = _seasonsPlayed + 1;
@@ -570,12 +602,9 @@ public sealed class Game
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; }   // 시즌 사이 휴식 = 완전 회복
         AssignDivisions();
 
-        // 파이트 카드: 같은 부 안에서만 대진(라운드로빈 ×_rounds). 부가 나뉘어 대진이 압축·집중된다.
-        for (int r = 1; r <= _rounds; r++)
-            for (int i = 0; i < _cast.Count; i++)
-                for (int j = i + 1; j < _cast.Count; j++)
-                    if (_cast[i].Division == _cast[j].Division)
-                        _schedule.Add(new SchedRec(r, _cast[i].Id, _cast[j].Id, false, 0f));
+        // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
+        BuildDivisionCards(1);
+        BuildDivisionCards(2);
         int d1 = _cast.Count(g => g.Division == 1);
         _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {DivName(1)} {d1}인 · {DivName(2)} {_cast.Count - d1}인"));
     }
