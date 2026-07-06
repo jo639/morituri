@@ -65,6 +65,7 @@
     <span class="sub" id="sub">season.json 로딩…</span>
   </header>
   <div id="content" hidden>
+    <div id="divTabs" style="display:flex;gap:8px;margin:4px 0 10px"></div>
     <div id="champ"></div>
 
     <h2>순위 (정규 시즌)</h2>
@@ -109,20 +110,33 @@
 const RELCOLOR = {'원수':'--nem','공포':'--fear','라이벌':'--rival','질투':'--envy','집착':'--obs','존경':'--resp','친구':'--friend'};
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 
-function load(d){
-  document.getElementById('drop').hidden = true;
-  document.getElementById('content').hidden = false;
-  const inProgress = d.Completed === false;   // 구 파일(필드 없음)은 완료 취급
-  const prog = inProgress && d.TotalMatches ? `${d.Matches}/${d.TotalMatches}경기 진행중` : `${d.Matches}경기`;
-  document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${prog} (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
+// ── 디비전 페이지 전환 (1부 콜로세움 / 2부 투기장) — 순위·리더보드·경기결과를 부별로 ──
+let curDiv = 1, curDoc = null;
+const DIVN = {1:'🏛 1부 콜로세움', 2:'⚔ 2부 투기장'};
+function setDiv(d){ curDiv = d; renderDivision(); }
+function renderDivision(){
+  const d = curDoc; if (!d) return;
+  const all = d.Fighters, divOf = {};
+  all.forEach(f=> divOf[f.Name] = f.Division||1);
+  const divs = [...new Set(all.map(f=>f.Division||1))].sort();
+  if (!divs.includes(curDiv)) curDiv = divs[0];
 
-  const champ = d.Fighters.find(f=>f.Name===d.Champion) || d.Fighters[0];
-  document.getElementById('champ').innerHTML =
-    `<div class="crown">${inProgress?'🏛':'👑'}</div><div><div class="who">${d.Champion}</div>`+
-    `<div class="meta">시즌 ${d.SeasonNo} ${inProgress?'현재 선두':'챔피언'} · ${champ.W}승 ${champ.L}패 · 승점 ${champ.Points} · 명성 ${champ.Fame}</div></div>`;
+  document.getElementById('divTabs').innerHTML = divs.length>1 ? divs.map(v=>
+    `<button onclick="setDiv(${v})" style="flex:1;padding:8px;border-radius:8px;font-weight:700;cursor:pointer;`+
+    `background:${v===curDiv?'var(--gold)':'#2f2418'};color:${v===curDiv?'#231a12':'var(--dim)'};border:1px solid #4a3a26">`+
+    `${DIVN[v]||v+'부'} <span style="font-weight:400">${all.filter(f=>(f.Division||1)===v).length}인</span></button>`).join('') : '';
 
-  // 순위
-  const st = [...d.Fighters].sort((a,b)=> b.Points-a.Points || b.W-a.W);
+  const fs = all.filter(f=>(f.Division||1)===curDiv);
+  const inProgress = d.Completed === false;
+
+  // 부 선두/챔피언 배너
+  const st = [...fs].sort((a,b)=> b.Points-a.Points || b.W-a.W);
+  const lead = st[0];
+  if (lead) document.getElementById('champ').innerHTML =
+    `<div class="crown">${inProgress?'🏛':'👑'}</div><div><div class="who">${lead.Name}</div>`+
+    `<div class="meta">${DIVN[curDiv]} · 시즌 ${d.SeasonNo} ${inProgress?'현재 선두':'챔피언'} · ${lead.W}승 ${lead.L}패 · 승점 ${lead.Points} · 명성 ${lead.Fame}</div></div>`;
+
+  // 순위 (부 내)
   document.querySelector('#standings tbody').innerHTML = st.map((f,i)=>{
     const stk = f.Streak>0?`<span class="streakUp">${f.Streak}연승</span>`: f.Streak<0?`<span class="streakDn">${-f.Streak}연패</span>`:'-';
     return `<tr><td class="rank">${i+1}</td><td class="nm">${f.Name}${i===0?' 👑':''}</td>`+
@@ -130,13 +144,34 @@ function load(d){
       `<td><span class="win">${f.W}</span>-<span class="los">${f.L}</span>-${f.D}</td><td>${f.Points}</td><td>${stk}</td></tr>`;
   }).join('');
 
-  // 명성
-  const fm = [...d.Fighters].sort((a,b)=>b.Fame-a.Fame);
+  // 명성 (부 내)
+  const fm = [...fs].sort((a,b)=>b.Fame-a.Fame);
   const maxF = Math.max(1,...fm.map(f=>f.Fame));
   document.querySelector('#fame tbody').innerHTML = fm.map(f=>
     `<tr><td class="nm">${f.Name}</td>`+
     `<td><div class="famebar"><i style="width:${100*f.Fame/maxF}%"></i></div><span class="bd">${f.Fame}</span></td>`+
     `<td class="bd">${f.Popularity}</td><td class="bd">${f.CW}-${f.CL}-${f.CD}</td></tr>`).join('');
+
+  // 경기 결과 (부 내 — 출전자 소속으로 필터, 컵·전시 등 교차 카드는 항상 표시)
+  const ml = (d.MatchLog||[]).filter(m=> (divOf[m.A]||1)===curDiv || (divOf[m.B]||1)===curDiv);
+  const inShell = window.parent !== window;
+  document.getElementById('mlHint').textContent = ml.length ? (inShell ? '(클릭 = 관전)' : `(${ml.length}경기)`) : '';
+  document.getElementById('matchlog').innerHTML = [...ml].reverse().map(m=>
+    `<div class="ml${m.IsPlayerMatch?' mine':''}" onclick="watchIt(${m.Idx})">`+
+    `<span class="rd">${m.IsEvent?'🎪':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
+    `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
+    || '<div class="empty">아직 경기 없음</div>';
+}
+
+function load(d){
+  document.getElementById('drop').hidden = true;
+  document.getElementById('content').hidden = false;
+  const inProgress = d.Completed === false;   // 구 파일(필드 없음)은 완료 취급
+  const prog = inProgress && d.TotalMatches ? `${d.Matches}/${d.TotalMatches}경기 진행중` : `${d.Matches}경기`;
+  document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${prog} (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
+
+  curDoc = d;
+  renderDivision();
 
   // 이벤트 매치
   const ev = document.getElementById('events');
@@ -153,16 +188,6 @@ function load(d){
   document.querySelector('#hall tbody').innerHTML = hall.map(h=>
     `<tr><td class="nm">${h.Name}</td><td>${h.Fame}</td><td class="bd">${h.Career}</td><td class="bd">S${h.RetiredSeason}·${h.Age}세</td></tr>`).join('')
     || '<tr><td colspan="4" class="empty">아직 없음</td></tr>';
-
-  // 경기 결과 목록 (최근 위) — 클릭 시 부모(게임 셸)에 관전 요청. 단독 열람(CLI serve)에선 클릭 무동작.
-  const ml = d.MatchLog || [];
-  const inShell = window.parent !== window;
-  document.getElementById('mlHint').textContent = ml.length ? (inShell ? '(클릭 = 관전)' : `(${ml.length}경기)`) : '';
-  document.getElementById('matchlog').innerHTML = [...ml].reverse().map(m=>
-    `<div class="ml${m.IsPlayerMatch?' mine':''}" onclick="watchIt(${m.Idx})">`+
-    `<span class="rd">${m.IsEvent?'🎪':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
-    `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
-    || '<div class="empty">아직 경기 없음</div>';
 
   drawGraph(d);
 
