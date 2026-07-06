@@ -256,7 +256,7 @@ public sealed class Game
                 m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer));
         }
         if (!_playerless) Add(PlayerLudusId, _ludusRep, true);
-        foreach (var r in RivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
+        foreach (var r in ActiveRivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
         return list.OrderByDescending(x => x.Rep).ThenByDescending(x => x.IsPlayer).ToList();
     }
     private void Unlock(string id)
@@ -479,6 +479,7 @@ public sealed class Game
 
     // ── 캐스트/후보 생성 ──
 
+    // 12인 풀 — worldSeed가 6인을 선발(커리어마다 다른 캐스트 = 변칙성)
     private static readonly (string Id, string Name, string Wpn, string Per, string Sig)[] AiCastDef =
     {
         ("GLA_MAXIMUS", "막시무스",   "WPN_SWORD",      "PER_BOLD",        "TAC_PRESSURE"),
@@ -487,6 +488,12 @@ public sealed class Game
         ("GLA_GANNICUS","가니쿠스",   "WPN_SPEAR",      "PER_CALM",        "TAC_COUNTER"),
         ("GLA_BARCA",   "바르카",     "WPN_WHIP",       "PER_OPPORTUNIST", "TAC_ZONER"),
         ("GLA_NAEVIA",  "나이비아",   "WPN_SHIELD",     "PER_HONORABLE",   "TAC_DEFENDER"),
+        ("GLA_OENO",    "오이노마우스", "WPN_HAMMER",     "PER_CALM",        "TAC_DEFENDER"),
+        ("GLA_AGRON",   "아그론",     "WPN_GREATSWORD", "PER_BOLD",        "TAC_PRESSURE"),
+        ("GLA_DURO",    "두로",       "WPN_DUALBLADES", "PER_RECKLESS",    "TAC_GAMBLER"),
+        ("GLA_CASTUS",  "카스투스",   "WPN_SWORD",      "PER_OPPORTUNIST", "TAC_HUNTER"),
+        ("GLA_NEMETES", "네메테스",   "WPN_WHIP",       "PER_CRUEL",       "TAC_EVADER"),
+        ("GLA_SALVIUS", "살비우스",   "WPN_SPEAR",      "PER_WARY",        "TAC_DECISION"),
     };
 
     private static readonly string[] RecruitNames =
@@ -499,28 +506,37 @@ public sealed class Game
     // 라이벌 루두스 — AI 검투사가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
     private const string PlayerLudusId = "PLAYER";
     private string PlayerLudusName => "★ " + _ludusName;   // 라니스타 명명 반영
-    private static readonly (string Id, string Name)[] RivalLudi =
+    // 6종 풀 — worldSeed가 3곳을 선발(커리어마다 다른 경쟁 구도)
+    private static readonly (string Id, string Name)[] RivalLudiPool =
     {
         ("LUD_BATIATUS", "바티아투스 검투소"),
         ("LUD_SOLONIUS", "솔로니우스 양성소"),
         ("LUD_CRASSUS",  "크라수스 투기장"),
+        ("LUD_GLABER",   "글라베르 원형경기장"),
+        ("LUD_COSSUTIUS","코수티우스 검투단"),
+        ("LUD_OVIDIUS",  "오비디우스 양성소"),
     };
     private string LudusNameOf(string id) => id == PlayerLudusId ? PlayerLudusName
-        : RivalLudi.FirstOrDefault(r => r.Id == id).Name ?? id;
+        : RivalLudiPool.FirstOrDefault(r => r.Id == id).Name ?? id;
+    /// <summary>이 세계에 실존하는 라이벌 루두스(캐스트 소속 + 명성 기록 보유) — 풀 순서 유지.</summary>
+    private IEnumerable<(string Id, string Name)> ActiveRivalLudi =>
+        RivalLudiPool.Where(r => _rivalRep.ContainsKey(r.Id) || _cast.Any(g => g.LudusId == r.Id));
 
     private void CreateAiCast()
     {
         var rng = new SimRandom(_worldSeed ^ 0xCA57_CA57UL);
+        var picks = AiCastDef.OrderBy(_ => rng.NextUInt64()).Take(6).ToList();          // 12인 풀 → 6인
+        var ludi = RivalLudiPool.OrderBy(_ => rng.NextUInt64()).Take(3).ToList();       // 6종 풀 → 3곳
         int i = 0;
-        foreach (var (id, name, wpn, per, sig) in AiCastDef)
+        foreach (var (id, name, wpn, per, sig) in picks)
         {
             var g = RollGladiator(rng, id, name, wpn, per, sigTactic: sig, isPlayer: false,
                                   ageMin: 20, ageMax: 28);
-            g.LudusId = RivalLudi[i / 2 % RivalLudi.Length].Id;   // 2명씩 3개 라이벌 루두스로 편성
+            g.LudusId = ludi[i / 2 % ludi.Count].Id;   // 2명씩 3개 라이벌 루두스로 편성
             _cast.Add(g);
             i++;
         }
-        foreach (var r in RivalLudi) _rivalRep.TryAdd(r.Id, 0f);
+        foreach (var r in ludi) _rivalRep.TryAdd(r.Id, 0f);
     }
 
     /// <summary>선수 1명 롤: 천부/잠재력(StatGen) + 특성(TraitGen) + 전술풀 3종 + 나이/노화 시작 나이.
@@ -714,24 +730,35 @@ public sealed class Game
         // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
         var retirements = new List<string>();
         var rookieRng = new SimRandom(_worldSeed ^ 0xA1A1_A1A1UL + (ulong)_seasonNo * 97UL);
-        foreach (var old in _cast.Where(g => !g.IsPlayer &&
-                     (g.Age >= g.AgingStartAge + 6 || g.PotentialBudget <= MinPotentialBudget + 0.5f)).ToList())
+        // 신인 파동(변칙성): 시즌마다 원석 품질이 출렁인다 — 풍년(20%)=천부 2롤, 평년=1롤
+        bool rookieBoom = rookieRng.Roll(0.20f);
+        if (rookieBoom) _story.Add((_rounds + 1, "season", "🌾 신인 풍년 — 이번 세대엔 유망한 원석이 많다"));
+        foreach (var old in _cast.Where(g => !g.IsPlayer).ToList())
         {
+            bool aged = old.Age >= old.AgingStartAge + 6 || old.PotentialBudget <= MinPotentialBudget + 0.5f;
+            // 부진 방출(변칙성): 충분히 뛰고도 승률이 처참한 AI는 검투소가 조기 정리 → 리그 물갈이
+            int games = old.CW + old.CL + old.CD;
+            bool washed = !aged && games >= 12 && old.CW < games * 0.2f;
+            if (!aged && !washed) continue;
+
             _cast.Remove(old);
             _ledger.RemoveFighter(old.Id);
-            _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
-                $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
+            if (aged)   // 명예의 전당은 은퇴자만 — 방출자는 조용히 사라진다
+                _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
+                    $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
             var usedNames = _cast.Select(g => g.Name).ToHashSet();
             var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
             var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
-            var rookie = RollGladiator(rookieRng, $"GLA_N{_seasonNo}_{_cast.Count}", PickName(rookieRng, usedNames),
+            var rookie = RollGladiator(rookieRng, $"GLA_N{_seasonNo}R{retirements.Count}", PickName(rookieRng, usedNames),
                 wpns[(int)(rookieRng.NextFloat01() * wpns.Length)], pers[(int)(rookieRng.NextFloat01() * pers.Length)],
-                sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24);
-            rookie.LudusId = old.LudusId;   // 신인은 은퇴자의 검투소를 승계(라이벌 루두스 존속)
+                sigTactic: null, isPlayer: false, ageMin: 18, ageMax: 24, talentRolls: rookieBoom ? 2 : 1);
+            rookie.LudusId = old.LudusId;   // 신인은 전임자의 검투소를 승계(라이벌 루두스 존속)
             _cast.Add(rookie);
-            string note = $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔";
+            string note = aged
+                ? $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔"
+                : $"{old.Name}({old.CW}승 {old.CL}패) 방출 → 신인 {rookie.Name} 데뷔";
             retirements.Add(note);
-            _story.Add((_rounds + 1, "retire", $"🏛 {note} — 명예의 전당 등재"));
+            _story.Add((_rounds + 1, aged ? "retire" : "release", (aged ? "🏛 " : "👋 ") + note + (aged ? " — 명예의 전당 등재" : "")));
         }
 
         // 시즌 요약 (연출 화면 — 프리시즌 동안 표시)
@@ -1341,7 +1368,8 @@ public sealed class Game
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
         _rivalRep.Clear();
         if (w.RivalReps != null) foreach (var lr in w.RivalReps) _rivalRep[lr.Id] = lr.Rep;
-        foreach (var r in RivalLudi) _rivalRep.TryAdd(r.Id, 0f);   // 구세이브 호환(없던 라이벌 루두스 보강)
+        foreach (var lid in _cast.Where(g => !g.IsPlayer).Select(g => g.LudusId).Distinct())
+            _rivalRep.TryAdd(lid, 0f);   // 구세이브 호환 — 캐스트 소속에서 라이벌 루두스 복원
         _ledger.Load(w.Relations);
         return true;
     }

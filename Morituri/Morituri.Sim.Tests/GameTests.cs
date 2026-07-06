@@ -188,6 +188,27 @@ public class GameTests
     }
 
     [Test]
+    public void Game_WorldVariance_DifferentSeeds_DifferentCastAndLudi()
+    {
+        TempDir("varA");
+        var g1 = new Game(1, 100, fresh: true, interactive: false, playerless: true);
+        var f1 = Parse(g1.StateJson()).GetProperty("Season").GetProperty("Fighters")
+            .EnumerateArray().Select(f => f.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
+
+        TempDir("varB");
+        var g2 = new Game(1, 200, fresh: true, interactive: false, playerless: true);
+        var f2 = Parse(g2.StateJson()).GetProperty("Season").GetProperty("Fighters")
+            .EnumerateArray().Select(f => f.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
+
+        Assert.That(f1.Count, Is.EqualTo(6)); Assert.That(f2.Count, Is.EqualTo(6));
+        Assert.That(string.Join(",", f1), Is.Not.EqualTo(string.Join(",", f2)), "worldSeed마다 다른 캐스트(12인 풀 선발)");
+
+        var l1 = Parse(g1.StateJson()).GetProperty("LudusTable").EnumerateArray().Select(x => x.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
+        var l2 = Parse(g2.StateJson()).GetProperty("LudusTable").EnumerateArray().Select(x => x.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
+        Assert.That(string.Join(",", l1), Is.Not.EqualTo(string.Join(",", l2)), "worldSeed마다 다른 라이벌 루두스(6종 풀 선발)");
+    }
+
+    [Test]
     public void Game_Rename_LudusAndFighter_PersistsAndValidates()
     {
         TempDir("rename");
