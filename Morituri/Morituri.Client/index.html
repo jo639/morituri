@@ -130,6 +130,8 @@
     <div class="grid" id="myGrid"></div>
     <h2>시설</h2>
     <div class="fac" id="facRow"></div>
+    <h2>🏛 제국 특전 <span class="note">(✨영광 소모 — 영구 업그레이드)</span></h2>
+    <div class="fac" id="perkRow"></div>
     <h2>🏆 챔피언십 컵 <span class="note">(정규시즌 후 상위 4인 토너먼트)</span></h2>
     <div id="cupBox"></div>
     <h2>🎖 업적</h2>
@@ -622,6 +624,10 @@ function renderLudus(){
       ${can?`<button onclick="build('${id}')">증축 (💰${costs[step]})</button>`:'<div class="note">최대</div>'}</div>`;
   }).join('');
 
+  $('perkRow').innerHTML = (st.Perks||[]).map(p=>
+    `<div class="f"><b>${p.Name}</b> Lv${p.Lv}/${p.Max}<div class="note">${p.Desc}</div>
+      ${p.Lv<p.Max?`<button onclick="perk('${p.Id}')" ${st.Glory>=p.NextCost?'':'disabled'}>강화 (✨${p.NextCost})</button>`:'<div class="note">최대</div>'}</div>`).join('');
+
   const cup = st.Cup;
   if (cup && cup.length){
     const cell = (m,label)=>{
@@ -686,6 +692,11 @@ window.setTac = async (id,tacticId)=>{
   const r = await api('/api/tactic',{id,tacticId});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus();
+};
+window.perk = async (id)=>{
+  const r = await api('/api/perk',{id});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 window.retire = async (id,name,fame)=>{
   const legend = fame>=60;

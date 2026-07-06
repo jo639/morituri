@@ -90,7 +90,8 @@ public sealed class Game
         float Glory = 0f,   // 영광 하드 화폐
         string? PendingProposalOpp = null,   // 빅매치 제안 대기 상대
         string? LudusName = null,   // 라니스타가 지은 루두스 이름
-        string? Mentor = null);   // 루두스의 스승(은퇴 전설 — 혈통 유산)
+        string? Mentor = null,   // 루두스의 스승(은퇴 전설 — 혈통 유산)
+        List<LudusRepRec>? Perks = null);   // 제국 특전(Id, 레벨)
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -142,7 +143,8 @@ public sealed class Game
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
         SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
         TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal,
-        string LudusName = "내 루두스", string? Mentor = null);
+        string LudusName = "내 루두스", string? Mentor = null, List<PerkDoc>? Perks = null);
+    private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -229,7 +231,7 @@ public sealed class Game
         for (int i = 0; i < LudusTiers.Length; i++) if (_ludusRep >= LudusTiers[i].Rep) t = i;
         return t;
     }
-    private float IncomeMult => _playerless ? 1f : 1f + LudusTier() * 0.08f;
+    private float IncomeMult => _playerless ? 1f : 1f + LudusTier() * 0.08f + 0.05f * PerkLv("patron");   // 등급 + 제국 후원 특전
     private void AddRep(float r) { if (!_playerless) _ludusRep += r; }
     private void AddRivalRep(string ludusId, float r)   // 라이벌 루두스 명성 누적(경쟁)
     {
@@ -722,7 +724,7 @@ public sealed class Game
                 }
                 else if (g.IsPlayer) agingNotes.Add($"{g.Name} ({g.Age}세) — 노쇠 진행 중 (상한 {g.PotentialBudget:F0})");
             }
-            g.Popularity *= 0.6f;   // 시즌 사이 화제성 감쇠
+            g.Popularity *= g.IsPlayer ? MathF.Min(0.9f, 0.6f + 0.1f * PerkLv("tour")) : 0.6f;   // 시즌 사이 화제성 감쇠 (순회 흥행 특전 = 보존)
         }
 
         // 세계 역사: 역대 챔피언 기록 + 루두스 명성/업적(리그 우승·왕조)
@@ -886,6 +888,33 @@ public sealed class Game
     }
     private const float MentorFameMin = 60f;
     private string? _mentorName;   // 루두스의 스승(은퇴 전설) — 영입 유산
+
+    // ── 제국 특전(영광 소모 영구 업그레이드) — 루두스 제국 등반의 뼈대. 전부 메타 효과. ──
+    private static readonly (string Id, string Name, string Desc, int Max, int[] Costs)[] PerkDefs =
+    {
+        ("patron", "제국 후원",   "경기 수입 +5%/Lv",             3, new[] { 8, 16, 24 }),
+        ("senate", "원로원 인맥", "뽑기 비용 −15%/Lv",            3, new[] { 6, 12, 18 }),
+        ("tour",   "순회 흥행",   "시즌 사이 인기 보존 +10%p/Lv", 2, new[] { 8, 16 }),
+    };
+    private readonly Dictionary<string, int> _perks = new();
+    private int PerkLv(string id) => _perks.GetValueOrDefault(id);
+    private float EffGachaCost => MathF.Round(GachaCost * (1f - 0.15f * PerkLv("senate")));
+
+    /// <summary>제국 특전 구매: 영광 소모 → 영구 루두스 업그레이드.</summary>
+    public string PerkJson(string id)
+    {
+        var def = PerkDefs.FirstOrDefault(p => p.Id == id);
+        if (def.Id == null) return Err("잘못된 특전");
+        int lv = PerkLv(id);
+        if (lv >= def.Max) return Err($"{def.Name} 최대 Lv");
+        int cost = def.Costs[lv];
+        if (_glory < cost) return Err($"영광 부족 ({cost} 필요)");
+        _glory -= cost;
+        _perks[id] = lv + 1;
+        _story.Add((0, "perk", $"🏛 제국 특전 — {def.Name} Lv{lv + 1} (영광 −{cost})"));
+        SaveWorld();
+        return StateJson();
+    }
 
     private List<Gladiator> Standings(int? division = null) =>
         _cast.Where(g => division == null || g.Division == division)
@@ -1301,8 +1330,8 @@ public sealed class Game
         if (_playerless) return Err("CLI 모드");
         if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err($"로스터 가득참 (상한 {RosterCap} — 숙소 증축 필요)");
         if (_freeGachas > 0) _freeGachas--;
-        else if (_gold >= GachaCost) _gold -= GachaCost;
-        else return Err($"잔고 부족 (뽑기 {GachaCost:F0})");
+        else if (_gold >= EffGachaCost) _gold -= EffGachaCost;   // 원로원 인맥 특전 = 뽑기 할인
+        else return Err($"잔고 부족 (뽑기 {EffGachaCost:F0})");
 
         _candidates.Clear();
         var rng = new SimRandom(_worldSeed ^ 0x6ACA_6ACAUL + (ulong)(++_gachaCount) * 2654435761UL);
@@ -1490,6 +1519,7 @@ public sealed class Game
         _ludusRep = w.LudusRep; _glory = w.Glory; _pendingProposalOpp = w.PendingProposalOpp;
         _ludusName = string.IsNullOrWhiteSpace(w.LudusName) ? "내 루두스" : w.LudusName!;
         _mentorName = w.Mentor;
+        _perks.Clear(); if (w.Perks != null) foreach (var p in w.Perks) _perks[p.Id] = (int)p.Rep;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1522,7 +1552,8 @@ public sealed class Game
             _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion,
             _pendingEventId, _pendingEventFighter,
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _glory, _pendingProposalOpp, _ludusName, _mentorName), JsonOpts));
+            _glory, _pendingProposalOpp, _ludusName, _mentorName,
+            _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1659,10 +1690,12 @@ public sealed class Game
             }).ToList();
         }
 
-        return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
+        return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, EffGachaCost,
             _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
             ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory), PendingProposalDoc(),
-            _ludusName, _mentorName), JsonOpts);
+            _ludusName, _mentorName,
+            PerkDefs.Select(p => new PerkDoc(p.Id, p.Name, p.Desc, PerkLv(p.Id), p.Max,
+                PerkLv(p.Id) < p.Max ? p.Costs[PerkLv(p.Id)] : 0)).ToList()), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

@@ -39,6 +39,7 @@ internal static class Program
             "/api/rename" when method == "POST" => game.RenameJson(StrOf(body ?? "", "kind"), StrOf(body ?? "", "id"), StrOf(body ?? "", "name")),
             "/api/mastery" when method == "POST" => game.MasteryJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "track")),
             "/api/retire" when method == "POST" => game.RetireJson(StrOf(body ?? "", "id")),
+            "/api/perk" when method == "POST" => game.PerkJson(StrOf(body ?? "", "id")),
             "/api/build" when method == "POST" => game.BuildJson(StrOf(body ?? "", "facility")),
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),

@@ -188,6 +188,27 @@ public class GameTests
     }
 
     [Test]
+    public void Game_EmpirePerks_SpendGlory_ApplyDiscount_Persist()
+    {
+        TempDir("perk");
+        var g = new Game(1, 19, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
+        int guard = 0; float glory = 0;
+        while (guard++ < 12 && glory < 6) { RunFullSeason(g); glory = Parse(g.StateJson()).GetProperty("Glory").GetSingle(); }
+        Assert.That(glory >= 6, Is.True, "특전 살 영광 확보");
+
+        var st = Parse(g.PerkJson("senate"));   // 원로원 인맥 Lv1 = 뽑기 −15%
+        Assert.That(st.TryGetProperty("error", out _), Is.False);
+        Assert.That(st.GetProperty("GachaCost").GetSingle(), Is.EqualTo(85f), "뽑기 비용 100→85");
+        Assert.That(st.GetProperty("Glory").GetSingle(), Is.EqualTo(glory - 6), "영광 소모");
+        Assert.That(Parse(g.PerkJson("nope")).TryGetProperty("error", out _), Is.True);
+
+        var g2 = new Game(1, 19, fresh: false, interactive: false, playerless: false);   // 재시작
+        var p = Parse(g2.StateJson()).GetProperty("Perks").EnumerateArray().First(x => x.GetProperty("Id").GetString() == "senate");
+        Assert.That(p.GetProperty("Lv").GetInt32(), Is.EqualTo(1), "특전 영속");
+    }
+
+    [Test]
     public void Game_Retire_HallEntry_PreseasonOnly()
     {
         TempDir("retire");
