@@ -89,7 +89,8 @@ public sealed class Game
         List<LudusRepRec>? RivalReps = null,   // 라이벌 루두스 명성(경쟁 메타)
         float Glory = 0f,   // 영광 하드 화폐
         string? PendingProposalOpp = null,   // 빅매치 제안 대기 상대
-        string? LudusName = null);   // 라니스타가 지은 루두스 이름
+        string? LudusName = null,   // 라니스타가 지은 루두스 이름
+        string? Mentor = null);   // 루두스의 스승(은퇴 전설 — 혈통 유산)
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -141,7 +142,7 @@ public sealed class Game
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
         SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
         TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal,
-        string LudusName = "내 루두스");
+        string LudusName = "내 루두스", string? Mentor = null);
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -862,6 +863,30 @@ public sealed class Game
         return StateJson();
     }
 
+    /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
+    /// 명성 60+ 전설이면 루두스의 스승으로 남아 유산을 물려준다: 영입 원석 품질(+1롤)·신인 잠재력 +10.</summary>
+    public string RetireJson(string fighterId)
+    {
+        if (SeasonActive) return Err("시즌 중엔 은퇴 불가 — 시즌 종료 후에");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        _cast.Remove(g);
+        _ledger.RemoveFighter(g.Id);
+        _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
+            $"{g.CW}-{g.CL}-{g.CD}", g.Age, Math.Max(1, _seasonsPlayed), true));
+        if (g.Fame >= MentorFameMin)
+        {
+            _mentorName = g.Name;
+            _story.Add((0, "mentor", $"🏛 {g.Name}({g.Fame:F0} 명성) 은퇴 — 루두스의 스승이 되다. 후배들에게 유산을 남긴다"));
+        }
+        else _story.Add((0, "retire", $"🏛 {g.Name} 명예 은퇴 — 명예의 전당 등재"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
+    }
+    private const float MentorFameMin = 60f;
+    private string? _mentorName;   // 루두스의 스승(은퇴 전설) — 영입 유산
+
     private List<Gladiator> Standings(int? division = null) =>
         _cast.Where(g => division == null || g.Division == division)
              .OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).ToList();
@@ -1284,7 +1309,7 @@ public sealed class Game
         var usedNames = _cast.Select(g => g.Name).Concat(_candidates.Select(c => c.Name)).ToHashSet();
         var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
         var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
-        int scouting = 1 + LudusTier();   // 루두스 등급 = 스카우팅 안목: 천부를 (1+등급)번 굴려 최고를 취함
+        int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0);   // 루두스 등급 + 스승의 안목(혈통 유산) = 원석 품질
         for (int i = 0; i < 3; i++)
         {
             string name = PickName(rng, usedNames); usedNames.Add(name);
@@ -1317,6 +1342,11 @@ public sealed class Game
         var g = _candidates[idx];
         _candidates.Clear();          // 나머지 후보는 떠난다
         _cast.Add(g);                 // 스케줄은 시즌 개막 시 고정 → 시즌 중 영입은 다음 시즌부터
+        if (_mentorName != null)      // 스승의 지도(혈통 유산) — 신인의 그릇이 넓어진다
+        {
+            g.PotentialBudget += 10f;
+            _story.Add((0, "mentor", $"📜 스승 {_mentorName}의 지도 — {g.Name} 잠재력 +10 (상한 {g.PotentialBudget:F0})"));
+        }
         if (g.Talent == TalentGrade.Caesar) Unlock("caesar");
         _story.Add((0, "recruit", $"📜 영입! {g.Name} ({ViewerExport.TalentName(g.Talent)}·{g.Age}세) 루두스 합류" +
                                    (SeasonActive ? " — 다음 시즌부터 출전" : "")));
@@ -1459,6 +1489,7 @@ public sealed class Game
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
         _ludusRep = w.LudusRep; _glory = w.Glory; _pendingProposalOpp = w.PendingProposalOpp;
         _ludusName = string.IsNullOrWhiteSpace(w.LudusName) ? "내 루두스" : w.LudusName!;
+        _mentorName = w.Mentor;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1491,7 +1522,7 @@ public sealed class Game
             _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion,
             _pendingEventId, _pendingEventFighter,
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _glory, _pendingProposalOpp, _ludusName), JsonOpts));
+            _glory, _pendingProposalOpp, _ludusName, _mentorName), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1631,7 +1662,7 @@ public sealed class Game
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
             _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
             ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory), PendingProposalDoc(),
-            _ludusName), JsonOpts);
+            _ludusName, _mentorName), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

@@ -188,6 +188,28 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Retire_HallEntry_PreseasonOnly()
+    {
+        TempDir("retire");
+        var g = new Game(1, 43, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        string id = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
+
+        // 프리시즌: 은퇴 가능 → 명전 등재 + 로스터 제거 (저명성 → 스승 아님)
+        var st = Parse(g.RetireJson(id));
+        Assert.That(st.TryGetProperty("error", out _), Is.False);
+        Assert.That(st.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0));
+        Assert.That(st.GetProperty("Season").GetProperty("Hall").GetArrayLength(), Is.GreaterThan(0), "명예의 전당 등재");
+        Assert.That(st.GetProperty("Mentor").ValueKind, Is.EqualTo(JsonValueKind.Null), "명성 60 미만 = 스승 아님");
+
+        // 시즌 중: 은퇴 불가
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();
+        string id2 = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
+        Assert.That(Parse(g.RetireJson(id2)).TryGetProperty("error", out _), Is.True, "시즌 중 은퇴 금지");
+    }
+
+    [Test]
     public void Game_Mastery_SpendsTrainingPoints_AndPersists()
     {
         TempDir("mastery");
