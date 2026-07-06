@@ -85,7 +85,8 @@ public sealed class Game
         string? PendingEventId = null, string? PendingEventFighter = null,   // 시즌 중 텍스트 이벤트(2b)
         List<LudusRepRec>? RivalReps = null,   // 라이벌 루두스 명성(경쟁 메타)
         float Glory = 0f,   // 영광 하드 화폐
-        string? PendingProposalOpp = null);   // 빅매치 제안 대기 상대
+        string? PendingProposalOpp = null,   // 빅매치 제안 대기 상대
+        string? LudusName = null);   // 라니스타가 지은 루두스 이름
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -135,7 +136,8 @@ public sealed class Game
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
         SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
-        TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal);
+        TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal,
+        string LudusName = "내 루두스");
 
     /// <summary>내 선수의 경기 후 변경사항 (결과 화면용 — 성장·재화·인기·명성 델타).</summary>
     public sealed record MyDelta(string Name, bool Won, bool Draw, float Income, string IncomeNote,
@@ -191,6 +193,7 @@ public sealed class Game
     private readonly List<HallRec> _hall = new();            // 명예의 전당 (은퇴자)
     private float _ludusRep;                                 // 루두스 등급 명성 (A)
     private float _glory;                                    // 영광(하드 화폐) — 위신 업적에서만, 잠재력 돌파 등에 소모
+    private string _ludusName = "내 루두스";                 // 라니스타가 직접 명명 가능
     private readonly HashSet<string> _achievements = new();  // 달성 업적 id
     private List<string> _cupSeeds = new();                  // 컵 시드 (top4 id, 컵 시작 시)
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
@@ -494,7 +497,8 @@ public sealed class Game
     };
 
     // 라이벌 루두스 — AI 검투사가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
-    private const string PlayerLudusId = "PLAYER", PlayerLudusName = "★ 내 루두스";
+    private const string PlayerLudusId = "PLAYER";
+    private string PlayerLudusName => "★ " + _ludusName;   // 라니스타 명명 반영
     private static readonly (string Id, string Name)[] RivalLudi =
     {
         ("LUD_BATIATUS", "바티아투스 검투소"),
@@ -1246,6 +1250,27 @@ public sealed class Game
         return StateJson();
     }
 
+    /// <summary>개명(라니스타 명명권): kind=ludus → 내 루두스 / kind=fighter+id → 내 검투사.
+    /// 검투사 개명 시 과거 기록(챔피언·명전·컵)의 이름도 승계(업적이 이름을 따라간다).</summary>
+    public string RenameJson(string kind, string id, string name)
+    {
+        name = (name ?? "").Trim();
+        if (name.Length is < 1 or > 14) return Err("이름은 1~14자");
+        if (kind == "ludus") { _ludusName = name; SaveWorld(); return StateJson(); }
+
+        var g = _cast.FirstOrDefault(x => x.Id == id && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        if (_cast.Any(x => x != g && x.Name == name)) return Err("이미 있는 이름");
+        string old = g.Name;
+        g.Name = name;
+        for (int i = 0; i < _champions.Count; i++) if (_champions[i].Name == old) _champions[i] = _champions[i] with { Name = name };
+        for (int i = 0; i < _hall.Count; i++) if (_hall[i].Name == old) _hall[i] = _hall[i] with { Name = name };
+        if (_cupChampion == old) _cupChampion = name;
+        _story.Add((0, "rename", $"📛 개명 — {old} → {name}"));
+        SaveWorld();
+        return StateJson();
+    }
+
     /// <summary>시설 구매: training / medical / quarters.</summary>
     public string BuildJson(string facility)
     {
@@ -1310,6 +1335,7 @@ public sealed class Game
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
         _ludusRep = w.LudusRep; _glory = w.Glory; _pendingProposalOpp = w.PendingProposalOpp;
+        _ludusName = string.IsNullOrWhiteSpace(w.LudusName) ? "내 루두스" : w.LudusName!;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1341,7 +1367,7 @@ public sealed class Game
             _cupSeeds.Count > 0 ? _cupSeeds.ToList() : null, _cupStage, _cupChampion,
             _pendingEventId, _pendingEventFighter,
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _glory, _pendingProposalOpp), JsonOpts));
+            _glory, _pendingProposalOpp, _ludusName), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1477,7 +1503,8 @@ public sealed class Game
 
         return JsonSerializer.Serialize(new GameStateDoc(BuildSeasonDoc(), MathF.Round(_gold), _freeGachas, GachaCost,
             _trainingLv, _medicalLv, _quartersLv, RosterCap, SeasonActive, my, cands, nm, _lastSummary,
-            ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory), PendingProposalDoc()), JsonOpts);
+            ludus, ach, cup, PendingEventDoc(), BuildLudusTable(), MathF.Round(_glory), PendingProposalDoc(),
+            _ludusName), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

@@ -188,6 +188,30 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Rename_LudusAndFighter_PersistsAndValidates()
+    {
+        TempDir("rename");
+        var g = new Game(1, 29, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+
+        var st = Parse(g.RenameJson("ludus", "", "카푸아의 늑대들"));
+        Assert.That(st.GetProperty("LudusName").GetString(), Is.EqualTo("카푸아의 늑대들"));
+
+        string id = st.GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
+        var st2 = Parse(g.RenameJson("fighter", id, "무쇠이빨"));
+        Assert.That(st2.GetProperty("MyFighters")[0].GetProperty("Name").GetString(), Is.EqualTo("무쇠이빨"));
+        // 중복·길이 검증
+        Assert.That(Parse(g.RenameJson("fighter", id, "막시무스")).TryGetProperty("error", out _), Is.True, "AI와 중복 금지");
+        Assert.That(Parse(g.RenameJson("fighter", id, "")).TryGetProperty("error", out _), Is.True);
+
+        // 재시작 후에도 유지(영속)
+        var g2 = new Game(1, 29, fresh: false, interactive: false, playerless: false);
+        var st3 = Parse(g2.StateJson());
+        Assert.That(st3.GetProperty("LudusName").GetString(), Is.EqualTo("카푸아의 늑대들"));
+        Assert.That(st3.GetProperty("MyFighters")[0].GetProperty("Name").GetString(), Is.EqualTo("무쇠이빨"));
+    }
+
+    [Test]
     public void Game_BigMatchProposal_OffersPick_AndSchedulesCard()
     {
         TempDir("proposal");
