@@ -75,7 +75,8 @@ public sealed class Game
         int W, int L, int D, int Streak, string[] PendingEmotions,
         int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1, int SeasonBrutals = 0,
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0);
-    private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular");
+    private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
+        string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
@@ -92,7 +93,7 @@ public sealed class Game
         string? LudusName = null,   // 라니스타가 지은 루두스 이름
         string? Mentor = null,   // 루두스의 스승(은퇴 전설 — 혈통 유산)
         List<LudusRepRec>? Perks = null,   // 제국 특전(Id, 레벨)
-        int RookieSeq = 0, float Debt = 0f);   // 신인 시리얼·사채
+        int RookieSeq = 0, float Debt = 0f, int SparCount = 0);   // 신인 시리얼·사채·스파링 카운터
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -867,6 +868,30 @@ public sealed class Game
         return StateJson();
     }
 
+    private int _sparCount;   // 스파링 시드 카운터(영속 — 결정론)
+
+    /// <summary>친선 스파링(프리시즌): 같은 부 AI와 연습 경기 — 무기록·부상 없음, 성장 소량 + 가벼운 피로.</summary>
+    public string SparringJson(string fighterId)
+    {
+        if (SeasonActive) return Err("스파링은 프리시즌에만");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        if (g.Fatigue >= 80) return Err("피로가 너무 쌓였다 — 휴식이 먼저");
+        var rng = new SimRandom(_worldSeed ^ 0x5B42_00AAUL + (ulong)_sparCount++ * 7UL);
+        var peers = _cast.Where(x => !x.IsPlayer && x.Division == g.Division).ToList();
+        if (peers.Count == 0) peers = _cast.Where(x => !x.IsPlayer).ToList();
+        if (peers.Count == 0) return Err("상대가 없다");
+        var opp = peers[(int)(rng.NextUInt64() % (ulong)peers.Count)];
+        var (dA, dB) = BuildDefs(g, opp, "normal");
+        var res = new MatchSim().Run(dA, dB, rng.NextUInt64());
+        string? grow = Grow(g, rng);
+        g.Fatigue = Math.Min(100, g.Fatigue + 3);
+        string wName = res.Winner == 0 ? g.Name : res.Winner == 1 ? opp.Name : "무승부";
+        _story.Add((0, "sparring", $"🤺 스파링 — {g.Name} vs {opp.Name}: {wName} 우세" + (grow != null ? $" · {grow} +0.5" : "")));
+        SaveWorld();
+        return JsonSerializer.Serialize(new { ok = true, opp = opp.Name, winner = wName, grow, fatigue = g.Fatigue }, JsonOpts);
+    }
+
     /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
     /// 명성 60+ 전설이면 루두스의 스승으로 남아 유산을 물려준다: 영입 원석 품질(+1롤)·신인 잠재력 +10.</summary>
     public string RetireJson(string fighterId)
@@ -947,7 +972,7 @@ public sealed class Game
         if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
         else B.TacticId = SelectTacticAi(B, A, tacRng);
 
-        var res = Play(A, B, s.Round, s.Kind, out float income, out string incomeNote, out var mine);
+        var res = Play(A, B, s.Round, s.Kind, out float income, out string incomeNote, out var mine, s.Format);
         if (s.IsEvent)
             _eventDocs.Add(new EventDoc(A.Name, B.Name, s.Score,
                 res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason == "KO"));
@@ -989,11 +1014,18 @@ public sealed class Game
     {
         if (!SeasonActive || _cursor < _schedule.Count) return;
 
-        // 정규 소진 → 이벤트 빅매치
+        // 정규 소진 → 이벤트 빅매치 (일부는 특수 형식: ☠처형전 / ⚔무기 지정전 — 시드 결정론)
         if (!_eventsAppended)
         {
+            var fmtRng = new SimRandom(SeasonSeed ^ 0xF0_47_11UL);
+            var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
             foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
-                _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score, "event"));
+            {
+                string fmt = fmtRng.Roll(0.30f) ? "execution"
+                           : fmtRng.Roll(0.25f) ? "same:" + wpns[(int)(fmtRng.NextUInt64() % (ulong)wpns.Length)]
+                           : "normal";
+                _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score, "event", fmt));
+            }
             _eventsAppended = true;
             if (_cursor < _schedule.Count) return;
         }
@@ -1075,10 +1107,7 @@ public sealed class Game
     {
         var s = _schedule[_cursor];
         var A = ById(s.A); var B = ById(s.B);
-        var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
-        var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
-        var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
-        var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
+        var (defA, defB) = BuildDefs(A, B, s.Format);   // 정산(Play)과 동일 조립 — 형식 오버라이드 포함
         if (_live!.Switches.Count > 0)
         {
             var sw = _live.Switches.OrderBy(x => x.Time).ToArray();
@@ -1184,13 +1213,12 @@ public sealed class Game
     }
 
     private MatchResult Play(Gladiator A, Gladiator B, int round, string kind,
-                             out float income, out string incomeNote, out List<MyDelta>? mine)
+                             out float income, out string incomeNote, out List<MyDelta>? mine,
+                             string format = "normal")
     {
         bool isEvent = kind != "regular";   // 이벤트·컵 = 순위 무관(exhibition), 흥행 배수
-        var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
-        var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
-        var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
-        var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
+        bool exec = format == "execution";  // ☠ 처형전 — 패자는 죽을 수 있다. 보상도 크다
+        var (defA, defB) = BuildDefs(A, B, format);
         if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
         {
             if (A.Id == li.FighterId) defA = defA with { TacticSwitches = li.Switches };
@@ -1225,9 +1253,9 @@ public sealed class Game
             if (comeback)
                 _story.Add((round, "comeback", $"R{round} 🔥 대역전! {win.Name} 사선(HP{winStats.MinHpPct * 100:F0}%)에서 {lose.Name} 제압"));
 
-            // 명성(통산 업적, 무감쇠) — 승자 중심
-            win.Fame += 3f + (ko ? 2f : 0f) + (comeback ? 5f : 0f) + (upset ? 4f : 0f)
-                      + winStats.CleanHits * 0.1f + winStats.Knockdowns;
+            // 명성(통산 업적, 무감쇠) — 승자 중심. 처형전 승자는 배가된 영예
+            win.Fame += (3f + (ko ? 2f : 0f) + (comeback ? 5f : 0f) + (upset ? 4f : 0f)
+                      + winStats.CleanHits * 0.1f + winStats.Knockdowns) * (exec ? 2f : 1f);
             lose.Fame = MathF.Max(0f, lose.Fame + 0.5f - (loseStats.Taunted ? 2f : 0f));
 
             // 라이벌 루두스 경쟁: AI 승자의 소속 검투소 명성 누적(플레이어는 income 루프에서 별도 처리)
@@ -1243,8 +1271,8 @@ public sealed class Game
         foreach (var (self, other) in new[] { (A, B), (B, A) })
         {
             if (_playerless || !self.IsPlayer) continue;
-            float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (isEvent ? 2f : 1f) * IncomeMult
-                      * (1f + 0.08f * self.MPay);   // 협상 마스터리 = 출전료 협상력
+            float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (exec ? 3f : isEvent ? 2f : 1f) * IncomeMult
+                      * (1f + 0.08f * self.MPay);   // 협상 마스터리 = 출전료 협상력. 처형전 ×3(목숨값)
             var notes = new List<string> { $"출전료 +{own:F0}" };
             if (win == self)
             {
@@ -1301,8 +1329,9 @@ public sealed class Game
         if (win != null && lose != null)
         {
             bool loserBrutal = ko || loseStats.MinHpPct <= 0.15f;
-            // ⚰ 사망 — 정규 경기 한정(컵 대진 보호). 격전이 누적된 몸이 그 자리에서 무너진다 (2%)
-            if (kind == "regular" && loserBrutal && lose.SeasonBrutals >= 2 && fRng.Roll(0.02f))
+            // ⚰ 사망 — 정규 경기(격전 누적 2%) 또는 ☠처형전(격전 패배 25% — 그것이 처형전이다). 컵 대진은 보호
+            if ((kind == "regular" || exec) && loserBrutal && (exec || lose.SeasonBrutals >= 2)
+                && fRng.Roll(exec ? 0.25f : 0.02f))
             {
                 _cast.Remove(lose); _ledger.RemoveFighter(lose.Id);
                 for (int i = _schedule.Count - 1; i >= _cursor; i--)   // 남은 대진에서 제거
@@ -1433,6 +1462,21 @@ public sealed class Game
                 cards.Add((_cast[i].Id, _cast[j].Id, draw));
             }
         return cards.OrderByDescending(c => c.Score).Take(count).ToList();
+    }
+
+    /// <summary>경기 def 조립(잠정 시뮬·정산 공용 — 동일성 필수). 무기 지정전(same:WPN_x)은 양측 무기 오버라이드.</summary>
+    private (FighterDef defA, FighterDef defB) BuildDefs(Gladiator A, Gladiator B, string format)
+    {
+        var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
+        var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
+        var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
+        var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
+        if (format.StartsWith("same:"))
+        {
+            string w = format[5..];
+            defA = defA with { WeaponId = w }; defB = defB with { WeaponId = w };
+        }
+        return (defA, defB);
     }
 
     private FighterDef ToDef(Gladiator g, RelationType? rel, float intensity)
@@ -1685,7 +1729,7 @@ public sealed class Game
         _ludusName = string.IsNullOrWhiteSpace(w.LudusName) ? "내 루두스" : w.LudusName!;
         _mentorName = w.Mentor;
         _perks.Clear(); if (w.Perks != null) foreach (var p in w.Perks) _perks[p.Id] = (int)p.Rep;
-        _rookieSeq = w.RookieSeq; _debt = w.Debt;
+        _rookieSeq = w.RookieSeq; _debt = w.Debt; _sparCount = w.SparCount;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1720,7 +1764,7 @@ public sealed class Game
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
             _glory, _pendingProposalOpp, _ludusName, _mentorName,
             _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _rookieSeq, _debt), JsonOpts));
+            _rookieSeq, _debt, _sparCount), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1829,7 +1873,9 @@ public sealed class Game
                     opp.PersonalityId.Replace("PER_", ""), opp.Age,
                     MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null,
                 vsRecord, relName, myEmo, oppKiter,
-                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강" : null,
+                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강"
+                    : s.Format == "execution" ? "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)"
+                    : s.Format.StartsWith("same:") ? $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}" : null,
                 MathF.Round(myP * 100f), MathF.Round(1f / myP * 100f) / 100f, MathF.Round(1f / (1f - myP) * 100f) / 100f,
                 mine != null && mine.Popularity >= opp.Popularity, mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f);
         }

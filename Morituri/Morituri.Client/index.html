@@ -667,6 +667,7 @@ function renderLudus(){
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       ${!st.SeasonActive?`<div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
         <button onclick="retire('${f.Id}','${f.Name}',${f.Fame})" title="명예의 전당 등재. 명성 60+ 전설은 스승으로 남아 영입 유산(원석 품질↑·신인 잠재력 +10)" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴${f.Fame>=60?' (스승)':''}</button>
         <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div>`:''}</div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
@@ -754,6 +755,13 @@ window.perk = async (id)=>{
   const r = await api('/api/perk',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+window.sparring = async (id)=>{
+  const r = await api('/api/sparring',{id});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent='';
+  await refresh(); renderLudus(); refreshTop();
+  $('ludusErr').innerHTML = `<span style="color:#a8d8b0">🤺 스파링 vs ${r.opp} — ${r.winner} 우세${r.grow?` · ${r.grow.toUpperCase()} +0.5`:''} (피로 ${r.fatigue})</span>`;
 };
 window.retire = async (id,name,fame)=>{
   const legend = fame>=60;

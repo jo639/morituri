@@ -231,6 +231,26 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Sparring_PreseasonOnly_NoRecord()
+    {
+        TempDir("spar");
+        var g = new Game(1, 53, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        var f0 = Parse(g.StateJson()).GetProperty("MyFighters")[0];
+        string id = f0.GetProperty("Id").GetString()!;
+
+        var r = Parse(g.SparringJson(id));
+        Assert.That(r.GetProperty("ok").GetBoolean(), Is.True, "프리시즌 스파링 가능");
+        var f1 = Parse(g.StateJson()).GetProperty("MyFighters")[0];
+        Assert.That(f1.GetProperty("CW").GetInt32() + f1.GetProperty("CL").GetInt32() + f1.GetProperty("CD").GetInt32(),
+            Is.EqualTo(0), "무기록(통산 불변)");
+        Assert.That(f1.GetProperty("Fatigue").GetInt32(), Is.EqualTo(3), "가벼운 피로만");
+
+        g.PlayNext();   // 개막
+        Assert.That(Parse(g.SparringJson(id)).TryGetProperty("error", out _), Is.True, "시즌 중 스파링 금지");
+    }
+
+    [Test]
     public void Game_LiveMatch_SwitchTactic_SettleMatchesWatched()
     {
         TempDir("live");

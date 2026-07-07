@@ -43,6 +43,7 @@ internal static class Program
             "/api/live" when method == "POST" => game.LiveBeginJson(StrOf(body ?? "", "tacticId") is { Length: > 0 } lt ? lt : null),
             "/api/liveswitch" when method == "POST" => game.LiveSwitchJson(FloatOf(body ?? "", "time"), StrOf(body ?? "", "tacticId")),
             "/api/settle" when method == "POST" => game.LiveSettleJson(),
+            "/api/sparring" when method == "POST" => game.SparringJson(StrOf(body ?? "", "id")),
             "/api/build" when method == "POST" => game.BuildJson(StrOf(body ?? "", "facility")),
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
