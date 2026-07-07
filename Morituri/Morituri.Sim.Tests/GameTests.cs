@@ -231,6 +231,37 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Bet_OnAiMatch_SettlesAndGuards()
+    {
+        TempDir("bet");
+        var g = new Game(1, 65, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+        // 다음이 AI 경기인 지점 찾기
+        int guard = 0; JsonElement nm = default;
+        while (guard++ < 40)
+        {
+            nm = Parse(g.StateJson()).GetProperty("NextMatch");
+            if (nm.ValueKind != JsonValueKind.Null && !nm.GetProperty("IsPlayerMatch").GetBoolean()) break;
+            g.PlayNext();
+        }
+        float gold0 = Parse(g.StateJson()).GetProperty("Gold").GetSingle();
+        var r = Parse(g.BetJson(0, 20f));
+        Assert.That(r.TryGetProperty("error", out _), Is.False, "AI 경기 베팅 성공");
+        Assert.That(r.GetProperty("Gold").GetSingle(), Is.EqualTo(gold0 - 20f), "베팅금 차감");
+        Assert.That(r.GetProperty("PendingBet").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "베팅 상태 노출");
+        Assert.That(Parse(g.BetJson(1, 20f)).TryGetProperty("error", out _), Is.True, "경기당 1회");
+
+        g.PlayNext();   // 경기 진행 → 정산(적중/빗나감 스토리)
+        var st = Parse(g.StateJson());
+        Assert.That(st.GetProperty("PendingBet").ValueKind, Is.EqualTo(JsonValueKind.Null), "정산 후 소거");
+        bool betStory = st.GetProperty("Season").GetProperty("Story").EnumerateArray()
+            .Any(e => e.GetProperty("Kind").GetString() == "bet" &&
+                 (e.GetProperty("Text").GetString()!.Contains("적중") || e.GetProperty("Text").GetString()!.Contains("빗나감")));
+        Assert.That(betStory, Is.True, "정산 서사");
+    }
+
+    [Test]
     public void Game_SaveSlots_IsolatedWorlds()
     {
         TempDir("slots");

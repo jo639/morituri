@@ -95,14 +95,16 @@ public sealed class Game
         List<LudusRepRec>? Perks = null,   // 제국 특전(Id, 레벨)
         int RookieSeq = 0, float Debt = 0f, int SparCount = 0,   // 신인 시리얼·사채·스파링 카운터
         EdictRec? Edict = null, bool EdictDone = false,   // 황제의 특명
-        List<GreatRec>? Greatest = null);   // 명경기 보관함
+        List<GreatRec>? Greatest = null,   // 명경기 보관함
+        int BetCursor = -1, int BetSide = 0, float BetAmount = 0f, float BetOdds = 0f,   // 도박장
+        int Favor = 0, int FavorLv = 0, bool ProposalExec = false);   // 황제 총애·도전장
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
     private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality, int Age,
         int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer,
-        string[]? Epithets = null, int Fatigue = 0, bool Injured = false, int Division = 1);
+        string[]? Epithets = null, int Fatigue = 0, bool Injured = false, int Division = 1, int CKoW = 0);
     private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
@@ -133,7 +135,8 @@ public sealed class Game
         bool OppIsKiter = false,      // 상성 힌트: 상대가 장거리 카이터인가
         string? Stage = null,         // 컵 단계 라벨 (4강 결승) — 정규경기는 null
         float MyWinPct = 50f, float MyOdds = 2f, float OppOdds = 2f,   // 배당(파워 모델 — 표시용)
-        bool CrowdFavorsMe = false, float Hype = 0f);   // 군중 선호(인기)·흥행지수
+        bool CrowdFavorsMe = false, float Hype = 0f,   // 군중 선호(인기)·흥행지수
+        float OddsA = 2f, float OddsB = 2f);   // 범용 배당(A/B 기준 — AI 경기 베팅용)
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -153,8 +156,10 @@ public sealed class Game
         string LudusName = "내 루두스", string? Mentor = null, List<PerkDoc>? Perks = null,
         float Debt = 0f, string RomanDate = "",   // 사채·로마력 날짜(시간감각)
         EdictDoc? Edict = null,   // 황제의 특명(시즌 계약)
-        List<GreatDoc>? Greatest = null);   // 명경기 보관함
+        List<GreatDoc>? Greatest = null,   // 명경기 보관함
+        BetDoc? PendingBet = null, int Favor = 0);   // 도박장·황제 총애
     private sealed record EdictDoc(string Desc, bool Done);
+    private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
 
     // ── 로마력(시간감각): 시즌1 = AUC 681(기원전 73년, 스파르타쿠스 봉기의 해). 경기 시즌 = Martius~October. ──
@@ -233,6 +238,7 @@ public sealed class Game
     private string? _cupChampion;                            // 최근 컵 우승자 이름
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
     private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
+    private bool _proposalExec;                              // 제안이 원수의 처형전 도전장인가
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
     private float _lastDrama;                                // 직전 경기 드라마 스코어(명경기 보관 판정)
     private readonly List<GreatRec> _greatest = new();       // 명경기 보관함(top 12, 영속 — 스냅샷+시드 재관전)
@@ -374,7 +380,7 @@ public sealed class Game
     private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices);
     private sealed record ProposalPickDoc(string Id, string Name, string Weapon, string Personality, int Fatigue, bool Injured);
     private sealed record ProposalDoc(string OppName, string OppWeapon, string OppPersonality, int OppAge, float OppFame,
-        string OppCareer, ProposalPickDoc[] Roster);
+        string OppCareer, ProposalPickDoc[] Roster, bool Execution = false);
     private sealed class EvtTemplate
     {
         public required string Id, Icon, Title;
@@ -470,7 +476,7 @@ public sealed class Game
         var roster = _cast.Where(g => g.IsPlayer).Select(g => new ProposalPickDoc(g.Id, g.Name,
             g.WeaponId.Replace("WPN_", ""), g.PersonalityId.Replace("PER_", ""), g.Fatigue, g.InjuryMatches > 0)).ToArray();
         return new ProposalDoc(o.Name, o.WeaponId.Replace("WPN_", ""), o.PersonalityId.Replace("PER_", ""),
-            o.Age, MathF.Round(o.Fame), $"{o.CW}-{o.CL}-{o.CD}", roster);
+            o.Age, MathF.Round(o.Fame), $"{o.CW}-{o.CL}-{o.CD}", roster, _proposalExec);
     }
 
     /// <summary>빅매치 제안에 응해 출전 선수를 선택 → 커서 위치에 전시(exhibition) 카드 삽입. 빈 id = 거절.</summary>
@@ -485,9 +491,12 @@ public sealed class Game
         var me = _cast.FirstOrDefault(g => g.Id == fighterId && g.IsPlayer);
         if (me == null) return Err("내 선수 아님");
         int round = SeasonActive && _cursor < _schedule.Count ? _schedule[_cursor].Round : _rounds + 1;
-        _schedule.Insert(_cursor, new SchedRec(round, me.Id, opp.Id, true, 0f, "proposal"));   // 다음 경기로 삽입(전시)
-        _story.Add((0, "proposal", $"🎤 빅매치 성사 — {me.Name} vs {opp.Name}(도전장)"));
-        _pendingProposalOpp = null; SaveWorld();
+        _schedule.Insert(_cursor, new SchedRec(round, me.Id, opp.Id, true, 0f, "proposal",
+            _proposalExec ? "execution" : "normal"));   // 다음 경기로 삽입(전시 — 도전장이면 ☠처형전)
+        _story.Add((0, "proposal", _proposalExec
+            ? $"☠ 처형전 성사 — {me.Name} vs {opp.Name}. 둘 중 하나는 걸어 나오지 못할 수 있다"
+            : $"🎤 빅매치 성사 — {me.Name} vs {opp.Name}(도전장)"));
+        _pendingProposalOpp = null; _proposalExec = false; SaveWorld();
         return StateJson();
     }
 
@@ -745,10 +754,22 @@ public sealed class Game
 
         RollEdict();   // 황제의 특명(시즌 계약)
 
-        // 빅매치 제안(감독 개입): 내 선수 2명+ & 결정론 확률 → 명망 있는 도전 상대. 감독이 누구를 내보낼지 선택.
-        _pendingProposalOpp = null;
-        if (!_playerless && _cast.Count(g => g.IsPlayer) >= 2 && new SimRandom(SeasonSeed ^ 0x0B16_A7C4UL).Roll(0.6f))
-            _pendingProposalOpp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault()?.Id;
+        // 빅매치 제안(감독 개입): 원수의 처형전 도전장(우선) 또는 명망 도전자와의 전시 카드.
+        _pendingProposalOpp = null; _proposalExec = false;
+        if (!_playerless && _cast.Count(g => g.IsPlayer) >= 2)
+        {
+            var pRng = new SimRandom(SeasonSeed ^ 0x0B16_A7C4UL);
+            // ☠ 원수의 도전장: 내 선수를 '원수'로 여기는 AI가 있으면 50%로 처형전을 걸어온다 (관계 발화)
+            var nemesis = _cast.Where(ai => !ai.IsPlayer && _cast.Any(my => my.IsPlayer &&
+                _ledger.Get(ai.Id, my.Id).Classify(ai.PersonalityId) == RelationType.Nemesis)).FirstOrDefault();
+            if (nemesis != null && pRng.Roll(0.5f))
+            {
+                _pendingProposalOpp = nemesis.Id; _proposalExec = true;
+                _story.Add((0, "proposal", $"☠ 도전장 — 원수 {nemesis.Name}이(가) 처형전을 요구한다!"));
+            }
+            else if (pRng.Roll(0.6f))
+                _pendingProposalOpp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault()?.Id;
+        }
     }
 
     private void FinalizeSeason()
@@ -826,6 +847,7 @@ public sealed class Game
         if (_edict != null && !_edictDone)
         {
             _ludusRep = MathF.Max(0f, _ludusRep - EdictFailRep);
+            _favor = Math.Max(0, _favor - 1);   // 총애도 식는다
             _story.Add((_rounds + 1, "edict", $"📜 특명 실패 — \"{_edict.Desc}\" · 황제의 실망 (루두스 명성 −{EdictFailRep:F0})"));
         }
         _edict = null; _edictDone = false;
@@ -892,6 +914,30 @@ public sealed class Game
     }
 
     private int _sparCount;   // 스파링 시드 카운터(영속 — 결정론)
+
+    // ── 콜로세움 도박장 — AI 경기에 골드 베팅(내 경기 금지=승부조작 방지). 배당은 베팅 시점 고정, 하우스 엣지 5% ──
+    private int _betCursor = -1, _betSide; private float _betAmount, _betOdds;
+
+    /// <summary>다음 AI 경기에 베팅: side 0=A/1=B. 경기당 1회, 배당 고정.</summary>
+    public string BetJson(int side, float amount)
+    {
+        if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
+        var s = _schedule[_cursor];
+        var A = ById(s.A); var B = ById(s.B);
+        if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
+        if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
+        if (side is < 0 or > 1) return Err("잘못된 선택");
+        amount = MathF.Round(amount);
+        if (amount < 5) return Err("최소 5 데나리우스");
+        if (amount > _gold) return Err("잔고 부족");
+        float pA = WinProb(A, B);
+        float odds = side == 0 ? 1f / pA : 1f / (1f - pA);
+        _gold -= amount;
+        _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
+        _story.Add((s.Round, "bet", $"🎲 베팅 — {(side == 0 ? A.Name : B.Name)}에 {amount:F0} (배당 {odds:F2})"));
+        SaveWorld();
+        return StateJson();
+    }
 
     // ── 이적 시장(라이벌 루두스 v2) — 프리시즌 전용. 목록·제안은 시드 파생(저장 불필요, 재조회 일관) ──
     private sealed record TransferBuyDoc(string Id, string Name, string Weapon, string Personality, int Age,
@@ -1008,7 +1054,17 @@ public sealed class Game
         _edictDone = true;
         AddGlory(EdictGlory); _gold += EdictGold;
         _story.Add((0, "edict", $"📜 특명 달성! — {_edict.Desc} (✨+{EdictGlory:F0} 💰+{EdictGold:F0})"));
+        // 황제의 총애: 특명을 거듭 완수하면 눈에 든다 — 단계 도달 시 1회성 하사품
+        _favor++;
+        (int Need, float Glory, string Title)[] tiers = { (3, 10f, "황제의 눈에 들다"), (6, 20f, "황제의 총신"), (10, 40f, "콜로세움의 총아") };
+        for (int i = _favorLv; i < tiers.Length; i++)
+            if (_favor >= tiers[i].Need)
+            {
+                _favorLv = i + 1; AddGlory(tiers[i].Glory);
+                _story.Add((0, "favor", $"👑 {tiers[i].Title} — 총애 {_favor} (✨+{tiers[i].Glory:F0})"));
+            }
     }
+    private int _favor, _favorLv;   // 황제의 총애(특명 달성 누적)·도달한 단계
 
     /// <summary>친선 스파링(프리시즌): 같은 부 AI와 연습 경기 — 무기록·부상 없음, 성장 소량 + 가벼운 피로.</summary>
     public string SparringJson(string fighterId)
@@ -1132,6 +1188,19 @@ public sealed class Game
         {
             var w = res.Winner == 0 ? A : B;
             if (w.IsPlayer) _gold += CupSemiPrize;
+        }
+
+        // 베팅 정산: 이 경기에 걸었으면 승패 판정 — 적중 = 배당 ×0.95(하우스 엣지)
+        if (_betCursor == _cursor - 1)
+        {
+            _betCursor = -1;
+            if (res.Winner == _betSide)
+            {
+                float payout = MathF.Round(_betAmount * _betOdds * 0.95f);
+                _gold += payout;
+                _story.Add((s.Round, "bet", $"🎲 적중! {(_betSide == 0 ? A.Name : B.Name)} 승 — 배당금 +{payout:F0}"));
+            }
+            else _story.Add((s.Round, "bet", $"🎲 빗나감 — {_betAmount:F0} 데나리우스가 모래에 묻혔다"));
         }
 
         EnsureSchedule();   // 다음 페이즈 편성(예: 4강 후 결승) — 종료 판정 전에
@@ -1903,6 +1972,8 @@ public sealed class Game
         _rookieSeq = w.RookieSeq; _debt = w.Debt; _sparCount = w.SparCount;
         _edict = w.Edict; _edictDone = w.EdictDone;
         _greatest.Clear(); if (w.Greatest != null) _greatest.AddRange(w.Greatest);
+        _betCursor = w.BetCursor; _betSide = w.BetSide; _betAmount = w.BetAmount; _betOdds = w.BetOdds;
+        _favor = w.Favor; _favorLv = w.FavorLv; _proposalExec = w.ProposalExec;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1938,7 +2009,8 @@ public sealed class Game
             _glory, _pendingProposalOpp, _ludusName, _mentorName,
             _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
             _rookieSeq, _debt, _sparCount, _edict, _edictDone,
-            _greatest.Count > 0 ? _greatest.ToList() : null), JsonOpts));
+            _greatest.Count > 0 ? _greatest.ToList() : null,
+            _betCursor, _betSide, _betAmount, _betOdds, _favor, _favorLv, _proposalExec), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1980,7 +2052,7 @@ public sealed class Game
             g.WeaponId.Replace("WPN_", ""), g.TacticId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""), g.Age,
             g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer, Epithets(g),
-            g.Fatigue, g.InjuryMatches > 0, g.Division)).ToList();
+            g.Fatigue, g.InjuryMatches > 0, g.Division, g.CKoW)).ToList();
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();
@@ -2073,8 +2145,10 @@ public sealed class Game
                 s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강"
                     : s.Format == "execution" ? "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)"
                     : s.Format.StartsWith("same:") ? $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}" : null,
-                MathF.Round(myP * 100f), MathF.Round(1f / myP * 100f) / 100f, MathF.Round(1f / (1f - myP) * 100f) / 100f,
-                mine != null && mine.Popularity >= opp.Popularity, mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f);
+                MyWinPct: MathF.Round(myP * 100f), MyOdds: MathF.Round(1f / myP * 100f) / 100f, OppOdds: MathF.Round(1f / (1f - myP) * 100f) / 100f,
+                CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
+                Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
+                OddsA: MathF.Round(100f / WinProb(A, B)) / 100f, OddsB: MathF.Round(100f / (1f - WinProb(A, B))) / 100f);
         }
 
         // 루두스 등급
@@ -2110,7 +2184,10 @@ public sealed class Game
             _edict != null ? new EdictDoc(_edict.Desc, _edictDone) : null,
             _greatest.Count > 0 ? _greatest.OrderByDescending(x => x.Drama)
                 .Select((x, i) => new GreatDoc(_greatest.IndexOf(x), x.Season, x.Entry.AName, x.Entry.BName,
-                    x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null), JsonOpts);
+                    x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null,
+            _betCursor == _cursor && SeasonActive && _cursor < _schedule.Count
+                ? new BetDoc(ById(_betSide == 0 ? _schedule[_cursor].A : _schedule[_cursor].B).Name, _betAmount, _betOdds) : null,
+            _favor), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

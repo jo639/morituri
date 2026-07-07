@@ -120,7 +120,8 @@
 
 <div id="screens">
   <div class="screen on" id="league">
-    <div class="pad" style="padding-bottom:0"><div id="incomeBar"></div></div>
+    <div class="pad" style="padding-bottom:0"><div id="incomeBar"></div>
+    <div id="betBar" style="display:none;margin:8px 0;padding:8px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:6px;font-size:13px"></div></div>
     <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
   </div>
 
@@ -154,6 +155,8 @@
     <div id="ludusTable"></div>
     <h2>리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
     <div class="grid" id="rosterGrid"></div>
+    <h2>🏛 기록실 <span class="note">(통산 기록)</span></h2>
+    <div id="records" style="display:flex;gap:10px;flex-wrap:wrap"></div>
   </div></div>
 
   <div class="screen" id="livesc">
@@ -354,7 +357,40 @@ async function refresh(){
     : '▶▶ 다음 내 경기까지 진행';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
+  renderBetBar(); renderBadges();
   return st;
+}
+// ── 도박장 바(리그탭): 다음 경기가 AI 경기일 때 베팅 ──
+function renderBetBar(){
+  const nm = st.NextMatch, bb = $('betBar');
+  if (st.PendingBet){ bb.style.display='block';
+    bb.innerHTML = `🎲 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 💰${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산`; return; }
+  if (!st.SeasonActive || !nm || nm.IsPlayerMatch){ bb.style.display='none'; return; }
+  bb.style.display='block';
+  bb.innerHTML = `🎲 도박장 — 다음 경기 <b>${nm.AName}</b>(${nm.OddsA.toFixed(2)}) vs <b>${nm.BName}</b>(${nm.OddsB.toFixed(2)})
+    <input id="betAmt" type="number" min="5" value="20" style="width:64px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:2px 6px;margin:0 4px">
+    <button onclick="bet(0)" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm.AName}에</button>
+    <button onclick="bet(1)" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm.BName}에</button>
+    <span class="note">(적중 시 배당 ×0.95)</span>`;
+}
+window.bet = async (side)=>{
+  const amt = parseFloat($('betAmt').value)||0;
+  const r = await api('/api/bet',{side, amount:amt});
+  if (r.error){ $('betBar').innerHTML = `🎲 <span style="color:var(--b)">${r.error}</span>`; return; }
+  st=r; renderBetBar(); refreshTop();
+};
+// ── 알림 배지: 할 일이 있는 탭에 🔴 ──
+function renderBadges(){
+  const dot = ' <span style="color:#ff5d5d">●</span>';
+  const navs = document.querySelectorAll('nav button');
+  navs.forEach(b=>{
+    let base = b.textContent.replace(' ●','');
+    let need = false;
+    if (b.dataset.s==='ludus') need = st.MyFighters.some(f=>f.TrainingPoints>0 || (f.AtCap && st.Glory>=f.BreakthroughCost));
+    if (b.dataset.s==='market') need = st.FreeGachas>0;
+    if (b.dataset.s==='league') need = !!(st.PendingEvent || st.PendingProposal);
+    b.innerHTML = need ? base+dot : base;
+  });
 }
 $('autoBtn').onclick = async ()=>{
   if (!st) await refresh();
@@ -609,7 +645,8 @@ window.chooseEvent = async (i)=>{
 // ── 빅매치 제안(감독 개입) ──
 function showProposal(){
   const pr = st && st.PendingProposal; if (!pr) return;
-  $('propBody').innerHTML = `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 감독이 결정한다(전시 경기).</span>`;
+  $('propBody').innerHTML = (pr.Execution?`<b style="color:var(--b)">☠ 원수의 처형전 도전장!</b> `:'') +
+    `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 감독이 결정한다(전시 경기${pr.Execution?' — <b style="color:var(--b)">패자는 죽을 수 있다, 보상 ×3</b>':''}).</span>`;
   $('propRoster').innerHTML = pr.Roster.map(f=>
     `<button class="tacbtn" onclick="pickProposal('${f.Id}')"><b>${f.Name}</b> <span class="d">${w(f.Weapon)} · ${p(f.Personality)}${f.Injured?' 🩹':''} · 피로 ${f.Fatigue}</span></button>`).join('');
   $('propModal').classList.add('on');
@@ -675,7 +712,8 @@ function renderLudus(){
       <div class="cap" style="margin-top:8px"><i style="width:${pct}%"></i></div>
       <div class="note" style="margin-top:4px">${L.NextTierName?`다음 등급 「${L.NextTierName}」까지 ${Math.max(0,Math.round(L.NextTierRep-L.Rep))} 명성`:'최고 등급 달성 — 콜로세움의 지배자'}</div>
       ${st.Mentor?`<div class="note" style="margin-top:3px;color:var(--gold)">📜 스승 ${st.Mentor} — 영입 원석 품질 +1롤 · 신인 잠재력 +10 (혈통 유산)</div>`:''}
-      ${st.Edict?`<div style="margin-top:5px;padding:5px 9px;border:1px solid ${st.Edict.Done?'var(--grn)':'#8a6a2a'};border-radius:7px;font-size:12px;${st.Edict.Done?'color:var(--grn)':'color:var(--gold)'}">📜 황제의 특명: ${st.Edict.Desc} — ${st.Edict.Done?'달성 ✓':'진행 중 (실패 시 명성 −15)'}</div>`:''}`;
+      ${st.Edict?`<div style="margin-top:5px;padding:5px 9px;border:1px solid ${st.Edict.Done?'var(--grn)':'#8a6a2a'};border-radius:7px;font-size:12px;${st.Edict.Done?'color:var(--grn)':'color:var(--gold)'}">📜 황제의 특명: ${st.Edict.Desc} — ${st.Edict.Done?'달성 ✓':'진행 중 (실패 시 명성 −15)'}</div>`:''}
+      ${st.Favor>0?`<div class="note" style="margin-top:3px" title="특명 달성 누적 — 3/6/10 단계마다 하사품">👑 황제의 총애 ${'★'.repeat(Math.min(10,st.Favor))} (${st.Favor})</div>`:''}`;
   }
   $('ludusNote').textContent = `(${st.MyFighters.length}/${st.RosterCap}명)`;
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
@@ -892,6 +930,20 @@ function renderRoster(){
     const fs = byDiv(d); if (!fs.length) return '';
     return `<h3 style="grid-column:1/-1;color:var(--gold);border-bottom:1px solid #4a3a26;padding-bottom:4px;margin:6px 0">${divName(d)} <span class="note" style="font-weight:400">${fs.length}인</span></h3>` + fs.map(card).join('');
   }).join('');
+
+  // 🏛 기록실 — 현역·명전·역대 챔피언 집계(클라이언트)
+  const F = st.Season.Fighters, H = st.Season.Hall||[], C = st.Season.Champions||[];
+  const top = (arr,key,fmt)=>{ const s=[...arr].sort((a,b)=>b[key]-a[key])[0]; return s?`<b>${s.Name}</b> <span class="note">${fmt(s)}</span>`:'—'; };
+  const champCount = {}; C.forEach(c=>champCount[c.Name]=(champCount[c.Name]||0)+1);
+  const kingpin = Object.entries(champCount).sort((a,b)=>b[1]-a[1])[0];
+  const rec = (t,v)=>`<div class="f" style="min-width:170px"><b style="color:var(--gold)">${t}</b><div style="margin-top:3px;font-size:13px">${v}</div></div>`;
+  $('records').innerHTML =
+    rec('⚔ 현역 KO왕', top(F,'CKoW',s=>`KO ${s.CKoW||0}`)) +
+    rec('🌟 현역 명성왕', top(F,'Fame',s=>`명성 ${s.Fame}`)) +
+    rec('🔥 현역 최고 인기', top(F,'Popularity',s=>`인기 ${s.Popularity}`)) +
+    rec('👑 최다 우승', kingpin?`<b>${kingpin[0]}</b> <span class="note">${kingpin[1]}회</span>`:'—') +
+    rec('🏛 명전 최고 명성', H.length?`<b>${H[0].Name}</b> <span class="note">명성 ${H[0].Fame}</span>`:'—') +
+    rec('⚰ 전사자', `${H.filter(h=>(h.Career||'').includes('⚰')).length}명 <span class="note">/ 명전 ${H.length}명</span>`);
 }
 
 // ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──
