@@ -231,6 +231,26 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Transfers_ListAndGuards()
+    {
+        TempDir("transfer");
+        var g = new Game(1, 57, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+
+        var tr = Parse(g.TransfersJson());
+        Assert.That(tr.GetProperty("ok").GetBoolean(), Is.True);
+        Assert.That(tr.GetProperty("Buyables").GetArrayLength(), Is.EqualTo(3), "매물 3명");
+        string bid = tr.GetProperty("Buyables")[0].GetProperty("Id").GetString()!;
+        int price = tr.GetProperty("Buyables")[0].GetProperty("Price").GetInt32();
+        Assert.That(price, Is.GreaterThan(100), "이적료는 뽑기보다 비싸다");
+        Assert.That(Parse(g.TransferBuyJson(bid)).TryGetProperty("error", out _), Is.True, "잔고 부족 거부(시작 50)");
+
+        g.PlayNext();   // 개막
+        Assert.That(Parse(g.TransfersJson()).TryGetProperty("error", out _), Is.True, "시즌 중 시장 폐쇄");
+        Assert.That(Parse(g.TransferBuyJson(bid)).TryGetProperty("error", out _), Is.True, "시즌 중 인수 금지");
+    }
+
+    [Test]
     public void Game_Edict_Rolls_Persists_ResolvesAtSeasonEnd()
     {
         TempDir("edict");

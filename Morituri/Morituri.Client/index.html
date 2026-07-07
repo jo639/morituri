@@ -145,6 +145,8 @@
     <span class="note">  후보 3명 — 무기·성격·전술 하나만 공개. 천부·잠재력·특성은 영입해야 안다.</span>
     <div class="err" id="marketErr"></div>
     <div class="grid" id="candGrid" style="margin-top:12px"></div>
+    <h2>🤝 이적 시장 <span class="note">(프리시즌 — 라이벌 검투소와 거래)</span></h2>
+    <div id="transferBox"><div class="note">시즌 중엔 닫혀 있다.</div></div>
   </div></div>
 
   <div class="screen" id="roster"><div class="pad">
@@ -795,7 +797,33 @@ function renderMarket(){
      <div class="chips"><span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">전술 2종 ???</span></div>
      <button class="recruit" onclick="recruit(${c.Idx})">📜 영입</button></div>`).join('')
     : '<div class="note">후보 없음 — 뽑기를 돌려라.</div>';
+  renderTransfers();
 }
+async function renderTransfers(){
+  if (st.SeasonActive){ $('transferBox').innerHTML = '<div class="note">시즌 중엔 닫혀 있다 — 프리시즌에 다시 오라.</div>'; return; }
+  const r = await api('/api/transfers',{});
+  if (r.error){ $('transferBox').innerHTML = `<div class="note">${r.error}</div>`; return; }
+  const buy = (r.Buyables||[]).map(b=>
+    `<div class="fc ai"><h3>${b.Name} <span class="note" style="font-weight:400">${b.Ludus}</span></h3>
+     <div class="bd">${w(b.Weapon)} · ${p(b.Personality)} · ${b.Age}세 · ${b.Division}부 · 명성 ${b.Fame}</div>
+     <button class="recruit" onclick="buyT('${b.Id}',${b.Price})" ${st.Gold>=b.Price?'':'disabled'}>🤝 인수 (💰${b.Price})</button></div>`).join('');
+  const sell = r.SellOffer ? `<div class="fc" style="border-top-color:var(--b)"><h3>📨 인수 제안</h3>
+     <div class="bd"><b>${r.SellOffer.Buyer}</b>이(가) <b style="color:var(--gold)">${r.SellOffer.Name}</b>을(를) 원한다</div>
+     <button class="recruit" onclick="sellT('${r.SellOffer.Id}','${r.SellOffer.Name}',${r.SellOffer.Offer})">💰 판다 (+${r.SellOffer.Offer})</button></div>` : '';
+  $('transferBox').innerHTML = `<div class="grid">${buy}${sell}</div>` || '<div class="note">매물 없음.</div>';
+}
+window.buyT = async (id,price)=>{
+  if (!confirm(`이적료 💰${price}로 인수할까?`)) return;
+  const r = await api('/api/buy',{id});
+  if (r.error){ $('marketErr').textContent=r.error; return; }
+  $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
+};
+window.sellT = async (id,name,offer)=>{
+  if (!confirm(`${name}을(를) 💰${offer}에 넘길까? 전력을 잃는다.`)) return;
+  const r = await api('/api/sell',{id});
+  if (r.error){ $('marketErr').textContent=r.error; return; }
+  $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
+};
 $('gachaBtn').onclick = async ()=>{
   const r = await api('/api/gacha',{});
   if (r.error){ $('marketErr').textContent=r.error; return; }

@@ -883,6 +883,73 @@ public sealed class Game
 
     private int _sparCount;   // 스파링 시드 카운터(영속 — 결정론)
 
+    // ── 이적 시장(라이벌 루두스 v2) — 프리시즌 전용. 목록·제안은 시드 파생(저장 불필요, 재조회 일관) ──
+    private sealed record TransferBuyDoc(string Id, string Name, string Weapon, string Personality, int Age,
+        float Fame, int Division, string Ludus, int Price);
+    private sealed record TransferSellDoc(string Id, string Name, string Buyer, int Offer);
+    private float TransferPrice(Gladiator g) =>
+        MathF.Round(BudgetUsed(g.Stats) * 0.6f + g.Fame * 1.5f + MathF.Max(0, 30 - g.Age) * 4f);
+
+    /// <summary>이적 시장 조회: 매물 AI 2~3명 + 내 스타에 대한 인수 제안(있으면).</summary>
+    public string TransfersJson()
+    {
+        if (_playerless) return Err("CLI 모드");
+        if (SeasonActive) return Err("이적은 프리시즌에만");
+        var rng = new SimRandom(_worldSeed ^ 0x7124_5FE2UL + (ulong)_seasonsPlayed * 41UL);
+        var pool = _cast.Where(g => !g.IsPlayer).OrderBy(_ => rng.NextUInt64()).Take(3)
+            .Select(g => new TransferBuyDoc(g.Id, g.Name, g.WeaponId.Replace("WPN_", ""), g.PersonalityId.Replace("PER_", ""),
+                g.Age, MathF.Round(g.Fame), g.Division, LudusNameOf(g.LudusId), (int)TransferPrice(g))).ToList();
+
+        TransferSellDoc? sell = null;
+        var star = _cast.Where(g => g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault();
+        if (star != null && star.Fame >= 20f && rng.Roll(0.6f))
+        {
+            var buyer = ActiveRivalLudi.OrderBy(_ => rng.NextUInt64()).First();
+            sell = new TransferSellDoc(star.Id, star.Name, buyer.Name, (int)(TransferPrice(star) * 1.2f));
+        }
+        return JsonSerializer.Serialize(new { ok = true, Buyables = pool, SellOffer = sell }, JsonOpts);
+    }
+
+    /// <summary>AI 선수 인수: 골드 지불 → 내 로스터로. 판 검투소는 신인으로 공석 승계.</summary>
+    public string TransferBuyJson(string id)
+    {
+        if (SeasonActive) return Err("이적은 프리시즌에만");
+        var g = _cast.FirstOrDefault(x => x.Id == id && !x.IsPlayer);
+        if (g == null) return Err("매물이 아니다");
+        if (_cast.Count(x => x.IsPlayer) >= RosterCap) return Err($"로스터 가득참 (상한 {RosterCap})");
+        int price = (int)TransferPrice(g);
+        if (_gold < price) return Err($"잔고 부족 (이적료 {price})");
+        _gold -= price;
+        string oldLudus = g.LudusId; int oldDiv = g.Division;
+        g.IsPlayer = true; g.LudusId = PlayerLudusId; g.TrainingPoints = 0;
+        var rk = SpawnRookieCore(new SimRandom(_worldSeed ^ 0x7124_B0B0UL + (ulong)_rookieSeq * 3UL), oldLudus, oldDiv, 1);
+        AddRivalRep(oldLudus, 8f);   // 이적료의 위신 — 판 쪽도 명성을 얻는다
+        _story.Add((0, "transfer", $"🤝 이적 — {g.Name}, {LudusNameOf(oldLudus)}에서 우리 루두스로 (이적료 {price}) · 공석엔 신인 {rk.Name}"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
+    }
+
+    /// <summary>인수 제안 수락: 내 스타를 라이벌 루두스에 판다 — 골드는 크지만 전력을 잃는다.</summary>
+    public string TransferSellJson(string id)
+    {
+        if (SeasonActive) return Err("이적은 프리시즌에만");
+        var offerJson = TransfersJson();
+        var doc = JsonDocument.Parse(offerJson).RootElement;
+        if (!doc.TryGetProperty("SellOffer", out var so) || so.ValueKind == JsonValueKind.Null) return Err("유효한 제안이 없다");
+        if (so.GetProperty("Id").GetString() != id) return Err("제안 대상이 아니다");
+        var g = _cast.First(x => x.Id == id);
+        int offer = so.GetProperty("Offer").GetInt32();
+        string buyerName = so.GetProperty("Buyer").GetString()!;
+        var buyer = ActiveRivalLudi.First(r => r.Name == buyerName);
+        _gold += offer;
+        g.IsPlayer = false; g.LudusId = buyer.Id; g.TrainingPoints = 0;
+        _story.Add((0, "transfer", $"💰 이적 — {g.Name}, {buyerName}(으)로 (이적료 +{offer}). 잘 가라, 검투사여"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
+    }
+
     // ── 황제의 특명(시즌 계약) — 개막 시 부여, 달성=영광·골드 / 실패=루두스 명성 하락 ──
     public sealed record EdictRec(string Type, string? TargetId, int N, string Desc);
     private EdictRec? _edict; private bool _edictDone;
