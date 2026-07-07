@@ -68,6 +68,9 @@
     <div id="divTabs" style="display:flex;gap:8px;margin:4px 0 10px"></div>
     <div id="champ"></div>
 
+    <h2>📅 시즌 달력 <span class="sub" id="calSub"></span></h2>
+    <div id="calendar" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+
     <h2>순위 (정규 시즌)</h2>
     <table id="standings"><thead><tr><th>#</th><th>선수</th><th>빌드</th><th>승-패-무</th><th>승점</th><th>연속</th></tr></thead><tbody></tbody></table>
 
@@ -163,6 +166,33 @@ function renderDivision(){
     || '<div class="empty">아직 경기 없음</div>';
 }
 
+// ── 시즌 달력(상시): 전 일정을 월별로 — 치른 경기(승자·클릭=관전) + 남은 경기(예정) ──
+function renderCalendar(d){
+  const cal = d.Calendar || [];
+  document.getElementById('calSub').textContent = cal.length ? `AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기` : '';
+  if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">일정 없음 — 시즌 개막 전</div>'; return; }
+  const months = [...new Set(cal.map(c=>c.Month))];
+  const kindIcon = c => c.Kind==='cup_final'?'🏆결승 ':c.Kind==='cup_sf'?'🏆4강 ':c.Kind==='proposal'?'🎤':
+    c.Format==='execution'?'☠':(c.Format||'').startsWith('same:')?'⚔':c.Kind==='event'?'🎪':'';
+  const inShell = window.parent !== window;
+  document.getElementById('calendar').innerHTML = months.map(m=>{
+    const es = cal.filter(c=>c.Month===m);
+    return `<div style="flex:1;min-width:180px;background:var(--panel,#2f2418);border-radius:10px;padding:8px 10px">
+      <div style="color:var(--gold,#c9a84c);font-weight:700;font-size:12px;border-bottom:1px solid #4a3a26;padding-bottom:3px;margin-bottom:5px">${m}</div>
+      ${es.map(c=>{
+        const done = !!c.Winner;
+        const style = `display:flex;gap:6px;align-items:baseline;padding:2px 5px;border-radius:5px;font-size:12px;`+
+          (c.IsNext?'outline:1px solid var(--gold,#c9a84c);':'')+
+          (c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700;':'')+
+          (done?'opacity:.75;':'')+(done&&inShell?'cursor:pointer;':'');
+        return `<div style="${style}" ${done&&inShell?`onclick="watchIt(${c.Idx})" title="클릭 = 재관전"`:''}>
+          <span style="color:var(--dim,#a89576);min-width:26px">${c.Day}일</span>
+          <span>${kindIcon(c)}${c.A} vs ${c.B}</span>
+          <span style="margin-left:auto;color:${done?'var(--win,#7ec97e)':'var(--dim,#a89576)'}">${done?c.Winner:(c.IsNext?'▶ 다음':'예정')}</span></div>`;
+      }).join('')}</div>`;
+  }).join('');
+}
+
 function load(d){
   document.getElementById('drop').hidden = true;
   document.getElementById('content').hidden = false;
@@ -172,6 +202,7 @@ function load(d){
 
   curDoc = d;
   renderDivision();
+  renderCalendar(d);
 
   // 이벤트 매치
   const ev = document.getElementById('events');

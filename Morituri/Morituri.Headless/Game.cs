@@ -20,7 +20,7 @@ public sealed class Game
 {
     private const int SchemaVer = 2;      // v1(관전 시즌) 파일은 비호환 → 새 세계
     private const int ConstantsVer = 1;
-    private const string WorldPath = "world.json";
+    private readonly string _worldPath = "world.json";   // 세이브 슬롯: 슬롯별 world{n}.json
 
     // ── 경제 상수 (초안 — 튜닝 전제) ──
     private const float GachaCost = 100f, StartGold = 50f;
@@ -108,7 +108,10 @@ public sealed class Game
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
         string? NextA, string? NextB, bool NextIsEvent, string Champion,
         List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story,
-        List<MatchLogDoc> MatchLog, List<ChampionRec>? Champions = null, List<HallRec>? Hall = null);
+        List<MatchLogDoc> MatchLog, List<ChampionRec>? Champions = null, List<HallRec>? Hall = null,
+        List<CalDoc>? Calendar = null, int Auc = 0);   // 달력: 전 일정(과거+미래)+로마 날짜
+    private sealed record CalDoc(int Idx, string Month, int Day, string A, string B, string Kind, string Format,
+        string? Winner, bool IsPlayerMatch, bool IsNext);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1)
 
     private sealed record StatsDoc(float Atk, float Def, float Hp, float Spd, float Aspd, float Rct);
     private sealed record MyFighterDoc(string Id, string Name, string Weapon, string Personality, int Age, bool Aging,
@@ -504,11 +507,12 @@ public sealed class Game
     }
 
     public Game(int roundsPerSeason, ulong? worldSeed = null, bool fresh = false,
-                bool interactive = true, bool playerless = false)
+                bool interactive = true, bool playerless = false, string worldPath = "world.json")
     {
         _rounds = roundsPerSeason;
         _interactive = interactive;
         _playerless = playerless;
+        _worldPath = worldPath;
 
         if (!fresh && LoadWorld()) { if (_interactive) WriteSeasonJson(); return; }
 
@@ -1858,10 +1862,10 @@ public sealed class Game
     private bool LoadWorld()
     {
         // 손상 대비: 본 파일 실패 시 직전 백업(world.bak — 매 저장 전 스냅샷)으로 복구 시도.
-        WorldV2? w = TryRead(WorldPath);
-        if (w == null && File.Exists(WorldPath + ".bak"))
+        WorldV2? w = TryRead(_worldPath);
+        if (w == null && File.Exists(_worldPath + ".bak"))
         {
-            w = TryRead(WorldPath + ".bak");
+            w = TryRead(_worldPath + ".bak");
             if (w != null) Console.WriteLine("  ⚠ world.json 손상 — 백업(world.json.bak)에서 복구.");
         }
         if (w is null) return false;
@@ -1912,8 +1916,8 @@ public sealed class Game
 
     private void SaveWorld()
     {
-        try { if (File.Exists(WorldPath)) File.Copy(WorldPath, WorldPath + ".bak", true); } catch { }   // 저장 전 스냅샷
-        File.WriteAllText(WorldPath, JsonSerializer.Serialize(new WorldV2(
+        try { if (File.Exists(_worldPath)) File.Copy(_worldPath, _worldPath + ".bak", true); } catch { }   // 저장 전 스냅샷
+        File.WriteAllText(_worldPath, JsonSerializer.Serialize(new WorldV2(
             SchemaVer, ConstantsVer, _worldSeed, _gold, _gachaCount, _freeGachas,
             _trainingLv, _medicalLv, _quartersLv, _seasonsPlayed,
             SeasonActive, _seasonNo, _matchIdx, _cursor, _eventsAppended,
@@ -1986,13 +1990,36 @@ public sealed class Game
             if (!_eventsAppended) total += Math.Max(2, _cast.Count / 2);   // 이벤트 미편성분
             if (_cupStage == 0 && _cast.Count >= 4) total += 3;           // 컵 미편성분(4강2+결승1)
         }
+        // 달력: 전 일정(치른 경기=로그 이름/승자, 남은 경기=캐스트 이름) + 로마 날짜(스케줄 위치 비례)
+        var cal = new List<CalDoc>();
+        for (int i = 0; i < _schedule.Count; i++)
+        {
+            var s = _schedule[i];
+            int day = (int)((float)i / Math.Max(1, _schedule.Count) * 239f);
+            string month = RomanMonths[Math.Min(RomanMonths.Length - 1, day / 30)];
+            bool played = i < _cursor && i < _matchLog.Count;
+            string an, bn; string? winner = null; int idx = -1; bool mine;
+            if (played)
+            {
+                var e = _matchLog[i];
+                an = e.AName; bn = e.BName; winner = e.Winner; idx = e.Idx; mine = e.IsPlayerMatch;
+            }
+            else
+            {
+                var ga = _cast.FirstOrDefault(g => g.Id == s.A); var gb = _cast.FirstOrDefault(g => g.Id == s.B);
+                an = ga?.Name ?? s.A; bn = gb?.Name ?? s.B;
+                mine = (ga?.IsPlayer ?? false) || (gb?.IsPlayer ?? false);
+            }
+            cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor));
+        }
         return new SeasonDoc(SchemaVer, Math.Max(1, _seasonNo), _rounds, _matchIdx, total, !SeasonActive,
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
             standings[0].Name, fighters, rels, _eventDocs.ToList(),
             _story.Select(s => new StoryDoc(s.Round, s.Kind, s.Text)).ToList(),
             _matchLog.Select(e => new MatchLogDoc(e.Idx, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch)).ToList(),
             _champions.Count > 0 ? _champions.ToList() : null,
-            _hall.Count > 0 ? _hall.OrderByDescending(h => h.Fame).ToList() : null);
+            _hall.Count > 0 ? _hall.OrderByDescending(h => h.Fame).ToList() : null,
+            cal, 680 + Math.Max(1, _seasonNo));
     }
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));

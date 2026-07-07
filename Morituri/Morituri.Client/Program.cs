@@ -20,8 +20,14 @@ internal static class Program
     {
         Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
-        // 시즌당 정규 1라운드로빈 — 클릭 진행 페이스. world.json v2가 있으면 미드시즌 그대로 재개.
-        var game = new Game(roundsPerSeason: 1);
+        // 세이브 슬롯 3개: world1~3.json. 구버전 world.json은 슬롯 1로 승격.
+        static string SlotPath(int n) => $"world{n}.json";
+        if (File.Exists("world.json") && !File.Exists(SlotPath(1)))
+            try { File.Move("world.json", SlotPath(1)); } catch { }
+        int slot = 1;
+
+        // 시즌당 정규 1라운드로빈 — 클릭 진행 페이스. 슬롯 world가 있으면 미드시즌 그대로 재개.
+        var game = new Game(roundsPerSeason: 1, worldPath: SlotPath(slot));
 
         int port = ViewerServer.StartBackground(AppContext.BaseDirectory, 5173, (method, path, body) => path switch
         {
@@ -53,13 +59,44 @@ internal static class Program
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
             "/api/choose" when method == "POST" => game.ChooseEventJson(IntOf(body ?? "", "choice")),
             "/api/newcareer" when method == "POST" => NewCareer(),
+            "/api/slots" when method == "POST" => SlotsJson(),
+            "/api/loadslot" when method == "POST" => LoadSlot(IntOf(body ?? "", "n")),
             _ => null,
         });
 
         string NewCareer()
         {
-            try { File.Delete("world.json"); } catch { }
-            game = new Game(roundsPerSeason: 1, fresh: true);
+            try { File.Delete(SlotPath(slot)); } catch { }
+            game = new Game(roundsPerSeason: 1, fresh: true, worldPath: SlotPath(slot));
+            return game.StateJson();
+        }
+
+        // 슬롯 요약: 각 world{n}.json의 헤더만 읽어 표시(루두스명·시즌·잔고)
+        string SlotsJson()
+        {
+            var list = new List<object>();
+            for (int n = 1; n <= 3; n++)
+            {
+                object entry;
+                try
+                {
+                    var root = JsonDocument.Parse(File.ReadAllText(SlotPath(n))).RootElement;
+                    entry = new { n, exists = true, active = n == slot,
+                        ludus = root.TryGetProperty("LudusName", out var ln) && ln.ValueKind == JsonValueKind.String ? ln.GetString() : "내 루두스",
+                        season = root.TryGetProperty("SeasonNo", out var sn) ? sn.GetInt32() : 0,
+                        gold = root.TryGetProperty("Gold", out var gd) ? (int)gd.GetSingle() : 0 };
+                }
+                catch { entry = new { n, exists = false, active = n == slot, ludus = (string?)null, season = 0, gold = 0 }; }
+                list.Add(entry);
+            }
+            return JsonSerializer.Serialize(new { ok = true, slots = list });
+        }
+
+        string LoadSlot(int n)
+        {
+            if (n is < 1 or > 3) return """{"error":"슬롯은 1~3"}""";
+            slot = n;
+            game = new Game(roundsPerSeason: 1, worldPath: SlotPath(slot));   // 있으면 재개, 없으면 새 세계
             return game.StateJson();
         }
 

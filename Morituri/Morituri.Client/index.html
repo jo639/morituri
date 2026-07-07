@@ -167,8 +167,8 @@
   <div class="screen" id="watch">
     <div id="watchbar"><span class="card" id="watchCard">지난 경기 다시보기</span><span class="tag" id="watchTag" hidden>이벤트</span>
       <button onclick="go('league')">리그로 →</button></div>
-    <div class="pad" style="padding:6px 18px"><div id="watchList" style="display:flex;gap:6px;flex-wrap:wrap;max-height:96px;overflow:auto"></div></div>
-    <iframe id="watchF" src="about:blank" style="height:calc(100% - 150px)"></iframe>
+    <div class="pad" style="padding:6px 18px"><div id="watchList" style="display:flex;gap:6px;flex-wrap:wrap;max-height:220px;overflow:auto;font-size:12px"></div></div>
+    <iframe id="watchF" src="about:blank" style="height:calc(100% - 280px)"></iframe>
   </div>
 
   <div class="screen" id="codex"><div class="pad">
@@ -260,7 +260,8 @@
   <h1>MORITURI</h1>
   <div class="tag">MORITURI TE SALUTANT — 곧 죽을 자들이 경례합니다</div>
   <button id="mCont">계속하기</button>
-  <button id="mNew">새 커리어</button>
+  <button id="mNew">새 커리어 (현재 슬롯)</button>
+  <div id="mSlots" style="display:flex;gap:8px;margin-top:10px"></div>
   <div class="info" id="mInfo">—</div>
 </div>
 
@@ -313,7 +314,25 @@ function go(s){
   if (s==='codex') renderCodex();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
-$('logo').onclick=()=> $('menu').style.display='flex';
+$('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
+// ── 세이브 슬롯 3개 ──
+async function renderSlots(){
+  const r = await api('/api/slots',{});
+  if (r.error || !r.slots) return;
+  $('mSlots').innerHTML = r.slots.map(s=>
+    `<button onclick="loadSlot(${s.n})" style="flex:1;padding:10px;border-radius:9px;cursor:pointer;text-align:left;
+      background:${s.active?'#3a2d1d':'#2f2418'};border:1px solid ${s.active?'var(--gold)':'#4a3a26'};color:var(--ink)">
+      <b style="color:var(--gold)">슬롯 ${s.n}${s.active?' ●':''}</b><br>
+      <span style="font-size:11px;color:var(--dim)">${s.exists?`${s.ludus} · 시즌 ${s.season} · 💰${s.gold}`:'빈 슬롯 — 새 세계'}</span></button>`).join('');
+}
+window.loadSlot = async (n)=>{
+  st = await api('/api/loadslot',{n});
+  if (st.error) return;
+  await refresh();
+  $('leagueF').src='league.html?t='+Date.now();
+  $('menu').style.display='none';
+  go(st.MyFighters.length? 'league':'market');
+};
 
 async function api(path, body){
   const r = await fetch(path, body!==undefined ? {method:'POST', body:JSON.stringify(body||{})} : {cache:'no-store'});
@@ -968,7 +987,7 @@ $('mNew').onclick = async ()=>{
   go('market');   // 새 커리어 = 영입부터
 };
 
-refresh();
+refresh(); renderSlots();
 </script>
 </body>
 </html>

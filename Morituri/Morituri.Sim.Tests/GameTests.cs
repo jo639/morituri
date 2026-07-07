@@ -231,6 +231,46 @@ public class GameTests
     }
 
     [Test]
+    public void Game_SaveSlots_IsolatedWorlds()
+    {
+        TempDir("slots");
+        var g1 = new Game(1, 61, fresh: true, interactive: false, playerless: false, worldPath: "world1.json");
+        g1.RenameJson("ludus", "", "일번 검투소");
+        var g2 = new Game(1, 62, fresh: true, interactive: false, playerless: false, worldPath: "world2.json");
+        g2.RenameJson("ludus", "", "이번 검투소");
+
+        Assert.That(File.Exists("world1.json"), Is.True);
+        Assert.That(File.Exists("world2.json"), Is.True);
+        // 슬롯 간 격리: 각자 다른 세계·이름 유지
+        var r1 = new Game(1, 61, fresh: false, interactive: false, playerless: false, worldPath: "world1.json");
+        var r2 = new Game(1, 62, fresh: false, interactive: false, playerless: false, worldPath: "world2.json");
+        Assert.That(Parse(r1.StateJson()).GetProperty("LudusName").GetString(), Is.EqualTo("일번 검투소"));
+        Assert.That(Parse(r2.StateJson()).GetProperty("LudusName").GetString(), Is.EqualTo("이번 검투소"));
+    }
+
+    [Test]
+    public void Game_Calendar_ExposesFullSchedule()
+    {
+        TempDir("cal");
+        var g = new Game(1, 63, fresh: true, interactive: false, playerless: true);
+        g.PlayNext();   // 개막
+        g.PlayNext(); g.PlayNext();   // 2경기
+        var season = Parse(g.StateJson()).GetProperty("Season");
+        var cal = season.GetProperty("Calendar");
+        Assert.That(cal.GetArrayLength(), Is.GreaterThan(2), "전 일정(과거+미래) 노출");
+        int played = 0, next = 0;
+        foreach (var c in cal.EnumerateArray())
+        {
+            if (c.GetProperty("Winner").ValueKind != JsonValueKind.Null) played++;
+            if (c.GetProperty("IsNext").GetBoolean()) next++;
+            Assert.That(c.GetProperty("Month").GetString()!.Length, Is.GreaterThan(0), "로마 월 표기");
+        }
+        Assert.That(played, Is.EqualTo(2), "치른 경기 승자 표기");
+        Assert.That(next, Is.EqualTo(1), "다음 경기 마커 1개");
+        Assert.That(season.GetProperty("Auc").GetInt32(), Is.EqualTo(681), "AUC 연도");
+    }
+
+    [Test]
     public void Game_Transfers_ListAndGuards()
     {
         TempDir("transfer");
