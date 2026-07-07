@@ -21,6 +21,16 @@ using Morituri.Sim.Serialization;
 //       dotnet run -- season [rounds] [seed] [fresh] [serve]  Phase 3 시즌 — 순위·관계·감정·명성·서사.
 //                     world.json 영속(재실행=누적, fresh=초기화) · season.json 내보냄 · serve=league.html 대시보드 서버
 
+if (args.Length > 0 && args[0] == "oddsprobe")
+{
+    // 배당 캘리브레이션: 시드 세계의 캐스트로 예측식 후보 비교
+    Directory.SetCurrentDirectory(Path.GetTempPath());
+    ulong ws = args.Length > 1 && ulong.TryParse(args[1], out ulong opw) ? opw : 777;
+    int sims = args.Length > 2 && int.TryParse(args[2], out int ops) ? ops : 80;
+    new Game(1, ws, fresh: true, interactive: false, playerless: true).OddsProbe(sims);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "health")
 {
     HealthCheck.Run(

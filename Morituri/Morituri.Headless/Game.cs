@@ -27,7 +27,8 @@ public sealed class Game
     private const int StartFreeGachas = 2;
     private const float FeeBase = 5f, FeePopScale = 0.05f, WinBonus = 10f, KoBonus = 3f, DramaBonus = 5f;
     private static readonly float[] RankBonus = { 150f, 100f, 60f };   // 1~3위, 이하 20
-    private const float SalaryBase = 10f, SalaryFameScale = 0.03f;
+    private const float SalaryBase = 10f, SalaryFameScale = 0.10f;   // 인플레 흡수: 스타는 정말 비싸다 (0.03→0.10)
+    private const float UpkeepPerFacLv = 8f;                          // 시설 유지비(레벨당/시즌) — 증축의 지속 비용
     private const float AgingDecayPerSeason = 10f, MinPotentialBudget = 120f;
     private const int TrainEveryMatches = 3;
 
@@ -739,7 +740,7 @@ public sealed class Game
     {
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
-        _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear();
+        _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; g.SeasonBrutals = 0; }   // 시즌 사이 휴식 = 완전 회복
@@ -794,8 +795,10 @@ public sealed class Game
             _gold += bonusPaid;
             // 급여 공제 (스타는 비싸다)
             salaryPaid = _cast.Where(g => g.IsPlayer).Sum(g => SalaryBase + g.Fame * SalaryFameScale);
+            float upkeep = ((_trainingLv - 1) + (_medicalLv - 1) + _quartersLv) * UpkeepPerFacLv;   // 시설 유지비
+            salaryPaid += upkeep;
             _gold = MathF.Max(0f, _gold - salaryPaid);
-            _story.Add((_rounds + 1, "season", $"💰 시즌 정산 — 순위 보너스 +{bonusPaid:F0} · 급여 −{salaryPaid:F0} (잔고 {_gold:F0})"));
+            _story.Add((_rounds + 1, "season", $"💰 시즌 정산 — 순위 보너스 +{bonusPaid:F0} · 급여·유지비 −{salaryPaid:F0}{(upkeep > 0 ? $"(시설 {upkeep:F0})" : "")} (잔고 {_gold:F0})"));
 
             // 사채 정산: 이자 20% → 잔고에서 자동 상환 → 남으면 채권자의 압박(루두스 명성 −10)
             if (_debt > 0f)
@@ -930,7 +933,7 @@ public sealed class Game
         amount = MathF.Round(amount);
         if (amount < 5) return Err("최소 5 데나리우스");
         if (amount > _gold) return Err("잔고 부족");
-        float pA = WinProb(A, B);
+        float pA = CursorProbA();   // 시뮬 기반(상성 반영) — 파워식은 예측력 없음(MAE 35%p)
         float odds = side == 0 ? 1f / pA : 1f / (1f - pA);
         _gold -= amount;
         _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
@@ -1738,15 +1741,76 @@ public sealed class Game
     private float Intensity(string self, string opp)
         => Math.Clamp(MathF.Abs(_ledger.Get(self, opp).Affinity) / 100f, 0f, 1f);
 
-    /// <summary>배당용 전력 근사(표시 전용) — 스탯 합 + 명성·최근 폼(연승) + 부상 페널티.</summary>
+    /// <summary>배당 캘리브레이션 프로브: 캐스트 전 페어를 N판씩 시뮬 → 예측식 후보별 MAE(예측-실승률) 리포트.</summary>
+    public void OddsProbe(int simsPerPair)
+    {
+        var pairs = new List<(Gladiator A, Gladiator B, float actual)>();
+        for (int i = 0; i < _cast.Count; i++)
+            for (int j = i + 1; j < _cast.Count; j++)
+            {
+                var (dA, dB) = BuildDefs(_cast[i], _cast[j], "normal");
+                int wins = 0, decided = 0;
+                for (ulong s = 1; s <= (ulong)simsPerPair; s++)
+                {
+                    var r = new MatchSim().Run(dA, dB, s * 7919UL);
+                    if (r.Winner >= 0) { decided++; if (r.Winner == 0) wins++; }
+                }
+                if (decided > 10) pairs.Add((_cast[i], _cast[j], (float)wins / decided));
+            }
+        Console.WriteLine($"  페어 {pairs.Count}개 × {simsPerPair}판 — 예측식 후보별 MAE(%p):");
+        float MaeRatio() => pairs.Average(p => MathF.Abs(Power(p.A) / (Power(p.A) + Power(p.B)) - p.actual)) * 100f;
+        float MaeSig(float k) => pairs.Average(p => MathF.Abs(1f / (1f + MathF.Exp(-k * (Power(p.A) - Power(p.B)))) - p.actual)) * 100f;
+        Console.WriteLine($"    현행 비율식: {MaeRatio():F1}");
+        foreach (float k in new[] { 0.01f, 0.02f, 0.03f, 0.05f, 0.08f })
+            Console.WriteLine($"    시그모이드 k={k}: {MaeSig(k):F1}");
+        // 시뮬 기반(다른 시드 스트림 K판 추정) — 상성 매트릭스를 그대로 반영
+        foreach (int k in new[] { 9, 15, 25 })
+        {
+            float mae = pairs.Average(p =>
+            {
+                var (dA, dB) = BuildDefs(p.A, p.B, "normal");
+                return MathF.Abs(SimProb(dA, dB, 0xBE77_0000UL, k) - p.actual);
+            }) * 100f;
+            Console.WriteLine($"    시뮬 {k}판 추정: {mae:F1}");
+        }
+    }
+
+    /// <summary>시뮬 기반 승률 추정(A 기준) — 본경기와 다른 시드 스트림 K판, 라플라스 스무딩.</summary>
+    private static float SimProb(FighterDef dA, FighterDef dB, ulong seedBase, int k)
+    {
+        int wins = 0, decided = 0;
+        for (int t = 1; t <= k; t++)
+        {
+            var r = new MatchSim().Run(dA, dB, seedBase + (ulong)t * 104729UL);
+            if (r.Winner >= 0) { decided++; if (r.Winner == 0) wins++; }
+        }
+        return Math.Clamp((wins + 1f) / (decided + 2f), 0.05f, 0.95f);
+    }
+
+    /// <summary>배당용 전력 근사 — 진단(oddsprobe) 전용. 실배당은 시뮬 기반(CursorProbA) — 상성 매트릭스 지배라 스탯합은 예측력이 없다(MAE 35%p).</summary>
     private static float Power(Gladiator g)
     {
         float s = g.Stats.Atk + g.Stats.Def + g.Stats.HpMax / 10f + g.Stats.Spd + g.Stats.Aspd + g.Stats.Rct;
         return s + g.Fame * 0.15f + g.Streak * 2f - (g.InjuryMatches > 0 ? 15f : 0f);
     }
-    /// <summary>내 선수 관점 승률(0~1) — 극단 방지 클램프.</summary>
-    private static float WinProb(Gladiator me, Gladiator opp)
-        => Math.Clamp(Power(me) / MathF.Max(1f, Power(me) + Power(opp)), 0.15f, 0.85f);
+
+    private int _oddsCursor = -1; private float _oddsProbA;   // 커서별 배당 캐시(시뮬 15판 — MAE ~10%p)
+
+    /// <summary>커서 경기의 A 승률(시뮬 15판, 캐시) — 본경기와 다른 시드 스트림이라 결과 유출 없음. 전술은 경기와 동일 로직으로 예측.</summary>
+    private float CursorProbA()
+    {
+        if (_oddsCursor == _cursor) return _oddsProbA;
+        var s = _schedule[_cursor];
+        var A = ById(s.A); var B = ById(s.B);
+        var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);   // PlayNext와 동일 소비 순서
+        string tA = A.IsPlayer ? A.TacticId : SelectTacticAi(A, B, tacRng);
+        string tB = B.IsPlayer ? B.TacticId : SelectTacticAi(B, A, tacRng);
+        var (dA, dB) = BuildDefs(A, B, s.Format);
+        dA = dA with { TacticsId = tA }; dB = dB with { TacticsId = tB };
+        _oddsProbA = SimProb(dA, dB, SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL, 15);
+        _oddsCursor = _cursor;
+        return _oddsProbA;
+    }
 
     private static void Record(Gladiator a, Gladiator b, MatchResult r, bool standing)
     {
@@ -2133,7 +2197,8 @@ public sealed class Game
                 myEmo = mine.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray();
                 oppKiter = WeaponTable.Get(opp.WeaponId).Range >= 3.0f;
             }
-            float myP = mine != null ? WinProb(mine, opp) : 0.5f;
+            float probA = CursorProbA();   // 시뮬 15판(상성 반영) — VS 승률·배당 공용
+            float myP = mine == null ? 0.5f : mine == A ? probA : 1f - probA;
             nm = new NextMatchDoc(s.Round, s.IsEvent, mine != null, A.Name, B.Name,
                 mine?.Id, mine?.Name,
                 mine?.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(),
@@ -2148,7 +2213,7 @@ public sealed class Game
                 MyWinPct: MathF.Round(myP * 100f), MyOdds: MathF.Round(1f / myP * 100f) / 100f, OppOdds: MathF.Round(1f / (1f - myP) * 100f) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
-                OddsA: MathF.Round(100f / WinProb(A, B)) / 100f, OddsB: MathF.Round(100f / (1f - WinProb(A, B))) / 100f);
+                OddsA: MathF.Round(100f / probA) / 100f, OddsB: MathF.Round(100f / (1f - probA)) / 100f);
         }
 
         // 루두스 등급
