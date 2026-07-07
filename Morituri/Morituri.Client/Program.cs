@@ -30,6 +30,7 @@ internal static class Program
             "/api/simto" when method == "POST" => game.PlayUntilMineJson(),
             "/api/autofinish" when method == "POST" => game.AutoFinishJson(),
             "/api/watch" when method == "POST" => game.WatchJson(IntOf(body ?? "", "idx")),
+            "/api/watchgreat" when method == "POST" => game.WatchGreatJson(IntOf(body ?? "", "idx")),
             "/api/tactic" when method == "POST" => game.TacticJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "tacticId")),
             "/api/gacha" when method == "POST" => game.GachaJson(),
             "/api/recruit" when method == "POST" => game.RecruitJson(IntOf(body ?? "", "idx")),

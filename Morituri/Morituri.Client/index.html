@@ -615,10 +615,20 @@ async function openWatch(idx){
 function renderWatch(){
   if (!st) return;
   const ml = (st.Season.MatchLog||[]);
-  $('watchList').innerHTML = [...ml].reverse().map(m=>
+  const great = (st.Greatest||[]).map(g=>
+    `<button class="chip" style="cursor:pointer;border:1px solid #c94ca8;color:#e0a0d8" title="드라마 ${g.Drama}" onclick="openGreat(${g.Idx})">🎞 S${g.Season} ${g.A} vs ${g.B} · ${g.Winner}</button>`).join('');
+  $('watchList').innerHTML = (great?`<span class="note" style="width:100%">🎞 명경기 보관함 (시즌 무관 영속)</span>`+great+`<span class="note" style="width:100%">이번 시즌</span>`:'')
+    + ([...ml].reverse().map(m=>
     `<button class="chip" style="cursor:pointer;${m.IsPlayerMatch?'border:1px solid var(--gold);color:var(--gold);':''}" onclick="openWatch(${m.Idx})">${m.IsEvent?'🎪':'R'+m.Round} ${m.A} vs ${m.B} · ${m.Winner}</button>`).join('')
-    || '<span class="note">아직 치른 경기가 없다.</span>';
+    || '<span class="note">아직 치른 경기가 없다.</span>');
 }
+window.openGreat = async (idx)=>{
+  const r = await api('/api/watchgreat',{idx});
+  if (r.error) return;
+  $('watchCard').textContent = `🎞 명경기 · ${r.a} vs ${r.b}`;
+  $('watchF').src = 'viewer.html?t='+Date.now();
+  go('watch');
+};
 // viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 라이브 재생 완료=정산→결과창
 window.addEventListener('message', e=>{
   if (!e.data) return;
@@ -900,6 +910,15 @@ const CODEX = {
     {n:'신중', id:'WARY', d:'Commit +0.20 · 스태미나 낮으면 공격성 −0.3. 자원 관리형.'},
     {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리("🎭 쇼타임"=화려한 강공 지시, 데미지 직접증가 아님). 도발·스펙터클로 관중게이지를 잘 채운다 → 관중 유리 시 피해 최대 +12%·이속 +8%(모든 선수 공통, 쇼맨이 잘 채울 뿐). 관중 외면 시 가장 크게 위축.'},
     {n:'기회주의', id:'OPPORTUNIST', d:'평소 신중, 가드붕괴·지침 허점에 계산적으로 폭발.'},
+  ],
+  가이드: [
+    {n:'기본 루프', id:'LOOP', d:'영입(뽑기·이적) → 전술 선택 → 경기(라이브 관전·개입) → 성장(훈련·마스터리) → 시즌말 정산·승강. 매 경기 출전료(인기=흥행)·승리 보너스가 수입.'},
+    {n:'라이브 개입', id:'LIVE', d:'내 경기는 전용 화면에서 관전. ⏸ 전술 변경(경기당 2회)으로 그 순간부터 새 전술 — 열세를 뒤집어라. ⏭으로 즉시 결과 확정도 가능.'},
+    {n:'경제', id:'ECON', d:'💰골드=출전료·승리·순위·컵·이적. 사용: 뽑기·시설·이적·이벤트. 부족하면 사채(이자 20%·명성 압박). ✨영광=업적·타이틀·승격 전용 — 잠재력 돌파·제국 특전에.'},
+    {n:'성장 3갈래', id:'GROW', d:'훈련 포인트(3경기마다) → 스탯 훈련(상한까지) / 마스터리(비스탯). 상한이 차면 ✨영광 돌파로 상한 확장. 노화(30~36세 시작)는 상한을 깎는다.'},
+    {n:'리그 구조', id:'LEAGUE', d:'1부 콜로세움/2부 투기장 — 시즌말 성적으로 승강(꼴찌 2⇄상위 2). 정규 카드(라이벌·흥행 편성) → 이벤트 빅매치(☠처형전·⚔지정전 변주) → 챔피언십 컵(1부 top4).'},
+    {n:'위험 관리', id:'RISK', d:'피로(경기당 +5, 격전 +12)가 쌓이면 부상 위험↑. 격전(KO패·빈사)을 반복하면 ⚰사망·💀영구 중상 같은 운명이 실시간으로 닥친다. 스파링은 안전한 성장.'},
+    {n:'세대·유산', id:'LEGACY', d:'명성 60+ 전설을 은퇴시키면 스승으로 남아 영입 유산(원석 품질↑·신인 잠재 +10). 죽음은 유산 없이 끝 — 노장은 제때 보내라.'},
   ],
   '천부·잠재력': [
     {n:'천부 재능', id:'TALENT', s:'생성 시 결정 · 초기 스탯 총합(버짓)', d:'태어난 그릇. 최초 6스탯의 총합을 정한다 — 영입 전엔 비공개(뽑기 도박의 핵심). 루두스 등급·스승이 높으면 좋은 원석을 만날 확률↑(best-of-N 롤).'},

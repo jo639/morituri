@@ -94,7 +94,8 @@ public sealed class Game
         string? Mentor = null,   // 루두스의 스승(은퇴 전설 — 혈통 유산)
         List<LudusRepRec>? Perks = null,   // 제국 특전(Id, 레벨)
         int RookieSeq = 0, float Debt = 0f, int SparCount = 0,   // 신인 시리얼·사채·스파링 카운터
-        EdictRec? Edict = null, bool EdictDone = false);   // 황제의 특명
+        EdictRec? Edict = null, bool EdictDone = false,   // 황제의 특명
+        List<GreatRec>? Greatest = null);   // 명경기 보관함
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -148,7 +149,8 @@ public sealed class Game
         TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal,
         string LudusName = "내 루두스", string? Mentor = null, List<PerkDoc>? Perks = null,
         float Debt = 0f, string RomanDate = "",   // 사채·로마력 날짜(시간감각)
-        EdictDoc? Edict = null);   // 황제의 특명(시즌 계약)
+        EdictDoc? Edict = null,   // 황제의 특명(시즌 계약)
+        List<GreatDoc>? Greatest = null);   // 명경기 보관함
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
 
@@ -178,6 +180,8 @@ public sealed class Game
     private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
         string Winner, string Reason, bool IsPlayerMatch, ulong Seed, FighterDef DefA, FighterDef DefB);
     private sealed record MatchLogDoc(int Idx, int Round, bool IsEvent, string A, string B, string Winner, string Reason, bool IsPlayerMatch);
+    private sealed record GreatRec(int Season, float Drama, LogEntry Entry);   // 명경기(시즌 넘어 영속)
+    private sealed record GreatDoc(int Idx, int Season, string A, string B, string Winner, string Reason, float Drama);
 
     /// <summary>시즌 종료 요약 (연출 화면용 — 프리시즌 동안 표시, 영속).</summary>
     private sealed record RankRow(int Rank, string Name, int W, int L, int D, int Points, bool IsPlayer);
@@ -227,6 +231,8 @@ public sealed class Game
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
     private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
+    private float _lastDrama;                                // 직전 경기 드라마 스코어(명경기 보관 판정)
+    private readonly List<GreatRec> _greatest = new();       // 명경기 보관함(top 12, 영속 — 스냅샷+시드 재관전)
     private int _rookieSeq;                                  // 신인 id 시리얼(중복 방지, 영속)
     private float _debt;                                     // 사채(이벤트 빚) — 시즌말 이자·상환·명성 압박
     private readonly Dictionary<string, float> _rivalRep = new();   // 라이벌 루두스별 명성(경쟁 순위표)
@@ -1165,7 +1171,9 @@ public sealed class Game
         if (_cupStage == 0)
         {
             var top = Standings(1).Take(4).ToList();          // 컵 = 1부 상위 4인
-            if (top.Count < 4) { _cupStage = 3; return; }   // 선수 부족 → 컵 생략
+            if (top.Count < 4)                                // 1부가 작으면(초기·소규모 리그) 종합 상위로 보충
+                top = top.Concat(Standings(2).Take(4 - top.Count)).ToList();
+            if (top.Count < 4) { _cupStage = 3; return; }   // 그래도 부족 → 컵 생략
             _cupSeeds = top.Select(g => g.Id).ToList();
             _story.Add((_rounds + 2, "cup", $"🏛 챔피언십 컵 개막 — {top[0].Name}·{top[1].Name}·{top[2].Name}·{top[3].Name}"));
             _schedule.Add(new SchedRec(_rounds + 2, _cupSeeds[0], _cupSeeds[3], false, 0f, "cup_sf"));  // 1v4
@@ -1286,6 +1294,18 @@ public sealed class Game
         }
         return JsonSerializer.Serialize(new { ok = true, played, seasonDone = !SeasonActive,
             eventPending = _pendingEventId != null }, JsonOpts);
+    }
+
+    /// <summary>명경기 재관전: 보관함의 스냅샷+시드로 결정론 재시뮬(시즌 무관 영속).</summary>
+    public string WatchGreatJson(int idx)
+    {
+        if (idx < 0 || idx >= _greatest.Count) return Err("명경기 없음");
+        var e = _greatest[idx].Entry;
+        var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
+        var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
+        ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+        return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
     }
 
     /// <summary>경기 재관전: 로그의 스냅샷+시드로 결정론 재시뮬 → viewer.json. idx<0 = 최근 경기.</summary>
@@ -1446,8 +1466,16 @@ public sealed class Game
 
         // 경기 로그 (스냅샷+시드 = 재관전) + 내 선수 변경사항(결과 화면)
         string winner = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name);
-        _matchLog.Add(new LogEntry(_matchIdx, round, isEvent, A.Id, B.Id, A.Name, B.Name,
-            winner, res.Reason, A.IsPlayer || B.IsPlayer, seed, defA, defB));
+        var entry = new LogEntry(_matchIdx, round, isEvent, A.Id, B.Id, A.Name, B.Name,
+            winner, res.Reason, A.IsPlayer || B.IsPlayer, seed, defA, defB);
+        _matchLog.Add(entry);
+        // 명경기 보관함: 드라마 스코어 4+ → 시즌을 넘어 영속 보관(top 12, 스냅샷+시드 재관전)
+        if (_lastDrama >= 4f)
+        {
+            _greatest.Add(new GreatRec(_seasonNo, _lastDrama, entry));
+            if (_greatest.Count > 12) _greatest.Remove(_greatest.OrderBy(x => x.Drama).First());
+            _story.Add((round, "greatest", $"🎞 명경기 — {A.Name} vs {B.Name} (드라마 {_lastDrama:F1}) 보관함 등재"));
+        }
         mine = null;
         if (!_playerless)
         {
@@ -1456,6 +1484,10 @@ public sealed class Game
             if (B.IsPlayer) (mine ??= new()).Add(new MyDelta(B.Name, win == B, res.Winner < 0, incB, noteB,
                 B.Fame - fameB0, B.Popularity - popB0, growB, trB, eB != null ? EmotionTable.Get(eB).Name : null));
         }
+
+        // 명경기 판정(보관함): 드라마 스코어 — 대역전·이변·복수·KO·처형전·넉다운
+        _lastDrama = (comeback ? 3f : 0f) + (upset ? 2f : 0f) + (revenge ? 2f : 0f) + (ko ? 1f : 0f)
+                   + (exec ? 2f : 0f) + (win != null ? winStats.Knockdowns * 0.5f : 0f);
 
         // ── 극적 운명(실시간): 경기가 끝난 그 순간 운명이 갈린다 — 드묾, 매치시드 결정론 ──
         _lastFates.Clear();
@@ -1866,6 +1898,7 @@ public sealed class Game
         _perks.Clear(); if (w.Perks != null) foreach (var p in w.Perks) _perks[p.Id] = (int)p.Rep;
         _rookieSeq = w.RookieSeq; _debt = w.Debt; _sparCount = w.SparCount;
         _edict = w.Edict; _edictDone = w.EdictDone;
+        _greatest.Clear(); if (w.Greatest != null) _greatest.AddRange(w.Greatest);
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1900,7 +1933,8 @@ public sealed class Game
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
             _glory, _pendingProposalOpp, _ludusName, _mentorName,
             _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _rookieSeq, _debt, _sparCount, _edict, _edictDone), JsonOpts));
+            _rookieSeq, _debt, _sparCount, _edict, _edictDone,
+            _greatest.Count > 0 ? _greatest.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -2046,7 +2080,10 @@ public sealed class Game
             PerkDefs.Select(p => new PerkDoc(p.Id, p.Name, p.Desc, PerkLv(p.Id), p.Max,
                 PerkLv(p.Id) < p.Max ? p.Costs[PerkLv(p.Id)] : 0)).ToList(),
             MathF.Round(_debt), RomanDate(),
-            _edict != null ? new EdictDoc(_edict.Desc, _edictDone) : null), JsonOpts);
+            _edict != null ? new EdictDoc(_edict.Desc, _edictDone) : null,
+            _greatest.Count > 0 ? _greatest.OrderByDescending(x => x.Drama)
+                .Select((x, i) => new GreatDoc(_greatest.IndexOf(x), x.Season, x.Entry.AName, x.Entry.BName,
+                    x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

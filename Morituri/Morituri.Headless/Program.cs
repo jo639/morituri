@@ -21,6 +21,14 @@ using Morituri.Sim.Serialization;
 //       dotnet run -- season [rounds] [seed] [fresh] [serve]  Phase 3 시즌 — 순위·관계·감정·명성·서사.
 //                     world.json 영속(재실행=누적, fresh=초기화) · season.json 내보냄 · serve=league.html 대시보드 서버
 
+if (args.Length > 0 && args[0] == "health")
+{
+    HealthCheck.Run(
+        args.Length > 1 && int.TryParse(args[1], out int hs) ? hs : 5,
+        args.Length > 2 && int.TryParse(args[2], out int hn) ? hn : 50);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "matrix")
 {
     int games = args.Length > 1 && int.TryParse(args[1], out int g) ? g : 1000;
