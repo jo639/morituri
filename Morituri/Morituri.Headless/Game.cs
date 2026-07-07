@@ -93,7 +93,8 @@ public sealed class Game
         string? LudusName = null,   // 라니스타가 지은 루두스 이름
         string? Mentor = null,   // 루두스의 스승(은퇴 전설 — 혈통 유산)
         List<LudusRepRec>? Perks = null,   // 제국 특전(Id, 레벨)
-        int RookieSeq = 0, float Debt = 0f, int SparCount = 0);   // 신인 시리얼·사채·스파링 카운터
+        int RookieSeq = 0, float Debt = 0f, int SparCount = 0,   // 신인 시리얼·사채·스파링 카운터
+        EdictRec? Edict = null, bool EdictDone = false);   // 황제의 특명
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -146,7 +147,9 @@ public sealed class Game
         SeasonSummaryDoc? LastSeason, LudusDoc Ludus, List<AchDoc> Achievements, List<CupMatchDoc>? Cup,
         TextEventDoc? PendingEvent, List<LudusStandingDoc> LudusTable, float Glory, ProposalDoc? PendingProposal,
         string LudusName = "내 루두스", string? Mentor = null, List<PerkDoc>? Perks = null,
-        float Debt = 0f, string RomanDate = "");   // 사채·로마력 날짜(시간감각)
+        float Debt = 0f, string RomanDate = "",   // 사채·로마력 날짜(시간감각)
+        EdictDoc? Edict = null);   // 황제의 특명(시즌 계약)
+    private sealed record EdictDoc(string Desc, bool Done);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
 
     // ── 로마력(시간감각): 시즌1 = AUC 681(기원전 73년, 스파르타쿠스 봉기의 해). 경기 시즌 = Martius~October. ──
@@ -730,6 +733,8 @@ public sealed class Game
         int d1 = _cast.Count(g => g.Division == 1);
         _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {DivName(1)} {d1}인 · {DivName(2)} {_cast.Count - d1}인"));
 
+        RollEdict();   // 황제의 특명(시즌 계약)
+
         // 빅매치 제안(감독 개입): 내 선수 2명+ & 결정론 확률 → 명망 있는 도전 상대. 감독이 누구를 내보낼지 선택.
         _pendingProposalOpp = null;
         if (!_playerless && _cast.Count(g => g.IsPlayer) >= 2 && new SimRandom(SeasonSeed ^ 0x0B16_A7C4UL).Roll(0.6f))
@@ -807,6 +812,14 @@ public sealed class Game
         else AddRivalRep(champ.LudusId, RepLeagueTitle);   // 라이벌 우승 = 그 검투소 명성
         if (_champions.Count >= 3 && _champions.TakeLast(3).All(c => c.IsPlayer)) Unlock("dynasty");
 
+        // 특명 미달성 = 황제의 실망(루두스 명성 하락)
+        if (_edict != null && !_edictDone)
+        {
+            _ludusRep = MathF.Max(0f, _ludusRep - EdictFailRep);
+            _story.Add((_rounds + 1, "edict", $"📜 특명 실패 — \"{_edict.Desc}\" · 황제의 실망 (루두스 명성 −{EdictFailRep:F0})"));
+        }
+        _edict = null; _edictDone = false;
+
         SwapDivisions();   // 승강(성적 기반) — 다음 시즌 배치 확정. 챔피언은 1부 1위라 강등 불가
 
         // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
@@ -869,6 +882,56 @@ public sealed class Game
     }
 
     private int _sparCount;   // 스파링 시드 카운터(영속 — 결정론)
+
+    // ── 황제의 특명(시즌 계약) — 개막 시 부여, 달성=영광·골드 / 실패=루두스 명성 하락 ──
+    public sealed record EdictRec(string Type, string? TargetId, int N, string Desc);
+    private EdictRec? _edict; private bool _edictDone;
+    private const float EdictGlory = 8f, EdictGold = 80f, EdictFailRep = 15f;
+
+    private void RollEdict()
+    {
+        _edict = null; _edictDone = false;
+        if (_playerless || !_cast.Any(g => g.IsPlayer)) return;
+        if (_seasonNo < 4) return;   // 신생 루두스(1~3시즌)엔 황제의 눈길이 닿지 않는다 — 실패 벌 면제(신생 보호)
+        var rng = new SimRandom(SeasonSeed ^ 0xED1C_ED1CUL);
+        if (!rng.Roll(0.75f)) return;   // 가끔은 조용한 시즌
+        int pick = (int)(rng.NextUInt64() % 4UL);
+        switch (pick)
+        {
+            case 0:
+                _edict = new EdictRec("cup", null, 0, "챔피언십 컵을 우승하라"); break;
+            case 1:
+                var star = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault();
+                if (star == null) return;
+                _edict = new EdictRec("beat", star.Id, 0, $"{star.Name}을(를) 모래 위에 꿇려라"); break;
+            case 2:
+                _edict = new EdictRec("streak", null, 3, "3연승으로 군중을 열광시켜라"); break;
+            default:
+                _edict = new EdictRec("wins", null, 4, "이번 시즌 4승을 거둬라"); break;
+        }
+        _story.Add((0, "edict", $"📜 황제의 특명 — {_edict.Desc} (달성: ✨{EdictGlory:F0}·💰{EdictGold:F0} / 실패: 명성 −{EdictFailRep:F0})"));
+    }
+
+    /// <summary>경기 직후 특명 진행 체크(beat/streak/wins는 즉시 달성 가능).</summary>
+    private void CheckEdict()
+    {
+        if (_edict == null || _edictDone) return;
+        bool done = _edict.Type switch
+        {
+            "beat" => false,   // Play에서 승자 기준으로 별도 마킹
+            "streak" => _cast.Any(g => g.IsPlayer && g.Streak >= _edict.N),
+            "wins" => _cast.Where(g => g.IsPlayer).Sum(g => g.W) >= _edict.N,
+            _ => false,
+        };
+        if (done) MarkEdictDone();
+    }
+    private void MarkEdictDone()
+    {
+        if (_edict == null || _edictDone) return;
+        _edictDone = true;
+        AddGlory(EdictGlory); _gold += EdictGold;
+        _story.Add((0, "edict", $"📜 특명 달성! — {_edict.Desc} (✨+{EdictGlory:F0} 💰+{EdictGold:F0})"));
+    }
 
     /// <summary>친선 스파링(프리시즌): 같은 부 AI와 연습 경기 — 무기록·부상 없음, 성장 소량 + 가벼운 피로.</summary>
     public string SparringJson(string fighterId)
@@ -984,7 +1047,8 @@ public sealed class Game
             _cupChampion = cupW.Name;
             cupW.Fame += 10f;
             _story.Add((s.Round, "cup", $"🏆 챔피언십 컵 우승 — {cupW.Name}!"));
-            if (cupW.IsPlayer) { _gold += CupWinPrize; AddRep(RepCupTitle); AddGlory(GloryCup); Unlock("first_cup"); }
+            if (cupW.IsPlayer) { _gold += CupWinPrize; AddRep(RepCupTitle); AddGlory(GloryCup); Unlock("first_cup");
+                                 if (_edict is { Type: "cup" }) MarkEdictDone(); }
             else AddRivalRep(cupW.LudusId, RepCupTitle);
         }
         else if (s.Kind == "cup_sf" && res.Winner >= 0)   // 4강 진출 상금(내 선수)
@@ -1293,6 +1357,10 @@ public sealed class Game
 
         // 순위/커리어 + 관계 + 감정 (경기 인덱스 파생 스트림 = 미드시즌 재개 결정론)
         Record(A, B, res, standing: !isEvent);
+        // 황제의 특명 진행: 지목 상대 격파(beat)는 여기서, 연승/N승은 CheckEdict에서
+        if (_edict is { Type: "beat" } && !_edictDone && win != null && win.IsPlayer && lose?.Id == _edict.TargetId)
+            MarkEdictDone();
+        CheckEdict();
         _ledger.RecordMatch(A.Id, B.Id, res.Winner, ko, res.StatsA.MinHpPct, res.StatsB.MinHpPct);
         ProcessFatigue(A, res.StatsA, res, 0, round);   // 피로 누적(메타) + 부상 판정(드묾, 부상만 스탯 영향)
         ProcessFatigue(B, res.StatsB, res, 1, round);
@@ -1730,6 +1798,7 @@ public sealed class Game
         _mentorName = w.Mentor;
         _perks.Clear(); if (w.Perks != null) foreach (var p in w.Perks) _perks[p.Id] = (int)p.Rep;
         _rookieSeq = w.RookieSeq; _debt = w.Debt; _sparCount = w.SparCount;
+        _edict = w.Edict; _edictDone = w.EdictDone;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -1764,7 +1833,7 @@ public sealed class Game
             _rivalRep.Count > 0 ? _rivalRep.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
             _glory, _pendingProposalOpp, _ludusName, _mentorName,
             _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
-            _rookieSeq, _debt, _sparCount), JsonOpts));
+            _rookieSeq, _debt, _sparCount, _edict, _edictDone), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -1909,7 +1978,8 @@ public sealed class Game
             _ludusName, _mentorName,
             PerkDefs.Select(p => new PerkDoc(p.Id, p.Name, p.Desc, PerkLv(p.Id), p.Max,
                 PerkLv(p.Id) < p.Max ? p.Costs[PerkLv(p.Id)] : 0)).ToList(),
-            MathF.Round(_debt), RomanDate()), JsonOpts);
+            MathF.Round(_debt), RomanDate(),
+            _edict != null ? new EdictDoc(_edict.Desc, _edictDone) : null), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

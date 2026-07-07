@@ -231,6 +231,38 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Edict_Rolls_Persists_ResolvesAtSeasonEnd()
+    {
+        TempDir("edict");
+        var g = new Game(1, 55, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        // 특명이 뜨는 시즌 개막까지(75%/시즌)
+        JsonElement ed = default; bool found = false; int guard = 0;
+        while (guard++ < 8 && !found)
+        {
+            g.PlayNext();   // 개막
+            ed = Parse(g.StateJson()).GetProperty("Edict");
+            if (ed.ValueKind != JsonValueKind.Null) { found = true; break; }
+            while (g.SeasonActive) g.PlayNext();
+        }
+        Assert.That(found, Is.True, "특명 발부");
+        Assert.That(ed.GetProperty("Desc").GetString()!.Length, Is.GreaterThan(0));
+
+        // 미드시즌 재시작에도 특명 유지(영속)
+        var g2 = new Game(1, 55, fresh: false, interactive: false, playerless: false);
+        Assert.That(Parse(g2.StateJson()).GetProperty("Edict").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "특명 영속");
+
+        // 시즌 종료 → 특명 해소(달성 보상 or 실패 벌) 후 소거
+        while (g2.SeasonActive) g2.PlayNext();
+        var st = Parse(g2.StateJson());
+        Assert.That(st.GetProperty("Edict").ValueKind, Is.EqualTo(JsonValueKind.Null), "시즌말 특명 정산·소거");
+        bool resolved = st.GetProperty("Season").GetProperty("Story").EnumerateArray()
+            .Any(e => e.GetProperty("Kind").GetString() == "edict" &&
+                 (e.GetProperty("Text").GetString()!.Contains("달성") || e.GetProperty("Text").GetString()!.Contains("실패")));
+        Assert.That(resolved, Is.True, "달성/실패 서사 기록");
+    }
+
+    [Test]
     public void Game_Sparring_PreseasonOnly_NoRecord()
     {
         TempDir("spar");
