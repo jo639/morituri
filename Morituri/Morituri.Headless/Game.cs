@@ -99,7 +99,8 @@ public sealed class Game
         List<GreatRec>? Greatest = null,   // 명경기 보관함
         int BetCursor = -1, int BetSide = 0, float BetAmount = 0f, float BetOdds = 0f,   // 도박장
         int Favor = 0, int FavorLv = 0, bool ProposalExec = false,   // 황제 총애·도전장
-        float SeasonBetNet = 0f, int GauntletStage = 0, int GauntletWins = 0);   // 베팅 수지·초청전
+        float SeasonBetNet = 0f, int GauntletStage = 0, int GauntletWins = 0,   // 베팅 수지·초청전
+        List<ArchRec>? Archive = null);   // 관전 아카이브(지난 시즌 경기)
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -2114,6 +2115,7 @@ public sealed class Game
         _cast.Clear(); _cast.AddRange(w.Gladiators.Select(FromRec));
         _candidates.Clear(); if (w.Candidates != null) _candidates.AddRange(w.Candidates.Select(FromRec));
         _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
+        _archive.Clear(); if (w.Archive != null) _archive.AddRange(w.Archive);
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
@@ -2164,7 +2166,8 @@ public sealed class Game
             _rookieSeq, _debt, _sparCount, _edict, _edictDone,
             _greatest.Count > 0 ? _greatest.ToList() : null,
             _betCursor, _betSide, _betAmount, _betOdds, _favor, _favorLv, _proposalExec,
-            _seasonBetNet, _gauntletStage, _gauntletWins), JsonOpts));
+            _seasonBetNet, _gauntletStage, _gauntletWins,
+            _archive.Count > 0 ? _archive.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,

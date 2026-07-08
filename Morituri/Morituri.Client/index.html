@@ -169,10 +169,12 @@
   </div>
 
   <div class="screen" id="watch">
-    <div id="watchbar"><span class="card" id="watchCard">지난 경기 다시보기</span><span class="tag" id="watchTag" hidden>이벤트</span>
+    <div id="watchbar"><span class="card" id="watchCard">🎬 경기 기록실</span>
+      <input id="watchSearch" placeholder="선수명 검색…" oninput="renderWatch()" style="background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:4px 10px;width:160px">
+      <label class="note" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="watchMineOnly" onchange="renderWatch()"> 내 경기만</label>
       <button onclick="go('league')">리그로 →</button></div>
-    <div class="pad" style="padding:6px 18px"><div id="watchList" style="display:flex;gap:6px;flex-wrap:wrap;max-height:220px;overflow:auto;font-size:12px"></div></div>
-    <iframe id="watchF" src="about:blank" style="height:calc(100% - 280px)"></iframe>
+    <div class="pad" id="watchBody" style="overflow:auto;height:calc(100% - 60px)"></div>
+    <iframe id="watchF" src="about:blank" style="display:none"></iframe>
   </div>
 
   <div class="screen" id="codex"><div class="pad">
@@ -319,7 +321,7 @@ function go(s){
   if (s==='ludus') renderLudus();
   if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
-  if (s==='watch') renderWatch();
+  if (s==='watch'){ _archiveCache=null; renderWatch(); }
   if (s==='codex') renderCodex();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
@@ -694,32 +696,51 @@ window.watchReplay = async ()=>{
   $('resModal').classList.remove('on');
   await openWatch(-1);
 };
-async function openWatch(idx){
-  const r = await api('/api/watch',{idx});
-  if (r.error) return;
-  $('watchCard').textContent = `R${r.round} · ${r.a} vs ${r.b}`;
-  $('watchTag').hidden = !r.isEvent;
-  $('watchF').src = 'viewer.html?t='+Date.now();
-  go('watch');
+async function openWatch(idx){   // league.html 달력 클릭 → 새 탭 리플레이
+  await openReplayNewTab('/api/watch', idx, '🎬 다시보기');
 }
-// 관전탭 = 지난 경기 아카이브 (라이브는 전용 화면)
-function renderWatch(){
+// 관전탭 = 경기 기록실 (#1): 전 시즌 아카이브, 시즌별 그룹, 선수 검색, 새 탭 리플레이
+let _archiveCache = null;
+async function renderWatch(){
   if (!st) return;
-  const ml = (st.Season.MatchLog||[]);
-  const great = (st.Greatest||[]).map(g=>
-    `<button class="chip" style="cursor:pointer;border:1px solid #c94ca8;color:#e0a0d8" title="드라마 ${g.Drama}" onclick="openGreat(${g.Idx})">🎞 S${g.Season} ${g.A} vs ${g.B} · ${g.Winner}</button>`).join('');
-  $('watchList').innerHTML = (great?`<span class="note" style="width:100%">🎞 명경기 보관함 (시즌 무관 영속)</span>`+great+`<span class="note" style="width:100%">이번 시즌</span>`:'')
-    + ([...ml].reverse().map(m=>
-    `<button class="chip" style="cursor:pointer;${m.IsPlayerMatch?'border:1px solid var(--gold);color:var(--gold);':''}" onclick="openWatch(${m.Idx})">${m.IsEvent?'🎪':'R'+m.Round} ${m.A} vs ${m.B} · ${m.Winner}</button>`).join('')
-    || '<span class="note">아직 치른 경기가 없다.</span>');
+  const body = $('watchBody');
+  if (!_archiveCache){ body.innerHTML = '<div class="note">불러오는 중…</div>';
+    const r = await api('/api/archive',{}); _archiveCache = (r && r.matches) ? r : {matches:[]}; }
+  const q = ($('watchSearch').value||'').trim().toLowerCase();
+  const mineOnly = $('watchMineOnly').checked;
+  let rows = _archiveCache.matches.filter(m=>
+    (!mineOnly || m.Mine) && (!q || m.A.toLowerCase().includes(q) || m.B.toLowerCase().includes(q)));
+  // 명경기 보관함 상단
+  const great = (st.Greatest||[]).filter(g=>!q || g.A.toLowerCase().includes(q)||g.B.toLowerCase().includes(q))
+    .map(g=>`<button class="chip" style="cursor:pointer;border:1px solid #c94ca8;color:#e0a0d8" title="드라마 ${g.Drama}" onclick="openGreat(${g.Idx})">🎞 ${g.A} vs ${g.B} · ${g.Winner}</button>`).join('');
+  // 시즌별 그룹(최신 시즌 먼저), 그 안에서 라운드/경기 순
+  const bySeason = {};
+  rows.forEach(m=>{ (bySeason[m.Season]=bySeason[m.Season]||[]).push(m); });
+  const seasons = Object.keys(bySeason).map(Number).sort((a,b)=>b-a);
+  const kindTag = m => m.IsEvent?'🎪':'R'+m.Round;
+  let html = great ? `<h3 style="color:#e0a0d8;margin:4px 0">🎞 명경기 보관함</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${great}</div>` : '';
+  html += seasons.map(sn=>{
+    const list = bySeason[sn].slice().reverse();
+    return `<h3 style="color:var(--gold);border-bottom:1px solid #4a3a26;padding-bottom:3px;margin:10px 0 6px">시즌 ${sn} <span class="note" style="font-weight:400">${list.length}경기 · AUC ${680+sn}</span></h3>
+    <div style="display:flex;flex-direction:column;gap:3px">${list.map(m=>
+      `<div onclick="openArchive(${m.Idx})" style="cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:3px 8px;border-radius:5px;font-size:13px;${m.Mine?'border-left:2px solid var(--gold);color:var(--gold);':'border-left:2px solid #3a2d1d;'}background:var(--panel2)">
+        <span class="note" style="min-width:34px">${kindTag(m)}</span>
+        <span>${m.A} <span class="note">vs</span> ${m.B}</span>
+        <span style="margin-left:auto;color:var(--dim)">${m.Winner==='무승부'?'무승부':'🏆 '+m.Winner} · ${m.Reason}</span>
+        <span style="color:var(--gold)">▶</span></div>`).join('')}</div>`;
+  }).join('') || '<div class="note">기록이 없다.</div>';
+  body.innerHTML = html;
 }
-window.openGreat = async (idx)=>{
-  const r = await api('/api/watchgreat',{idx});
-  if (r.error) return;
-  $('watchCard').textContent = `🎞 명경기 · ${r.a} vs ${r.b}`;
-  $('watchF').src = 'viewer.html?t='+Date.now();
-  go('watch');
-};
+// 새 탭 리플레이(#1): viewer.json 갱신 후 새 창. 팝업 차단 시 현 탭 폴백
+async function openReplayNewTab(apiPath, idx, label){
+  const r = await api(apiPath,{idx});
+  if (r.error){ alert(r.error); return; }
+  const url = 'viewer.html?t='+Date.now();
+  const w = window.open(url, '_blank');
+  if (!w){ $('watchCard').textContent = label+` · ${r.a} vs ${r.b}`; $('watchF').style.display='block'; $('watchF').src = url; }
+}
+window.openArchive = (idx)=> openReplayNewTab('/api/watcharchive', idx, '🎬 다시보기');
+window.openGreat = (idx)=> openReplayNewTab('/api/watchgreat', idx, '🎞 명경기');
 // viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 라이브 재생 완료=정산→결과창
 window.addEventListener('message', e=>{
   if (!e.data) return;
