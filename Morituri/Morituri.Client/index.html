@@ -107,6 +107,7 @@
     <button data-s="market">영입</button>
     <button data-s="roster">로스터</button>
     <button data-s="watch">관전</button>
+    <button data-s="gamble">🎲 도박장</button>
     <button data-s="codex">📖 도감</button>
   </nav>
   <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
@@ -177,6 +178,14 @@
     <div class="pad" id="watchBody" style="overflow:auto;height:calc(100% - 60px)"></div>
     <iframe id="watchF" src="about:blank" style="display:none"></iframe>
   </div>
+
+  <div class="screen" id="gamble"><div class="pad">
+    <h2>🎲 콜로세움 도박장 <span class="note">AI 경기에 베팅 — 내 루두스 경기엔 걸 수 없다(승부조작 금지)</span></h2>
+    <div id="gambleStat" style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap"></div>
+    <div id="gambleNext" style="margin:10px 0"></div>
+    <h3>📜 베팅 이력</h3>
+    <div id="gambleLog" style="display:flex;flex-direction:column;gap:3px;max-height:340px;overflow:auto"></div>
+  </div></div>
 
   <div class="screen" id="codex"><div class="pad">
     <h2>📖 도감 <span class="note">무기·전술·성격·특성 설명</span></h2>
@@ -330,6 +339,7 @@ function go(s){
   if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
   if (s==='watch'){ _archiveCache=null; renderWatch(); }
+  if (s==='gamble') renderGamble();
   if (s==='codex') renderCodex();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
@@ -400,7 +410,43 @@ window.bet = async (side)=>{
   const amt = parseInt($('betAmt').value)||0;
   const r = await api('/api/bet',{side, amount:amt});
   if (r.error){ const m=$('betMsg'); if(m){ m.style.color='var(--b)'; m.textContent='⚠ '+r.error; } return; }  // 입력창 보존
-  st=r; renderBetBar(); refreshTop();
+  st=r; renderBetBar(); refreshTop(); if($('gamble').classList.contains('on')) renderGamble();
+};
+// ── 도박장 탭(#32): 통계 · 다음 경기 베팅 · 이력 ──
+function renderGamble(){
+  if (!st) return;
+  const g = st.Gamble||{SeasonNet:0,Hits:0,Total:0,Log:[]};
+  const winRate = g.Total>0 ? Math.round(g.Hits/g.Total*100) : 0;
+  const stat=(label,val,col)=>`<div style="background:var(--panel2);border-radius:9px;padding:8px 14px"><div class="note">${label}</div><div style="font-size:18px;font-weight:700;color:${col||'var(--ink)'}">${val}</div></div>`;
+  $('gambleStat').innerHTML =
+    stat('시즌 수지', (g.SeasonNet>0?'+':'')+Math.round(g.SeasonNet), g.SeasonNet>0?'var(--grn)':g.SeasonNet<0?'var(--b)':'var(--ink)') +
+    stat('적중률', winRate+'%', 'var(--gold)') +
+    stat('베팅 횟수', g.Total, null) +
+    stat('보유 골드', '💰'+Math.round(st.Gold), 'var(--gold)');
+  // 다음 경기 베팅(리그탭 betBar 재사용 로직)
+  const nm=st.NextMatch, gn=$('gambleNext');
+  if (st.PendingBet){ gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:8px">🎲 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 💰${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산</div>`; }
+  else if (st.SeasonActive && nm && !nm.IsPlayerMatch){
+    const btn=(s,nm2,od)=>`<button onclick="betG(${s})" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:5px 14px;cursor:pointer">${nm2} <b>×${od.toFixed(2)}</b></button>`;
+    gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-radius:8px">다음 경기 <b>${nm.AName}</b> vs <b>${nm.BName}</b>
+      <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="betAmtG" type="number" min="5" max="${Math.floor(st.Gold)}" value="${Math.min(20,Math.floor(st.Gold))}" style="width:80px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:3px 7px">
+      ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)}<span class="note" id="betMsgG"></span></div></div>`;
+  }
+  else gn.innerHTML = `<div class="note">${nm&&nm.IsPlayerMatch?'다음은 내 경기 — 베팅 불가(승부조작 금지)':'베팅 가능한 다음 경기가 없다'}</div>`;
+  // 이력
+  $('gambleLog').innerHTML = (g.Log||[]).map(b=>
+    `<div style="display:flex;gap:8px;font-size:13px;padding:3px 8px;border-radius:5px;background:var(--panel2)">
+      <span class="note" style="min-width:44px">S${b.Season}</span>
+      <span><b>${b.On}</b>에 💰${Math.round(b.Amount)} <span class="note">×${b.Odds.toFixed(2)}</span></span>
+      <span style="margin-left:auto;color:${b.Won?'var(--grn)':'var(--b)'}">${b.Won?'적중 +'+Math.round(b.Payout):'실패 −'+Math.round(b.Amount)}</span></div>`).join('')
+    || '<span class="note">아직 베팅 기록이 없다.</span>';
+}
+window.betG = async (side)=>{
+  const amt = parseInt($('betAmtG').value)||0;
+  const r = await api('/api/bet',{side, amount:amt});
+  if (r.error){ const m=$('betMsgG'); if(m){ m.style.color='var(--b)'; m.textContent=' ⚠ '+r.error; } return; }
+  st=r; renderGamble(); refreshTop();
 };
 // ── 알림 배지: 할 일이 있는 탭에 🔴 ──
 function renderBadges(){
@@ -812,6 +858,7 @@ function renderLudus(){
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       ${!st.SeasonActive?`<div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
+        <button onclick="streetfight('${f.Id}')" title="라이벌 검투사에게 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
         ${st.MasterPending?`<button onclick="bestow('${f.Id}')" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)" style="flex:1;background:#3a2d40;border:none;color:#d8a0e0;border-radius:6px;padding:4px">📜 전수받기</button>`:''}
         <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴</button>
         <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div>`:''}</div>`;
@@ -907,6 +954,13 @@ window.sparring = async (id)=>{
   $('ludusErr').textContent='';
   await refresh(); renderLudus(); refreshTop();
   $('ludusErr').innerHTML = `<span style="color:#a8d8b0">🤺 스파링 vs ${r.opp} — ${r.winner} 우세${r.grow?` · ${r.grow.toUpperCase()} +0.5`:''} (피로 ${r.fatigue})</span>`;
+};
+window.streetfight = async (id)=>{
+  const r = await api('/api/streetfight',{id});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent='';
+  await refresh(); renderLudus(); refreshTop();
+  $('ludusErr').innerHTML = `<span style="color:#e0b090">${r.note}</span>`;
 };
 window.retire = (id,name,fame,ckow)=>{
   ckow = ckow||0;
