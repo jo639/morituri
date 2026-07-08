@@ -100,6 +100,7 @@
       <option value="4">4×</option>
     </select>
     <button id="viewmode" title="기본 ↔ 줌 추적">🎥 기본</button>
+    <button id="hl" title="임팩트 구간(타격·넉다운·KO)만 점프 재생 — 3분 경기를 ~30초에">⏩ 하이라이트</button>
     <span id="clock">0.0 / 0.0s</span>
   </div>
   <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지.</div>
@@ -289,6 +290,28 @@ function buildPopups(){
   }
 }
 
+// ── ⏩ 하이라이트 모드: 임팩트 구간만 이어 재생 (조용한 대치는 점프) ──
+let hlMode = SET.highlight === true, hlWins = [];
+function buildHlWindows(){
+  const raw = impacts.map(im=>[Math.max(0,im.t-1.0), im.t+0.9]);
+  raw.push([Math.max(0,duration-2.5), duration]);   // 피니시는 항상 포함
+  raw.sort((a,b)=>a[0]-b[0]);
+  hlWins = [];
+  for (const w of raw){
+    if (hlWins.length && w[0] <= hlWins[hlWins.length-1][1]+0.4) hlWins[hlWins.length-1][1] = Math.max(hlWins[hlWins.length-1][1], w[1]);
+    else hlWins.push([...w]);
+  }
+}
+function hlSkip(cur){   // 윈도우 밖이면 다음 윈도우 시작으로 (없으면 그대로)
+  for (const w of hlWins){ if (cur < w[0]) return w[0]; if (cur <= w[1]) return cur; }
+  return cur;
+}
+function setHl(on){ hlMode = on;
+  const b = document.getElementById('hl');
+  b.style.background = on ? getCSS('--gold') : ''; b.style.color = on ? '#231a12' : '';
+}
+document.getElementById('hl').onclick = ()=> setHl(!hlMode);
+
 // 이벤트 → 임팩트(흔들림·스파크·히트스톱). t로부터 재계산 → 스크럽 안전.
 function buildImpacts(){
   impacts = [];
@@ -312,6 +335,8 @@ function buildImpacts(){
       impacts.push({ t:e.Time, who:1-doc.Result.Winner, mag:18, kind:'ko', col:'#ffffff', stop:0.22 });
     }
   }
+  buildHlWindows();   // ⏩ 하이라이트 구간 재계산
+  setHl(hlMode);      // 버튼 상태 반영(설정 기본값 포함)
 }
 
 // 피격 스프라이트 흰색 플래시 강도(0~1) — 최근 임팩트가 이 선수를 때렸으면 잠깐 하얘진다.
@@ -916,7 +941,12 @@ function tick(now){
       for (const im of impacts){ if (im.stop>0 && im.t>t && im.t<=t+adv){ adv=im.t-t; hitstopUntil=now+im.stop; break; } }
       const prevT = t;
       t += adv;
-      playSfxRange(prevT, t);            // 지나간 이벤트 효과음 (합성)
+      // ⏩ 하이라이트: 임팩트 구간 밖이면 다음 구간으로 점프 (사이의 대치는 생략)
+      if (hlMode && hlWins.length){
+        const jumped = hlSkip(t);
+        if (jumped > t + 0.01){ t = jumped; lastSfxT = t; }   // 점프 구간의 밀린 sfx 폭주 방지
+      }
+      playSfxRange(prevT > t ? t : prevT, t);   // 지나간 이벤트 효과음 (합성)
       if (t >= duration){
         t = duration; setPlaying(false);
         revealWinner();   // 재생 완료 — 이제 승자 공개 (스포일러 방지)

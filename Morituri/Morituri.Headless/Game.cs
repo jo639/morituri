@@ -98,7 +98,8 @@ public sealed class Game
         EdictRec? Edict = null, bool EdictDone = false,   // 황제의 특명
         List<GreatRec>? Greatest = null,   // 명경기 보관함
         int BetCursor = -1, int BetSide = 0, float BetAmount = 0f, float BetOdds = 0f,   // 도박장
-        int Favor = 0, int FavorLv = 0, bool ProposalExec = false);   // 황제 총애·도전장
+        int Favor = 0, int FavorLv = 0, bool ProposalExec = false,   // 황제 총애·도전장
+        float SeasonBetNet = 0f, int GauntletStage = 0, int GauntletWins = 0);   // 베팅 수지·초청전
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -198,7 +199,9 @@ public sealed class Game
         int MyBestRank, float RankBonus, float Salary, float GoldAfter,
         List<string> AgingNotes, int Revenge, int Upsets, int Comebacks, string TopFame,
         List<string>? Retirements = null,
-        string? CupChampion = null, bool CupChampionMine = false, List<string>? NewAchievements = null);
+        string? CupChampion = null, bool CupChampionMine = false, List<string>? NewAchievements = null,
+        List<string>? FateNotes = null, List<string>? PromoNotes = null, string? EdictNote = null,
+        float BetNet = 0f, int GreatCount = 0, int Favor = 0, int GauntletWins = 0);   // 결산 대통합
 
     /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
     private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
@@ -741,6 +744,7 @@ public sealed class Game
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
+        _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0;
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; g.SeasonBrutals = 0; }   // 시즌 사이 휴식 = 완전 회복
@@ -897,7 +901,16 @@ public sealed class Game
             _cast.OrderByDescending(g => g.Fame).First().Name,
             retirements.Count > 0 ? retirements : null,
             _cupChampion, _cupChampion != null && _cast.Any(g => g.IsPlayer && g.Name == _cupChampion),
-            _seasonNewAch.Count > 0 ? _seasonNewAch.ToList() : null);
+            _seasonNewAch.Count > 0 ? _seasonNewAch.ToList() : null,
+            // 결산 대통합: 운명·승강·특명·베팅·명경기·총애 — 시즌 한 편의 마침표
+            FateNotes: _story.Where(s => s.Kind is "death" or "grave_injury" or "awakening" or "persona" or "tradeoff")
+                .Select(s => s.Text).ToList() is { Count: > 0 } fn ? fn : null,
+            PromoNotes: _story.Where(s => s.Kind is "promote" or "relegate").Select(s => s.Text).ToList() is { Count: > 0 } pn ? pn : null,
+            EdictNote: _story.Where(s => s.Kind == "edict" && (s.Text.Contains("달성") || s.Text.Contains("실패")))
+                .Select(s => s.Text).LastOrDefault(),
+            BetNet: MathF.Round(_seasonBetNet),
+            GreatCount: _story.Count(s => s.Kind == "greatest"),
+            Favor: _favor, GauntletWins: _gauntletWins);
 
         SaveWorld();
     }
@@ -935,7 +948,7 @@ public sealed class Game
         if (amount > _gold) return Err("잔고 부족");
         float pA = CursorProbA();   // 시뮬 기반(상성 반영) — 파워식은 예측력 없음(MAE 35%p)
         float odds = side == 0 ? 1f / pA : 1f / (1f - pA);
-        _gold -= amount;
+        _gold -= amount; _seasonBetNet -= amount;
         _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
         _story.Add((s.Round, "bet", $"🎲 베팅 — {(side == 0 ? A.Name : B.Name)}에 {amount:F0} (배당 {odds:F2})"));
         SaveWorld();
@@ -1192,6 +1205,17 @@ public sealed class Game
             var w = res.Winner == 0 ? A : B;
             if (w.IsPlayer) _gold += CupSemiPrize;
         }
+        else if (s.Kind == "gauntlet" && res.Winner >= 0)   // 🏟 초청전: 승당 하사, 전승 시 대관
+        {
+            var w = res.Winner == 0 ? A : B;
+            if (w.IsPlayer)
+            {
+                _gauntletWins++; _gold += 100f; AddGlory(5f);
+                _story.Add((s.Round, "gauntlet", $"🏟 초청전 {_gauntletWins}승 — {w.Name} (💰+100 ✨+5)"));
+                if (_gauntletWins >= 3)
+                { AddGlory(15f); _story.Add((s.Round, "gauntlet", $"👑 초청전 전승! {w.Name}, 황제 앞에서 대관하다 (✨+15)")); }
+            }
+        }
 
         // 베팅 정산: 이 경기에 걸었으면 승패 판정 — 적중 = 배당 ×0.95(하우스 엣지)
         if (_betCursor == _cursor - 1)
@@ -1200,7 +1224,7 @@ public sealed class Game
             if (res.Winner == _betSide)
             {
                 float payout = MathF.Round(_betAmount * _betOdds * 0.95f);
-                _gold += payout;
+                _gold += payout; _seasonBetNet += payout;
                 _story.Add((s.Round, "bet", $"🎲 적중! {(_betSide == 0 ? A.Name : B.Name)} 승 — 배당금 +{payout:F0}"));
             }
             else _story.Add((s.Round, "bet", $"🎲 빗나감 — {_betAmount:F0} 데나리우스가 모래에 묻혔다"));
@@ -1267,6 +1291,24 @@ public sealed class Game
             return;
         }
         if (_cupStage == 2) _cupStage = 3;   // 결승 끝 → 컵 종료
+
+        // 컵 종료 → 🏟 황제의 초청전(건틀릿): 총애 6+ 루두스의 간판이 리그 최강 3인과 연전 (총애 트랙의 정점)
+        if (_cupStage == 3 && _gauntletStage == 0)
+        {
+            _gauntletStage = 1;
+            if (_favor >= 6 && !_playerless && _cast.Any(g => g.IsPlayer))
+            {
+                var champ = _cast.Where(g => g.IsPlayer).OrderByDescending(g => g.Fame).First();
+                var rivals = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).Take(3).ToList();
+                if (rivals.Count == 3)
+                {
+                    _gauntletWins = 0;
+                    foreach (var r in rivals)
+                        _schedule.Add(new SchedRec(_rounds + 4, champ.Id, r.Id, true, 0f, "gauntlet"));
+                    _story.Add((_rounds + 4, "gauntlet", $"🏟 황제의 초청전 — 총애받는 {champ.Name}, 최강 3인({string.Join("·", rivals.Select(x => x.Name))})과 연전!"));
+                }
+            }
+        }
     }
 
     /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
@@ -1795,6 +1837,8 @@ public sealed class Game
     }
 
     private int _oddsCursor = -1; private float _oddsProbA;   // 커서별 배당 캐시(시뮬 15판 — MAE ~10%p)
+    private float _seasonBetNet;                              // 시즌 베팅 수지(결산 표시)
+    private int _gauntletStage, _gauntletWins;                // 황제의 초청전: 0=미편성 1=편성됨 · 승수
 
     /// <summary>커서 경기의 A 승률(시뮬 15판, 캐시) — 본경기와 다른 시드 스트림이라 결과 유출 없음. 전술은 경기와 동일 로직으로 예측.</summary>
     private float CursorProbA()
@@ -2038,6 +2082,7 @@ public sealed class Game
         _greatest.Clear(); if (w.Greatest != null) _greatest.AddRange(w.Greatest);
         _betCursor = w.BetCursor; _betSide = w.BetSide; _betAmount = w.BetAmount; _betOdds = w.BetOdds;
         _favor = w.Favor; _favorLv = w.FavorLv; _proposalExec = w.ProposalExec;
+        _seasonBetNet = w.SeasonBetNet; _gauntletStage = w.GauntletStage; _gauntletWins = w.GauntletWins;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
@@ -2074,7 +2119,8 @@ public sealed class Game
             _perks.Count > 0 ? _perks.Select(kv => new LudusRepRec(kv.Key, kv.Value)).ToList() : null,
             _rookieSeq, _debt, _sparCount, _edict, _edictDone,
             _greatest.Count > 0 ? _greatest.ToList() : null,
-            _betCursor, _betSide, _betAmount, _betOdds, _favor, _favorLv, _proposalExec), JsonOpts));
+            _betCursor, _betSide, _betAmount, _betOdds, _favor, _favorLv, _proposalExec,
+            _seasonBetNet, _gauntletStage, _gauntletWins), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
