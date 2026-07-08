@@ -159,7 +159,8 @@ public sealed class Game
         float Debt = 0f, string RomanDate = "",   // 사채·로마력 날짜(시간감각)
         EdictDoc? Edict = null,   // 황제의 특명(시즌 계약)
         List<GreatDoc>? Greatest = null,   // 명경기 보관함
-        BetDoc? PendingBet = null, int Favor = 0);   // 도박장·황제 총애
+        BetDoc? PendingBet = null, int Favor = 0,   // 도박장·황제 총애
+        bool HasMyMatchAhead = false);   // 남은 일정에 내 경기가 있는가(스킵 버튼 노출)
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
@@ -190,6 +191,8 @@ public sealed class Game
     private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
         string Winner, string Reason, bool IsPlayerMatch, ulong Seed, FighterDef DefA, FighterDef DefB);
     private sealed record MatchLogDoc(int Idx, int Round, bool IsEvent, string A, string B, string Winner, string Reason, bool IsPlayerMatch);
+    private sealed record ArchRec(int Season, LogEntry Entry);   // 관전 아카이브 1건(시즌 태그)
+    private sealed record ArchDoc(int Idx, int Season, int Round, bool IsEvent, string A, string B, string Winner, string Reason, bool Mine);
     private sealed record GreatRec(int Season, float Drama, LogEntry Entry);   // 명경기(시즌 넘어 영속)
     private sealed record GreatDoc(int Idx, int Season, string A, string B, string Winner, string Reason, float Drama);
 
@@ -230,6 +233,7 @@ public sealed class Game
     private readonly List<(int Round, string Kind, string Text)> _story = new();
     private readonly List<EventDoc> _eventDocs = new();
     private readonly List<LogEntry> _matchLog = new();   // 이번 시즌 경기 기록(스냅샷+시드 = 재관전)
+    private readonly List<ArchRec> _archive = new();      // 지난 시즌들 경기 아카이브(영속, 최근 400 롤링)
     private SeasonSummaryDoc? _lastSummary;              // 최근 종료 시즌 요약 (연출 화면, 영속)
     private readonly List<ChampionRec> _champions = new();   // 역대 챔피언 (세계 역사)
     private readonly List<HallRec> _hall = new();            // 명예의 전당 (은퇴자)
@@ -745,6 +749,9 @@ public sealed class Game
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0;
+        // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
+        foreach (var e in _matchLog) _archive.Add(new ArchRec(Math.Max(1, _seasonsPlayed), e));
+        while (_archive.Count > 400) _archive.RemoveAt(0);
         _story.Clear(); _eventDocs.Clear(); _schedule.Clear(); _matchLog.Clear();
         SeasonActive = true;
         foreach (var g in _cast) { g.W = g.L = g.D = g.Streak = 0; g.PendingEmotions.Clear(); g.Fatigue = 0; g.InjuryMatches = 0; g.SeasonBrutals = 0; }   // 시즌 사이 휴식 = 완전 회복
@@ -931,8 +938,12 @@ public sealed class Game
 
     private int _sparCount;   // 스파링 시드 카운터(영속 — 결정론)
 
-    // ── 콜로세움 도박장 — AI 경기에 골드 베팅(내 경기 금지=승부조작 방지). 배당은 베팅 시점 고정, 하우스 엣지 5% ──
+    // ── 콜로세움 도박장 — AI 경기에 골드 베팅(내 경기 금지=승부조작 방지). 배당은 베팅 시점 고정 ──
     private int _betCursor = -1, _betSide; private float _betAmount, _betOdds;
+
+    /// <summary>승률 p → 표시 배당. 하우스 마진(8%)을 배당에 내장 → payout=amount×odds(이중 공제 없음).
+    /// 하한 1.20(대세팀도 최소 +20% 회수), 상한 6.0(약체 대박). 저배당 무이득 버그 해소.</summary>
+    private static float BetOdds(float p) => Math.Clamp(0.92f / Math.Clamp(p, 0.08f, 0.95f), 1.2f, 6f);
 
     /// <summary>다음 AI 경기에 베팅: side 0=A/1=B. 경기당 1회, 배당 고정.</summary>
     public string BetJson(int side, float amount)
@@ -943,11 +954,10 @@ public sealed class Game
         if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
         if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
         if (side is < 0 or > 1) return Err("잘못된 선택");
-        amount = MathF.Round(amount);
-        if (amount < 5) return Err("최소 5 데나리우스");
-        if (amount > _gold) return Err("잔고 부족");
+        amount = MathF.Floor(MathF.Min(amount, MathF.Floor(_gold)));   // 전액 베팅 안전: 잔고 이하로 클램프(부동소수 오탐 방지)
+        if (amount < 5) return Err("최소 5 데나리우스 (잔고 부족)");
         float pA = CursorProbA();   // 시뮬 기반(상성 반영) — 파워식은 예측력 없음(MAE 35%p)
-        float odds = side == 0 ? 1f / pA : 1f / (1f - pA);
+        float odds = BetOdds(side == 0 ? pA : 1f - pA);
         _gold -= amount; _seasonBetNet -= amount;
         _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
         _story.Add((s.Round, "bet", $"🎲 베팅 — {(side == 0 ? A.Name : B.Name)}에 {amount:F0} (배당 {odds:F2})"));
@@ -1223,7 +1233,7 @@ public sealed class Game
             _betCursor = -1;
             if (res.Winner == _betSide)
             {
-                float payout = MathF.Round(_betAmount * _betOdds * 0.95f);
+                float payout = MathF.Round(_betAmount * _betOdds);   // 마진은 배당에 내장 — 여기선 순수 배당금
                 _gold += payout; _seasonBetNet += payout;
                 _story.Add((s.Round, "bet", $"🎲 적중! {(_betSide == 0 ? A.Name : B.Name)} 승 — 배당금 +{payout:F0}"));
             }
@@ -1332,6 +1342,7 @@ public sealed class Game
     private sealed class LiveMatch
     {
         public required string MyId; public required string[] MyPool;
+        public required string InitialTactic;   // 개막 전술 — 같은 전술 재선택 판정용
         public required List<TacticSwitch> Switches;
     }
     private LiveMatch? _live;                                       // 진행 중 라이브 매치(메모리 전용 — 영속 안 함)
@@ -1353,7 +1364,7 @@ public sealed class Game
         if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
         else B.TacticId = SelectTacticAi(B, A, tacRng);
 
-        _live = new LiveMatch { MyId = mine.Id, MyPool = mine.TacticPool, Switches = new() };
+        _live = new LiveMatch { MyId = mine.Id, MyPool = mine.TacticPool, InitialTactic = mine.TacticId, Switches = new() };
         LiveResim();
         return JsonSerializer.Serialize(new { ok = true, a = A.Name, b = B.Name, round = s.Round,
             kind = s.Kind, remaining = 2 }, JsonOpts);
@@ -1382,9 +1393,13 @@ public sealed class Game
     public string LiveSwitchJson(float time, string tacticId)
     {
         if (_live == null) return Err("라이브 경기가 없다");
-        if (_live.Switches.Count >= 2) return Err("전술 변경은 경기당 2회");
         string full = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
         if (!_live.MyPool.Contains(full)) return Err("전술풀에 없는 전술");
+        // 그 시각에 이미 적용 중인 전술을 다시 고르면 = 변화 없음 → 기회 미차감(#12)
+        string activeNow = _live.Switches.Where(x => x.Time <= time).OrderBy(x => x.Time).LastOrDefault()?.TacticId ?? _live.InitialTactic;
+        if (full == activeNow)
+            return JsonSerializer.Serialize(new { ok = true, remaining = 2 - _live.Switches.Count, nochange = true }, JsonOpts);
+        if (_live.Switches.Count >= 2) return Err("전술 변경은 경기당 2회");
         _live.Switches.Add(new TacticSwitch(MathF.Max(0.1f, time), full));
         LiveResim();
         return JsonSerializer.Serialize(new { ok = true, remaining = 2 - _live.Switches.Count }, JsonOpts);
@@ -1431,6 +1446,35 @@ public sealed class Game
     {
         var e = idx < 0 ? _matchLog.LastOrDefault() : _matchLog.FirstOrDefault(x => x.Idx == idx);
         if (e == null) return Err("경기 기록 없음");
+        var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
+        var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
+        ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+        return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
+    }
+
+    /// <summary>관전 아카이브 목록(#1): 이번 시즌 + 지난 시즌들 전 경기 — 시즌·라운드 메타(리플레이는 별도).</summary>
+    public string ArchiveListJson()
+    {
+        var rows = new List<ArchDoc>();
+        // 지난 시즌들(아카이브) — 오래된 → 최신
+        foreach (var a in _archive)
+            rows.Add(new ArchDoc(-1 - _archive.IndexOf(a), a.Season, a.Entry.Round, a.Entry.IsEvent,
+                a.Entry.AName, a.Entry.BName, a.Entry.Winner, a.Entry.Reason, a.Entry.IsPlayerMatch));
+        // 이번 시즌(현행 로그) — Idx 그대로(양수) → WatchJson 재사용
+        int cur = Math.Max(1, _seasonNo);
+        foreach (var e in _matchLog)
+            rows.Add(new ArchDoc(e.Idx, cur, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch));
+        return JsonSerializer.Serialize(new { ok = true, matches = rows, currentSeason = cur }, JsonOpts);
+    }
+
+    /// <summary>아카이브 경기 재관전: idx>=0 = 이번 시즌(WatchJson), idx&lt;0 = 지난 시즌 아카이브(−1−pos).</summary>
+    public string WatchArchiveJson(int idx)
+    {
+        if (idx >= 0) return WatchJson(idx);
+        int pos = -1 - idx;
+        if (pos < 0 || pos >= _archive.Count) return Err("아카이브 경기 없음");
+        var e = _archive[pos].Entry;
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
         ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
@@ -2259,7 +2303,7 @@ public sealed class Game
                 MyWinPct: MathF.Round(myP * 100f), MyOdds: MathF.Round(1f / myP * 100f) / 100f, OppOdds: MathF.Round(1f / (1f - myP) * 100f) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
-                OddsA: MathF.Round(100f / probA) / 100f, OddsB: MathF.Round(100f / (1f - probA)) / 100f);
+                OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f);
         }
 
         // 루두스 등급
@@ -2298,7 +2342,9 @@ public sealed class Game
                     x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null,
             _betCursor == _cursor && SeasonActive && _cursor < _schedule.Count
                 ? new BetDoc(ById(_betSide == 0 ? _schedule[_cursor].A : _schedule[_cursor].B).Name, _betAmount, _betOdds) : null,
-            _favor), JsonOpts);
+            _favor,
+            HasMyMatchAhead: SeasonActive && Enumerable.Range(_cursor, Math.Max(0, _schedule.Count - _cursor))
+                .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer)), JsonOpts);
     }
 
     public string PlayNextJson(string? body)

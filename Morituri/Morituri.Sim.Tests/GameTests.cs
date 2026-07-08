@@ -395,10 +395,14 @@ public class GameTests
         Assert.That(Parse(g.StateJson()).GetProperty("Season").GetProperty("Matches").GetInt32(),
             Is.EqualTo(before), "라이브 중 커서 무전진(세이브 안전)");
 
-        string alt = nm.GetProperty("MyPool").EnumerateArray().Select(x => x.GetString()!)
-            .First(t => t != nm.GetProperty("MyTactic").GetString());
+        var alts = nm.GetProperty("MyPool").EnumerateArray().Select(x => x.GetString()!)
+            .Where(t => t != nm.GetProperty("MyTactic").GetString()).ToArray();
+        string alt = alts[0], alt2 = alts.Length > 1 ? alts[1] : alts[0];
+        // 같은 전술 재선택은 기회 미차감(#12): 현재 전술을 다시 골라도 remaining 불변
+        Assert.That(Parse(g.LiveSwitchJson(5f, nm.GetProperty("MyTactic").GetString()!)).GetProperty("remaining").GetInt32(), Is.EqualTo(2), "현재 전술 재선택 미차감");
         Assert.That(Parse(g.LiveSwitchJson(10f, alt)).GetProperty("remaining").GetInt32(), Is.EqualTo(1), "전환 1회 소모");
-        Assert.That(Parse(g.LiveSwitchJson(30f, alt)).GetProperty("remaining").GetInt32(), Is.EqualTo(0), "전환 2회 소모");
+        Assert.That(Parse(g.LiveSwitchJson(15f, alt)).GetProperty("remaining").GetInt32(), Is.EqualTo(1), "같은 전술 재선택 미차감");
+        Assert.That(Parse(g.LiveSwitchJson(30f, alt2)).GetProperty("remaining").GetInt32(), Is.EqualTo(0), "다른 전술 전환 2회 소모");
         Assert.That(Parse(g.LiveSwitchJson(50f, alt)).TryGetProperty("error", out _), Is.True, "3회째 거부");
 
         var settle = Parse(g.LiveSettleJson());

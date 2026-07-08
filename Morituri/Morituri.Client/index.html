@@ -114,6 +114,7 @@
   <span id="glory" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="color:#c94ca8;font-weight:700"></span>
   <span id="status">—</span>
   <button id="autoBtn" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">⏩ 자동완주</button>
+  <button id="toMineBtn" title="내 경기 직전까지 AI 경기를 건너뛴다" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">▶▶ 내 경기까지</button>
   <button id="next">다음 경기 ▶</button>
   <button id="cfgBtn" title="설정" style="background:none;border:none;color:var(--dim);font-size:16px">⚙</button>
 </div>
@@ -359,9 +360,11 @@ async function refresh(){
   const nm = st.NextMatch;
   $('next').textContent = !st.SeasonActive ? `🏛 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
     : nm && nm.IsPlayerMatch ? `⚔ ${nm.IsEvent?'🎪 ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
-    : '▶▶ 다음 내 경기까지 진행';
+    : nm ? `▶ 다음 경기: ${nm.AName} vs ${nm.BName}` : '다음 경기 ▶';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
+  // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
+  $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
   renderBetBar(); renderBadges();
   return st;
 }
@@ -372,16 +375,21 @@ function renderBetBar(){
     bb.innerHTML = `🎲 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 💰${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산`; return; }
   if (!st.SeasonActive || !nm || nm.IsPlayerMatch){ bb.style.display='none'; return; }
   bb.style.display='block';
-  bb.innerHTML = `🎲 도박장 — 다음 경기 <b>${nm.AName}</b>(${nm.OddsA.toFixed(2)}) vs <b>${nm.BName}</b>(${nm.OddsB.toFixed(2)})
-    <input id="betAmt" type="number" min="5" value="20" style="width:64px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:2px 6px;margin:0 4px">
-    <button onclick="bet(0)" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm.AName}에</button>
-    <button onclick="bet(1)" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm.BName}에</button>
-    <span class="note">(적중 시 배당 ×0.95)</span>`;
+  const btn=(s,nm2,od)=>`<button onclick="bet(${s})" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm2} <b>×${od.toFixed(2)}</b></button>`;
+  bb.innerHTML = `🎲 도박장 — <b>${nm.AName}</b> vs <b>${nm.BName}</b>
+    <input id="betAmt" type="number" min="5" max="${Math.floor(st.Gold)}" value="${Math.min(20,Math.floor(st.Gold))}" oninput="betPreview()" style="width:70px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:2px 6px;margin:0 4px">
+    ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)}
+    <span class="note" id="betMsg">적중 시 배당금 = 베팅액 × 배당 (잔고 💰${Math.floor(st.Gold)})</span>`;
 }
+window.betPreview = ()=>{
+  const el=$('betMsg'); if(!el) return;
+  const amt=parseInt($('betAmt').value)||0, nm=st.NextMatch;
+  el.style.color=''; el.textContent = `적중 시 A ${Math.round(amt*nm.OddsA)} / B ${Math.round(amt*nm.OddsB)} 회수 (잔고 💰${Math.floor(st.Gold)})`;
+};
 window.bet = async (side)=>{
-  const amt = parseFloat($('betAmt').value)||0;
+  const amt = parseInt($('betAmt').value)||0;
   const r = await api('/api/bet',{side, amount:amt});
-  if (r.error){ $('betBar').innerHTML = `🎲 <span style="color:var(--b)">${r.error}</span>`; return; }
+  if (r.error){ const m=$('betMsg'); if(m){ m.style.color='var(--b)'; m.textContent='⚠ '+r.error; } return; }  // 입력창 보존
   st=r; renderBetBar(); refreshTop();
 };
 // ── 알림 배지: 할 일이 있는 탭에 🔴 ──
@@ -422,11 +430,22 @@ $('next').onclick = async ()=>{
     if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
     const nm = st.NextMatch;
     if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
+    // 디폴트: AI 경기도 한 경기씩 진행(#3)
+    const r = await api('/api/next',{});
+    await refresh();
+    if (st.LastSeason && !st.SeasonActive){ showSeason(); }
+    else { simNote = r.A ? `▶ ${r.A} vs ${r.B} — ${r.Winner||'무승부'} (${r.Reason||''})` : '▶ 진행'; go('league'); }
+  } finally { nx.disabled=false; }
+};
+// ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
+$('toMineBtn').onclick = async ()=>{
+  const b=$('toMineBtn'); b.disabled=true;
+  try{
     const r = await api('/api/simto',{});
     await refresh();
     if (r.seasonDone){ simNote = `▶▶ ${r.played}경기 자동 진행 · 시즌 종료`; showSeason(); }
     else { simNote = `▶▶ ${r.played}경기 자동 진행 · 다음은 내 경기`; go('league'); }
-  } finally { nx.disabled=false; }
+  } finally { b.disabled=false; }
 };
 let simNote=null, pendingSeason=false;
 
