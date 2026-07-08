@@ -576,6 +576,7 @@ function openTacModal(nm){
   $('tmOdds').innerHTML = `<div style="font-size:12px">📊 배당 <b style="color:var(--a)">${nm.MyOdds.toFixed(2)}배</b> <span class="d">vs</span> <b style="color:var(--b)">${nm.OppOdds.toFixed(2)}배</b>
     <span class="note"> · 예상 승률 ${nm.MyWinPct}%</span>${und?' <b style="color:var(--b)">⚡ 언더독!</b>':''}
     <span class="note"> · 🎭 군중 ${nm.CrowdFavorsMe?'우리 편':'상대 편'}(흥행 ${nm.Hype})</span>${nm.IsEvent?' <span class="tag" style="border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:0 5px">🎪 이벤트</span>':''}</div>
+    <div style="margin-top:3px;font-size:12px">💰 예상 수익 — 출전료 <b style="color:var(--gold)">+${Math.round(nm.FeeEstimate)}</b> <span class="note">(양측 인기=흥행 ${nm.Hype} 기반${nm.IsEvent?' · 이벤트 ×2':''})</span> · 승리 시 <b style="color:var(--grn)">+${Math.round(nm.WinBonusEstimate)}</b></div>
     <div class="note" style="margin-top:2px">📐 ${nm.OppIsKiter?'상대는 장거리 카이터 — 파고드는 전술(압박·난전·사냥꾼) 유리':'상대는 근접형 — 거리·반격 전술(카운터·견제·방어) 유리'}</div>`;
 
   $('tmOpts').innerHTML = nm.MyPool.map(tc=>
@@ -673,7 +674,13 @@ window.closeResult = ()=>{ $('resModal').classList.remove('on');
 function showEvent(){
   const ev = st && st.PendingEvent; if (!ev) return;
   $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
-  $('evtBody').textContent = ev.Body;
+  // 상대 대사(💬) 줄은 강조 렌더(#9)
+  $('evtBody').innerHTML = ev.Body.split('\n').map(line=>{
+    const esc = line.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return line.trim().startsWith('💬')
+      ? `<div style="margin-top:6px;padding:6px 10px;border-left:3px solid var(--gold);background:var(--panel2);font-style:italic;color:#e8d8b0">${esc}</div>`
+      : `<div>${esc}</div>`;
+  }).join('');
   $('evtOutcome').style.display='none'; $('evtClose').style.display='none';
   $('evtChoices').style.display='';
   $('evtChoices').innerHTML = ev.Choices.map((c,i)=>`<button class="tacbtn" onclick="chooseEvent(${i})">${c}</button>`).join('');
@@ -779,6 +786,7 @@ function renderLudus(){
       ${st.Edict?`<div style="margin-top:5px;padding:5px 9px;border:1px solid ${st.Edict.Done?'var(--grn)':'#8a6a2a'};border-radius:7px;font-size:12px;${st.Edict.Done?'color:var(--grn)':'color:var(--gold)'}">📜 황제의 특명: ${st.Edict.Desc} — ${st.Edict.Done?'달성 ✓':'진행 중 (실패 시 명성 −15)'}</div>`:''}
       ${st.Favor>0?`<div class="note" style="margin-top:3px" title="특명 달성 누적 — 3/6/10 단계마다 하사품">👑 황제의 총애 ${'★'.repeat(Math.min(10,st.Favor))} (${st.Favor})</div>`:''}
       ${st.Legacy?`<div class="note" style="margin-top:3px;color:#a8d8b0">🎓 은퇴 유산: ${st.Legacy}</div>`:''}
+      ${(st.Patronage&&Math.abs(st.Patronage)>=8)?`<div class="note" style="margin-top:3px;color:${st.Patronage>0?'var(--gold)':'var(--b)'}" title="후원자 관계 — 시즌말 정산(≥40 하사금 / ≤−40 명성 압박)">🤝 후원자 관계 ${st.Patronage>0?'+':''}${st.Patronage} ${st.Patronage>=40?'(하사 예정)':st.Patronage<=-40?'(압박)':''}</div>`:''}
       ${st.MasterPending?`<div class="note" style="margin-top:3px;color:#d8a0e0">📜 스승 ${st.MasterPending}의 유산 대기 — 선수 카드에서 「전수받기」</div>`:''}`;
   }
   $('ludusNote').textContent = `(${st.MyFighters.length}/${st.RosterCap}명)`;
@@ -1000,10 +1008,11 @@ function renderRoster(){
   if (!st) return;
   const lt = st.LudusTable||[];
   $('ludusTable').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">
-    <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
+    <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">💰재화</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
     + lt.map((l,i)=>`<tr style="${l.IsPlayer?'color:var(--gold);font-weight:700':''}">
         <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}</td>
         <td class="note">${l.TierName}</td><td style="text-align:right">${l.Rep}</td>
+        <td style="text-align:right;padding-left:10px">${l.IsPlayer?'💰':''}${Math.round(l.Treasury)}${l.IsPlayer?'':' <span class="note" title="추정">≈</span>'}</td>
         <td style="text-align:right;padding-left:10px">${l.Members}</td>
         <td style="padding-left:10px">${l.TopFighter||'—'}</td>
         <td style="text-align:right;padding-left:10px">${l.SeasonW}-${l.SeasonL}-${l.SeasonD}</td></tr>`).join('')

@@ -102,7 +102,8 @@ public sealed class Game
         float SeasonBetNet = 0f, int GauntletStage = 0, int GauntletWins = 0,   // 베팅 수지·초청전
         List<ArchRec>? Archive = null,   // 관전 아카이브(지난 시즌 경기)
         string? MasterName = null, string? MasterTrait = null, string? MasterTactic = null,   // 스승 전수 대기
-        int ScoutLevel = 0, float[]? AxisCapBonus = null);   // 스카우터·교관 유산
+        int ScoutLevel = 0, float[]? AxisCapBonus = null,   // 스카우터·교관 유산
+        int BetHits = 0, float Patronage = 0f);   // 베팅 누적 적중·후원자 관계
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -143,12 +144,13 @@ public sealed class Game
         string? Stage = null,         // 컵 단계 라벨 (4강 결승) — 정규경기는 null
         float MyWinPct = 50f, float MyOdds = 2f, float OppOdds = 2f,   // 배당(파워 모델 — 표시용)
         bool CrowdFavorsMe = false, float Hype = 0f,   // 군중 선호(인기)·흥행지수
-        float OddsA = 2f, float OddsB = 2f);   // 범용 배당(A/B 기준 — AI 경기 베팅용)
+        float OddsA = 2f, float OddsB = 2f,   // 범용 배당(A/B 기준 — AI 경기 베팅용)
+        float FeeEstimate = 0f, float WinBonusEstimate = 0f);   // 예상 출전료·승리 보너스(#15 수익 가시화)
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
     private sealed record LudusStandingDoc(string Name, float Rep, string TierName, int Members,
-        string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer);
+        string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer, float Treasury);
     private sealed record RelRow(string OppName, string RelName, string RelIcon, int W, int L, int Enc, bool OppIsMine);
     private sealed record FighterProfileDoc(string Id, string Name, string Weapon, string Personality, int Age,
         bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
@@ -167,7 +169,8 @@ public sealed class Game
         BetDoc? PendingBet = null, int Favor = 0,   // 도박장·황제 총애
         bool HasMyMatchAhead = false,   // 남은 일정에 내 경기가 있는가(스킵 버튼 노출)
         List<RevealDoc>? RecruitReveal = null,   // 직전 영입에서 공개된 미선택 후보(#8)
-        string? MasterPending = null, int ScoutLevel = 0, string? Legacy = null);   // 은퇴 유산(#10)
+        string? MasterPending = null, int ScoutLevel = 0, string? Legacy = null,   // 은퇴 유산(#10)
+        float Patronage = 0f);   // 후원자 관계도(#7)
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
@@ -253,6 +256,8 @@ public sealed class Game
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
     private string? _cupChampion;                            // 최근 컵 우승자 이름
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
+    private float _patronage;   // 후원자 관계도(−100 압박 ~ +100 총애) — #7. 선택으로 변동, 시즌말 정산
+    private void Patron(float d) => _patronage = Math.Clamp(_patronage + d, -100f, 100f);
     private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
     private bool _proposalExec;                              // 제안이 원수의 처형전 도전장인가
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
@@ -264,17 +269,27 @@ public sealed class Game
     private int _emoGen;
 
     // ── 업적 정의 (조건은 코드에서 체크) ──
-    private static readonly (string Id, string Name, string Desc)[] AchievementDefs =
+    // 업적: 보상 차등(골드·영광·명성). 종류·보상 다양화(#5).
+    private static readonly (string Id, string Name, string Desc, float Gold, float Glory, float Rep)[] AchievementDefs =
     {
-        ("first_win",    "첫 승리",       "내 검투사의 첫 승"),
-        ("first_title",  "리그 제패",     "리그 시즌 우승"),
-        ("first_cup",    "챔피언십 정복", "챔피언십 컵 우승"),
-        ("caesar",       "카이사르 발굴", "카이사르 천부 영입"),
-        ("legend",       "살아있는 전설", "내 검투사 명성 100 돌파"),
-        ("streak10",     "무패의 투사",   "내 검투사 10연승"),
-        ("empire",       "제국의 정점",   "루두스 최고 등급 달성"),
-        ("dynasty",      "왕조",          "리그 3연패"),
+        ("first_win",    "첫 승리",       "내 검투사의 첫 승",           50f,  2f,  10f),
+        ("first_title",  "리그 제패",     "리그 시즌 우승",              200f, 10f, 30f),
+        ("first_cup",    "챔피언십 정복", "챔피언십 컵 우승",            300f, 14f, 40f),
+        ("caesar",       "카이사르 발굴", "카이사르 천부 영입",          0f,   12f, 20f),
+        ("legend",       "살아있는 전설", "내 검투사 명성 100 돌파",     0f,   16f, 30f),
+        ("streak10",     "무패의 투사",   "내 검투사 10연승",            150f, 8f,  20f),
+        ("empire",       "제국의 정점",   "루두스 최고 등급 달성",       0f,   20f, 0f),
+        ("dynasty",      "왕조",          "리그 3연패",                  500f, 25f, 50f),
+        // 신규(#5)
+        ("executioner",  "콜로세움의 사형집행인", "처형전에서 승리",      200f, 8f,  25f),
+        ("gambler",      "행운의 도박사",  "베팅 누적 10회 적중",        300f, 6f,  10f),
+        ("giant_killer", "거인 사냥꾼",   "명성 2배 이상 상대 격파(이변)", 100f, 10f, 20f),
+        ("kingmaker",    "명장의 산실",   "교관·스승·스카우터 배출",     0f,   12f, 25f),
+        ("perfect",      "무결점 시즌",   "시즌 전승(내 검투사 전원)",   400f, 20f, 40f),
+        ("tycoon",       "대부호",        "금고 2000 데나리우스 돌파",   0f,   10f, 15f),
+        ("veteran",      "백전노장",      "내 검투사 통산 50승",         200f, 12f, 25f),
     };
+    private int _betHits;   // 베팅 누적 적중(gambler 업적)
 
     private readonly List<string> _seasonNewAch = new();   // 이번 시즌 신규 업적 (요약용)
 
@@ -312,8 +327,10 @@ public sealed class Game
         {
             var m = byLudus.GetValueOrDefault(id) ?? new();
             var top = m.OrderByDescending(x => x.Fame).FirstOrDefault();
+            // 재화: 내 루두스는 실제 골드, 라이벌은 명성·간판 인기 기반 추정 금고(관전 흥미용 근사)
+            float treasury = isPlayer ? _gold : MathF.Round(rep * 6f + m.Sum(x => x.Popularity) * 2f);
             list.Add(new LudusStandingDoc(LudusNameOf(id), MathF.Round(rep), TierNameForRep(rep),
-                m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer));
+                m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer, treasury));
         }
         if (!_playerless) Add(PlayerLudusId, _ludusRep, true);
         foreach (var r in ActiveRivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
@@ -324,8 +341,11 @@ public sealed class Game
         if (_playerless || !_achievements.Add(id)) return;   // 이미 달성/CLI
         var def = AchievementDefs.First(a => a.Id == id);
         _seasonNewAch.Add(def.Name);
-        _story.Add((0, "achievement", $"🏅 업적 — {def.Name}: {def.Desc}"));
-        _ludusRep += 20f; AddGlory(GloryAchievement);
+        var rw = new List<string>();
+        if (def.Gold > 0) { _gold += def.Gold; rw.Add($"💰{def.Gold:F0}"); }
+        if (def.Glory > 0) { AddGlory(def.Glory); rw.Add($"✨{def.Glory:F0}"); }
+        if (def.Rep > 0) { _ludusRep += def.Rep; rw.Add($"명성 +{def.Rep:F0}"); }
+        _story.Add((0, "achievement", $"🏅 업적 — {def.Name}: {def.Desc} ({string.Join(" ", rw)})"));
     }
 
     private int RosterCap => 3 + _quartersLv;
@@ -427,37 +447,63 @@ public sealed class Game
     private List<EvtTemplate> EvtTemplates() => new()
     {
         new EvtTemplate { Id = "training", Icon = "🏋", Title = "혹독한 훈련", NeedsFighter = true,
-            Body = n => $"{n}이(가) 한계를 넘는 훈련을 자청한다. 몸을 갈아 실력을 얻을 것인가, 팬 앞의 몸 상태를 지킬 것인가.",
+            Body = n => $"{n}이(가) 땀에 젖은 채 훈련장에 남아 감독을 노려본다.\n💬 {n}: \"더 강해질 수 있습니다. 몸이 부서지더라도 — 허락해 주십시오.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("강행군 (훈련 포인트 +2, 인기 −5)", g => { g!.TrainingPoints += 2; g.Popularity = MathF.Max(0, g.Popularity - 5); return $"{g.Name} 훈련 포인트 +2, 인기 −5"; }),
                 ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
 
         new EvtTemplate { Id = "patron", Icon = "💰", Title = "후원자의 제안", NeedsFighter = false,
-            Body = _ => "부유한 후원자가 두둑한 금화를 내밀며 루두스의 이름을 빌리려 한다. 실리인가 명예인가.",
+            Body = _ => "부유한 원로원 의원 그라쿠스가 두둑한 금화 주머니를 탁자에 던진다.\n💬 그라쿠스: \"자네 루두스의 이름을 내 연회에 좀 빌리세. 서로 좋은 거래 아닌가?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("받는다 (골드 +80, 명성 −15)", _ => { _gold += 80f; _ludusRep = MathF.Max(0, _ludusRep - 15f); return "골드 +80, 루두스 명성 −15"; }),
-                ("거절한다 (명성 +20)", _ => { AddRep(20f); return "루두스 명성 +20"; }) } },
+                ("받는다 (골드 +80, 명성 −15, 후원 +15)", _ => { _gold += 80f; _ludusRep = MathF.Max(0, _ludusRep - 15f); Patron(15f); return "골드 +80, 명성 −15, 후원 +15"; }),
+                ("거절한다 (명성 +20, 후원 −10)", _ => { AddRep(20f); Patron(-10f); return "명성 +20, 후원 −10 — \"고집스러운 친구로군.\""; }) } },
+
+        // ── 신규 미션(#13) — 수락/거절 · 대사 포함(#9) · 일부는 후원 관계(#7) 변동 ──
+        new EvtTemplate { Id = "fix", Icon = "🎲", Title = "승부조작 제안", NeedsFighter = true,
+            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n💬 복면인: \"다음 경기, {n}이(가) 져주기만 하면 되네. 이 금화는 침묵의 대가야.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("수락 (골드 +150, 발각 위험·명성 급락 가능)", g => { _gold += 150f;
+                    var rng = new SimRandom(SeasonSeed ^ 0xF15E_D000UL + (ulong)_matchIdx); if (rng.Roll(0.35f)) { _ludusRep = MathF.Max(0, _ludusRep - 40f); Patron(-25f); return "골드 +150 — ⚠ 발각! 명성 −40, 후원 −25 (더러운 소문이 퍼졌다)"; } return "골드 +150 — 아무도 모른다… 아직은"; }),
+                ("거절 (명성 +15, 후원 +10)", g => { AddRep(15f); Patron(10f); return "명성 +15, 후원 +10 — \"청렴한 라니스타라, 흔치 않지.\""; }) } },
+
+        new EvtTemplate { Id = "tribute", Icon = "🏛", Title = "총독의 조공 요구", NeedsFighter = false,
+            Body = _ => "속주 총독의 전령이 두루마리를 펼친다.\n💬 전령: \"총독께서 검투 흥행세를 인상하셨소. 성의를 보이는 게 좋을 거요.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("바친다 (골드 −70 · 부족분 빚, 후원 +20)", _ => { var pay = SpendOrDebt(70f); Patron(20f); return $"{pay}, 후원 +20 — 총독의 눈에 들었다"; }),
+                ("버틴다 (후원 −20, 다음 시즌 압박)", _ => { Patron(-20f); return "후원 −20 — \"기억해 두겠소.\" (관계 악화)"; }) } },
+
+        new EvtTemplate { Id = "duel", Icon = "⚔", Title = "결투 신청", NeedsFighter = true,
+            Body = n => $"경쟁 검투소의 투사가 {n}의 면전에 장갑을 던진다.\n💬 도전자: \"소문난 실력, 모래 위에서 증명해보시지. 겁이 나거든 물러서든가.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("받아들인다 (인기 +14, 다음 경기 '투지')", g => { g!.Popularity += 14f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +14, 다음 경기 '투지'"; }),
+                ("품위있게 거절 (명성 +5, 인기 −4)", g => { g!.Fame += 5f; g.Popularity = MathF.Max(0, g.Popularity - 4f); return $"{g.Name} 명성 +5, 인기 −4"; }) } },
+
+        new EvtTemplate { Id = "temple", Icon = "🏛", Title = "신전 봉헌", NeedsFighter = false,
+            Body = _ => "마르스 신전의 사제가 향을 피우며 청한다.\n💬 사제: \"승리의 신께 봉헌하라, 라니스타여. 신들은 관대한 자를 굽어살피신다.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("봉헌한다 (골드 −50 · 부족분 빚, ✨+3)", _ => { var pay = SpendOrDebt(50f); AddGlory(3f); return $"{pay}, ✨+3 — 신들의 가호"; }),
+                ("검약한다 (골드 보존)", _ => "정중히 향만 올렸다.") } },
 
         new EvtTemplate { Id = "crowd", Icon = "🎭", Title = "군중의 갈망", NeedsFighter = true,
-            Body = n => $"관중이 {n}의 화끈한 경기를 원한다. 흥행에 응할 것인가, 실속을 챙길 것인가.",
+            Body = n => $"관중석에서 {n}의 이름을 연호하는 함성이 터진다.\n💬 흥행주: \"군중이 피와 볼거리를 원하네! 자네 검투사, 쇼를 보여줄 수 있겠나?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("응한다 (인기 +12, 다음 경기 흥분)", g => { g!.Popularity += 12f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +12, 다음 경기 '동기부여'"; }),
                 ("침착하게 (명성 +8)", g => { g!.Fame += 8f; return $"{g.Name} 명성 +8"; }) } },
 
         new EvtTemplate { Id = "taunt", Icon = "😤", Title = "라이벌의 조롱", NeedsFighter = true,
-            Body = n => $"타 검투사가 {n}을(를) 공개적으로 조롱했다. 응수할 것인가, 검으로 답할 것인가.",
+            Body = n => $"광장에서 한 검투사가 침을 뱉으며 비웃는다.\n💬 라이벌: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("맞받아친다 (인기 +6, 다음 경기 원한)", g => { g!.Popularity += 6f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Grudge); return $"{g.Name} 인기 +6, 다음 경기 '원한'"; }),
                 ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
 
         new EvtTemplate { Id = "mentor", Icon = "📜", Title = "노장의 지도", NeedsFighter = true,
-            Body = n => $"은퇴한 전설이 {n}을(를) 지도하겠다 한다. 사례가 필요하지만 기예가 는다.",
+            Body = n => $"한쪽 눈에 흉터가 있는 노검투사가 {n}을 지켜보다 입을 연다.\n💬 노장: \"자네, 재능은 있군. 허나 다듬지 않은 검은 무디지. 며칠만 내게 맡겨보게 — 공짜는 아니네만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("수련한다 (골드 −40 · 부족분은 빚)", g => { var pay = SpendOrDebt(40f); var r = NudgeStat(g!, "Rct", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("사양한다", g => "정중히 사양했다.") } },
 
         new EvtTemplate { Id = "blackmarket", Icon = "🗡", Title = "암시장 무기상", NeedsFighter = true,
-            Body = n => $"뒷골목 상인이 {n}에게 은밀히 예리한 검을 제안한다. 이점인가 명예인가.",
+            Body = n => $"후드를 쓴 상인이 천을 걷어 시퍼런 칼날을 드러낸다.\n💬 무기상: \"{n}에게 딱이지. 규정보다 조금… 예리할 뿐이야. 심판이 눈치채지만 않으면 돼.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("산다 (골드 −60 · 부족분은 빚)", g => { var pay = SpendOrDebt(60f); var r = NudgeStat(g!, "Atk", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("정직하게 (명성 +10)", g => { AddRep(10f); return "루두스 명성 +10"; }) } },
@@ -823,6 +869,11 @@ public sealed class Game
             _gold = MathF.Max(0f, _gold - salaryPaid);
             _story.Add((_rounds + 1, "season", $"💰 시즌 정산 — 순위 보너스 +{bonusPaid:F0} · 급여·유지비 −{salaryPaid:F0}{(upkeep > 0 ? $"(시설 {upkeep:F0})" : "")} (잔고 {_gold:F0})"));
 
+            // 후원자 정산(#7): 높은 관계 = 시즌말 하사금, 낮은 관계 = 압박(명성 삭감). 관계는 매 시즌 중앙으로 감쇠.
+            if (_patronage >= 40f) { float gift = MathF.Round(_patronage * 2f); _gold += gift; _story.Add((_rounds + 1, "patron", $"💰 후원자의 하사 — 관계 {_patronage:F0} → 금화 +{gift:F0} (\"올해도 즐거웠네.\")")); }
+            else if (_patronage <= -40f) { float pen = MathF.Round(-_patronage * 0.5f); _ludusRep = MathF.Max(0f, _ludusRep - pen); _story.Add((_rounds + 1, "patron", $"🗡 후원자의 냉대 — 관계 {_patronage:F0} → 루두스 명성 −{pen:F0} (뒷말이 돈다)")); }
+            _patronage *= 0.6f;
+
             // 사채 정산: 이자 20% → 잔고에서 자동 상환 → 남으면 채권자의 압박(루두스 명성 −10)
             if (_debt > 0f)
             {
@@ -869,6 +920,9 @@ public sealed class Game
         if (champ.IsPlayer) { AddRep(RepLeagueTitle); AddGlory(GloryLeagueTitle); Unlock("first_title"); }
         else AddRivalRep(champ.LudusId, RepLeagueTitle);   // 라이벌 우승 = 그 검투소 명성
         if (_champions.Count >= 3 && _champions.TakeLast(3).All(c => c.IsPlayer)) Unlock("dynasty");
+        // 무결점 시즌: 내 검투사 전원이 정규 시즌 무패(최소 1경기 이상)
+        var myFighters = _cast.Where(g => g.IsPlayer).ToList();
+        if (myFighters.Count > 0 && myFighters.All(g => g.L == 0 && g.W + g.D > 0)) Unlock("perfect");
 
         // 특명 미달성 = 황제의 실망(루두스 명성 하락)
         if (_edict != null && !_edictDone)
@@ -1142,6 +1196,7 @@ public sealed class Game
         _cast.Remove(g);
         _ledger.RemoveFighter(g.Id);
         bool hall = path is "instructor" or "master" or "scout";
+        if (hall) Unlock("kingmaker");   // 명장의 산실 — 진로 은퇴자 배출
         if (hall) _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
             $"{g.CW}-{g.CL}-{g.CD}", g.Age, Math.Max(1, _seasonsPlayed), true));
 
@@ -1307,6 +1362,7 @@ public sealed class Game
             {
                 float payout = MathF.Round(_betAmount * _betOdds);   // 마진은 배당에 내장 — 여기선 순수 배당금
                 _gold += payout; _seasonBetNet += payout;
+                if (++_betHits >= 10) Unlock("gambler");   // 행운의 도박사
                 _story.Add((s.Round, "bet", $"🎲 적중! {(_betSide == 0 ? A.Name : B.Name)} 승 — 배당금 +{payout:F0}"));
             }
             else _story.Add((s.Round, "bet", $"🎲 빗나감 — {_betAmount:F0} 데나리우스가 모래에 묻혔다"));
@@ -1668,12 +1724,16 @@ public sealed class Game
                 if (upset) AddGlory(GloryUpset);   // 대이변 = 위신(영광)
                 Unlock("first_win");
                 if (self.Streak >= 9) Unlock("streak10");   // 이번 승으로 10연승(Record는 이후 반영)
+                if (exec) Unlock("executioner");                            // 처형전 승리
+                if (other.Fame >= self.Fame * 2f && other.Fame >= 30f) Unlock("giant_killer");  // 거인 사냥꾼
+                if (self.CW + 1 >= 50) Unlock("veteran");                   // 통산 50승(이번 승 포함)
             }
             if (self.Fame >= 100f) Unlock("legend");
             income += own;
             if (self == A) { incA = own; noteA = string.Join(" · ", notes); } else { incB = own; noteB = string.Join(" · ", notes); }
         }
         _gold += income;
+        if (_gold >= 2000f) Unlock("tycoon");   // 대부호
         incomeNote = string.Join(" · ", new[] { noteA, noteB }.Where(n => n.Length > 0));
 
         // 순위/커리어 + 관계 + 감정 (경기 인덱스 파생 스트림 = 미드시즌 재개 결정론)
@@ -2227,6 +2287,7 @@ public sealed class Game
         _archive.Clear(); if (w.Archive != null) _archive.AddRange(w.Archive);
         _masterName = w.MasterName; _masterTrait = w.MasterTrait; _masterTactic = w.MasterTactic; _scoutLevel = w.ScoutLevel;
         if (w.AxisCapBonus != null) for (int i = 0; i < 6 && i < w.AxisCapBonus.Length; i++) _axisCapBonus[i] = w.AxisCapBonus[i];
+        _betHits = w.BetHits; _patronage = w.Patronage;
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
@@ -2280,7 +2341,7 @@ public sealed class Game
             _seasonBetNet, _gauntletStage, _gauntletWins,
             _archive.Count > 0 ? _archive.ToList() : null,
             _masterName, _masterTrait, _masterTactic, _scoutLevel,
-            _axisCapBonus.Any(x => x != 0f) ? _axisCapBonus.ToArray() : null), JsonOpts));
+            _axisCapBonus.Any(x => x != 0f) ? _axisCapBonus.ToArray() : null, _betHits, _patronage), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -2422,7 +2483,12 @@ public sealed class Game
                 MyWinPct: pctInt, MyOdds: MathF.Round(10000f / pctInt) / 100f, OppOdds: MathF.Round(10000f / (100 - pctInt)) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
-                OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f);
+                OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f,
+                // 예상 수익(#15): Play의 출전료 공식과 동일 — 인기 hype·이벤트·처형전·협상 마스터리 반영
+                FeeEstimate: mine == null ? 0f : MathF.Round(
+                    (FeeBase + (mine.Popularity + opp.Popularity) * FeePopScale)
+                    * (s.Format == "execution" ? 3f : s.IsEvent ? 2f : 1f) * IncomeMult * (1f + 0.08f * mine.MPay)),
+                WinBonusEstimate: mine == null ? 0f : MathF.Round(WinBonus * IncomeMult));
         }
 
         // 루두스 등급
@@ -2467,7 +2533,8 @@ public sealed class Game
             RecruitReveal: _lastReveal.Count > 0 ? _lastReveal.ToList() : null,
             MasterPending: (_masterTrait != null || _masterTactic != null) ? _masterName : null,
             ScoutLevel: _scoutLevel,
-            Legacy: BuildLegacyNote()), JsonOpts);
+            Legacy: BuildLegacyNote(),
+            Patronage: MathF.Round(_patronage)), JsonOpts);
     }
     private string? BuildLegacyNote()
     {
