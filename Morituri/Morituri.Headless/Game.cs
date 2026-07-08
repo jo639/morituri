@@ -626,15 +626,19 @@ public sealed class Game
         }
         var traits = TraitGen.Roll(rng);
         var pool = RollTacticPool(rng, sigTactic);
+        // 천재(#16): 잠재력 상한 ×1.15 — 성장 여력이 근본적으로 크다
+        float potBudget = traits.Contains(TraitTable.Genius) ? end.PotentialBudget * 1.15f : end.PotentialBudget;
+        // 저속노화(#16): 노화 시작을 늦춘다(+4세)
+        int agingStart = 30 + (int)(rng.NextFloat01() * 7) + (traits.Contains(TraitTable.SlowAge) ? 4 : 0);
         return new Gladiator
         {
             Id = id, Name = name, WeaponId = wpn, PersonalityId = per,
             TacticPool = pool, TacticId = pool[0],
             Stats = end.Stats, Talent = end.Talent, Potential = end.Potential,
-            TalentBudget = end.TalentBudget, PotentialBudget = end.PotentialBudget,
+            TalentBudget = end.TalentBudget, PotentialBudget = potBudget,
             TraitIds = traits, IsPlayer = isPlayer,
             Age = ageMin + (int)(rng.NextFloat01() * (ageMax - ageMin + 1)),
-            AgingStartAge = 30 + (int)(rng.NextFloat01() * 7),   // 30~36 (라니스타: 최저 30)
+            AgingStartAge = agingStart,   // 30~36 (+저속노화 4)
         };
     }
 
@@ -841,6 +845,7 @@ public sealed class Game
             if (g.Age >= g.AgingStartAge)
             {
                 float relief = g.IsPlayer ? 0.25f * (_medicalLv - 1) : 0f;
+                if (g.TraitIds.Contains(TraitTable.SlowAge)) relief = Math.Min(0.9f, relief + 0.4f);   // 저속노화(#16): 감소폭 −40%p
                 g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - AgingDecayPerSeason * (1f - relief));
                 float excess = BudgetUsed(g.Stats) - g.PotentialBudget;
                 if (excess > 0f)
@@ -1831,7 +1836,8 @@ public sealed class Game
     {
         if (BudgetUsed(g.Stats) + 0.5f > g.PotentialBudget) return null;   // 상한 도달 — 더 안 큼
         int axis = (int)(rng.NextFloat01() * 6f);
-        g.Stats = WithAxis(g.Stats, axis, 0.5f);
+        float amt = g.TraitIds.Contains(TraitTable.Genius) ? 0.8f : 0.5f;   // 천재(#16): 경기 성장 속도↑
+        g.Stats = WithAxis(g.Stats, axis, amt);
         return AxisNames[axis];
     }
 

@@ -1060,6 +1060,10 @@ public sealed class MatchSim
         var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum,
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
+        // 신규 전투 특성(#16) — 조건부 데미지 배율. 결정론(_rng), 특성 보유자 한정이라 매트릭스(무특성 baseline) 무영향.
+        if (atk.Has(TraitTable.Executioner) && def.HpPct <= 0.30f) damage *= 1.5f;   // 처형자: 마무리
+        if (atk.Has(TraitTable.Berserk) && atk.HpPct <= 0.35f) damage *= 1.3f;       // 광폭화: 궁지의 폭발
+        if (atk.Has(TraitTable.Assassin) && _rng.Roll(0.04f)) { damage *= 2.4f; Emit(new Decision(_now, atk.Index, "ASSASSINATE", "Trait", 1.5f)); }  // 일격필살
 
         // 하이퍼아머: 방어자가 중량 강공을 커밋 중인데 들어온 게 약공 → 데미지·카운터딜은 받되 경직 무효.
         // (강공으로 받아쳐야 끊긴다. 약공 스팸으로는 못 막는다 — 중량 무기의 '막을 수 없는 일격' 정체성.)

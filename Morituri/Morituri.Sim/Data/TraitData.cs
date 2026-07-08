@@ -22,6 +22,13 @@ public static class TraitTable
     public const string CatchBreath = "TRT_CATCHBREATH";  // 스태미나≥80%: 모든 공격 치명타
     public const string Lightfoot   = "TRT_LIGHTFOOT";    // 대시 ST소모↓(데이터) + 대시 후 1초 이속↑
     public const string FirstBlood  = "TRT_FIRSTBLOOD";   // 첫 클린 히트 ×1.25 + 흡수 쉴드
+    // ── 신규 전투 특성(#16) — 조건부 데미지 배율(MatchSim Id 분기). 매트릭스는 특성 없는 baseline이라 무영향 ──
+    public const string Executioner = "TRT_EXECUTIONER";  // 상대 HP≤30%: 데미지 ×1.5 (마무리)
+    public const string Assassin    = "TRT_ASSASSIN";     // 클린히트 4%: 필살 ×2.4
+    public const string Berserk     = "TRT_BERSERK";      // 자신 HP≤35%: 데미지 ×1.3 (궁지의 폭발)
+    // ── 신규 메타 특성(#16) — 전투 무영향, Game.cs가 성장/노화에 적용 ──
+    public const string Genius      = "TRT_GENIUS";       // 잠재력 상한 ×1.15 · 성장속도↑ (Meta)
+    public const string SlowAge     = "TRT_SLOWAGE";      // 노화 감소 (Meta)
 
     // ── 카탈로그 ──
     public static readonly TraitDef[] All =
@@ -43,6 +50,13 @@ public static class TraitTable
         new(CatchBreath,      "숨고르기"),                                          // 고유: ST≥80% 확정 크리
         new(Lightfoot,        "초상비",      DodgeCostMult: 0.50f),                 // + 고유: 대시 후 이속↑
         new(FirstBlood,       "선취점"),                                            // 고유: 첫 클린히트 ×1.25 + 흡수쉴드
+        // 신규 전투(조건부 데미지 — MatchSim Id 분기, 데이터 배율 없음)
+        new(Executioner,      "처형자"),                                            // 고유: 상대 HP≤30% 데미지 ×1.5
+        new(Assassin,         "일격필살"),                                          // 고유: 클린히트 4% 필살 ×2.4
+        new(Berserk,          "광폭화"),                                            // 고유: 자신 HP≤35% 데미지 ×1.3
+        // 신규 메타(전투 무영향 — Game.cs 적용)
+        new(Genius,           "천재"),                                              // Meta: 잠재 상한 ×1.15·성장↑
+        new(SlowAge,          "저속노화"),                                          // Meta: 노화 감소
     };
 
     private static readonly Dictionary<string, TraitDef> _byId = All.ToDictionary(t => t.Id);
