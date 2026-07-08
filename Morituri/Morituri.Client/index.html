@@ -36,11 +36,11 @@
   #incomeBar{ display:none; margin:10px 0; padding:8px 14px; background:var(--panel2); border-left:3px solid var(--gold);
               border-radius:7px; font-size:13px; }
   /* 관전 */
-  #watchbar{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:12px;
-             padding:6px 16px; background:rgba(35,26,18,.92); border-bottom:1px solid #4a3a26; z-index:5; }
-  #watchbar .card{ font-weight:700; }
-  #watchbar .tag{ font-size:11px; color:var(--gold); border:1px solid var(--gold); border-radius:4px; padding:0 6px; }
-  #watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26; padding:4px 12px; border-radius:7px; }
+  .watchbar{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:12px; flex-wrap:nowrap;
+             padding:8px 16px; background:rgba(35,26,18,.92); border-bottom:1px solid #4a3a26; z-index:5; min-height:52px; box-sizing:border-box; }
+  .watchbar .card{ font-weight:700; }
+  .watchbar .tag{ font-size:11px; color:var(--gold); border:1px solid var(--gold); border-radius:4px; padding:0 6px; }
+  .watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26; padding:4px 12px; border-radius:7px; }
   #watch iframe{ padding-top:36px; }
   /* 카드 그리드 */
   .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
@@ -171,12 +171,17 @@
   </div>
 
   <div class="screen" id="watch">
-    <div id="watchbar"><span class="card" id="watchCard">🎬 경기 기록실</span>
-      <input id="watchSearch" placeholder="선수명 검색…" oninput="renderWatch()" style="background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:4px 10px;width:160px">
-      <label class="note" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="watchMineOnly" onchange="renderWatch()"> 내 경기만</label>
+    <div class="watchbar"><span class="card" id="watchCard">🎬 경기 기록실</span>
+      <input id="watchSearch" placeholder="선수명 검색…" oninput="renderWatch()" style="background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:4px 10px;width:150px;flex-shrink:0">
+      <label class="note" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0"><input type="checkbox" id="watchMineOnly" onchange="renderWatch()"> 내 경기만</label>
       <button onclick="go('league')">리그로 →</button></div>
-    <div class="pad" id="watchBody" style="overflow:auto;height:calc(100% - 60px)"></div>
-    <iframe id="watchF" src="about:blank" style="display:none"></iframe>
+    <div id="watchBody" style="position:absolute;top:54px;left:0;right:0;bottom:0;overflow:auto;padding:12px 16px 24px"></div>
+  </div>
+
+  <div class="screen" id="replay">
+    <div class="watchbar" style="z-index:6"><span class="card" id="replayCard">🎬 다시보기</span>
+      <button id="replayBack" onclick="closeReplay()">← 돌아가기</button></div>
+    <iframe id="watchF" src="about:blank" style="position:absolute;top:54px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 54px);border:0"></iframe>
   </div>
 
   <div class="screen" id="gamble"><div class="pad">
@@ -757,8 +762,8 @@ window.watchReplay = async ()=>{
   $('resModal').classList.remove('on');
   await openWatch(-1);
 };
-async function openWatch(idx){   // league.html 달력 클릭 → 새 탭 리플레이
-  await openReplayNewTab('/api/watch', idx, '🎬 다시보기');
+async function openWatch(idx){   // league.html 달력 클릭 → 전체화면 리플레이
+  await loadReplay('/api/watch', idx, '🎬 다시보기');
 }
 // 관전탭 = 경기 기록실 (#1): 전 시즌 아카이브, 시즌별 그룹, 선수 검색, 새 탭 리플레이
 let _archiveCache = null;
@@ -792,16 +797,20 @@ async function renderWatch(){
   }).join('') || '<div class="note">기록이 없다.</div>';
   body.innerHTML = html;
 }
-// 새 탭 리플레이(#1): viewer.json 갱신 후 새 창. 팝업 차단 시 현 탭 폴백
-async function openReplayNewTab(apiPath, idx, label){
+// 리플레이(#1): 기존 창 전체를 리플레이 화면으로 전환(새 창 아님). viewer.json 갱신 후 replay 스크린 표시
+let _replayReturn = 'watch';
+async function loadReplay(apiPath, idx, label){
   const r = await api(apiPath,{idx});
   if (r.error){ alert(r.error); return; }
-  const url = 'viewer.html?t='+Date.now();
-  const w = window.open(url, '_blank');
-  if (!w){ $('watchCard').textContent = label+` · ${r.a} vs ${r.b}`; $('watchF').style.display='block'; $('watchF').src = url; }
+  _replayReturn = document.querySelector('.screen.on')?.id || 'watch';
+  if (_replayReturn==='replay') _replayReturn='watch';
+  $('replayCard').textContent = `${label} · ${r.a} vs ${r.b}`;
+  $('watchF').src = 'viewer.html?t='+Date.now();
+  go('replay');
 }
-window.openArchive = (idx)=> openReplayNewTab('/api/watcharchive', idx, '🎬 다시보기');
-window.openGreat = (idx)=> openReplayNewTab('/api/watchgreat', idx, '🎞 명경기');
+window.closeReplay = ()=>{ $('watchF').src='about:blank'; go(_replayReturn); };
+window.openArchive = (idx)=> loadReplay('/api/watcharchive', idx, '🎬 다시보기');
+window.openGreat = (idx)=> loadReplay('/api/watchgreat', idx, '🎞 명경기');
 // viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 라이브 재생 완료=정산→결과창
 window.addEventListener('message', e=>{
   if (!e.data) return;
