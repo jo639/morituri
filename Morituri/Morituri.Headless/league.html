@@ -167,29 +167,37 @@ function renderDivision(){
 }
 
 // ── 시즌 달력(상시): 전 일정을 월별로 — 치른 경기(승자·클릭=관전) + 남은 경기(예정) ──
+// #4 진짜 달력: 월별 30일 그리드(6열). 경기일 셀에 카드, 내 루두스 경기 강조.
 function renderCalendar(d){
   const cal = d.Calendar || [];
-  document.getElementById('calSub').textContent = cal.length ? `AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기` : '';
+  document.getElementById('calSub').textContent = cal.length ? `AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · 🟡 내 루두스` : '';
   if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">일정 없음 — 시즌 개막 전</div>'; return; }
   const months = [...new Set(cal.map(c=>c.Month))];
-  const kindIcon = c => c.Kind==='cup_final'?'🏆결승 ':c.Kind==='cup_sf'?'🏆4강 ':c.Kind==='proposal'?'🎤':
+  const kindIcon = c => c.Kind==='cup_final'?'🏆':c.Kind==='cup_sf'?'🏆':c.Kind==='proposal'?'🎤':
     c.Format==='execution'?'☠':(c.Format||'').startsWith('same:')?'⚔':c.Kind==='event'?'🎪':'';
   const inShell = window.parent !== window;
+  const DAYS = 30, COLS = 6;
   document.getElementById('calendar').innerHTML = months.map(m=>{
     const es = cal.filter(c=>c.Month===m);
-    return `<div style="flex:1;min-width:180px;background:var(--panel,#2f2418);border-radius:10px;padding:8px 10px">
-      <div style="color:var(--gold,#c9a84c);font-weight:700;font-size:12px;border-bottom:1px solid #4a3a26;padding-bottom:3px;margin-bottom:5px">${m}</div>
-      ${es.map(c=>{
-        const done = !!c.Winner;
-        const style = `display:flex;gap:6px;align-items:baseline;padding:2px 5px;border-radius:5px;font-size:12px;`+
-          (c.IsNext?'outline:1px solid var(--gold,#c9a84c);':'')+
-          (c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700;':'')+
-          (done?'opacity:.75;':'')+(done&&inShell?'cursor:pointer;':'');
-        return `<div style="${style}" ${done&&inShell?`onclick="watchIt(${c.Idx})" title="클릭 = 재관전"`:''}>
-          <span style="color:var(--dim,#a89576);min-width:26px">${c.Day}일</span>
-          <span>${kindIcon(c)}${c.A} vs ${c.B}</span>
-          <span style="margin-left:auto;color:${done?'var(--win,#7ec97e)':'var(--dim,#a89576)'}">${done?c.Winner:(c.IsNext?'▶ 다음':'예정')}</span></div>`;
-      }).join('')}</div>`;
+    const byDay = {}; es.forEach(c=>{ (byDay[c.Day]=byDay[c.Day]||[]).push(c); });
+    let cells = '';
+    for (let day=1; day<=DAYS; day++){
+      const list = byDay[day]||[];
+      const mine = list.some(c=>c.IsPlayerMatch), isNext = list.some(c=>c.IsNext), done = list.length && list.every(c=>c.Winner);
+      const bg = mine ? 'rgba(201,168,76,.16)' : list.length ? 'var(--panel2,#241c12)' : 'transparent';
+      const border = isNext ? '1px solid var(--gold,#c9a84c)' : mine ? '1px solid rgba(201,168,76,.5)' : '1px solid #3a2d1d';
+      const inner = list.map(c=>{
+        const clickable = c.Winner && inShell;
+        return `<div ${clickable?`onclick="watchIt(${c.Idx})" style="cursor:pointer" title="클릭=재관전"`:''}>
+          <div style="font-size:10px;line-height:1.15;${c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--ink,#e8dcc8)'}">${kindIcon(c)}${c.A}<br>vs ${c.B}</div>
+          <div style="font-size:9px;color:${c.Winner?'var(--win,#7ec97e)':(c.IsNext?'var(--gold,#c9a84c)':'var(--dim,#8a7a5a)')}">${c.Winner?('🏆'+c.Winner):(c.IsNext?'▶다음':'예정')}</div></div>`;
+      }).join('');
+      cells += `<div style="min-height:52px;padding:3px;border-radius:5px;background:${bg};border:${border};overflow:hidden">
+        <div style="font-size:9px;color:var(--dim,#8a7a5a)">${day}</div>${inner}</div>`;
+    }
+    return `<div style="flex:1;min-width:300px;background:var(--panel,#2f2418);border-radius:10px;padding:8px 10px">
+      <div style="color:var(--gold,#c9a84c);font-weight:700;font-size:13px;border-bottom:1px solid #4a3a26;padding-bottom:3px;margin-bottom:5px">${m} <span style="font-weight:400;color:var(--dim,#8a7a5a);font-size:11px">${es.length}경기</span></div>
+      <div style="display:grid;grid-template-columns:repeat(${COLS},1fr);gap:3px">${cells}</div></div>`;
   }).join('');
 }
 
