@@ -1016,7 +1016,11 @@ window.gangbrawl = async (myId, myName)=>{
   const r = await api('/api/gangbrawl',{id:myId});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   await refresh(); refreshTop();
-  showExhibition({a:r.a, b:r.b, venue:r.venue}, '🥊 패싸움');
+  // 다대다 난투 = 전용 melee.html 렌더러(N명 동시)
+  _replayReturn = 'ludus';
+  $('replayCard').textContent = `🥊 패싸움 (${r.venue==='bar'?'선술집':'뒷골목'})`;
+  $('watchF').src = `melee.html?t=${Date.now()}`;
+  go('replay');
   $('ludusErr').innerHTML = `<span style="color:#e0a878">${(r.notes||[]).join('<br>')}</span>`;
 };
 window.retire = (id,name,fame,ckow)=>{
