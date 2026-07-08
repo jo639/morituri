@@ -216,12 +216,17 @@ public class GameTests
         g.GachaJson(); g.RecruitJson(0);
         string id = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
 
-        // 프리시즌: 은퇴 가능 → 명전 등재 + 로스터 제거 (저명성 → 스승 아님)
+        // 신인(명성0·KO0)은 진로 자격 미달 → 자격 진로 택하면 거부
+        Assert.That(Parse(g.RetireJson(id, "scout")).TryGetProperty("error", out _), Is.True, "스카우터 자격 미달 거부");
+        Assert.That(Parse(g.RetireJson(id, "instructor")).TryGetProperty("error", out _), Is.True, "교관 자격 미달 거부");
+
+        // 단순 은퇴(진로 없음): 로스터 제거 + 명전 미등재(#11)
         var st = Parse(g.RetireJson(id));
         Assert.That(st.TryGetProperty("error", out _), Is.False);
         Assert.That(st.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0));
-        Assert.That(st.GetProperty("Season").GetProperty("Hall").GetArrayLength(), Is.GreaterThan(0), "명예의 전당 등재");
-        Assert.That(st.GetProperty("Mentor").ValueKind, Is.EqualTo(JsonValueKind.Null), "명성 60 미만 = 스승 아님");
+        var hallEl = st.GetProperty("Season").GetProperty("Hall");
+        int hallN = hallEl.ValueKind == JsonValueKind.Array ? hallEl.GetArrayLength() : 0;   // 비면 null 직렬화
+        Assert.That(hallN, Is.EqualTo(0), "단순 은퇴는 명전 미등재");
 
         // 시즌 중: 은퇴 불가
         g.GachaJson(); g.RecruitJson(0);

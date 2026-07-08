@@ -147,6 +147,7 @@
     <span class="note">  후보 3명 — 무기·성격·전술 하나만 공개. 천부·잠재력·특성은 영입해야 안다.</span>
     <div class="err" id="marketErr"></div>
     <div class="grid" id="candGrid" style="margin-top:12px"></div>
+    <div class="grid" id="revealBox"></div>
     <h2>🤝 이적 시장 <span class="note">(프리시즌 — 라이벌 검투소와 거래)</span></h2>
     <div id="transferBox"><div class="note">시즌 중엔 닫혀 있다.</div></div>
   </div></div>
@@ -210,6 +211,13 @@
 <div class="modal" id="profModal"><div class="mbox" style="max-width:560px">
   <div id="profBody"></div>
   <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('profModal').classList.remove('on')">닫기</button>
+</div></div>
+
+<div class="modal" id="retireModal"><div class="mbox" style="max-width:600px">
+  <h2 id="retTitle">은퇴</h2>
+  <div class="note" style="margin-bottom:8px">진로를 정한다. 자격 미달 진로를 택하면 진행되지 않는다. 자격을 갖추지 못한 단순 은퇴는 명예의 전당에 오르지 못한다.</div>
+  <div id="retOpts" style="display:flex;flex-direction:column;gap:8px"></div>
+  <button class="tacbtn" style="text-align:center;margin-top:12px" onclick="$('retireModal').classList.remove('on')">취소</button>
 </div></div>
 
 <div class="modal" id="evtModal"><div class="mbox">
@@ -769,7 +777,9 @@ function renderLudus(){
       <div class="note" style="margin-top:4px">${L.NextTierName?`다음 등급 「${L.NextTierName}」까지 ${Math.max(0,Math.round(L.NextTierRep-L.Rep))} 명성`:'최고 등급 달성 — 콜로세움의 지배자'}</div>
       ${st.Mentor?`<div class="note" style="margin-top:3px;color:var(--gold)">📜 스승 ${st.Mentor} — 영입 원석 품질 +1롤 · 신인 잠재력 +10 (혈통 유산)</div>`:''}
       ${st.Edict?`<div style="margin-top:5px;padding:5px 9px;border:1px solid ${st.Edict.Done?'var(--grn)':'#8a6a2a'};border-radius:7px;font-size:12px;${st.Edict.Done?'color:var(--grn)':'color:var(--gold)'}">📜 황제의 특명: ${st.Edict.Desc} — ${st.Edict.Done?'달성 ✓':'진행 중 (실패 시 명성 −15)'}</div>`:''}
-      ${st.Favor>0?`<div class="note" style="margin-top:3px" title="특명 달성 누적 — 3/6/10 단계마다 하사품">👑 황제의 총애 ${'★'.repeat(Math.min(10,st.Favor))} (${st.Favor})</div>`:''}`;
+      ${st.Favor>0?`<div class="note" style="margin-top:3px" title="특명 달성 누적 — 3/6/10 단계마다 하사품">👑 황제의 총애 ${'★'.repeat(Math.min(10,st.Favor))} (${st.Favor})</div>`:''}
+      ${st.Legacy?`<div class="note" style="margin-top:3px;color:#a8d8b0">🎓 은퇴 유산: ${st.Legacy}</div>`:''}
+      ${st.MasterPending?`<div class="note" style="margin-top:3px;color:#d8a0e0">📜 스승 ${st.MasterPending}의 유산 대기 — 선수 카드에서 「전수받기」</div>`:''}`;
   }
   $('ludusNote').textContent = `(${st.MyFighters.length}/${st.RosterCap}명)`;
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
@@ -794,7 +804,8 @@ function renderLudus(){
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       ${!st.SeasonActive?`<div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
-        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame})" title="명예의 전당 등재. 명성 60+ 전설은 스승으로 남아 영입 유산(원석 품질↑·신인 잠재력 +10)" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴${f.Fame>=60?' (스승)':''}</button>
+        ${st.MasterPending?`<button onclick="bestow('${f.Id}')" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)" style="flex:1;background:#3a2d40;border:none;color:#d8a0e0;border-radius:6px;padding:4px">📜 전수받기</button>`:''}
+        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴</button>
         <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div>`:''}</div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
@@ -889,10 +900,28 @@ window.sparring = async (id)=>{
   await refresh(); renderLudus(); refreshTop();
   $('ludusErr').innerHTML = `<span style="color:#a8d8b0">🤺 스파링 vs ${r.opp} — ${r.winner} 우세${r.grow?` · ${r.grow.toUpperCase()} +0.5`:''} (피로 ${r.fatigue})</span>`;
 };
-window.retire = async (id,name,fame)=>{
-  const legend = fame>=60;
-  if (!confirm(`${name}을(를) 명예롭게 은퇴시킬까?\n명예의 전당에 등재된다.${legend?'\n명성 '+fame+' — 루두스의 스승이 되어 영입 유산을 남긴다!':''}`)) return;
-  const r = await api('/api/retire',{id});
+window.retire = (id,name,fame,ckow)=>{
+  ckow = ckow||0;
+  $('retTitle').textContent = `🏛 ${name} 은퇴 (명성 ${Math.round(fame)} · 통산 KO ${ckow})`;
+  const opt = (path,icon,title,crit,eff,ok)=>
+    `<button class="tacbtn" ${ok?`onclick="doRetire('${id}','${path}')"`:'disabled'} style="text-align:left;${ok?'':'opacity:.45'}">
+      <b>${icon} ${title}</b> ${ok?'<span class="d" style="color:var(--grn)">자격 충족</span>':`<span class="d" style="color:var(--b)">자격 미달</span>`}
+      <div class="d">${eff}</div><div class="d" style="font-size:11px">조건: ${crit}</div></button>`;
+  $('retOpts').innerHTML =
+    opt('instructor','🎓','교관',`명성 40+`,'생전 최고 능력치 축의 상한을 루두스 전체에 +6~16 (누적)', fame>=40) +
+    opt('master','📜','스승',`명성 60+`,'특성·전술을 한 선수에게 1회 전수(추가) + 영입 유산. 이후 명전 의미만', fame>=60) +
+    opt('scout','🔭','스카우터',`통산 KO 12+ 또는 명성 30+`,'영입 안목 향상 + 후보 정보 1개 공개 (누적)', ckow>=12||fame>=30) +
+    opt('','👋','단순 은퇴',`언제나`,'조용히 떠난다 — 명예의 전당에 오르지 못한다', true);
+  $('retireModal').classList.add('on');
+};
+window.doRetire = async (id,path)=>{
+  const r = await api('/api/retire',{id,path});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('retireModal').classList.remove('on');
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+window.bestow = async (id)=>{
+  const r = await api('/api/bestow',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
@@ -915,11 +944,18 @@ function renderMarket(){
   $('marketNote').textContent = `잔고 💰${st.Gold} · 뽑기 ${st.FreeGachas>0?'무료 '+st.FreeGachas+'회':'💰'+st.GachaCost}`;
   $('gachaBtn').disabled = st.MyFighters.length >= st.RosterCap;
   $('candGrid').innerHTML = st.Candidates.length ? st.Candidates.map(c=>
-    `<div class="fc cand"><h3>${c.Name}</h3>
+    `<div class="fc cand"><h3>${c.Name} <span class="note" style="font-weight:400">${c.Age}세</span></h3>
      <div class="bd">${w(c.Weapon)} · ${p(c.Personality)} · 전술 일부: <b>${t(c.RevealedTactic)}</b></div>
-     <div class="chips"><span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">전술 2종 ???</span></div>
+     <div class="chips">${(c.Hints||[]).map(h=>`<span class="chip" style="color:#a8d8b0;border:1px solid rgba(168,216,176,.4)" title="🔭 스카우터 정보">🔭 ${h}</span>`).join('')}<span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">전술 2종 ???</span></div>
      <button class="recruit" onclick="recruit(${c.Idx})">📜 영입</button></div>`).join('')
     : '<div class="note">후보 없음 — 뽑기를 돌려라.</div>';
+  // 직전 영입에서 놓친 후보 공개(#8)
+  const rev = st.RecruitReveal||[];
+  $('revealBox').innerHTML = rev.length ? `<h3 style="margin:10px 0 4px">🔍 놓친 원석들 (영입 후 공개)</h3>` + rev.map(r=>
+    `<div class="fc" style="opacity:.85;border-top-color:#6a5a3a"><h3>${r.Name} <span class="note" style="font-weight:400">${r.Age}세</span></h3>
+     <div class="bd">${w(r.Weapon)} · ${p(r.Personality)}</div>
+     <div class="chips"><span class="chip" style="color:var(--gold)">천부 ${r.Talent}</span><span class="chip" style="color:#c94ca8">잠재 ${r.Potential}</span>${(r.Traits||[]).map(x=>`<span class="chip">${x}</span>`).join('')}</div>
+     ${r.JoinedRival?`<div class="note" style="color:var(--b)">→ ${r.JoinedRival}에 합류 (적으로 만난다)</div>`:'<div class="note">→ 어디에도 정착하지 못했다</div>'}</div>`).join('') : '';
   renderTransfers();
 }
 async function renderTransfers(){

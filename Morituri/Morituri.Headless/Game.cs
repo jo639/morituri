@@ -100,7 +100,9 @@ public sealed class Game
         int BetCursor = -1, int BetSide = 0, float BetAmount = 0f, float BetOdds = 0f,   // 도박장
         int Favor = 0, int FavorLv = 0, bool ProposalExec = false,   // 황제 총애·도전장
         float SeasonBetNet = 0f, int GauntletStage = 0, int GauntletWins = 0,   // 베팅 수지·초청전
-        List<ArchRec>? Archive = null);   // 관전 아카이브(지난 시즌 경기)
+        List<ArchRec>? Archive = null,   // 관전 아카이브(지난 시즌 경기)
+        string? MasterName = null, string? MasterTrait = null, string? MasterTactic = null,   // 스승 전수 대기
+        int ScoutLevel = 0, float[]? AxisCapBonus = null);   // 스카우터·교관 유산
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -127,8 +129,10 @@ public sealed class Game
         string[]? Epithets = null,    // 획득 이명
         int Fatigue = 0, bool Injured = false,   // 피로도(0쌩쌩~100탈진)·부상 여부
         bool AtCap = false, int BreakthroughCost = 0,   // 상한 도달·잠재력 돌파 비용(영광)
-        int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0);   // 마스터리 레벨
-    private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic); // 마스킹!
+        int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,   // 마스터리 레벨
+        int CKoW = 0);   // 통산 KO승(스카우터 은퇴 자격 표시)
+    private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic, int Age, string[]? Hints = null); // 마스킹! (나이 공개·스카우터 힌트)
+    private sealed record RevealDoc(string Name, string Weapon, string Personality, int Age, string Talent, string Potential, string[] Traits, string? JoinedRival);
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
     private sealed record NextMatchDoc(int Round, bool IsEvent, bool IsPlayerMatch,
         string AName, string BName, string? MyId, string? MyName, string[]? MyPool, string? MyTactic, OppPreview? Opp,
@@ -161,7 +165,9 @@ public sealed class Game
         EdictDoc? Edict = null,   // 황제의 특명(시즌 계약)
         List<GreatDoc>? Greatest = null,   // 명경기 보관함
         BetDoc? PendingBet = null, int Favor = 0,   // 도박장·황제 총애
-        bool HasMyMatchAhead = false);   // 남은 일정에 내 경기가 있는가(스킵 버튼 노출)
+        bool HasMyMatchAhead = false,   // 남은 일정에 내 경기가 있는가(스킵 버튼 노출)
+        List<RevealDoc>? RecruitReveal = null,   // 직전 영입에서 공개된 미선택 후보(#8)
+        string? MasterPending = null, int ScoutLevel = 0, string? Legacy = null);   // 은퇴 유산(#10)
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
@@ -216,6 +222,7 @@ public sealed class Game
     // ── 상태 ──
     private readonly List<Gladiator> _cast = new();
     private readonly List<Gladiator> _candidates = new();     // 대기 뽑기 후보 (전체 데이터 — JSON엔 마스킹)
+    private readonly List<RevealDoc> _lastReveal = new();     // 직전 영입에서 공개된 미선택 후보(#8, 메모리 전용)
     private readonly RelationLedger _ledger = new();
     private readonly int _rounds;
     private readonly bool _interactive;      // 클라이언트(파일 갱신) vs CLI
@@ -662,9 +669,9 @@ public sealed class Game
     private static float BudgetUsed(in FighterStats s) => s.Atk + s.Def + s.HpMax / 10f + s.Spd + s.Aspd + s.Rct;
     private static float AxisVal(in FighterStats s, int a) => a switch
     { 0 => s.Atk, 1 => s.Def, 2 => s.HpMax / 10f, 3 => s.Spd, 4 => s.Aspd, _ => s.Rct };
-    private static FighterStats WithAxis(in FighterStats s, int a, float pts)
+    private FighterStats WithAxis(in FighterStats s, int a, float pts)
     {
-        float v = Math.Clamp(AxisVal(s, a) + pts, 20f, 150f);
+        float v = Math.Clamp(AxisVal(s, a) + pts, 20f, 150f + _axisCapBonus[a]);
         return a switch
         {
             0 => s with { Atk = v }, 1 => s with { Def = v }, 2 => s with { HpMax = v * 10f },
@@ -1116,28 +1123,87 @@ public sealed class Game
     }
 
     /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
-    /// 명성 60+ 전설이면 루두스의 스승으로 남아 유산을 물려준다: 영입 원석 품질(+1롤)·신인 잠재력 +10.</summary>
-    public string RetireJson(string fighterId)
+    /// 세 진로(교관·스승·스카우터)는 각각 자격 기준을 넘어야 하며, 미달 시 단순 은퇴(명전 등록 없음).</summary>
+    public string RetireJson(string fighterId, string path = "")
     {
         if (SeasonActive) return Err("시즌 중엔 은퇴 불가 — 시즌 종료 후에");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
+        // 자격 검증(진로 지정 시)
+        if (path == "instructor" && g.Fame < InstructorFameMin) return Err($"교관 자격 미달 — 명성 {InstructorFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
+        if (path == "master" && g.Fame < MasterFameMin) return Err($"스승 자격 미달 — 명성 {MasterFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
+        if (path == "scout" && g.CKoW < ScoutKoMin && g.Fame < ScoutFameMin) return Err($"스카우터 자격 미달 — 통산 KO {ScoutKoMin}+ 또는 명성 {ScoutFameMin:F0}+ 필요");
+
         _cast.Remove(g);
         _ledger.RemoveFighter(g.Id);
-        _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
+        bool hall = path is "instructor" or "master" or "scout";
+        if (hall) _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
             $"{g.CW}-{g.CL}-{g.CD}", g.Age, Math.Max(1, _seasonsPlayed), true));
-        if (g.Fame >= MentorFameMin)
+
+        switch (path)
         {
-            _mentorName = g.Name;
-            _story.Add((0, "mentor", $"🏛 {g.Name}({g.Fame:F0} 명성) 은퇴 — 루두스의 스승이 되다. 후배들에게 유산을 남긴다"));
+            case "instructor":
+            {
+                // 교관: 생전 최고 스탯 축의 상한을 내 루두스 전체에 +보너스(누적). 스탯이 높을수록 큰 유산.
+                int axis = StrongestAxis(g.Stats);
+                float bonus = 6f + (AxisValue(g.Stats, axis) - 80f) * 0.12f;   // 80 기준 초과분 가산
+                bonus = Math.Clamp(bonus, 4f, 16f);
+                _axisCapBonus[axis] += bonus;
+                _story.Add((0, "retire", $"🎓 {g.Name} 은퇴 → 교관 — {AxisName(axis)} 상한 +{bonus:F0} (루두스 전체·누적)"));
+                break;
+            }
+            case "master":
+                // 스승: 특성·전술을 한 선수에게 1회 전수(추가). bestow로 소비.
+                _masterName = g.Name;
+                _masterTrait = g.TraitIds.Length > 0 ? g.TraitIds[0] : null;
+                _masterTactic = g.TacticPool.Length > 0 ? g.TacticPool[^1] : null;
+                _mentorName = g.Name;   // 영입 유산도 겸함(기존 스승 효과 유지)
+                _story.Add((0, "retire", $"📜 {g.Name} 은퇴 → 스승 — 특성·전술을 물려줄 준비 (한 선수에게 1회 전수)"));
+                break;
+            case "scout":
+                _scoutLevel++;
+                _story.Add((0, "retire", $"🔭 {g.Name} 은퇴 → 스카우터 (Lv{_scoutLevel}) — 영입 안목 향상·후보 정보 공개"));
+                break;
+            default:
+                _story.Add((0, "retire", $"👋 {g.Name} 조용히 검을 내려놓다 (자격 미달 — 명예의 전당 미등재)"));
+                break;
         }
-        else _story.Add((0, "retire", $"🏛 {g.Name} 명예 은퇴 — 명예의 전당 등재"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
     }
-    private const float MentorFameMin = 60f;
+
+    /// <summary>스승의 유산 전수(1회 소비): 한 선수에게 특성·전술 추가(교체 아님).</summary>
+    public string BestowJson(string fighterId)
+    {
+        if (_masterTrait == null && _masterTactic == null) return Err("전수할 스승의 유산이 없다");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        var added = new List<string>();
+        if (_masterTrait != null && !g.TraitIds.Contains(_masterTrait))
+        { g.TraitIds = g.TraitIds.Append(_masterTrait).ToArray(); added.Add("특성 " + TraitTable.Get(_masterTrait).Name); }
+        if (_masterTactic != null && !g.TacticPool.Contains(_masterTactic))
+        { g.TacticPool = g.TacticPool.Append(_masterTactic).ToArray(); added.Add("전술 " + _masterTactic.Replace("TAC_","")); }
+        _story.Add((0, "master", $"📜 스승 {_masterName}의 유산 — {g.Name}에게 {(added.Count > 0 ? string.Join("·", added) : "이미 보유")} 전수"));
+        _masterTrait = null; _masterTactic = null;   // 소비
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
+    }
+
+    private const float MentorFameMin = 60f, InstructorFameMin = 40f, MasterFameMin = 60f, ScoutFameMin = 30f;
+    private const int ScoutKoMin = 12;
     private string? _mentorName;   // 루두스의 스승(은퇴 전설) — 영입 유산
+    private string? _masterName, _masterTrait, _masterTactic;   // 스승 전수 대기(소비성)
+    private int _scoutLevel;                                     // 스카우터 누적 레벨
+    private readonly float[] _axisCapBonus = new float[6];       // 교관 상한 보너스(축별 누적)
+    private static int StrongestAxis(FighterStats s)
+    {
+        float[] v = { s.Atk, s.Def, s.HpMax / 10f, s.Spd, s.Aspd, s.Rct };
+        int best = 0; for (int i = 1; i < 6; i++) if (v[i] > v[best]) best = i; return best;
+    }
+    private static float AxisValue(FighterStats s, int a) => a switch { 0 => s.Atk, 1 => s.Def, 2 => s.HpMax / 10f, 3 => s.Spd, 4 => s.Aspd, _ => s.Rct };
+    private static string AxisName(int a) => a switch { 0 => "공격", 1 => "방어", 2 => "체력", 3 => "이동", 4 => "공속", _ => "반응" };
 
     // ── 제국 특전(영광 소모 영구 업그레이드) — 루두스 제국 등반의 뼈대. 전부 메타 효과. ──
     private static readonly (string Id, string Name, string Desc, int Max, int[] Costs)[] PerkDefs =
@@ -1919,12 +1985,12 @@ public sealed class Game
         else if (_gold >= EffGachaCost) _gold -= EffGachaCost;   // 원로원 인맥 특전 = 뽑기 할인
         else return Err($"잔고 부족 (뽑기 {EffGachaCost:F0})");
 
-        _candidates.Clear();
+        _candidates.Clear(); _lastReveal.Clear();
         var rng = new SimRandom(_worldSeed ^ 0x6ACA_6ACAUL + (ulong)(++_gachaCount) * 2654435761UL);
         var usedNames = _cast.Select(g => g.Name).Concat(_candidates.Select(c => c.Name)).ToHashSet();
         var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
         var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
-        int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0);   // 루두스 등급 + 스승의 안목(혈통 유산) = 원석 품질
+        int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0) + _scoutLevel;   // 등급 + 스승 안목 + 스카우터 유산 = 원석 품질
         for (int i = 0; i < 3; i++)
         {
             string name = PickName(rng, usedNames); usedNames.Add(name);
@@ -1932,12 +1998,29 @@ public sealed class Game
                 id: $"GLA_R{_gachaCount}_{i}", name,
                 wpn: wpns[(int)(rng.NextFloat01() * wpns.Length)],
                 per: pers[(int)(rng.NextFloat01() * pers.Length)],
-                sigTactic: null, isPlayer: true, ageMin: 18, ageMax: 24, talentRolls: scouting);
+                sigTactic: null, isPlayer: true, ageMin: 15, ageMax: 30, talentRolls: scouting);
             _candidates.Add(g);
+        }
+        // 스카우터 유산: 레벨만큼 후보 정보를 미리 엿본다(천부/잠재/특성/전술 중 랜덤 하나)
+        _candHints.Clear();
+        for (int k = 0; k < _scoutLevel && k < 6; k++)
+        {
+            int ci = (int)(rng.NextFloat01() * _candidates.Count);
+            var c = _candidates[ci];
+            string hint = (rng.NextUInt64() % 4) switch
+            {
+                0 => "천부 " + ViewerExport.TalentName(c.Talent),
+                1 => "잠재 " + ViewerExport.PotentialName(c.Potential),
+                2 => c.TraitIds.Length > 0 ? "특성 " + TraitTable.Get(c.TraitIds[0]).Name : "특성 없음",
+                _ => "전술 " + c.TacticPool[^1].Replace("TAC_",""),
+            };
+            if (!_candHints.TryGetValue(ci, out var l)) _candHints[ci] = l = new();
+            if (!l.Contains(hint)) l.Add(hint);
         }
         SaveWorld();
         return StateJson();
     }
+    private readonly Dictionary<int, List<string>> _candHints = new();   // 스카우터 후보 힌트(메모리 전용)
 
     private static string PickName(SimRandom rng, HashSet<string> used)
     {
@@ -1955,7 +2038,26 @@ public sealed class Game
         if (idx < 0 || idx >= _candidates.Count) return Err("후보 없음");
         if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err("로스터 가득참");
         var g = _candidates[idx];
-        _candidates.Clear();          // 나머지 후보는 떠난다
+        // 미선택 후보 공개 + 일부는 라이벌 루두스로 편입(#8) — 지나친 원석이 적이 되어 돌아온다
+        _lastReveal.Clear();
+        var others = _candidates.Where((_, i) => i != idx).ToList();
+        var rRng = new SimRandom(_worldSeed ^ 0x0A11_5EED + (ulong)_gachaCount * 17UL);
+        foreach (var o in others)
+        {
+            string? joinedRival = null;
+            if (!_playerless && _cast.Count(x => !x.IsPlayer) < 9 && rRng.Roll(0.40f))
+            {
+                var rivals = ActiveRivalLudi.ToList();
+                var rl = rivals.Count > 0 ? rivals[(int)(rRng.NextUInt64() % (ulong)rivals.Count)] : default;
+                o.IsPlayer = false; o.LudusId = rl.Id ?? "RIV"; o.Division = 2;
+                _cast.Add(o); joinedRival = rl.Name ?? "라이벌 검투소";
+                _story.Add((0, "recruit", $"👤 놓친 원석 — {o.Name}이(가) {joinedRival}에 합류했다"));
+            }
+            _lastReveal.Add(new RevealDoc(o.Name, o.WeaponId.Replace("WPN_", ""), o.PersonalityId.Replace("PER_", ""),
+                o.Age, ViewerExport.TalentName(o.Talent), ViewerExport.PotentialName(o.Potential),
+                o.TraitIds.Select(t => TraitTable.Get(t).Name).ToArray(), joinedRival));
+        }
+        _candidates.Clear();          // 선택되지 않은 나머지는 후보 목록에서 제거(일부는 위에서 라이벌로 갔다)
         g.Division = 2;               // 무명 신인은 2부 투기장부터 — 승격으로 증명하라
         _cast.Add(g);
         // 중도 투입: 시즌 중 영입은 잔여 라운드에 같은 부 상대와의 합류전을 편성(컵 시작 전 한정)
@@ -1994,7 +2096,8 @@ public sealed class Game
         if (g.TrainingPoints <= 0) return Err("훈련 포인트 없음");
         int a = Array.IndexOf(AxisNames, axis);
         if (a < 0) return Err("잘못된 축");
-        if (AxisVal(g.Stats, a) >= 150f) return Err("축 상한(150)");
+        float axisCap = 150f + _axisCapBonus[a];   // 교관 유산: 해당 축 상한 상향(누적)
+        if (AxisVal(g.Stats, a) >= axisCap) return Err($"축 상한({axisCap:F0})");
         if (BudgetUsed(g.Stats) + 1f > g.PotentialBudget) return Err($"잠재력 상한 도달 ({g.PotentialBudget:F0})");
         g.TrainingPoints--;
         g.Stats = WithAxis(g.Stats, a, 1f);
@@ -2116,6 +2219,8 @@ public sealed class Game
         _candidates.Clear(); if (w.Candidates != null) _candidates.AddRange(w.Candidates.Select(FromRec));
         _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
         _archive.Clear(); if (w.Archive != null) _archive.AddRange(w.Archive);
+        _masterName = w.MasterName; _masterTrait = w.MasterTrait; _masterTactic = w.MasterTactic; _scoutLevel = w.ScoutLevel;
+        if (w.AxisCapBonus != null) for (int i = 0; i < 6 && i < w.AxisCapBonus.Length; i++) _axisCapBonus[i] = w.AxisCapBonus[i];
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
@@ -2167,7 +2272,9 @@ public sealed class Game
             _greatest.Count > 0 ? _greatest.ToList() : null,
             _betCursor, _betSide, _betAmount, _betOdds, _favor, _favorLv, _proposalExec,
             _seasonBetNet, _gauntletStage, _gauntletWins,
-            _archive.Count > 0 ? _archive.ToList() : null), JsonOpts));
+            _archive.Count > 0 ? _archive.ToList() : null,
+            _masterName, _masterTrait, _masterTactic, _scoutLevel,
+            _axisCapBonus.Any(x => x != 0f) ? _axisCapBonus.ToArray() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -2268,11 +2375,12 @@ public sealed class Game
             g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray(), Epithets(g),
             g.Fatigue, g.InjuryMatches > 0,
             BudgetUsed(g.Stats) + 1f > g.PotentialBudget, BreakthroughCost(g),
-            g.MGrit, g.MRecover, g.MShow, g.MPay)).ToList();
+            g.MGrit, g.MRecover, g.MShow, g.MPay, g.CKoW)).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),
-            c.TacticPool[0].Replace("TAC_", ""))).ToList();   // ★ 마스킹: 무기·성격·전술1만 공개
+            c.TacticPool[0].Replace("TAC_", ""), c.Age,
+            _candHints.TryGetValue(i, out var h) ? h.ToArray() : null)).ToList();   // ★ 마스킹 + 스카우터 힌트
 
         NextMatchDoc? nm = null;
         if (SeasonActive && _cursor < _schedule.Count)
@@ -2291,7 +2399,9 @@ public sealed class Game
                 oppKiter = WeaponTable.Get(opp.WeaponId).Range >= 3.0f;
             }
             float probA = CursorProbA();   // 시뮬 15판(상성 반영) — VS 승률·배당 공용
-            float myP = mine == null ? 0.5f : mine == A ? probA : 1f - probA;
+            float myPraw = mine == null ? 0.5f : mine == A ? probA : 1f - probA;
+            float myP = Math.Clamp(myPraw, 0.15f, 0.85f);   // VS 표시용은 극단 완화(멘탈 보호)
+            int pctInt = (int)MathF.Round(myP * 100f);      // 배당은 이 정수 승률에서 파생 → 표시 정합
             nm = new NextMatchDoc(s.Round, s.IsEvent, mine != null, A.Name, B.Name,
                 mine?.Id, mine?.Name,
                 mine?.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(),
@@ -2303,7 +2413,7 @@ public sealed class Game
                 s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강"
                     : s.Format == "execution" ? "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)"
                     : s.Format.StartsWith("same:") ? $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}" : null,
-                MyWinPct: MathF.Round(myP * 100f), MyOdds: MathF.Round(1f / myP * 100f) / 100f, OppOdds: MathF.Round(1f / (1f - myP) * 100f) / 100f,
+                MyWinPct: pctInt, MyOdds: MathF.Round(10000f / pctInt) / 100f, OppOdds: MathF.Round(10000f / (100 - pctInt)) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
                 OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f);
@@ -2347,7 +2457,18 @@ public sealed class Game
                 ? new BetDoc(ById(_betSide == 0 ? _schedule[_cursor].A : _schedule[_cursor].B).Name, _betAmount, _betOdds) : null,
             _favor,
             HasMyMatchAhead: SeasonActive && Enumerable.Range(_cursor, Math.Max(0, _schedule.Count - _cursor))
-                .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer)), JsonOpts);
+                .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer),
+            RecruitReveal: _lastReveal.Count > 0 ? _lastReveal.ToList() : null,
+            MasterPending: (_masterTrait != null || _masterTactic != null) ? _masterName : null,
+            ScoutLevel: _scoutLevel,
+            Legacy: BuildLegacyNote()), JsonOpts);
+    }
+    private string? BuildLegacyNote()
+    {
+        var parts = new List<string>();
+        for (int a = 0; a < 6; a++) if (_axisCapBonus[a] > 0f) parts.Add($"{AxisName(a)}상한 +{_axisCapBonus[a]:F0}");
+        if (_scoutLevel > 0) parts.Add($"스카우터 Lv{_scoutLevel}");
+        return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
     public string PlayNextJson(string? body)
