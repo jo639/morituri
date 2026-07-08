@@ -102,11 +102,13 @@ public class GameTests
         Assert.That(rel.TryGetProperty("error", out _), Is.False);
         Assert.That(rel.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0));
 
-        // 시즌 중: 방출 불가
+        // 시즌 중에도 방출 가능(#3) + 잔여 일정 정리 → 이후 진행이 깨지지 않음
         g.GachaJson(); g.RecruitJson(0);
         g.PlayNext();   // 개막
         string id2 = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
-        Assert.That(Parse(g.ReleaseJson(id2)).TryGetProperty("error", out _), Is.True, "시즌 중 방출 금지");
+        Assert.That(Parse(g.ReleaseJson(id2)).TryGetProperty("error", out _), Is.False, "시즌 중 방출 허용");
+        while (g.SeasonActive) g.PlayNext();   // 방출된 선수가 잔여 일정에서 빠져 예외 없이 완주
+        Assert.That(g.SeasonActive, Is.False, "방출 후 시즌 정상 완주");
     }
 
     [Test]
@@ -228,11 +230,13 @@ public class GameTests
         int hallN = hallEl.ValueKind == JsonValueKind.Array ? hallEl.GetArrayLength() : 0;   // 비면 null 직렬화
         Assert.That(hallN, Is.EqualTo(0), "단순 은퇴는 명전 미등재");
 
-        // 시즌 중: 은퇴 불가
+        // 시즌 중에도 은퇴 가능(#3) + 잔여 일정 정리
         g.GachaJson(); g.RecruitJson(0);
         g.PlayNext();
         string id2 = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
-        Assert.That(Parse(g.RetireJson(id2)).TryGetProperty("error", out _), Is.True, "시즌 중 은퇴 금지");
+        var mid = Parse(g.RetireJson(id2));
+        Assert.That(mid.TryGetProperty("error", out _), Is.False, "시즌 중 은퇴 허용");
+        Assert.That(mid.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0), "시즌 중 은퇴로 로스터 제거");
     }
 
     [Test]
@@ -375,7 +379,7 @@ public class GameTests
         Assert.That(f1.GetProperty("Fatigue").GetInt32(), Is.EqualTo(3), "가벼운 피로만");
 
         g.PlayNext();   // 개막
-        Assert.That(Parse(g.SparringJson(id)).TryGetProperty("error", out _), Is.True, "시즌 중 스파링 금지");
+        Assert.That(Parse(g.SparringJson(id)).GetProperty("ok").GetBoolean(), Is.True, "시즌 중에도 스파링 가능(#3)");
     }
 
     [Test]

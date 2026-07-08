@@ -242,6 +242,12 @@
   <button id="evtClose" class="tacbtn" style="text-align:center; margin-top:12px; display:none" onclick="$('evtModal').classList.remove('on'); go('league')">계속 →</button>
 </div></div>
 
+<div class="modal" id="mrModal"><div class="mbox" style="max-width:440px">
+  <h3 id="mrTitle" style="color:var(--gold)">경기 결과</h3>
+  <div id="mrBody" style="margin:8px 0"></div>
+  <button class="tacbtn" style="text-align:center;margin-top:10px" onclick="$('mrModal').classList.remove('on')">계속 →</button>
+</div></div>
+
 <div class="modal" id="renModal"><div class="mbox" style="max-width:360px">
   <h3 id="renTitle" style="color:var(--gold)">📛 개명</h3>
   <input id="renInput" maxlength="14" style="width:100%;box-sizing:border-box;background:var(--panel2);color:var(--ink);border:1px solid #4a3a26;border-radius:8px;padding:8px 10px;font-size:15px;margin:8px 0">
@@ -385,7 +391,7 @@ async function refresh(){
   const nm = st.NextMatch;
   $('next').textContent = !st.SeasonActive ? `🏛 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
     : nm && nm.IsPlayerMatch ? `⚔ ${nm.IsEvent?'🎪 ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
-    : nm ? `▶ 다음 경기: ${nm.AName} vs ${nm.BName}` : '다음 경기 ▶';
+    : nm ? `▶ 다음: ${nm.AName} vs ${nm.BName}${nm.Hype>=70?' 🔥':nm.Hype>=35?' ✨':''}` : '다음 경기 ▶';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · 💰${st.Gold}`;
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
@@ -491,13 +497,26 @@ $('next').onclick = async ()=>{
     if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
     const nm = st.NextMatch;
     if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
-    // 디폴트: AI 경기도 한 경기씩 진행(#3)
+    // 디폴트: AI 경기도 한 경기씩 진행 + 결과 카드(#4)
     const r = await api('/api/next',{});
     await refresh();
     if (st.LastSeason && !st.SeasonActive){ showSeason(); }
-    else { simNote = r.A ? `▶ ${r.A} vs ${r.B} — ${r.Winner||'무승부'} (${r.Reason||''})` : '▶ 진행'; go('league'); }
+    else { showMatchResult(r); go('league'); }
   } finally { nx.disabled=false; }
 };
+// ── AI 경기 결과 카드(#4): 흥행도·승자·부상·운명 (수익/스탯 제외) ──
+function showMatchResult(m){
+  if (!m || !m.A){ go('league'); return; }
+  $('mrTitle').textContent = `${m.IsEvent?'🎪 ':''}R${m.Round} · ${m.A} vs ${m.B}`;
+  const koTag = m.Reason==='KO'?' <span style="color:var(--b)">KO</span>':'';
+  let html = `<div class="rrow"><span>승자</span><b style="color:var(--gold)">${m.Winner||'무승부'}</b>${koTag}</div>`;
+  html += `<div class="rrow"><span>🎭 흥행도</span><b>${Math.round(m.Hype||0)}</b> <span class="d">${hypeLabel(m.Hype||0)}</span></div>`;
+  if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>🩹 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
+  if (m.Fates&&m.Fates.length) html += m.Fates.map(f=>`<div class="rrow" style="color:${f.startsWith('⚰')||f.startsWith('💀')?'var(--b)':'var(--gold)'}"><span>운명</span><span>${f}</span></div>`).join('');
+  $('mrBody').innerHTML = html;
+  $('mrModal').classList.add('on');
+}
+function hypeLabel(h){ return h>=120?'🔥 초대박 흥행':h>=70?'대흥행':h>=35?'흥행':h>=12?'관심':'조용'; }
 // ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
 $('toMineBtn').onclick = async ()=>{
   const b=$('toMineBtn'); b.disabled=true;
@@ -865,12 +884,12 @@ function renderLudus(){
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
-      ${!st.SeasonActive?`<div style="display:flex;gap:6px;margin-top:8px">
-        <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
-        <button onclick="streetfight('${f.Id}')" title="라이벌 검투사에게 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
+        <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
         ${st.MasterPending?`<button onclick="bestow('${f.Id}')" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)" style="flex:1;background:#3a2d40;border:none;color:#d8a0e0;border-radius:6px;padding:4px">📜 전수받기</button>`:''}
         <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴</button>
-        <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div>`:''}</div>`;
+        <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div></div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
   const facs=[['training','훈련장',st.TrainingLv,3,'3경기당 훈련 포인트 '+st.TrainingLv+'pt',[200,500]],
@@ -957,18 +976,37 @@ window.perk = async (id)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
+// 리그 외 전투(#2): 실제 경기화면(배경 구분) → 재생, 종료 후 결과 노트
+function showExhibition(r, label){
+  _replayReturn = 'ludus';
+  $('replayCard').textContent = `${label} · ${r.a} vs ${r.b}`;
+  $('watchF').src = `viewer.html?venue=${r.venue}&t=${Date.now()}`;
+  go('replay');
+}
 window.sparring = async (id)=>{
   const r = await api('/api/sparring',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
-  $('ludusErr').textContent='';
-  await refresh(); renderLudus(); refreshTop();
+  await refresh(); refreshTop();
+  showExhibition(r, '🤺 스파링');
   $('ludusErr').innerHTML = `<span style="color:#a8d8b0">🤺 스파링 vs ${r.opp} — ${r.winner} 우세${r.grow?` · ${r.grow.toUpperCase()} +0.5`:''} (피로 ${r.fatigue})</span>`;
 };
-window.streetfight = async (id)=>{
-  const r = await api('/api/streetfight',{id});
+// 거리 시비 타겟 선택(#2): 로스터에서 상대 지목
+window.pickStreetTarget = async (myId, myName)=>{
+  const r = await api('/api/streettargets',{});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
-  $('ludusErr').textContent='';
-  await refresh(); renderLudus(); refreshTop();
+  $('retTitle').textContent = `🍺 ${myName} — 누구에게 시비를 걸까?`;
+  $('retOpts').innerHTML = (r.targets||[]).map(t=>
+    `<button class="tacbtn" style="text-align:left" onclick="streetfight('${myId}','${t.id}')">
+      <b>${t.name}</b> <span class="d">${w(t.weapon)} · ${p(t.personality)} · ${t.ludus} · 명성 ${t.fame}</span></button>`).join('')
+    || '<div class="note">시비 걸 상대가 없다.</div>';
+  $('retireModal').classList.add('on');
+};
+window.streetfight = async (myId, targetId)=>{
+  $('retireModal').classList.remove('on');
+  const r = await api('/api/streetfight',{id:myId, target:targetId||''});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  await refresh(); refreshTop();
+  showExhibition(r, '🍺 거리 시비');
   $('ludusErr').innerHTML = `<span style="color:#e0b090">${r.note}</span>`;
 };
 window.retire = (id,name,fame,ckow)=>{

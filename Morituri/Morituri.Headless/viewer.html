@@ -116,6 +116,14 @@ ctx.scale(DPR, DPR);
 // 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
 const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], duration = 0;
+// 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
+const VENUES = {
+  arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'🏛 콜로세움' },
+  spar:  { wall:'#3d4a33', f0:'#c9d3a8', f1:'#94a56f', ring:'rgba(70,90,50,0.4)',  label:'🤺 수련장' },
+  street:{ wall:'#2a2c33', f0:'#7c8391', f1:'#4a505c', ring:'rgba(30,34,42,0.55)', label:'🍺 뒷골목' },
+  bar:   { wall:'#3a281c', f0:'#8a6a44', f1:'#5c4128', ring:'rgba(40,26,14,0.5)',  label:'🍺 선술집' },
+};
+const VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUES.arena;
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
@@ -774,15 +782,16 @@ function render(){
   }
   ctx.save(); ctx.translate(shx, shy);
   ctx.translate(CX, CY); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
-  // 모래 핏 바닥 — 따뜻한 콜로세움
+  // 경기장 바닥 — 배경(#2): 콜로세움(기본)/스파링 투기장/술집/길거리
   ctx.save();
-  ctx.fillStyle='#5a4129'; ctx.beginPath(); ctx.ellipse(CX,CY+4,RX+7,RY+7,0,0,7); ctx.fill(); // 흙벽 두께감
+  const V=VENUE;
+  ctx.fillStyle=V.wall; ctx.beginPath(); ctx.ellipse(CX,CY+4,RX+7,RY+7,0,0,7); ctx.fill(); // 벽 두께감
   const grd=ctx.createRadialGradient(CX,CY-RY*0.3,8,CX,CY,RX);
-  grd.addColorStop(0,'#e9cda2'); grd.addColorStop(1,'#c49a6b');
+  grd.addColorStop(0,V.f0); grd.addColorStop(1,V.f1);
   ctx.fillStyle=grd; ctx.beginPath(); ctx.ellipse(CX,CY,RX,RY,0,0,7); ctx.fill();
-  ctx.strokeStyle='#6e4f31'; ctx.lineWidth=4; ctx.stroke();
+  ctx.strokeStyle=V.wall; ctx.lineWidth=4; ctx.stroke();
   const edge=(R()-1.5)/R();
-  ctx.strokeStyle='rgba(110,79,49,0.4)'; ctx.lineWidth=1.5;
+  ctx.strokeStyle=V.ring; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(CX,CY,RX*edge,RY*edge,0,0,7); ctx.stroke();
   ctx.restore();
 

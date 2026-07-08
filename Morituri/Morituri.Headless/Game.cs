@@ -120,7 +120,7 @@ public sealed class Game
         List<MatchLogDoc> MatchLog, List<ChampionRec>? Champions = null, List<HallRec>? Hall = null,
         List<CalDoc>? Calendar = null, int Auc = 0);   // 달력: 전 일정(과거+미래)+로마 날짜
     private sealed record CalDoc(int Idx, string Month, int Day, string A, string B, string Kind, string Format,
-        string? Winner, bool IsPlayerMatch, bool IsNext);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1)
+        string? Winner, bool IsPlayerMatch, bool IsNext, float Hype);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1)
 
     private sealed record StatsDoc(float Atk, float Def, float Hp, float Spd, float Aspd, float Rct);
     private sealed record MyFighterDoc(string Id, string Name, string Weapon, string Personality, int Age, bool Aging,
@@ -198,7 +198,8 @@ public sealed class Game
     /// <summary>PlayNext 요약 (/api/next 응답).</summary>
     public sealed record MatchSummary(int SeasonNo, int Round, bool IsEvent, string A, string B,
         string Winner, string Reason, bool SeasonCompleted, bool NewSeasonStarted, bool WasPlayerMatch,
-        float Income, string IncomeNote, List<MyDelta>? Mine = null, List<string>? Fates = null);
+        float Income, string IncomeNote, List<MyDelta>? Mine = null, List<string>? Fates = null,
+        float Hype = 0f, List<string>? Injuries = null);   // 흥행도·부상자(AI 결과 카드 #4)
 
     /// <summary>경기 로그 1건 — 당시 선수 스냅샷 + 시드 = 결정론 재관전([2] ERD FighterSnapshot 원칙).</summary>
     private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
@@ -264,6 +265,8 @@ public sealed class Game
     private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
     private bool _proposalExec;                              // 제안이 원수의 처형전 도전장인가
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
+    private readonly List<string> _lastInjuries = new();      // 직전 경기 신규 부상자(결과 카드 표시)
+    private float _lastHype;                                   // 직전 경기 흥행도
     private float _lastDrama;                                // 직전 경기 드라마 스코어(명경기 보관 판정)
     private readonly List<GreatRec> _greatest = new();       // 명경기 보관함(top 12, 영속 — 스냅샷+시드 재관전)
     private int _rookieSeq;                                  // 신인 id 시리얼(중복 방지, 영속)
@@ -1003,12 +1006,20 @@ public sealed class Game
         SaveWorld();
     }
 
-    /// <summary>방출: 프리시즌에만(시즌 중엔 스케줄 고정). 관계 청산 포함.</summary>
+    /// <summary>시즌 중 선수 제거 시 잔여 일정에서 그 선수 경기를 뺀다(#3 — 은퇴/방출 중도 허용).</summary>
+    private void PurgeRemainingMatches(string fid)
+    {
+        if (!SeasonActive) return;
+        for (int i = _schedule.Count - 1; i >= _cursor; i--)
+            if (_schedule[i].A == fid || _schedule[i].B == fid) _schedule.RemoveAt(i);
+    }
+
+    /// <summary>방출(#3 시즌 중에도 가능): 관계 청산 + 잔여 일정 정리.</summary>
     public string ReleaseJson(string fighterId)
     {
-        if (SeasonActive) return Err("시즌 중엔 방출 불가 — 시즌 종료 후에");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
+        PurgeRemainingMatches(g.Id);
         _cast.Remove(g);
         _ledger.RemoveFighter(g.Id);
         _story.Add((0, "release", $"👋 방출 — {g.Name}이(가) 루두스를 떠났다"));
@@ -1176,20 +1187,31 @@ public sealed class Game
     private int _favor, _favorLv;   // 황제의 총애(특명 달성 누적)·도달한 단계
     private int _streetSeq;         // 거리 시비 시드 카운터(영속)
 
-    /// <summary>거리 시비(#14): 내 선수가 라이벌 검투사에게 싸움을 건다 — 감정 유발·관계 악화·인기 · 부상 위험.</summary>
-    public string StreetFightJson(string fighterId)
+    /// <summary>친선/난투 등 리그 외 전투를 viewer.json으로 내보낸다(#2 — 실제 경기화면). 시드 결정론, 무기록.</summary>
+    private MatchResult RunExhibition(Gladiator a, Gladiator b, ulong seed)
+    {
+        var (dA, dB) = BuildDefs(a, b, "normal");
+        var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
+        var res = new MatchSim().Run(dA, dB, seed, events, frames);
+        ViewerExport.WriteDoc(dA, dB, seed, res, frames, events, "viewer.json",
+            EndowOf(a.Id, dA), EndowOf(b.Id, dB));
+        return res;
+    }
+
+    /// <summary>거리 시비(#14/#2): 내 선수가 지목한 라이벌에게 싸움 — 실제 경기 시뮬(길거리 배경), 감정·관계 악화·인기·부상.</summary>
+    public string StreetFightJson(string fighterId, string targetId = "")
     {
         if (_playerless) return Err("CLI 모드");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
         if (g.InjuryMatches > 0) return Err("부상 중 — 거리 싸움은 무리다");
         if (g.Fatigue >= 85) return Err("너무 지쳤다 — 휴식이 먼저");
-        var rivals = _cast.Where(x => !x.IsPlayer).ToList();
-        if (rivals.Count == 0) return Err("시비 걸 상대가 없다");
         var rng = new SimRandom(_worldSeed ^ 0x5417_B4A1UL + (ulong)(_streetSeq++) * 29UL);
-        var target = rivals[(int)(rng.NextUInt64() % (ulong)rivals.Count)];
-        float pMe = Math.Clamp(0.5f + (g.Fame - target.Fame) * 0.002f, 0.25f, 0.75f);
-        bool win = rng.NextFloat01() < pMe;
+        var target = _cast.FirstOrDefault(x => x.Id == targetId && !x.IsPlayer)
+                     ?? _cast.Where(x => !x.IsPlayer).OrderBy(_ => rng.NextUInt64()).FirstOrDefault();
+        if (target == null) return Err("시비 걸 상대가 없다");
+        var res = RunExhibition(g, target, rng.NextUInt64());   // 실제 난투 시뮬 → viewer.json(길거리)
+        bool win = res.Winner == 0;
         // 감정 유발 + 관계 악화(그 상대 한정) — 다음 경기에서 발화
         target.PendingEmotions.Add(EmotionTable.Grudge);
         _ledger.Get(target.Id, g.Id).Affinity = Math.Clamp(_ledger.Get(target.Id, g.Id).Affinity - 20f, -100f, 100f);
@@ -1205,49 +1227,59 @@ public sealed class Game
         else
         {
             g.Popularity += 4f;
-            if (rng.Roll(0.30f)) { g.InjuryMatches = Math.Max(g.InjuryMatches, 1); note = $"🍺 {g.Name}, {target.Name}과의 난투에서 밀렸다 — 부상(1경기) · 인기 +4"; }
-            else note = $"🍺 {g.Name} vs {target.Name} 난투 — 팽팽했다 · 인기 +4";
+            if (res.StatsA.MinHpPct <= 0.20f && rng.Roll(0.40f)) { g.InjuryMatches = Math.Max(g.InjuryMatches, 1); note = $"🍺 {g.Name}, {target.Name}과의 난투에서 밀렸다 — 부상(1경기) · 인기 +4"; }
+            else note = $"🍺 {g.Name} vs {target.Name} 난투 — {(res.Winner < 0 ? "팽팽했다" : "졌다")} · 인기 +4";
         }
         _story.Add((0, "brawl", note + $" ({target.Name} 다음 경기 '원한')"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
-        return JsonSerializer.Serialize(new { ok = true, note, target = target.Name, won = win }, JsonOpts);
+        return JsonSerializer.Serialize(new { ok = true, note, target = target.Name, won = win, venue = "street", a = g.Name, b = target.Name }, JsonOpts);
     }
 
-    /// <summary>친선 스파링(프리시즌): 같은 부 AI와 연습 경기 — 무기록·부상 없음, 성장 소량 + 가벼운 피로.</summary>
+    /// <summary>친선 스파링(#2 실제 경기화면): 같은 부 AI와 연습 경기(투기장 배경) — 무기록·부상 없음, 성장 소량 + 가벼운 피로.</summary>
     public string SparringJson(string fighterId)
     {
-        if (SeasonActive) return Err("스파링은 프리시즌에만");
-        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);   // #3 시즌 중에도 가능
         if (g == null) return Err("내 선수 아님");
+        if (g.InjuryMatches > 0) return Err("부상 중 — 스파링은 무리다");
         if (g.Fatigue >= 80) return Err("피로가 너무 쌓였다 — 휴식이 먼저");
         var rng = new SimRandom(_worldSeed ^ 0x5B42_00AAUL + (ulong)_sparCount++ * 7UL);
         var peers = _cast.Where(x => !x.IsPlayer && x.Division == g.Division).ToList();
         if (peers.Count == 0) peers = _cast.Where(x => !x.IsPlayer).ToList();
         if (peers.Count == 0) return Err("상대가 없다");
         var opp = peers[(int)(rng.NextUInt64() % (ulong)peers.Count)];
-        var (dA, dB) = BuildDefs(g, opp, "normal");
-        var res = new MatchSim().Run(dA, dB, rng.NextUInt64());
+        var res = RunExhibition(g, opp, rng.NextUInt64());   // 실제 시뮬 → viewer.json(스파링 투기장)
         string? grow = Grow(g, rng);
         g.Fatigue = Math.Min(100, g.Fatigue + 3);
         string wName = res.Winner == 0 ? g.Name : res.Winner == 1 ? opp.Name : "무승부";
         _story.Add((0, "sparring", $"🤺 스파링 — {g.Name} vs {opp.Name}: {wName} 우세" + (grow != null ? $" · {grow} +0.5" : "")));
         SaveWorld();
-        return JsonSerializer.Serialize(new { ok = true, opp = opp.Name, winner = wName, grow, fatigue = g.Fatigue }, JsonOpts);
+        return JsonSerializer.Serialize(new { ok = true, opp = opp.Name, winner = wName, grow, fatigue = g.Fatigue, venue = "spar", a = g.Name, b = opp.Name }, JsonOpts);
+    }
+
+    /// <summary>거리 시비 타겟 후보(라이벌 검투사 목록).</summary>
+    public string StreetTargetsJson()
+    {
+        var list = _cast.Where(x => !x.IsPlayer)
+            .OrderByDescending(x => x.Fame)
+            .Select(x => new { id = x.Id, name = x.Name, weapon = x.WeaponId.Replace("WPN_", ""),
+                personality = x.PersonalityId.Replace("PER_", ""), fame = MathF.Round(x.Fame),
+                ludus = LudusNameOf(x.LudusId) }).ToList();
+        return JsonSerializer.Serialize(new { ok = true, targets = list }, JsonOpts);
     }
 
     /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
     /// 세 진로(교관·스승·스카우터)는 각각 자격 기준을 넘어야 하며, 미달 시 단순 은퇴(명전 등록 없음).</summary>
     public string RetireJson(string fighterId, string path = "")
     {
-        if (SeasonActive) return Err("시즌 중엔 은퇴 불가 — 시즌 종료 후에");
-        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);   // #3 시즌 중에도 가능
         if (g == null) return Err("내 선수 아님");
         // 자격 검증(진로 지정 시)
         if (path == "instructor" && g.Fame < InstructorFameMin) return Err($"교관 자격 미달 — 명성 {InstructorFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
         if (path == "master" && g.Fame < MasterFameMin) return Err($"스승 자격 미달 — 명성 {MasterFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
         if (path == "scout" && g.CKoW < ScoutKoMin && g.Fame < ScoutFameMin) return Err($"스카우터 자격 미달 — 통산 KO {ScoutKoMin}+ 또는 명성 {ScoutFameMin:F0}+ 필요");
 
+        PurgeRemainingMatches(g.Id);
         _cast.Remove(g);
         _ledger.RemoveFighter(g.Id);
         bool hall = path is "instructor" or "master" or "scout";
@@ -1437,7 +1469,8 @@ public sealed class Game
         return new MatchSummary(_seasonNo, s.Round, s.IsEvent, A.Name, B.Name,
             res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason, last, newSeason,
             A.IsPlayer || B.IsPlayer, income, incomeNote, mine,
-            _lastFates.Count > 0 ? _lastFates.ToList() : null);
+            _lastFates.Count > 0 ? _lastFates.ToList() : null,
+            _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null);
     }
 
     /// <summary>
@@ -1718,6 +1751,8 @@ public sealed class Game
     {
         bool isEvent = kind != "regular";   // 이벤트·컵 = 순위 무관(exhibition), 흥행 배수
         bool exec = format == "execution";  // ☠ 처형전 — 패자는 죽을 수 있다. 보상도 크다
+        _lastInjuries.Clear();
+        _lastHype = MathF.Round((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f);   // 경기 관심도(#5)
         var (defA, defB) = BuildDefs(A, B, format);
         if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
         {
@@ -1945,6 +1980,7 @@ public sealed class Game
             {
                 int dur = (g.IsPlayer && _medicalLv >= 2) || g.MRecover >= 3 ? 1 : 2;
                 g.InjuryMatches = dur;
+                _lastInjuries.Add($"{g.Name} ({dur}경기)");
                 _story.Add((round, "injury", $"🩹 부상! {g.Name} — 향후 {dur}경기 실효 스탯 저하"));
             }
         }
@@ -2464,6 +2500,7 @@ public sealed class Game
             string month = RomanMonths[Math.Min(RomanMonths.Length - 1, day / 30)];
             bool played = i < _cursor && i < _matchLog.Count;
             string an, bn; string? winner = null; int idx = -1; bool mine;
+            float hype = 0f;   // 예정 경기의 기대 흥행도(#5) — 치른 경기는 0
             if (played)
             {
                 var e = _matchLog[i];
@@ -2474,8 +2511,10 @@ public sealed class Game
                 var ga = _cast.FirstOrDefault(g => g.Id == s.A); var gb = _cast.FirstOrDefault(g => g.Id == s.B);
                 an = ga?.Name ?? s.A; bn = gb?.Name ?? s.B;
                 mine = (ga?.IsPlayer ?? false) || (gb?.IsPlayer ?? false);
+                float ev = s.Format == "execution" ? 2f : s.IsEvent ? 1.5f : 1f;
+                hype = MathF.Round(((ga?.Popularity ?? 0) + (gb?.Popularity ?? 0)) * ev + ((ga?.Fame ?? 0) + (gb?.Fame ?? 0)) * 0.1f);
             }
-            cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor));
+            cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor, hype));
         }
         return new SeasonDoc(SchemaVer, Math.Max(1, _seasonNo), _rounds, _matchIdx, total, !SeasonActive,
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
@@ -2544,7 +2583,7 @@ public sealed class Game
                     : s.Format.StartsWith("same:") ? $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}" : null,
                 MyWinPct: pctInt, MyOdds: MathF.Round(10000f / pctInt) / 100f, OppOdds: MathF.Round(10000f / (100 - pctInt)) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
-                Hype: mine != null ? MathF.Round(mine.Popularity + opp.Popularity) : 0f,
+                Hype: MathF.Round((A.Popularity + B.Popularity) * (s.Format == "execution" ? 2f : s.IsEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f),
                 OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f,
                 // 예상 수익(#15): Play의 출전료 공식과 동일 — 인기 hype·이벤트·처형전·협상 마스터리 반영
                 FeeEstimate: mine == null ? 0f : MathF.Round(
