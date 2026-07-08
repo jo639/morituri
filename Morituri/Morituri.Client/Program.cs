@@ -56,6 +56,7 @@ internal static class Program
             "/api/sparring" when method == "POST" => game.SparringJson(StrOf(body ?? "", "id")),
             "/api/streetfight" when method == "POST" => game.StreetFightJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "target")),
             "/api/streettargets" when method == "POST" => game.StreetTargetsJson(),
+            "/api/gangbrawl" when method == "POST" => game.GangBrawlJson(StrOf(body ?? "", "id")),
             "/api/transfers" when method == "POST" => game.TransfersJson(),
             "/api/buy" when method == "POST" => game.TransferBuyJson(StrOf(body ?? "", "id")),
             "/api/sell" when method == "POST" => game.TransferSellJson(StrOf(body ?? "", "id")),

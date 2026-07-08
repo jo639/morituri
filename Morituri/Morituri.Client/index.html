@@ -759,6 +759,8 @@ function showEvent(){
 window.chooseEvent = async (i)=>{
   const r = await api('/api/choose',{choice:i});
   await refresh();
+  // 난입 술집시비를 붙었으면 실제 경기화면(#2) — 이벤트 모달 닫고 재생
+  if (r.fight){ $('evtModal').classList.remove('on'); _replayReturn='league'; showExhibition(r.fight, '🍺 술집 난투'); return; }
   $('evtChoices').style.display='none';
   $('evtOutcome').style.display='flex';
   $('evtOutcome').innerHTML = `<span>결정</span><b style="color:var(--gold)">${r.outcome||''}</b>`;
@@ -887,6 +889,7 @@ function renderLudus(){
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
         <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
+        <button onclick="gangbrawl('${f.Id}','${f.Name}')" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험" style="flex:1;background:#402a20;border:none;color:#e0a878;border-radius:6px;padding:4px">🥊 패싸움</button>
         ${st.MasterPending?`<button onclick="bestow('${f.Id}')" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)" style="flex:1;background:#3a2d40;border:none;color:#d8a0e0;border-radius:6px;padding:4px">📜 전수받기</button>`:''}
         <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴</button>
         <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div></div>`;
@@ -1008,6 +1011,13 @@ window.streetfight = async (myId, targetId)=>{
   await refresh(); refreshTop();
   showExhibition(r, '🍺 거리 시비');
   $('ludusErr').innerHTML = `<span style="color:#e0b090">${r.note}</span>`;
+};
+window.gangbrawl = async (myId, myName)=>{
+  const r = await api('/api/gangbrawl',{id:myId});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  await refresh(); refreshTop();
+  showExhibition({a:r.a, b:r.b, venue:r.venue}, '🥊 패싸움');
+  $('ludusErr').innerHTML = `<span style="color:#e0a878">${(r.notes||[]).join('<br>')}</span>`;
 };
 window.retire = (id,name,fame,ckow)=>{
   ckow = ckow||0;

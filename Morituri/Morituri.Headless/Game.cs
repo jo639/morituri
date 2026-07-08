@@ -587,11 +587,23 @@ public sealed class Game
         if (choiceIdx < 0 || choiceIdx >= t.Choices.Length) return Err("잘못된 선택");
         Gladiator? subj = _pendingEventFighter != null ? _cast.FirstOrDefault(g => g.Id == _pendingEventFighter) : null;
         if (t.NeedsFighter && subj == null) { _pendingEventId = _pendingEventFighter = null; SaveWorld(); return Err("대상 선수가 없다 — 이벤트 취소"); }
+        // 난입 술집시비(#2/#14): "주먹으로 답한다"(choice 0)면 실제 경기(술집 배경)로 붙는다 → viewer.json
+        object? fight = null;
+        if (t.Id == "brawl" && choiceIdx == 0 && subj != null)
+        {
+            var brng = new SimRandom(SeasonSeed ^ 0xB4A4_5EED + (ulong)(_streetSeq++) * 11UL);
+            var foe = _cast.Where(x => !x.IsPlayer).OrderBy(_ => brng.NextUInt64()).FirstOrDefault();
+            if (foe != null)
+            {
+                RunExhibition(subj, foe, brng.NextUInt64());
+                fight = new { venue = "bar", a = subj.Name, b = foe.Name };
+            }
+        }
         string outcome = t.Choices[choiceIdx].Apply(subj);
         _story.Add((0, "event_choice", $"{t.Icon} {t.Title} — {outcome}"));
         _pendingEventId = _pendingEventFighter = null;
         SaveWorld();
-        return JsonSerializer.Serialize(new { ok = true, title = t.Title, outcome }, JsonOpts);
+        return JsonSerializer.Serialize(new { ok = true, title = t.Title, outcome, fight }, JsonOpts);
     }
 
     public Game(int roundsPerSeason, ulong? worldSeed = null, bool fresh = false,
@@ -1266,6 +1278,77 @@ public sealed class Game
                 personality = x.PersonalityId.Replace("PER_", ""), fame = MathF.Round(x.Fame),
                 ludus = LudusNameOf(x.LudusId) }).ToList();
         return JsonSerializer.Serialize(new { ok = true, targets = list }, JsonOpts);
+    }
+
+    /// <summary>패싸움(#14 다대다): 내 선수 + 관계 아군 vs 라이벌 무리. Sim은 1v1이라 연속 듀얼로 해결,
+    /// 관계(원수/친구)로 개입(감정 주입=결정 경로만, 매트릭스 안전). 주요 듀얼만 viewer.json(리플레이).</summary>
+    public string GangBrawlJson(string fighterId)
+    {
+        if (_playerless) return Err("CLI 모드");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        if (g.InjuryMatches > 0) return Err("부상 중 — 패싸움은 무리다");
+        if (g.Fatigue >= 80) return Err("너무 지쳤다 — 휴식이 먼저");
+        var rng = new SimRandom(_worldSeed ^ 0x6A46_B0A5UL + (ulong)(_streetSeq++) * 37UL);
+
+        // 아군: 다친 데 없는 다른 내 선수 → 없으면 g를 친구로 여기는 라이벌 → 없으면 단독(수적 열세)
+        var ally = _cast.FirstOrDefault(x => x.IsPlayer && x.Id != g.Id && x.InjuryMatches == 0)
+                 ?? _cast.FirstOrDefault(x => !x.IsPlayer && _ledger.Get(x.Id, g.Id).Classify(x.PersonalityId) == RelationType.Friend);
+        // 상대 무리: 라이벌 2인 — g에게 적대적인(원수/공포/시기) 상대 우선
+        var foes = _cast.Where(x => !x.IsPlayer && x.Id != ally?.Id)
+            .OrderByDescending(x => { var rt = _ledger.Get(x.Id, g.Id).Classify(x.PersonalityId);
+                return rt is RelationType.Nemesis or RelationType.Fear or RelationType.Envy ? 1 : 0; })
+            .ThenBy(_ => rng.NextUInt64()).Take(2).ToList();
+        if (foes.Count < 2) return Err("패싸움 상대가 부족하다");
+
+        var notes = new List<string> { $"🥊 패싸움 발발 — {g.Name}{(ally != null && ally.IsPlayer ? $"·{ally.Name}" : "")} vs {string.Join("·", foes.Select(f => f.Name))}" };
+        int myWins = 0, duels = 0;
+        string venue = rng.Roll(0.5f) ? "street" : "bar";
+
+        // 관계 개입: 원수 상대는 이 난투에서 '투지'(감정=결정 경로만). 친구 아군도 분전.
+        void Intervene(Gladiator who, Gladiator foe)
+        {
+            if (_ledger.Get(foe.Id, who.Id).Classify(foe.PersonalityId) == RelationType.Nemesis)
+            { foe.PendingEmotions.Add(EmotionTable.Motivated); notes.Add($"↳ 원수 {foe.Name}, {who.Name}에게 이를 갈며 달려든다"); }
+        }
+
+        // 듀얼 1(주요): g vs foe0 → viewer.json(리플레이)
+        Intervene(g, foes[0]);
+        var res0 = RunExhibition(g, foes[0], rng.NextUInt64());
+        bool w0 = res0.Winner == 0; if (res0.Winner >= 0) { duels++; if (w0) myWins++; }
+        foes[0].PendingEmotions.Add(EmotionTable.Grudge);
+        _ledger.Get(foes[0].Id, g.Id).Affinity = Math.Clamp(_ledger.Get(foes[0].Id, g.Id).Affinity - 18f, -100f, 100f);
+        notes.Add($"↳ {g.Name} vs {foes[0].Name}: {(w0 ? g.Name : res0.Winner < 0 ? "무승부" : foes[0].Name)} 우세");
+
+        // 듀얼 2: 아군(있으면) vs foe1, 없으면 g가 이어서(더 지침)
+        var second = ally ?? g;
+        Intervene(second, foes[1]);
+        var (d2a, d2b) = BuildDefs(second, foes[1], "normal");
+        var res1 = new MatchSim().Run(d2a, d2b, rng.NextUInt64());
+        bool w1 = res1.Winner == 0; if (res1.Winner >= 0) { duels++; if (w1) myWins++; }
+        foes[1].PendingEmotions.Add(EmotionTable.Grudge);
+        notes.Add($"↳ {second.Name} vs {foes[1].Name}: {(w1 ? second.Name : res1.Winner < 0 ? "무승부" : foes[1].Name)} 우세");
+
+        // 집계: 우리 편 참여자 피로·인기, 승패에 따른 감정·부상
+        var myside = new List<Gladiator> { g }; if (ally != null && ally.IsPlayer) myside.Add(ally);
+        foreach (var m in myside) m.Fatigue = Math.Min(100, m.Fatigue + (ally == null ? 10 : 6));
+        if (myWins >= 2)
+        {
+            foreach (var m in myside) { m.Popularity += 15f; if (SeasonActive) m.PendingEmotions.Add(EmotionTable.Motivated); }
+            notes.Add("🏆 완승! 뒷골목의 왕 — 인기 대폭 상승");
+        }
+        else if (myWins == 1) { foreach (var m in myside) m.Popularity += 7f; notes.Add("난전 무승부 — 인기 소폭 상승"); }
+        else
+        {
+            g.Popularity += 3f;
+            if (rng.Roll(0.45f)) { g.InjuryMatches = Math.Max(g.InjuryMatches, 1); notes.Add($"💢 다구리에 밀렸다 — {g.Name} 부상(1경기)"); }
+            else notes.Add("💢 수적 열세에 밀렸다 — 굴욕");
+        }
+        foreach (var f in foes) _ledger.Get(f.Id, g.Id).Affinity = Math.Clamp(_ledger.Get(f.Id, g.Id).Affinity - 6f, -100f, 100f);
+        _story.Add((0, "brawl", notes[0] + $" → {(myWins >= 2 ? "완승" : myWins == 1 ? "무승부" : "패배")}"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return JsonSerializer.Serialize(new { ok = true, notes, venue, a = g.Name, b = foes[0].Name, myWins, duels }, JsonOpts);
     }
 
     /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
