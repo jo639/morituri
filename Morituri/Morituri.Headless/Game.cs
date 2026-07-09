@@ -1278,7 +1278,7 @@ public sealed class Game
             Units = units.Select(u => new { u.Name, u.Team, u.Weapon }).ToArray(),
             Frames = frames.Select(f => new { t = MathF.Round(f.T * 100) / 100, u = f.Units.Select(x => new {
                 x = MathF.Round(x.X * 100) / 100, y = MathF.Round(x.Y * 100) / 100,
-                h = MathF.Round(x.HpPct * 100) / 100, a = x.Attacking, d = x.Dead }).ToArray() }).ToArray(),
+                h = MathF.Round(x.HpPct * 100) / 100, s = x.State, f = x.Facing, hv = x.Heavy, d = x.Dead }).ToArray() }).ToArray(),
             Result = new { res.WinningTeam, res.Reason, Duration = MathF.Round(res.DurationSec * 100) / 100 },
         };
         File.WriteAllText("melee.json", JsonSerializer.Serialize(doc, JsonOpts));
