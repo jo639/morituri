@@ -77,6 +77,86 @@ function drawFighter(fx,fy,scale,state,facing,baseCol,reach){
     ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl,ay+Math.sin(arm)*wl,4*scale,0,7); ctx.stroke(); ctx.restore(); }
 }
 
+// ── 스프라이트 시스템 (viewer.html 이식, N인 일반화) ──
+const _fcv=document.createElement('canvas'), _fctx=_fcv.getContext('2d');
+let defaultSprite=null; const spriteSets={};
+function spriteFor(weapon){ return spriteSets['WPN_'+weapon]||spriteSets[weapon]||defaultSprite; }
+function poseFor(state,heavy){ switch(state){
+  case 'Move':case 'Dodge':return 'walk'; case 'Guard':return 'guard';
+  case 'Windup':return heavy?'heavy_windup':'light_attack';
+  case 'Active':case 'Recovery':return heavy?'heavy_attack':'light_attack';
+  case 'HitStun':case 'Stagger':return 'hurt'; case 'Down':case 'GetUp':return 'down';
+  default:return 'idle'; } }
+async function loadSpriteSet(jsonFile){
+  try{
+    const cfg=await (await fetch('sprites/'+jsonFile+'?'+Date.now())).json();
+    const img=new Image(); await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src='sprites/'+cfg.image;});
+    const anims={},imgCache={};
+    for(const [name,a] of Object.entries(cfg.animations||{})){
+      if(!imgCache[a.image]){ const ai=new Image(); await new Promise((res,rej)=>{ai.onload=res;ai.onerror=rej;ai.src='sprites/'+a.image;}); imgCache[a.image]=ai; }
+      const holds=Array.isArray(a.holds)&&a.holds.length===a.frames.length?a.holds:null;
+      anims[name]={img:imgCache[a.image],fps:a.fps||12,frames:a.frames,refH:a.refH,baseSpeed:a.baseSpeed||0,holds,holdTot:holds?holds.reduce((s,x)=>s+x,0):0};
+    }
+    return { img, frames:cfg.frames, srcFlip:cfg.facing==='left', anims };
+  }catch(e){ return null; }
+}
+async function loadSprites(weapons){
+  defaultSprite=await loadSpriteSet('sprites.json');
+  for(const w of weapons){ const id='WPN_'+w; if(id in spriteSets)continue; spriteSets[id]=(await loadSpriteSet(id+'.json'))||defaultSprite; }
+}
+function drawGround(fx,fy,scale,reach,col){
+  ctx.save(); ctx.globalAlpha=.20; ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(fx,fy,16*scale,6*scale,0,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.15; ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(fx,fy,reach*mPx(),reach*mPx()*(RY/RX),0,0,7); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(fx,fy,10*scale,4*scale,0,0,7); ctx.fill(); ctx.restore();
+}
+function drawSprite(spr,fx,fy,scale,state,heavy,facing,ph,walkPhase,flash){
+  let anim=null;
+  if(spr.anims){
+    if(state==='Move'||state==='Dodge') anim=spr.anims.walk_fwd||spr.anims.walk;
+    else if(state==='Windup'||state==='Active'||state==='Recovery') anim=heavy?spr.anims.heavy_attack:spr.anims.light_attack;
+    else if(state==='HitStun'||state==='Stagger') anim=spr.anims.hurt_heavy||spr.anims.hurt_light||spr.anims.hurt;
+  }
+  let fr,srcImg;
+  if(anim?.frames?.length){
+    let fi;
+    if(ph!=null){
+      if(anim.holds){ const target=ph*anim.holdTot; let acc=0,ix=0; for(ix=0;ix<anim.holds.length;ix++){acc+=anim.holds[ix]; if(target<acc)break;} fi=Math.min(anim.frames.length-1,ix); }
+      else fi=Math.min(anim.frames.length-1,Math.max(0,Math.round(ph*(anim.frames.length-1))));
+    } else if(walkPhase!=null){ fi=Math.floor(walkPhase)%anim.frames.length; }
+    else fi=Math.floor(t*(anim.fps||12))%anim.frames.length;
+    fr=anim.frames[fi]; srcImg=anim.img;
+  } else { fr=spr.frames[poseFor(state,heavy)]||spr.frames.idle; srcImg=spr.img; }
+  if(!fr) return false;
+  const refH=(anim?.refH)||fr.refH||spr.frames.idle.h, k=(120*scale)/refH, w=fr.w*k, h=fr.h*k;
+  const flip=(facing<0)!==spr.srcFlip;
+  ctx.save(); ctx.translate(fx,fy); if(flip)ctx.scale(-1,1); ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(srcImg,fr.x,fr.y,fr.w,fr.h,-w/2,-h,w,h);
+  if(flash>0){ const iw=Math.max(1,Math.ceil(w)),ih=Math.max(1,Math.ceil(h)); _fcv.width=iw; _fcv.height=ih;
+    _fctx.drawImage(srcImg,fr.x,fr.y,fr.w,fr.h,0,0,w,h); _fctx.globalCompositeOperation='source-atop';
+    _fctx.fillStyle='#fff'; _fctx.globalAlpha=Math.min(1,flash); _fctx.fillRect(0,0,iw,ih);
+    _fctx.globalCompositeOperation='source-over'; _fctx.globalAlpha=1; ctx.drawImage(_fcv,-w/2,-h,w,h); }
+  ctx.restore(); return true;
+}
+
+// ── N인 위상 사전계산: 공격/피격 구간 진행률 + 걷기 위상 (프레임 기반, 스크럽 안전) ──
+let UPH=[], UWALK=[];   // [unit][frameIdx]
+function buildPhases(){
+  const nU=doc.Units.length, nF=frames.length; UPH=[]; UWALK=[];
+  const grpOf=s=>(s==='Windup'||s==='Active'||s==='Recovery')?'atk':(s==='HitStun'||s==='Stagger')?'hurt':null;
+  for(let j=0;j<nU;j++){
+    const ph=new Array(nF).fill(null), wp=new Array(nF).fill(0);
+    // 공격/피격 구간 진행률
+    let i=0; while(i<nF){ const g=grpOf(frames[i].u[j].s); if(!g){i++;continue;}
+      let e=i; while(e<nF&&grpOf(frames[e].u[j].s)===g)e++; const span=e-i;
+      for(let m=i;m<e;m++) ph[m]=span<=1?0:(m-i)/(span-1); i=e; }
+    // 걷기 위상 — Move일 때 이동거리 비례 누적(단조)
+    let acc=0; for(let i2=1;i2<nF;i2++){ const a=frames[i2-1].u[j],b=frames[i2].u[j];
+      if(b.s==='Move'||b.s==='Dodge'){ const d=Math.hypot(b.x-a.x,b.y-a.y); acc+=Math.max(0.15, d*3.0); } wp[i2]=acc; }
+    UPH.push(ph); UWALK.push(wp);
+  }
+}
+function frameIdxAt(time){ let i=0; while(i<frames.length-1&&frames[i+1].t<=time)i++; return i; }
+
 async function boot(){
   try{ doc=await (await fetch('melee.json?t='+Date.now())).json(); }
   catch(e){ document.getElementById('drop').hidden=false; return; }
@@ -87,17 +167,19 @@ async function boot(){
   const A=[],B=[]; (doc.Units||[]).forEach(u=>(u.Team===0?A:B).push(u.Name));
   document.getElementById('teamA').innerHTML = A.map(n=>`<span class="chip t0">${n}</span>`).join('');
   document.getElementById('teamB').innerHTML = B.map(n=>`<span class="chip t1">${n}</span>`).join('');
+  buildPhases();
+  await loadSprites([...new Set((doc.Units||[]).map(u=>u.Weapon))]);   // 무기별 스프라이트 확보
   t=0; playing=true; revealed=false; last=performance.now(); requestAnimationFrame(loop);
 }
 
 function frameAt(time){
   if(!frames.length) return null;
-  let i=0; while(i<frames.length-1 && frames[i+1].t<=time) i++;
+  const i=frameIdxAt(time);
   const a=frames[i], b=frames[Math.min(i+1,frames.length-1)];
   const span=Math.max(1e-3,b.t-a.t), k=Math.min(1,Math.max(0,(time-a.t)/span));
   return a.u.map((ua,j)=>{ const ub=b.u[j]||ua; return {   // 위치만 보간, 상태·방향은 현재 프레임
-    x:ua.x+(ub.x-ua.x)*k, y:ua.y+(ub.y-ua.y)*k, h:ua.h, s:ua.s, f:ua.f, d:ua.d,
-    team:doc.Units[j].Team, name:doc.Units[j].Name, weapon:doc.Units[j].Weapon }; });
+    x:ua.x+(ub.x-ua.x)*k, y:ua.y+(ub.y-ua.y)*k, h:ua.h, sp:ua.sp, s:ua.s, f:ua.f, hv:ua.hv, bl:ua.bl, ht:ua.ht, d:ua.d,
+    fi:i, uj:j, team:doc.Units[j].Team, name:doc.Units[j].Name, weapon:doc.Units[j].Weapon }; });
 }
 
 function draw(){
@@ -119,15 +201,26 @@ function draw(){
     const u=us[i], pp=proj(u.x,u.y), sc=0.62+(u.y/R+1)/2*0.42;
     const teamCol = u.team===0 ? '#c9a84c' : '#d96a5a';
     const reach = REACH[u.weapon]||2.4;
-    drawFighter(pp.x, pp.y, sc, u.s, u.f, teamCol, reach);   // viewer와 동일한 자세 실루엣
-    // 이름 + HP바 (머리 위)
-    const topY = pp.y - 80*sc - 18*sc;
+    const spr=spriteFor(u.weapon);
+    const ph=UPH[u.uj]?UPH[u.uj][u.fi]:null, wp=UWALK[u.uj]?UWALK[u.uj][u.fi]:null;
+    const flash=u.ht?0.8:0;
+    let drawn=false;
+    if(spr){ drawGround(pp.x,pp.y,sc,reach,teamCol);   // 팀색 글로우+사거리 링
+      drawn=drawSprite(spr,pp.x,pp.y,sc,u.s,u.hv,u.f,ph,(u.s==='Move'||u.s==='Dodge')?wp:null,flash); }
+    if(!drawn) drawFighter(pp.x, pp.y, sc, u.s, u.f, teamCol, reach);   // 스프라이트 없으면 자세 실루엣
+    // 이름 + HP바 + 스태미나 + 출혈 (머리 위)
+    const topY = pp.y - 120*sc - 6*sc;
     ctx.save(); ctx.textAlign='center'; ctx.font=`bold ${Math.round(10*sc)}px system-ui`;
     const nw=ctx.measureText(u.name).width+8;
     ctx.fillStyle='rgba(15,10,6,.6)'; roundRect(pp.x-nw/2-2,topY-2,nw+4,12*sc,3); ctx.fill();
     ctx.fillStyle=teamCol; ctx.fillText(u.name,pp.x,topY+8*sc);
-    if(!u.d){ ctx.fillStyle='#0c0f14'; ctx.fillRect(pp.x-15*sc,topY+11*sc,30*sc,3.5*sc);
-      ctx.fillStyle=u.h>.3?'#7ec97e':'#e07070'; ctx.fillRect(pp.x-15*sc,topY+11*sc,30*sc*u.h,3.5*sc); }
+    if(!u.d){
+      ctx.fillStyle='#0c0f14'; ctx.fillRect(pp.x-16*sc,topY+11*sc,32*sc,4*sc);
+      ctx.fillStyle=u.h>.3?'#7ec97e':'#e07070'; ctx.fillRect(pp.x-16*sc,topY+11*sc,32*sc*u.h,4*sc);
+      ctx.fillStyle='#0c0f14'; ctx.fillRect(pp.x-16*sc,topY+16*sc,32*sc,2.5*sc);
+      ctx.fillStyle='#d9b15a'; ctx.fillRect(pp.x-16*sc,topY+16*sc,32*sc*(u.sp||0),2.5*sc);
+      if(u.bl>0){ ctx.font=`${Math.round(9*sc)}px system-ui`; ctx.fillText('🩸'.repeat(u.bl),pp.x,topY-4*sc); }
+    }
     ctx.restore();
   }
 }
