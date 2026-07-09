@@ -87,6 +87,15 @@
   .rrow span:first-child{ min-width:110px; color:var(--dim); }
   .rrow b{ color:var(--gold); }
   .rrow .d{ font-size:11px; color:var(--dim); }
+  /* 리빌 연출(DDD) — 뽑기·영입·운명 */
+  @keyframes rvFlip{ 0%{transform:rotateY(90deg);opacity:0} 100%{transform:rotateY(0);opacity:1} }
+  @keyframes rvPop{ 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} }
+  @keyframes rvGlow{ 0%{box-shadow:0 0 0 rgba(201,168,76,0)} 35%{box-shadow:0 0 70px rgba(201,168,76,.95)} 100%{box-shadow:0 0 16px rgba(201,168,76,.5)} }
+  @keyframes rvShake{ 0%,100%{transform:translate(0,0)} 20%{transform:translate(-3px,2px)} 40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,-2px)} 80%{transform:translate(2px,2px)} }
+  .rv-card{ background:var(--panel2); border:1px solid #4a3a26; border-radius:11px; padding:12px 14px;
+            opacity:0; animation:rvFlip .45s ease forwards; }
+  .rv-step{ opacity:0; animation:rvPop .5s ease forwards; }
+  .rv-jackpot{ animation:rvPop .5s ease forwards, rvGlow 1.2s ease forwards; }
   /* 메뉴 */
   #menu{ position:fixed; inset:0; background:radial-gradient(circle at 50% 42%, #2a2016, #16100a);
          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; z-index:50; }
@@ -285,6 +294,8 @@
   </div>
 </div></div>
 
+<div class="modal" id="rvModal"><div class="mbox" id="rvBox" style="max-width:680px;max-height:92vh;overflow:auto"></div></div>
+
 <div class="modal" id="resModal"><div class="mbox">
   <h3 id="resTitle" style="font-size:24px">—</h3>
   <div class="vsline" id="resVs"></div>
@@ -315,6 +326,9 @@ const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${
 const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
 const fatColor=v=> v<40?'var(--grn)': v<70?'#d8b24a':'var(--b)';   // 피로도: 낮을수록 좋음(초록)
 const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;border-radius:4px;padding:0 5px;font-size:11px">🩹 부상</span>':'';
+// 연승 스트릭 배지(DDD): 쌓아온 것이 걸려 있으면 다음 판의 무게가 달라진다
+const stkBadge=s=> s>=3?` <span style="color:#ff9d5d;background:#4a3220;border-radius:4px;padding:0 5px;font-size:11px" title="${s}연승 — 패배하면 소멸된다">🔥${s}연승</span>`
+  : s<=-3?` <span style="color:#9fb8e0;background:#26303f;border-radius:4px;padding:0 5px;font-size:11px" title="${-s}연패의 늪">❄${-s}연패</span>`:'';
 let st=null;
 
 // ── 선수 상세(서사) 창 ──
@@ -507,16 +521,72 @@ $('next').onclick = async ()=>{
 // ── AI 경기 결과 카드(#4): 흥행도·승자·부상·운명 (수익/스탯 제외) ──
 function showMatchResult(m){
   if (!m || !m.A){ go('league'); return; }
+  const jackpot = isJackpot(m);
   $('mrTitle').textContent = `${m.IsEvent?'🎪 ':''}R${m.Round} · ${m.A} vs ${m.B}`;
   const koTag = m.Reason==='KO'?' <span style="color:var(--b)">KO</span>':'';
-  let html = `<div class="rrow"><span>승자</span><b style="color:var(--gold)">${m.Winner||'무승부'}</b>${koTag}</div>`;
+  let html = jackpotBanner(m);
+  html += `<div class="rrow"><span>승자</span><b style="color:var(--gold)">${m.Winner||'무승부'}</b>${koTag}</div>`;
   html += `<div class="rrow"><span>🎭 흥행도</span><b>${Math.round(m.Hype||0)}</b> <span class="d">${hypeLabel(m.Hype||0)}</span></div>`;
+  if (m.BetNote) html += `<div class="rrow" style="color:${m.BetWon?'var(--grn)':'var(--b)'};font-weight:${m.BetWon?700:400}"><span>${m.BetWon&&jackpot?'💰 잭팟!':'🎲 도박장'}</span><span>${m.BetNote}</span></div>`;
   if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>🩹 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
-  if (m.Fates&&m.Fates.length) html += m.Fates.map(f=>`<div class="rrow" style="color:${f.startsWith('⚰')||f.startsWith('💀')?'var(--b)':'var(--gold)'}"><span>운명</span><span>${f}</span></div>`).join('');
+  html += sealedFates(m.Fates);
+  html += nextHook();
   $('mrBody').innerHTML = html;
   $('mrModal').classList.add('on');
 }
 function hypeLabel(h){ return h>=120?'🔥 초대박 흥행':h>=70?'대흥행':h>=35?'흥행':h>=12?'관심':'조용'; }
+// ── 대이변 잭팟(DDD): 배당 3배+ 언더독 승리 = 전용 연출 ──
+function isJackpot(m){ return (m.WinnerOdds||0)>=3 && m.Winner && m.Winner!=='무승부'; }
+function jackpotBanner(m){
+  if (isJackpot(m)) return `<div class="rv-jackpot" style="padding:9px 12px;border:1px solid var(--gold);border-radius:9px;margin-bottom:8px;text-align:center;font-weight:800;color:var(--gold);background:rgba(201,168,76,.10)">⚡ 대이변! 배당 <b>${m.WinnerOdds.toFixed(2)}배</b>의 언더독 ${m.Winner}이(가) 해냈다!<div class="note" style="font-weight:400">역사는 이런 밤을 기억한다</div></div>`;
+  if (m.Upset && m.Winner && m.Winner!=='무승부') return `<div class="rrow" style="color:var(--gold)"><span>★ 이변</span><span>${m.Winner}이(가) 상위 상대를 격파했다</span></div>`;
+  return '';
+}
+// ── 운명 봉인 리빌(DDD): 📜 두루마리 클릭 개봉 — 긴장 한 박자 ──
+let _fateSeq = 0;
+function sealedFates(fates){
+  if (!fates || !fates.length) return '';
+  return fates.map(f=>{
+    const dark = f.startsWith('⚰')||f.startsWith('💀');
+    const id = 'fate'+(++_fateSeq);
+    const esc = f.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    return `<div id="${id}" data-fate="${esc}" data-dark="${dark?1:0}" style="margin-top:6px">
+      <button class="tacbtn" style="text-align:center;border-color:#8a6a2a;color:var(--gold)" onclick="openFate('${id}')">📜 운명의 두루마리가 도착했다 — <b>개봉한다</b></button></div>`;
+  }).join('');
+}
+window.openFate = (id)=>{
+  const el = $(id); if (!el) return;
+  const dark = el.dataset.dark==='1';
+  el.innerHTML = `<div class="rv-step" style="padding:8px 12px;border-radius:8px;font-weight:700;
+    border:1px solid ${dark?'var(--b)':'var(--gold)'};color:${dark?'var(--b)':'var(--gold)'};
+    background:${dark?'rgba(90,42,38,.25)':'rgba(201,168,76,.10)'}">${el.dataset.fate}</div>`;
+};
+// ── 다음 경기 떡밥(DDD): 결과 카드 하단 — 시선을 다음 카드로 ──
+const stkOf = n => ((st&&st.Season&&st.Season.Fighters||[]).find(x=>x.Name===n)||{}).Streak||0;
+function nextHook(){
+  const nm = st && st.NextMatch;
+  if (!st || !st.SeasonActive || !nm) return '';
+  const bits = [];
+  const box = (icon,head,line)=>`<div style="margin-top:10px;padding:7px 10px;border-left:3px solid var(--gold);background:var(--panel2);border-radius:6px;font-size:12px">${icon} <b>${head}</b>${line?`<br><span style="color:var(--gold)">${line}</span>`:''}</div>`;
+  if (nm.IsPlayerMatch){
+    if (nm.Stage) bits.push(nm.Stage);
+    const oppN = nm.Opp ? nm.Opp.Name : (nm.AName===nm.MyName?nm.BName:nm.AName);
+    if (nm.MyRelation==='원수') bits.push(`⚔ 숙적 ${oppN} — 복수의 시간이다`);
+    else if (nm.MyRelation==='라이벌') bits.push(`🔥 라이벌 ${oppN}과의 자존심 대결`);
+    else if (nm.MyRelation==='공포') bits.push(`😨 악몽 같은 상대 ${oppN}을(를) 극복할 기회`);
+    const s0 = stkOf(nm.MyName);
+    if (s0>=3) bits.push(`${s0}연승이 걸린 일전 — 지면 여기서 끝난다`);
+    if (nm.MyWinPct<40) bits.push(`배당 ${nm.MyOdds.toFixed(2)}배의 도전 — 이변을 만들라`);
+    if (!bits.length && nm.Hype>=70) bits.push('🔥 장안의 화제가 된 대진');
+    return box('⚔', `다음은 내 경기 — ${nm.MyName} vs ${oppN}`, bits.join(' · '));
+  }
+  const sA=stkOf(nm.AName), sB=stkOf(nm.BName);
+  if (Math.max(sA,sB)>=3) bits.push(`${sA>=sB?nm.AName:nm.BName} ${Math.max(sA,sB)}연승 질주 중`);
+  const u = Math.max(nm.OddsA||0, nm.OddsB||0);
+  if (u>=3) bits.push(`언더독 배당 ×${u.toFixed(2)} — 도박장이 술렁인다`);
+  if (nm.Hype>=70) bits.push('🔥 흥행 대어');
+  return bits.length ? box('🎲', `다음: ${nm.AName} vs ${nm.BName}`, bits.join(' · ')) : '';
+}
 // ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
 $('toMineBtn').onclick = async ()=>{
   const b=$('toMineBtn'); b.disabled=true;
@@ -544,7 +614,7 @@ function showSeason(){
   // 결산 대통합: 승강·특명·운명·베팅·명경기·총애 — 시즌 한 편의 마침표
   $('ssPromo').innerHTML = (s.PromoNotes||[]).map(n=>`<div class="rrow"><span>${n.startsWith('⬆')?'⬆ 승강':'⬇ 승강'}</span><span class="d">${n}</span></div>`).join('');
   $('ssEdict').innerHTML = s.EdictNote?`<div class="rrow" style="color:${s.EdictNote.includes('달성')?'var(--grn)':'var(--b)'}"><span>📜 특명</span><span>${s.EdictNote}</span></div>`:'';
-  $('ssFates').innerHTML = (s.FateNotes||[]).map(n=>`<div class="rrow" style="color:${n.startsWith('⚰')||n.startsWith('💀')?'var(--b)':'var(--gold)'}"><span>운명</span><span>${n}</span></div>`).join('');
+  $('ssFates').innerHTML = sealedFates(s.FateNotes);   // 운명 = 봉인 두루마리 개봉(DDD)
   $('ssMoney').innerHTML = (s.MyBestRank>0
     ? `<span>💰 정산</span><b>+${Math.round(s.RankBonus)}</b> <span class="d">(${s.MyBestRank}위 보너스)</span> <b>−${Math.round(s.Salary)}</b> <span class="d">(급여·유지비)</span>`
     + (s.BetNet?` <b style="color:${s.BetNet>0?'var(--grn)':'var(--b)'}">${s.BetNet>0?'+':''}${Math.round(s.BetNet)}</b> <span class="d">(🎲베팅)</span>`:'')
@@ -617,6 +687,10 @@ function openTacModal(nm){
 
   const myTraits = (me.Traits&&me.Traits.length)? `<div class="chips" style="justify-content:center;margin-top:4px">${me.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}</div>`:'';
   const myEmo = (nm.MyEmotions&&nm.MyEmotions.length)? `<div class="note" style="text-align:center;color:var(--gold);margin-top:3px">💭 ${nm.MyEmotions.join(', ')} 상태</div>`:'';
+  // 연승 스트릭(DDD): 걸려 있는 것을 눈앞에 — 손실 회피가 다음 판의 무게를 만든다
+  const myStk = stkOf(nm.MyName), oppStk = stkOf(o.Name);
+  const myStkLine = myStk>=3 ? `<div style="text-align:center;color:#ff9d5d;font-weight:700;margin-top:3px">🔥 ${myStk}연승 — 패배하면 여기서 끝난다</div>`:'';
+  const oppStkLine = oppStk>=3 ? `<div style="text-align:center;color:#ff9d5d;font-weight:700;margin-top:3px">🔥 상대 ${oppStk}연승 중 — 질주를 끊어라</div>`:'';
   const myCol = `<div style="flex:1;background:var(--panel);border-radius:10px;padding:10px;border-top:3px solid var(--a)">
     ${portraitSvg(me.Weapon,me.Personality,'a')}
     <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${nm.MyName}</b> <span class="chip">내 루두스</span></div>
@@ -624,7 +698,7 @@ function openTacModal(nm){
     ${condLine(me.Fatigue,me.Injured)}
     <div class="note" style="margin-top:6px">🗡 ${cx('무기',me.Weapon)}</div>
     <div class="note" style="margin-top:3px">🧠 ${cx('성격',me.Personality)}</div>
-    ${myTraits}${myEmo}
+    ${myTraits}${myEmo}${myStkLine}
     <div class="row" style="margin-top:4px"><span>선택 전술</span><b style="color:var(--gold)">${t(nm.MyTactic)}</b></div></div>`;
 
   const relBadge = nm.MyRelation ? `<div class="note" style="text-align:center;color:var(--b);font-weight:700;margin-top:3px">${nm.MyRelation==='원수'?'⚔':nm.MyRelation==='공포'?'😨':nm.MyRelation==='라이벌'?'🔥':'🔗'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</div>`:'';
@@ -635,7 +709,7 @@ function openTacModal(nm){
     ${condLine(oppF.Fatigue,oppF.Injured)}
     <div class="note" style="margin-top:6px">🗡 ${cx('무기',o.Weapon)}</div>
     <div class="note" style="margin-top:3px">🧠 ${cx('성격',o.Personality)}</div>
-    ${relBadge}
+    ${relBadge}${oppStkLine}
     <div class="row" style="margin-top:4px"><span>통산 / 명성</span><b>${o.Career} / ${o.Fame}</b></div>
     <div class="row"><span>상대전적</span><b style="color:var(--gold)">${nm.MyVsOpp||'첫 대결'}</b></div>
     <div class="row"><span>전술</span><b class="note">??? 비공개</b></div></div>`;
@@ -721,18 +795,18 @@ function showResult(m){
   $('resTitle').style.color = d0 && !d0.Draw ? (d0.Won ? 'var(--grn)' : 'var(--b)') : 'var(--gold)';
   $('resVs').textContent = `R${m.Round} · ${m.A} vs ${m.B} → ${m.Winner} (${m.Reason})` + (m.IsEvent?'  [🎪 이벤트]':'');
   const sign = v => (v>=0?'+':'')+Math.round(v*10)/10;
-  $('resBody').innerHTML = mine.map(d=>`
-    <div class="rrow"><b>${d.Name}</b> — ${d.Draw?'무승부':d.Won?'승리':'패배'}</div>
+  $('resBody').innerHTML = jackpotBanner(m) + (mine.map(d=>`
+    <div class="rrow"><b>${d.Name}</b> — ${d.Draw?'무승부':d.Won?'승리':'패배'}${d.Won&&m.Upset?' <span style="color:var(--gold)">★ 대이변 승리 — ✨영광 +1</span>':''}</div>
     ${d.Income>0?`<div class="rrow"><span>💰 수입</span><b>+${Math.round(d.Income)}</b> <span class="d">${d.IncomeNote}</span></div>`:''}
     ${d.GrowthAxis?`<div class="rrow"><span>📈 성장</span><b>${d.GrowthAxis.toUpperCase()} +0.5</b></div>`:'<div class="rrow"><span>📈 성장</span><span class="d">상한 도달</span></div>'}
     ${d.TrainingGained>0?`<div class="rrow"><span>🏋 훈련 포인트</span><b>+${d.TrainingGained}</b> <span class="d">(루두스에서 분배)</span></div>`:''}
     <div class="rrow"><span>⭐ 명성</span><b>${sign(d.FameDelta)}</b></div>
     <div class="rrow"><span>🔥 인기</span><b>${sign(d.PopDelta)}</b></div>
     ${d.Emotion?`<div class="rrow"><span>💭 감정</span><b>${d.Emotion}</b> <span class="d">(다음 경기에 영향)</span></div>`:''}
-  `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>';
-  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 사망·중상·각성·성격변화·적응
-    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + m.Fates.map(f=>
-      `<div class="rrow" style="color:${f.startsWith('⚰')||f.startsWith('💀')?'var(--b)':'var(--gold)'};font-weight:700">${f}</div>`).join('');
+  `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>');
+  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 봉인 두루마리로 개봉(DDD)
+    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + sealedFates(m.Fates);
+  $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
@@ -869,7 +943,7 @@ function renderLudus(){
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
     const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
     const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
-    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span><button onclick="openRename('fighter','${f.Id}','${f.Name.replace(/'/g,"\\'")}')" title="개명" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px">✏</button> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}</h3>
+    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span><button onclick="openRename('fighter','${f.Id}','${f.Name.replace(/'/g,"\\'")}')" title="개명" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px">✏</button> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}${stkBadge(stkOf(f.Name))}</h3>
       ${epi(f.Epithets)}
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
       <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${
@@ -925,10 +999,24 @@ function renderLudus(){
   $('achGrid').innerHTML = (st.Achievements||[]).map(a=>
     `<div class="chip" title="${a.Desc}" style="padding:6px 10px;${a.Unlocked?'background:rgba(201,168,76,.2);color:var(--gold);border:1px solid var(--gold)':'opacity:.45'}">${a.Unlocked?'🏅':'🔒'} ${a.Name}</div>`).join('');
 }
+// 훈련 교관 코멘트(DDD): 잠재력 잔량을 모호하게 암시 — 매 훈련이 작은 리빌
+const COACH={
+  deep:['이 녀석의 바닥이 보이지 않습니다.','아직 그릇의 절반도 차지 않았습니다.','쇠가 좋습니다 — 얼마든지 두드릴 수 있습니다.'],
+  mid:['성장할 여력이 남아 있습니다.','단련이 잘 먹히고 있습니다.','조금씩 그릇이 차오르고 있습니다.'],
+  low:['한계가 보이기 시작합니다.','이제 짜낼 수 있는 것이 많지 않습니다.','그릇이 거의 찼습니다 — 남은 건 정교함뿐.'],
+  cap:['여기까지가 타고난 그릇입니다. 그 너머는… ✨영광이 필요합니다.'],
+};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
 window.train = async (id,axis)=>{
   const r = await api('/api/train',{id,axis});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
-  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+  st=r; renderLudus(); refreshTop();
+  const f=(st.MyFighters||[]).find(x=>x.Id===id);
+  if (f){
+    const rem=f.PotentialBudget-f.BudgetUsed;
+    const ph=pick(f.AtCap?COACH.cap:rem>=60?COACH.deep:rem>=25?COACH.mid:COACH.low);
+    $('ludusErr').innerHTML=`<span style="color:var(--dim)">🏋 교관: <i style="color:#c8bfae">“${ph}”</i></span>`;
+  } else $('ludusErr').textContent='';
 };
 // ── 마스터리 (비스탯 성장 — 상한 후에도 훈련 포인트 사용처) ──
 const MASTERY=[['grit','🔥 투혼','피로 누적 −8%/Lv','MGrit'],['recover','🩹 회복력','부상률 −10%/Lv · Lv3+ 회복 1경기','MRecover'],
@@ -1110,12 +1198,72 @@ $('gachaBtn').onclick = async ()=>{
   const r = await api('/api/gacha',{});
   if (r.error){ $('marketErr').textContent=r.error; return; }
   $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
+  openGachaReveal();   // 리빌 연출 — 사슬에 끌려 나오는 세 명
 };
+// ── 리빌 연출(DDD): 천부 등급 색·서열 ──
+const TAL={'노예':{c:'#8a8f98',r:0},'투사':{c:'#c8bfae',r:1},'챔피언':{c:'#5b9be0',r:2},
+           '집정관':{c:'#a06ae0',r:3},'불멸자':{c:'#c9a84c',r:4},'카이사르':{c:'#ffd75e',r:5}};
+// 뽑기: 후보 3장이 순차 플립으로 등장 (정보는 기존 마스킹 그대로)
+function openGachaReveal(){
+  const cands = st.Candidates||[];
+  if (!cands.length) return;
+  $('rvBox').innerHTML = `<h3 style="color:var(--gold);text-align:center;margin:0 0 4px">🎲 노예 시장</h3>
+    <div class="note" style="text-align:center">세 명이 사슬에 묶여 끌려 나온다 — 그릇은 아무도 모른다</div>
+    <div style="display:flex;gap:10px;margin:12px 0;align-items:stretch">${cands.map((c,i)=>`
+      <div class="rv-card" style="flex:1;animation-delay:${.25+i*.55}s">
+        <b style="font-size:15px">${c.Name}</b> <span class="note">${c.Age}세</span>
+        <div class="bd">${w(c.Weapon)} · ${p(c.Personality)}</div>
+        <div class="note">전술 일부: <b style="color:#9bc4ec">${t(c.RevealedTactic)}</b></div>
+        ${(c.Hints||[]).map(h=>`<div class="note" style="color:#a8d8b0">🔭 ${h}</div>`).join('')}
+        <div class="note" style="margin-top:5px">천부 ??? · 잠재 ??? · 특성 ???</div>
+      </div>`).join('')}</div>
+    <div class="rv-step" style="animation-delay:${.25+cands.length*.55+.15}s">
+      <button class="tacbtn" style="text-align:center" onclick="$('rvModal').classList.remove('on')">후보를 살핀다 →</button></div>`;
+  $('rvModal').classList.add('on');
+}
+// 영입: 천부 등급 단계식 리빌(특성→잠재→천부) + 놓친 원석 니어미스
+function openRecruitReveal(f, missed){
+  const tal = TAL[f.Talent]||{c:'var(--gold)',r:1};
+  const big = tal.r>=4;   // 불멸자·카이사르 = 잭팟 연출
+  const caesar = tal.r>=5;
+  const myR = tal.r;
+  const missedRows = (missed||[]).map(r=>{
+    const mt = TAL[r.Talent]||{c:'var(--dim)',r:0};
+    return `<div class="rrow"><span>🔍 ${r.Name}</span><span>천부 <b style="color:${mt.c}">${r.Talent}</b> · 잠재 ${r.Potential}${
+      r.JoinedRival?` <span style="color:var(--b)">→ ${r.JoinedRival} 합류</span>`:''}</span></div>`;
+  }).join('');
+  const regret = (missed||[]).some(r=>(TAL[r.Talent]||{r:0}).r>myR);
+  const verdict = !(missed||[]).length ? '' : regret
+    ? `<div class="rrow" style="color:var(--b)">…더 큰 그릇이 시장에 있었다. 놓친 원석은 적이 되어 돌아올지도 모른다.</div>`
+    : `<div class="rrow" style="color:var(--grn)">안목이 옳았다 — 세 명 중 최고의 원석이다.</div>`;
+  $('rvBox').innerHTML = `
+    <h3 style="color:var(--gold);text-align:center;margin:0">📜 계약 — ${f.Name}</h3>
+    <div class="note" style="text-align:center">낙인이 찍히고, 사슬이 풀렸다. 이제 그릇이 드러난다.</div>
+    <div class="${big?'rv-jackpot':'rv-card'}" style="margin:12px 0;animation-delay:.2s;${big?`border:1px solid ${tal.c};background:var(--panel2);border-radius:11px;padding:12px 14px;`:''}">
+      <b style="font-size:17px">${f.Name}</b> <span class="note">${f.Age}세 · ${w(f.Weapon)} · ${p(f.Personality)}</span>
+      <div class="rv-step" style="animation-delay:.9s;margin-top:8px">
+        <span class="note">특성</span> ${(f.Traits||[]).map(x=>`<span class="chip">${x}</span>`).join('')||'<span class="note">없음</span>'}</div>
+      <div class="rv-step" style="animation-delay:1.6s;margin-top:6px">
+        <span class="note">잠재력</span> <b style="color:#c94ca8;font-size:15px">${f.Potential}</b></div>
+      <div class="rv-step" style="animation-delay:2.4s;margin-top:8px;${caesar?'animation:rvPop .5s 2.4s ease forwards, rvShake .4s 2.9s ease':''}">
+        <span class="note">천부</span> <b style="color:${tal.c};font-size:${big?26:19}px;text-shadow:${big?`0 0 14px ${tal.c}`:'none'}">${f.Talent}</b>
+        ${caesar?'<div style="color:#ffd75e;font-weight:800;margin-top:2px">👑 카이사르 — 전설 그 자체. 한 세대에 하나 나올까 말까 한 그릇!</div>'
+          : big?'<div style="color:var(--gold);font-weight:700;margin-top:2px">🌟 불멸자 — 한 세대에 한둘뿐인 원석!</div>':''}</div>
+    </div>
+    ${missedRows?`<div class="rv-step" style="animation-delay:3.2s">
+      <h4 style="color:var(--dim);margin:6px 0 3px;font-size:12px">놓친 원석들</h4>${missedRows}${verdict}</div>`:''}
+    <div class="rv-step" style="animation-delay:${missedRows?3.8:3.0}s">
+      <button class="tacbtn" style="text-align:center;margin-top:10px" onclick="$('rvModal').classList.remove('on');go('ludus')">루두스로 →</button></div>`;
+  $('rvModal').classList.add('on');
+}
 window.recruit = async (idx)=>{
+  const cand = (st.Candidates||[]).find(c=>c.Idx===idx);
   const r = await api('/api/recruit',{idx});
   if (r.error){ $('marketErr').textContent=r.error; return; }
   $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
-  go('ludus');   // 영입 → 전체 공개된 카드 확인
+  const f = cand && (st.MyFighters||[]).find(x=>x.Name===cand.Name);
+  if (f) openRecruitReveal(f, st.RecruitReveal);   // 리빌 연출 → 닫으면 루두스
+  else go('ludus');
 };
 
 // ── 로스터 (리그 전체, 공개 정보) + 루두스 순위 ──
@@ -1134,7 +1282,7 @@ function renderRoster(){
     + `</table>`;
   const card = f=>
     `<div class="fc ${f.IsPlayer?'':'ai'}" style="cursor:pointer" onclick="openProfile('${f.Id}')" title="상세 보기">
-     <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}</h3>
+     <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}${stkBadge(f.Streak||0)}</h3>
      ${epi(f.Epithets)}
      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>

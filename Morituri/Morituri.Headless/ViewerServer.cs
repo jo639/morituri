@@ -49,54 +49,59 @@ public static class ViewerServer
             try { ctx = listener.GetContext(); }
             catch { break; }
 
-            var res = ctx.Response;
-            var path = ctx.Request.Url?.LocalPath.TrimStart('/') ?? "";
-            if (path == "") path = "viewer.html";
-
-            // 게임 API (클라이언트 셸의 액션 경로 — 파일보다 우선)
-            if (api != null && path.StartsWith("api/"))
+            try
             {
-                string? json = null;
-                try
+                var res = ctx.Response;
+                var path = ctx.Request.Url?.LocalPath.TrimStart('/') ?? "";
+                if (path == "") path = "viewer.html";
+                bool head = ctx.Request.HttpMethod == "HEAD";   // HEAD엔 본문 금지(쓰면 ProtocolViolation)
+
+                // 게임 API (클라이언트 셸의 액션 경로 — 파일보다 우선)
+                if (api != null && path.StartsWith("api/"))
                 {
-                    string body = ctx.Request.HasEntityBody
-                        ? new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding).ReadToEnd() : "";
-                    json = api(ctx.Request.HttpMethod, "/" + path, body);
+                    string? json = null;
+                    try
+                    {
+                        string body = ctx.Request.HasEntityBody
+                            ? new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding).ReadToEnd() : "";
+                        json = api(ctx.Request.HttpMethod, "/" + path, body);
+                    }
+                    catch (Exception ex)   // 처리기 예외 = 500 + 메시지(디버그 가능하게)
+                    {
+                        res.StatusCode = 500;
+                        json = "{\"error\":\"" + ex.Message.Replace("\\", "/").Replace("\"", "'") + "\"}";
+                    }
+                    if (json != null)
+                    {
+                        res.ContentType = "application/json; charset=utf-8";
+                        var body = System.Text.Encoding.UTF8.GetBytes(json);
+                        res.ContentLength64 = body.Length;
+                        if (!head) res.OutputStream.Write(body);
+                    }
+                    else if (res.StatusCode != 500) res.StatusCode = 404;
+                    res.OutputStream.Close();
+                    continue;
                 }
-                catch (Exception ex)   // 처리기 예외 = 500 + 메시지(디버그 가능하게)
+
+                var full = Path.Combine(dir, path.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(full))
                 {
-                    res.StatusCode = 500;
-                    json = "{\"error\":\"" + ex.Message.Replace("\\", "/").Replace("\"", "'") + "\"}";
+                    res.ContentType = Path.GetExtension(full).ToLower() switch
+                    {
+                        ".html" => "text/html; charset=utf-8",
+                        ".json" => "application/json; charset=utf-8",
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        _ => "application/octet-stream"
+                    };
+                    var data = File.ReadAllBytes(full);
+                    res.ContentLength64 = data.Length;
+                    if (!head) res.OutputStream.Write(data);
                 }
-                if (json != null)
-                {
-                    res.ContentType = "application/json; charset=utf-8";
-                    var body = System.Text.Encoding.UTF8.GetBytes(json);
-                    res.ContentLength64 = body.Length;
-                    res.OutputStream.Write(body);
-                }
-                else if (res.StatusCode != 500) res.StatusCode = 404;
+                else res.StatusCode = 404;
                 res.OutputStream.Close();
-                continue;
             }
-
-            var full = Path.Combine(dir, path.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(full))
-            {
-                res.ContentType = Path.GetExtension(full).ToLower() switch
-                {
-                    ".html" => "text/html; charset=utf-8",
-                    ".json" => "application/json; charset=utf-8",
-                    ".png" => "image/png",
-                    ".jpg" or ".jpeg" => "image/jpeg",
-                    _ => "application/octet-stream"
-                };
-                var data = File.ReadAllBytes(full);
-                res.ContentLength64 = data.Length;
-                res.OutputStream.Write(data);
-            }
-            else res.StatusCode = 404;
-            res.OutputStream.Close();
+            catch { try { ctx.Response.Abort(); } catch { } }   // 요청 하나의 오류로 서버 전체가 죽지 않게
         }
     }
 }

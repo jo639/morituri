@@ -199,7 +199,9 @@ public sealed class Game
     public sealed record MatchSummary(int SeasonNo, int Round, bool IsEvent, string A, string B,
         string Winner, string Reason, bool SeasonCompleted, bool NewSeasonStarted, bool WasPlayerMatch,
         float Income, string IncomeNote, List<MyDelta>? Mine = null, List<string>? Fates = null,
-        float Hype = 0f, List<string>? Injuries = null);   // 흥행도·부상자(AI 결과 카드 #4)
+        float Hype = 0f, List<string>? Injuries = null,   // 흥행도·부상자(AI 결과 카드 #4)
+        bool Upset = false, float WinnerOdds = 0f,        // 대이변·승자의 경기 전 배당(잭팟 연출 — 0=산출 불가)
+        bool BetWon = false, string? BetNote = null);     // 이 경기 베팅 정산(결과 카드 연계)
 
     /// <summary>경기 로그 1건 — 당시 선수 스냅샷 + 시드 = 결정론 재관전([2] ERD FighterSnapshot 원칙).</summary>
     private sealed record LogEntry(int Idx, int Round, bool IsEvent, string AId, string BId, string AName, string BName,
@@ -267,6 +269,7 @@ public sealed class Game
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
     private readonly List<string> _lastInjuries = new();      // 직전 경기 신규 부상자(결과 카드 표시)
     private float _lastHype;                                   // 직전 경기 흥행도
+    private bool _lastUpset;                                   // 직전 경기 대이변 여부(잭팟 연출)
     private float _lastDrama;                                // 직전 경기 드라마 스코어(명경기 보관 판정)
     private readonly List<GreatRec> _greatest = new();       // 명경기 보관함(top 12, 영속 — 스냅샷+시드 재관전)
     private int _rookieSeq;                                  // 신인 id 시리얼(중복 방지, 영속)
@@ -1499,6 +1502,10 @@ public sealed class Game
         bool newSeason = false;
         EnsureSchedule();
 
+        // 경기 전 승률 스냅샷(잭팟 연출용 배당) — 상태 조회로 캐시돼 있으면 재사용, 내 경기는 필요 시 산출(15판)
+        float? preProbA = _oddsCursor == _cursor ? _oddsProbA
+            : (ById(_schedule[_cursor].A).IsPlayer || ById(_schedule[_cursor].B).IsPlayer) ? CursorProbA() : null;
+
         var s = _schedule[_cursor++];
         var A = ById(s.A); var B = ById(s.B);
 
@@ -1542,7 +1549,8 @@ public sealed class Game
             }
         }
 
-        // 베팅 정산: 이 경기에 걸었으면 승패 판정
+        // 베팅 정산: 이 경기에 걸었으면 승패 판정 (결과 카드 연계 노트 포함)
+        bool betWon = false; string? betNote = null;
         if (_betCursor == _cursor - 1)
         {
             _betCursor = -1;
@@ -1556,6 +1564,9 @@ public sealed class Game
                 _story.Add((s.Round, "bet", $"🎲 적중! {on} 승 — 배당금 +{payout:F0}"));
             }
             else _story.Add((s.Round, "bet", $"🎲 빗나감 — {_betAmount:F0} 데나리우스가 모래에 묻혔다"));
+            betWon = won;
+            betNote = won ? $"🎲 적중! {on}에 건 {_betAmount:F0} → 배당금 +{payout:F0} (×{_betOdds:F2})"
+                          : $"🎲 빗나감 — {on}에 건 {_betAmount:F0} 데나리우스가 모래에 묻혔다";
             _betLog.Add(new BetLogRec(_seasonNo, on, _betAmount, _betOdds, won, payout));
             while (_betLog.Count > 60) _betLog.RemoveAt(0);
         }
@@ -1567,11 +1578,15 @@ public sealed class Game
         else SaveWorld();
         if (_interactive) WriteSeasonJson();
 
+        // 승자의 경기 전 배당(잭팟 연출) — 승률 스냅샷이 있을 때만(0 = 산출 불가 → 연출 생략)
+        float winnerOdds = preProbA.HasValue && res.Winner >= 0
+            ? MathF.Round(BetOdds(res.Winner == 0 ? preProbA.Value : 1f - preProbA.Value) * 100f) / 100f : 0f;
         return new MatchSummary(_seasonNo, s.Round, s.IsEvent, A.Name, B.Name,
             res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason, last, newSeason,
             A.IsPlayer || B.IsPlayer, income, incomeNote, mine,
             _lastFates.Count > 0 ? _lastFates.ToList() : null,
-            _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null);
+            _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null,
+            _lastUpset, winnerOdds, betWon, betNote);
     }
 
     /// <summary>
@@ -1953,6 +1968,11 @@ public sealed class Game
 
         if (LudusTier() >= LudusTiers.Length - 1) Unlock("empire");
 
+        // 명경기 판정: 드라마 스코어 — 대역전·이변·복수·KO·처형전·넉다운 (아래 보관 판정 전에 이번 경기 것으로 갱신)
+        _lastUpset = upset;
+        _lastDrama = (comeback ? 3f : 0f) + (upset ? 2f : 0f) + (revenge ? 2f : 0f) + (ko ? 1f : 0f)
+                   + (exec ? 2f : 0f) + (win != null ? winStats.Knockdowns * 0.5f : 0f);
+
         // 경기 로그 (스냅샷+시드 = 재관전) + 내 선수 변경사항(결과 화면)
         string winner = res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name);
         var entry = new LogEntry(_matchIdx, round, isEvent, A.Id, B.Id, A.Name, B.Name,
@@ -1973,10 +1993,6 @@ public sealed class Game
             if (B.IsPlayer) (mine ??= new()).Add(new MyDelta(B.Name, win == B, res.Winner < 0, incB, noteB,
                 B.Fame - fameB0, B.Popularity - popB0, growB, trB, eB != null ? EmotionTable.Get(eB).Name : null));
         }
-
-        // 명경기 판정(보관함): 드라마 스코어 — 대역전·이변·복수·KO·처형전·넉다운
-        _lastDrama = (comeback ? 3f : 0f) + (upset ? 2f : 0f) + (revenge ? 2f : 0f) + (ko ? 1f : 0f)
-                   + (exec ? 2f : 0f) + (win != null ? winStats.Knockdowns * 0.5f : 0f);
 
         // ── 극적 운명(실시간): 경기가 끝난 그 순간 운명이 갈린다 — 드묾, 매치시드 결정론 ──
         _lastFates.Clear();
