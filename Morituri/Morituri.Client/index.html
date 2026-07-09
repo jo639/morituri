@@ -92,6 +92,7 @@
   @keyframes rvPop{ 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} }
   @keyframes rvGlow{ 0%{box-shadow:0 0 0 rgba(201,168,76,0)} 35%{box-shadow:0 0 70px rgba(201,168,76,.95)} 100%{box-shadow:0 0 16px rgba(201,168,76,.5)} }
   @keyframes rvShake{ 0%,100%{transform:translate(0,0)} 20%{transform:translate(-3px,2px)} 40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,-2px)} 80%{transform:translate(2px,2px)} }
+  @keyframes thumbRock{ 0%,100%{transform:rotate(-20deg)} 50%{transform:rotate(200deg)} }
   .rv-card{ background:var(--panel2); border:1px solid #4a3a26; border-radius:11px; padding:12px 14px;
             opacity:0; animation:rvFlip .45s ease forwards; }
   .rv-step{ opacity:0; animation:rvPop .5s ease forwards; }
@@ -212,6 +213,7 @@
   <h3 id="tmTitle" style="text-align:center">경기 전 — 전력 비교</h3>
   <div id="tmVersus" style="display:flex;gap:10px;align-items:stretch;margin:8px 0"></div>
   <div id="tmOdds" style="text-align:center"></div>
+  <div id="tmPrep"></div>
   <h4 style="color:var(--gold);margin:12px 0 6px;font-size:12px">⚔ 전술 선택 <span class="note" style="font-weight:400">— 상대 공개 정보를 보고 결정</span></h4>
   <div id="tmOpts"></div>
 </div></div>
@@ -329,6 +331,29 @@ const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;bor
 // 연승 스트릭 배지(DDD): 쌓아온 것이 걸려 있으면 다음 판의 무게가 달라진다
 const stkBadge=s=> s>=3?` <span style="color:#ff9d5d;background:#4a3220;border-radius:4px;padding:0 5px;font-size:11px" title="${s}연승 — 패배하면 소멸된다">🔥${s}연승</span>`
   : s<=-3?` <span style="color:#9fb8e0;background:#26303f;border-radius:4px;padding:0 5px;font-size:11px" title="${-s}연패의 늪">❄${-s}연패</span>`:'';
+
+// ── 합성 효과음(DDD): WebAudio 신스 — 설정 '효과음' 게이트, 에셋 무 ──
+let _ac=null;
+function sndOn(){ const c=$('cfgSound'); return c ? c.checked : true; }
+function tone(f,dur,type,vol,when,slide){
+  if (!sndOn()) return;
+  try{
+    _ac = _ac || new (window.AudioContext||window.webkitAudioContext)();
+    const t=_ac.currentTime+(when||0), o=_ac.createOscillator(), g=_ac.createGain();
+    o.type=type||'triangle'; o.frequency.setValueAtTime(f,t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+dur);
+    g.gain.setValueAtTime(vol||.12,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    o.connect(g).connect(_ac.destination); o.start(t); o.stop(t+dur+.02);
+  }catch(e){}
+}
+function sfxFlip(){ tone(520,.07,'square',.05); tone(780,.06,'square',.04,.05); }                       // 카드 플립
+function sfxStep(){ tone(440,.12,'triangle',.11); }                                                     // 리빌 한 단계
+function sfxReveal(r){ [0,4,7,12,16].slice(0,2+(r||0)).forEach((s,i)=>tone(330*Math.pow(2,s/12),.2,'triangle',.13,i*.09)); } // 등급 리빌(높을수록 김)
+function sfxJackpot(){ [0,4,7,12,16,19,24].forEach((s,i)=>tone(262*Math.pow(2,s/12),.28,'triangle',.15,i*.07)); tone(65,.6,'sawtooth',.09,0,45); }
+function sfxScroll(){ tone(180,.28,'sawtooth',.05,0,130); }                                              // 두루마리 펼침
+function sfxDoom(){ tone(150,.7,'sawtooth',.12,0,-70); tone(74,.9,'sine',.14,.12,-24); }                 // 죽음·불길
+function sfxCoins(){ for(let i=0;i<8;i++) tone(1100+((i*467)%800),.05,'square',.05,i*.05); }             // 동전
+function sfxDrum(){ tone(88,.16,'sine',.24,0,-45); }                                                     // 심장 북소리
 let st=null;
 
 // ── 선수 상세(서사) 창 ──
@@ -410,8 +435,32 @@ async function refresh(){
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
-  renderBetBar(); renderBadges();
+  renderBetBar(); renderBadges(); checkEpithets();
   return st;
+}
+// ── 이명 토스트(DDD): 이명은 조용히 붙으면 컬렉션 욕구가 안 생긴다 — 획득의 '순간'을 만든다 ──
+let _epiSeen = null;   // 최초 로드는 스냅샷만(토스트 폭주 방지)
+function toast(msg){
+  const n = document.querySelectorAll('.mor-toast').length;
+  const d = document.createElement('div');
+  d.className = 'mor-toast';
+  d.style.cssText = `position:fixed;right:18px;bottom:${18+n*58}px;z-index:99;background:var(--panel);border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.5);animation:rvPop .5s ease`;
+  d.innerHTML = msg; document.body.appendChild(d);
+  setTimeout(()=>{ d.style.transition='opacity .6s'; d.style.opacity='0'; setTimeout(()=>d.remove(),650); }, 4200);
+}
+function checkEpithets(){
+  const cur = {};
+  (st.MyFighters||[]).forEach(f=> cur[f.Id]=f.Epithets||[]);
+  if (_epiSeen)
+    for (const id of Object.keys(cur)){
+      const prev = _epiSeen[id]||[];
+      cur[id].filter(e=>!prev.includes(e)).forEach(e=>{
+        const f = (st.MyFighters||[]).find(x=>x.Id===id);
+        toast(`📛 ${f?f.Name:''} — 이제 사람들은 그를 「${e.replace(/^\S+\s/,'')}」(이)라 부른다`);
+        sfxReveal(3);
+      });
+    }
+  _epiSeen = cur;
 }
 // ── 도박장 바(리그탭): 다음 경기가 AI 경기일 때 베팅 ──
 function renderBetBar(){
@@ -421,9 +470,10 @@ function renderBetBar(){
   if (!st.SeasonActive || !nm || nm.IsPlayerMatch){ bb.style.display='none'; return; }
   bb.style.display='block';
   const btn=(s,nm2,od)=>`<button onclick="bet(${s})" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:5px;padding:2px 10px;cursor:pointer">${nm2} <b>×${od.toFixed(2)}</b></button>`;
-  bb.innerHTML = `🎲 도박장 — <b>${nm.AName}</b> vs <b>${nm.BName}</b>
+  const stk = (st.Gamble&&st.Gamble.Streak)||0;
+  bb.innerHTML = `🎲 도박장 — <b>${nm.AName}</b> vs <b>${nm.BName}</b>${stk>=2?` <span style="color:#ff9d5d;font-weight:700" title="연속 적중 스트릭 — 3연속부터 배당 +10%">🔥${stk}연속 적중${stk>=2?' · 배당 +10%':''}</span>`:''}
     <input id="betAmt" type="number" min="5" max="${Math.floor(st.Gold)}" value="${Math.min(20,Math.floor(st.Gold))}" oninput="betPreview()" style="width:70px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:2px 6px;margin:0 4px">
-    ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)}
+    ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)} ${btn(2,'💥 KO',nm.OddsKo)} ${btn(3,'🕊 판정',nm.OddsDec)}
     <span class="note" id="betMsg">적중 시 배당금 = 베팅액 × 배당 (잔고 💰${Math.floor(st.Gold)})</span>`;
 }
 window.betPreview = ()=>{
@@ -447,16 +497,18 @@ function renderGamble(){
     stat('시즌 수지', (g.SeasonNet>0?'+':'')+Math.round(g.SeasonNet), g.SeasonNet>0?'var(--grn)':g.SeasonNet<0?'var(--b)':'var(--ink)') +
     stat('적중률', winRate+'%', 'var(--gold)') +
     stat('베팅 횟수', g.Total, null) +
+    stat('🔥 연속 적중', (g.Streak||0)+((g.Streak||0)>=2?' (배당 +10%)':''), (g.Streak||0)>=2?'#ff9d5d':null) +
     stat('보유 골드', '💰'+Math.round(st.Gold), 'var(--gold)');
   // 다음 경기 베팅(리그탭 betBar 재사용 로직)
   const nm=st.NextMatch, gn=$('gambleNext');
   if (st.PendingBet){ gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:8px">🎲 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 💰${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산</div>`; }
   else if (st.SeasonActive && nm && !nm.IsPlayerMatch){
     const btn=(s,nm2,od)=>`<button onclick="betG(${s})" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:5px 14px;cursor:pointer">${nm2} <b>×${od.toFixed(2)}</b></button>`;
-    gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-radius:8px">다음 경기 <b>${nm.AName}</b> vs <b>${nm.BName}</b>
+    const stk=(g.Streak||0);
+    gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-radius:8px">다음 경기 <b>${nm.AName}</b> vs <b>${nm.BName}</b>${stk>=2?` <span style="color:#ff9d5d;font-weight:700">🔥${stk}연속 적중 — 배당 +10%</span>`:''}
       <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="betAmtG" type="number" min="5" max="${Math.floor(st.Gold)}" value="${Math.min(20,Math.floor(st.Gold))}" style="width:80px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:3px 7px">
-      ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)}<span class="note" id="betMsgG"></span></div></div>`;
+      ${btn(0,nm.AName,nm.OddsA)} ${btn(1,nm.BName,nm.OddsB)} ${btn(2,'💥 KO 결착',nm.OddsKo)} ${btn(3,'🕊 판정 결착',nm.OddsDec)}<span class="note" id="betMsgG"></span></div></div>`;
   }
   else gn.innerHTML = `<div class="note">${nm&&nm.IsPlayerMatch?'다음은 내 경기 — 베팅 불가(승부조작 금지)':'베팅 가능한 다음 경기가 없다'}</div>`;
   // 이력
@@ -529,10 +581,13 @@ function showMatchResult(m){
   html += `<div class="rrow"><span>🎭 흥행도</span><b>${Math.round(m.Hype||0)}</b> <span class="d">${hypeLabel(m.Hype||0)}</span></div>`;
   if (m.BetNote) html += `<div class="rrow" style="color:${m.BetWon?'var(--grn)':'var(--b)'};font-weight:${m.BetWon?700:400}"><span>${m.BetWon&&jackpot?'💰 잭팟!':'🎲 도박장'}</span><span>${m.BetNote}</span></div>`;
   if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>🩹 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
-  html += sealedFates(m.Fates);
+  html += execTheater(m);
+  html += sealedFates(fatesFor(m));
   html += nextHook();
   $('mrBody').innerHTML = html;
   $('mrModal').classList.add('on');
+  if (jackpot) sfxJackpot();
+  if (m.BetWon) setTimeout(sfxCoins, 400);
 }
 function hypeLabel(h){ return h>=120?'🔥 초대박 흥행':h>=70?'대흥행':h>=35?'흥행':h>=12?'관심':'조용'; }
 // ── 대이변 잭팟(DDD): 배당 3배+ 언더독 승리 = 전용 연출 ──
@@ -560,6 +615,7 @@ window.openFate = (id)=>{
   el.innerHTML = `<div class="rv-step" style="padding:8px 12px;border-radius:8px;font-weight:700;
     border:1px solid ${dark?'var(--b)':'var(--gold)'};color:${dark?'var(--b)':'var(--gold)'};
     background:${dark?'rgba(90,42,38,.25)':'rgba(201,168,76,.10)'}">${el.dataset.fate}</div>`;
+  sfxScroll(); setTimeout(()=> dark?sfxDoom():sfxReveal(2), 250);
 };
 // ── 다음 경기 떡밥(DDD): 결과 카드 하단 — 시선을 다음 카드로 ──
 const stkOf = n => ((st&&st.Season&&st.Season.Fighters||[]).find(x=>x.Name===n)||{}).Streak||0;
@@ -586,6 +642,29 @@ function nextHook(){
   if (u>=3) bits.push(`언더독 배당 ×${u.toFixed(2)} — 도박장이 술렁인다`);
   if (nm.Hype>=70) bits.push('🔥 흥행 대어');
   return bits.length ? box('🎲', `다음: ${nm.AName} vs ${nm.BName}`, bits.join(' · ')) : '';
+}
+// ── 처형전 엄지 판정(DDD): 흔들리는 엄지 2.6초 — 게임에서 가장 긴 3초 ──
+function fatesFor(m){   // 판정 연출이 사망/자비 줄을 대신하므로 두루마리에선 제외
+  return (m.Fates||[]).filter(f=> !m.Exec || !((f.startsWith('⚰')&&f.includes(m.Exec.Loser)) || f.startsWith('👍')));
+}
+function execTheater(m){
+  if (!m || !m.Exec) return '';
+  const e=m.Exec, id='exec'+(++_fateSeq);
+  let beats=0; const iv=setInterval(()=>{ if(!document.getElementById(id)||++beats>3){clearInterval(iv);return;} sfxDrum(); },600);
+  sfxDrum();
+  setTimeout(()=>{
+    const el=document.getElementById(id); if(!el) return;
+    const sp=e.Spared;
+    el.innerHTML=`<div class="rv-step" style="text-align:center;padding:10px;border:1px solid ${sp?'var(--grn)':'var(--b)'};border-radius:9px;background:${sp?'rgba(60,90,58,.18)':'rgba(90,42,38,.25)'}">
+      <div style="font-size:36px">${sp?'👍':'👎'}</div>
+      <b style="color:${sp?'var(--grn)':'var(--b)'};font-size:15px">${sp?`황제의 자비 — ${e.Loser}, 오늘은 산다`:`죽음 — ${e.Loser}의 시간이 끝났다`}</b>
+      <div class="note" style="margin-top:3px">사망 확률 ${e.DeathPct}% · ${e.Factors}</div>
+      ${sp?'':'<div style="color:var(--b);font-weight:700;margin-top:4px">⚰ 모래 위에서 숨을 거두다. 검투사로 죽다</div>'}</div>`;
+    sp?sfxReveal(2):sfxDoom();
+  }, 2600);
+  return `<div id="${id}" style="text-align:center;padding:12px;border:1px solid var(--gold);border-radius:9px;margin:8px 0;background:var(--panel2)">
+    <div class="note">☠ 처형전 — 패자가 쓰러졌다. 황제가 일어서고, 군중이 숨을 죽인다…</div>
+    <div style="font-size:36px;display:inline-block;animation:thumbRock .8s ease-in-out infinite;margin-top:4px">👍</div></div>`;
 }
 // ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
 $('toMineBtn').onclick = async ()=>{
@@ -723,10 +802,32 @@ function openTacModal(nm){
     <div style="margin-top:3px;font-size:12px">💰 예상 수익 — 출전료 <b style="color:var(--gold)">+${Math.round(nm.FeeEstimate)}</b> <span class="note">(양측 인기=흥행 ${nm.Hype} 기반${nm.IsEvent?' · 이벤트 ×2':''})</span> · 승리 시 <b style="color:var(--grn)">+${Math.round(nm.WinBonusEstimate)}</b></div>
     <div class="note" style="margin-top:2px">📐 ${nm.OppIsKiter?'상대는 장거리 카이터 — 파고드는 전술(압박·난전·사냥꾼) 유리':'상대는 근접형 — 거리·반격 전술(카운터·견제·방어) 유리'}</div>`;
 
+  // ── 경기 전 방침(C1): 상태를 읽어야 정답이 바뀌는 트레이드오프 — 수치·경고 명시 ──
+  _selPrep = 'std';
+  const fat = me.Fatigue||0;
+  const fee = Math.round(nm.FeeEstimate||0);
+  const advice = me.Injured ? '교관: 부상입니다 — 몸을 아끼십시오.'
+    : fat>=60 ? '교관: 몸이 무겁습니다. 담금질은 부상을 부릅니다 — 아끼는 게 좋겠습니다.'
+    : nm.MyWinPct>=62 && fat<45 ? '교관: 손쉬운 상대 — 몸을 만들 기회입니다.'
+    : nm.Hype>=70 ? '교관: 큰 무대입니다 — 흥행몰이가 돈이 됩니다.'
+    : nm.MyWinPct<40 ? '교관: 어려운 싸움 — 컨디션을 최우선으로.'
+    : '교관: 평범한 일전입니다. 감독의 그림대로.';
+  const prepBtn=(k,label,desc,warn)=>
+    `<button class="prepbtn tacbtn" data-k="${k}" onclick="setPrep('${k}')" style="display:inline-block;width:auto;padding:5px 10px;margin:2px 6px 2px 0;${k==='std'?'border-color:var(--gold)':''}">
+      <b>${label}</b> <span class="d">${desc}</span>${warn?`<div class="d" style="color:var(--b)">${warn}</div>`:''}</button>`;
+  $('tmPrep').innerHTML = `
+    <h4 style="color:var(--gold);margin:10px 0 2px;font-size:12px">🏋 경기 전 방침 <span class="note" style="font-weight:400">— ${advice}</span></h4>
+    ${prepBtn('std','⚖ 평소대로','변화 없음')}
+    ${prepBtn('forge','🔥 담금질',`성장 ×2 · 피로 ${fat}→${Math.min(100,fat+8)}`, fat+8>60?`⚠ 피로 ${Math.min(100,fat+8)} — 격전 시 부상 위험 증가`:null)}
+    ${prepBtn('rest','🛡 아낀다',`피로 ${fat}→${Math.max(0,fat-10)} · 이번 경기 성장 없음`)}
+    ${prepBtn('show','🎭 무대를 띄운다',`인기 +6 · 출전료 ×1.15(≈+${Math.round(fee*0.15)}) · 피로 ${fat}→${Math.min(100,fat+4)}`)}`;
   $('tmOpts').innerHTML = nm.MyPool.map(tc=>
     `<button class="tacbtn" onclick="pickTac('${tc}')"><b>${t(tc)}</b>${tc===nm.MyTactic?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('');
   $('tacModal').classList.add('on');
 }
+let _selPrep='std';
+window.setPrep = k=>{ _selPrep=k;
+  document.querySelectorAll('.prepbtn').forEach(b=> b.style.borderColor = b.dataset.k===k?'var(--gold)':'#4a3a26'); };
 window.pickTac = tc => { $('tacModal').classList.remove('on'); doPlay(tc); };
 $('tacModal').onclick = e => { if(e.target===$('tacModal')) $('tacModal').classList.remove('on'); };
 
@@ -735,7 +836,7 @@ let liveActive = false, liveRemaining = 2, livePool = null, liveTac = null;
 async function doPlay(tacticId){
   const nx=$('next'); nx.disabled=true;
   try{
-    const r = await api('/api/live', tacticId?{tacticId}:{});
+    const r = await api('/api/live', {tacticId: tacticId||'', prep:_selPrep});
     if (r.error){ alert(r.error); return; }
     liveActive = true; liveRemaining = r.remaining ?? 2;
     livePool = (st.NextMatch&&st.NextMatch.MyPool)||[]; liveTac = tacticId||(st.NextMatch&&st.NextMatch.MyTactic);
@@ -754,7 +855,8 @@ let liveT = 0;
 function liveTacModal(tm){
   liveT = tm;
   $('tmTitle').textContent = `⏸ ${tm.toFixed(1)}s — 전술 변경 (남은 ${liveRemaining}회)`;
-  $('tmVersus').innerHTML = ''; $('tmOdds').innerHTML = '<div class="note">지금 이 순간부터 새 전술로 싸운다 — 이후의 운명이 갈린다.</div>';
+  $('tmVersus').innerHTML = ''; $('tmPrep').innerHTML = '';
+  $('tmOdds').innerHTML = '<div class="note">지금 이 순간부터 새 전술로 싸운다 — 이후의 운명이 갈린다.</div>';
   $('tmOpts').innerHTML = livePool.map(tc=>
     `<button class="tacbtn" onclick="liveSwitch('${tc}')"><b>${t(tc)}</b>${tc===liveTac?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('')
     + `<button class="tacbtn" style="opacity:.7;text-align:center" onclick="$('tacModal').classList.remove('on')">그대로 간다</button>`;
@@ -798,16 +900,19 @@ function showResult(m){
   $('resBody').innerHTML = jackpotBanner(m) + (mine.map(d=>`
     <div class="rrow"><b>${d.Name}</b> — ${d.Draw?'무승부':d.Won?'승리':'패배'}${d.Won&&m.Upset?' <span style="color:var(--gold)">★ 대이변 승리 — ✨영광 +1</span>':''}</div>
     ${d.Income>0?`<div class="rrow"><span>💰 수입</span><b>+${Math.round(d.Income)}</b> <span class="d">${d.IncomeNote}</span></div>`:''}
-    ${d.GrowthAxis?`<div class="rrow"><span>📈 성장</span><b>${d.GrowthAxis.toUpperCase()} +0.5</b></div>`:'<div class="rrow"><span>📈 성장</span><span class="d">상한 도달</span></div>'}
+    ${d.GrowthAxis?`<div class="rrow"><span>📈 성장</span><b>${d.GrowthAxis.toUpperCase()} +0.5${d.GrowthAxis.includes('·')?' ×2 <span class="d">(담금질)</span>':''}</b></div>`
+      : _selPrep==='rest'?'<div class="rrow"><span>📈 성장</span><span class="d">컨디션 조절 — 이번 경기 성장 없음</span></div>'
+      :'<div class="rrow"><span>📈 성장</span><span class="d">상한 도달</span></div>'}
     ${d.TrainingGained>0?`<div class="rrow"><span>🏋 훈련 포인트</span><b>+${d.TrainingGained}</b> <span class="d">(루두스에서 분배)</span></div>`:''}
     <div class="rrow"><span>⭐ 명성</span><b>${sign(d.FameDelta)}</b></div>
     <div class="rrow"><span>🔥 인기</span><b>${sign(d.PopDelta)}</b></div>
     ${d.Emotion?`<div class="rrow"><span>💭 감정</span><b>${d.Emotion}</b> <span class="d">(다음 경기에 영향)</span></div>`:''}
   `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>');
-  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 봉인 두루마리로 개봉(DDD)
-    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + sealedFates(m.Fates);
+  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
+    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + execTheater(m) + sealedFates(fatesFor(m));
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
+  if (isJackpot(m)) sfxJackpot();
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
   if (pendingSeason){ pendingSeason=false; showSeason(); }
@@ -935,6 +1040,7 @@ function renderLudus(){
       ${st.Mentor?`<div class="note" style="margin-top:3px;color:var(--gold)">📜 스승 ${st.Mentor} — 영입 원석 품질 +1롤 · 신인 잠재력 +10 (혈통 유산)</div>`:''}
       ${st.Edict?`<div style="margin-top:5px;padding:5px 9px;border:1px solid ${st.Edict.Done?'var(--grn)':'#8a6a2a'};border-radius:7px;font-size:12px;${st.Edict.Done?'color:var(--grn)':'color:var(--gold)'}">📜 황제의 특명: ${st.Edict.Desc} — ${st.Edict.Done?'달성 ✓':'진행 중 (실패 시 명성 −15)'}</div>`:''}
       ${st.Favor>0?`<div class="note" style="margin-top:3px" title="특명 달성 누적 — 3/6/10 단계마다 하사품">👑 황제의 총애 ${'★'.repeat(Math.min(10,st.Favor))} (${st.Favor})</div>`:''}
+      ${st.Redemption?`<div style="margin-top:5px;padding:5px 9px;border:1px solid #ff9d5d;border-radius:7px;font-size:12px;color:#ff9d5d">🔥 재기의 서약 — 강등의 굴욕을 기억하라. 1부 복귀 시 ✨영광 +10</div>`:''}
       ${st.Legacy?`<div class="note" style="margin-top:3px;color:#a8d8b0">🎓 은퇴 유산: ${st.Legacy}</div>`:''}
       ${(st.Patronage&&Math.abs(st.Patronage)>=8)?`<div class="note" style="margin-top:3px;color:${st.Patronage>0?'var(--gold)':'var(--b)'}" title="후원자 관계 — 시즌말 정산(≥40 하사금 / ≤−40 명성 압박)">🤝 후원자 관계 ${st.Patronage>0?'+':''}${st.Patronage} ${st.Patronage>=40?'(하사 예정)':st.Patronage<=-40?'(압박)':''}</div>`:''}
       ${st.MasterPending?`<div class="note" style="margin-top:3px;color:#d8a0e0">📜 스승 ${st.MasterPending}의 유산 대기 — 선수 카드에서 「전수받기」</div>`:''}`;
@@ -961,6 +1067,7 @@ function renderLudus(){
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${f.Injured?`<button onclick="askSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" title="의무실 수술 — 부상 즉시 종료를 노리는 도박(완치/실패/악화). 의무실 Lv·회복력이 성공률을 올린다" style="flex:1;background:#3a2630;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700">⚕ 수술</button>`:''}
         <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
         <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
         <button onclick="gangbrawl('${f.Id}','${f.Name}')" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험" style="flex:1;background:#402a20;border:none;color:#e0a878;border-radius:6px;padding:4px">🥊 패싸움</button>
@@ -1035,6 +1142,37 @@ window.mastery = async (id,track)=>{
   const r = await api('/api/mastery',{id,track});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+// ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 감독이 결정한다 ──
+window.askSurgery = (id,name,mrec)=>{
+  const heal = Math.min(85, 50 + 10*((st.MedicalLv||1)-1) + 5*(mrec||0));
+  const worse = 100 - heal - 30;
+  $('rvBox').innerHTML = `<h3 style="color:#e0a0d8;text-align:center;margin:0">⚕ 수술대 — ${name}</h3>
+    <div class="note" style="text-align:center">의사가 칼을 갈며 말한다. "확률은 정직하게 말씀드리죠."</div>
+    <div style="margin:10px 0">
+      <div class="rrow"><span style="color:var(--grn);font-weight:700">완치 ${heal}%</span><span class="d">부상 즉시 종료 · 피로 −10</span></div>
+      <div class="rrow"><span style="color:#d8b24a;font-weight:700">실패 30%</span><span class="d">부상 +1경기 — 돈만 날린다</span></div>
+      <div class="rrow"><span style="color:var(--b);font-weight:700">악화 ${worse}%</span><span class="d">잠재력 상한 −8 <b>영구</b> · 부상 +1경기</span></div>
+      <div class="rrow"><span>수술비</span><b style="color:var(--gold)">💰60</b> <span class="d">(잔고 ${Math.floor(st.Gold)})</span></div></div>
+    <div style="display:flex;gap:8px">
+      <button class="tacbtn" style="flex:1;text-align:center;border-color:#c94ca8;color:#e0a0d8" onclick="doSurgery('${id}')">🔪 수술한다</button>
+      <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('rvModal').classList.remove('on')">그냥 요양한다</button></div>`;
+  $('rvModal').classList.add('on');
+};
+window.doSurgery = async (id)=>{
+  const r = await api('/api/surgery',{id});
+  if (r.error){ $('rvModal').classList.remove('on'); $('ludusErr').textContent=r.error; return; }
+  $('rvBox').innerHTML = `<div style="text-align:center;padding:18px">
+    <div style="font-size:34px;display:inline-block;animation:thumbRock .7s ease-in-out infinite">🔪</div>
+    <div class="note" style="margin-top:6px">집도 중 — 숨을 죽인다…</div></div>`;
+  sfxDrum(); setTimeout(sfxDrum,600); setTimeout(sfxDrum,1200);
+  setTimeout(async ()=>{
+    $('rvBox').innerHTML = `<div class="rv-step" style="text-align:center;padding:12px;border:1px solid ${r.healed?'var(--grn)':'var(--b)'};border-radius:9px;background:${r.healed?'rgba(60,90,58,.18)':'rgba(90,42,38,.22)'}">
+      <b style="color:${r.healed?'var(--grn)':'var(--b)'};font-size:15px">${r.outcome}</b></div>
+      <button class="tacbtn" style="text-align:center;margin-top:10px" onclick="$('rvModal').classList.remove('on')">확인</button>`;
+    if (r.healed) sfxReveal(2); else sfxDoom();
+    st = await api('/api/state'); renderLudus(); refreshTop();
+  }, 1900);
 };
 window.breakthrough = async (id)=>{
   const r = await api('/api/breakthrough',{id});
@@ -1220,6 +1358,7 @@ function openGachaReveal(){
     <div class="rv-step" style="animation-delay:${.25+cands.length*.55+.15}s">
       <button class="tacbtn" style="text-align:center" onclick="$('rvModal').classList.remove('on')">후보를 살핀다 →</button></div>`;
   $('rvModal').classList.add('on');
+  cands.forEach((_,i)=> setTimeout(sfxFlip, 250+i*550));
 }
 // 영입: 천부 등급 단계식 리빌(특성→잠재→천부) + 놓친 원석 니어미스
 function openRecruitReveal(f, missed){
@@ -1255,6 +1394,8 @@ function openRecruitReveal(f, missed){
     <div class="rv-step" style="animation-delay:${missedRows?3.8:3.0}s">
       <button class="tacbtn" style="text-align:center;margin-top:10px" onclick="$('rvModal').classList.remove('on');go('ludus')">루두스로 →</button></div>`;
   $('rvModal').classList.add('on');
+  setTimeout(sfxStep, 900); setTimeout(sfxStep, 1600);
+  setTimeout(()=> big ? sfxJackpot() : sfxReveal(tal.r), 2400);
 }
 window.recruit = async (idx)=>{
   const cand = (st.Candidates||[]).find(c=>c.Idx===idx);

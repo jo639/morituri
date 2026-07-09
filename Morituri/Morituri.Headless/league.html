@@ -189,8 +189,9 @@ function renderCalendar(d){
       const inner = list.map(c=>{
         const clickable = c.Winner && inShell;
         const fire = !c.Winner && c.Hype>=70 ? '🔥' : !c.Winner && c.Hype>=35 ? '✨' : '';
-        return `<div ${clickable?`onclick="watchIt(${c.Idx})" style="cursor:pointer" title="클릭=재관전"`:''} ${!c.Winner&&c.Hype?`title="흥행 기대치 ${c.Hype}"`:''}>
-          <div style="font-size:10px;line-height:1.15;${c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--ink,#e8dcc8)'}">${kindIcon(c)}${fire}${c.A}<br>vs ${c.B}</div>
+        const hot = c.Hot ? '<span title="연승이 걸린 경기" style="color:#ff9d5d">⚡</span>' : '';
+        return `<div ${clickable?`onclick="watchIt(${c.Idx})" style="cursor:pointer" title="클릭=재관전"`:''} ${!c.Winner&&c.Hype?`title="흥행 기대치 ${c.Hype}${c.Hot?' · 연승 걸림':''}"`:''}>
+          <div style="font-size:10px;line-height:1.15;${c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--ink,#e8dcc8)'}">${kindIcon(c)}${fire}${hot}${c.A}<br>vs ${c.B}</div>
           <div style="font-size:9px;color:${c.Winner?'var(--win,#7ec97e)':(c.IsNext?'var(--gold,#c9a84c)':'var(--dim,#8a7a5a)')}">${c.Winner?('🏆'+c.Winner):(c.IsNext?'▶다음':'예정')}</div></div>`;
       }).join('');
       cells += `<div style="min-height:52px;padding:3px;border-radius:5px;background:${bg};border:${border};overflow:hidden">
