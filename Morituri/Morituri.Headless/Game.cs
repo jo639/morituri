@@ -61,6 +61,7 @@ public sealed class Game
         public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
         public int MGrit, MRecover, MShow, MPay;                    // 마스터리(0~5) — 투혼·회복력·흥행·협상 (비스탯, 메타 전용)
         public readonly List<string> PendingEmotions = new();
+        public readonly Dictionary<string, int> EmoHistory = new(); // 커리어 감정 이력(누적) — 성격 변화(Phase 4)의 입력
         public int SeasonPoints => W * 3 + D;
         public int CareerPoints => CW * 3 + CD;
         public PersonalityDef Pers => PersonalityTable.Get(PersonalityId);
@@ -75,7 +76,8 @@ public sealed class Game
         int CW, int CL, int CD, int CKoW, float Fame, float Popularity,
         int W, int L, int D, int Streak, string[] PendingEmotions,
         int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1, int SeasonBrutals = 0,
-        int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0);
+        int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,
+        Dictionary<string, int>? EmoHistory = null);   // 감정 이력(성격 드리프트 입력)
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
         string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
@@ -156,13 +158,15 @@ public sealed class Game
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
     private sealed record LudusStandingDoc(string Name, float Rep, string TierName, int Members,
-        string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer, float Treasury);
+        string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer, float Treasury,
+        string Persona = "", string Motto = "");   // 개성(W10b): gold/youth/blood + 좌우명
     private sealed record RelRow(string OppName, string RelName, string RelIcon, int W, int L, int Enc, bool OppIsMine);
     private sealed record FighterProfileDoc(string Id, string Name, string Weapon, string Personality, int Age,
         bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
         StatsDoc Stats, string[] Traits, string[] Epithets, string[] TacticPool, string Tactic,
         int W, int L, int D, int CW, int CL, int CD, int CKoW, int Titles, float Fame, float Popularity,
-        RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus);
+        RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus,
+        string? EmoBio = null);   // 커리어 감정 이력 요약(심리 기질 — W10a)
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -351,8 +355,10 @@ public sealed class Game
             var top = m.OrderByDescending(x => x.Fame).FirstOrDefault();
             // 재화: 내 루두스는 실제 골드, 라이벌은 명성·간판 인기 기반 추정 금고(관전 흥미용 근사)
             float treasury = isPlayer ? _gold : MathF.Round(rep * 6f + m.Sum(x => x.Popularity) * 2f);
+            var pool = RivalLudiPool.FirstOrDefault(r => r.Id == id);
             list.Add(new LudusStandingDoc(LudusNameOf(id), MathF.Round(rep), TierNameForRep(rep),
-                m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer, treasury));
+                m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer, treasury,
+                pool.Persona ?? "", pool.Motto ?? ""));
         }
         if (!_playerless) Add(PlayerLudusId, _ludusRep, true);
         foreach (var r in ActiveRivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
@@ -430,7 +436,11 @@ public sealed class Game
             g.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray(), g.TacticId.Replace("TAC_", ""),
             g.W, g.L, g.D, g.CW, g.CL, g.CD, g.CKoW, TitlesOf(g), MathF.Round(g.Fame), MathF.Round(g.Popularity),
             rels, g.PendingEmotions.Select(x => EmotionTable.Get(x).Name).ToArray(), chron.ToArray(),
-            g.Fatigue, g.InjuryMatches > 0, LudusNameOf(g.LudusId));
+            g.Fatigue, g.InjuryMatches > 0, LudusNameOf(g.LudusId),
+            EmoBio: g.EmoHistory.Count > 0
+                ? string.Join(" · ", g.EmoHistory.OrderByDescending(kv => kv.Value).Take(3)
+                    .Select(kv => $"{EmotionTable.Get(kv.Key).Name} ×{kv.Value}"))
+                : null);
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 
@@ -534,6 +544,16 @@ public sealed class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("수련한다 (골드 −40 · 부족분은 빚)", g => { var pay = SpendOrDebt(40f); var r = NudgeStat(g!, "Rct", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("사양한다", g => "정중히 사양했다.") } },
+
+        new EvtTemplate { Id = "rival_letter", Icon = "🩸", Title = "라이벌 루두스의 서신", NeedsFighter = true,
+            Body = n => { var b = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
+                string ln = b.Name ?? "경쟁 검투소";
+                return $"{ln}의 인장이 찍힌 서신이 도착했다 — 피 냄새가 나는 도발이다.\n💬 서신: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {ln}\""; },
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("공개 답신으로 맞받아친다 (인기 +8, 다음 경기 '원한')", g => { g!.Popularity += 8f;
+                    if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Grudge);
+                    return $"{g.Name} 인기 +8, 다음 경기 '원한' — 관중이 두 검투소의 신경전을 즐긴다"; }),
+                ("품위를 지킨다 (루두스 명성 +8)", _ => { AddRep(8f); return "루두스 명성 +8 — \"짖는 개는 물지 않는 법.\""; }) } },
 
         new EvtTemplate { Id = "blackmarket", Icon = "🗡", Title = "암시장 무기상", NeedsFighter = true,
             Body = n => $"후드를 쓴 상인이 천을 걷어 시퍼런 칼날을 드러낸다.\n💬 무기상: \"{n}에게 딱이지. 규정보다 조금… 예리할 뿐이야. 심판이 눈치채지만 않으면 돼.\"",
@@ -671,20 +691,22 @@ public sealed class Game
     // 라이벌 루두스 — AI 검투사가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
     private const string PlayerLudusId = "PLAYER";
     private string PlayerLudusName => "★ " + _ludusName;   // 라니스타 명명 반영
-    // 6종 풀 — worldSeed가 3곳을 선발(커리어마다 다른 경쟁 구도)
-    private static readonly (string Id, string Name)[] RivalLudiPool =
+    // 6종 풀 — worldSeed가 3곳을 선발(커리어마다 다른 경쟁 구도).
+    // 개성(W10b): gold=재력(이적 큰손·내 스타를 노린다) / youth=육성(놓친 원석을 주워간다) / blood=잔혹(처형전·도발 서신)
+    private static readonly (string Id, string Name, string Persona, string Motto)[] RivalLudiPool =
     {
-        ("LUD_BATIATUS", "바티아투스 검투소"),
-        ("LUD_SOLONIUS", "솔로니우스 양성소"),
-        ("LUD_CRASSUS",  "크라수스 투기장"),
-        ("LUD_GLABER",   "글라베르 원형경기장"),
-        ("LUD_COSSUTIUS","코수티우스 검투단"),
-        ("LUD_OVIDIUS",  "오비디우스 양성소"),
+        ("LUD_BATIATUS", "바티아투스 검투소",   "gold",  "돈이 곧 검이다"),
+        ("LUD_SOLONIUS", "솔로니우스 양성소",   "youth", "원석은 우리가 먼저 본다"),
+        ("LUD_CRASSUS",  "크라수스 투기장",     "blood", "피가 관중을 부른다"),
+        ("LUD_GLABER",   "글라베르 원형경기장", "blood", "굴복시켜라"),
+        ("LUD_COSSUTIUS","코수티우스 검투단",   "gold",  "명성은 사는 것"),
+        ("LUD_OVIDIUS",  "오비디우스 양성소",   "youth", "내일의 챔피언은 오늘의 소년"),
     };
     private string LudusNameOf(string id) => id == PlayerLudusId ? PlayerLudusName
         : RivalLudiPool.FirstOrDefault(r => r.Id == id).Name ?? id;
+    private static string PersonaOf(string id) => RivalLudiPool.FirstOrDefault(r => r.Id == id).Persona ?? "";
     /// <summary>이 세계에 실존하는 라이벌 루두스(캐스트 소속 + 명성 기록 보유) — 풀 순서 유지.</summary>
-    private IEnumerable<(string Id, string Name)> ActiveRivalLudi =>
+    private IEnumerable<(string Id, string Name, string Persona, string Motto)> ActiveRivalLudi =>
         RivalLudiPool.Where(r => _rivalRep.ContainsKey(r.Id) || _cast.Any(g => g.LudusId == r.Id));
 
     private void CreateAiCast()
@@ -872,6 +894,23 @@ public sealed class Game
         if (_seasonNo == 1) AssignDivisions();   // 초기 배치만 명성 — 이후 승강은 시즌말 성적 스왑
         else RebalanceDivisions();               // 영입·은퇴로 어긋난 인원만 보정
 
+        // 라이벌 간 이적(W10b v2): 재력 루두스가 개막 전 타 루두스의 간판을 사들인다 — 세계가 스스로 움직인다
+        var trRng = new SimRandom(SeasonSeed ^ 0x7124_A17BUL);
+        var goldLudi = ActiveRivalLudi.Where(r => r.Persona == "gold").ToList();
+        if (_seasonNo > 1 && goldLudi.Count > 0 && trRng.Roll(0.35f))
+        {
+            var buyer = goldLudi[(int)(trRng.NextUInt64() % (ulong)goldLudi.Count)];
+            var target = _cast.Where(g => !g.IsPlayer && g.LudusId != buyer.Id && g.Fame >= 15f)
+                              .OrderByDescending(g => g.Fame).FirstOrDefault();
+            if (target != null)
+            {
+                string from = LudusNameOf(target.LudusId);
+                target.LudusId = buyer.Id;
+                AddRivalRep(buyer.Id, 6f);
+                _story.Add((0, "transfer", $"🤝 라이벌 이적 — {buyer.Name}, {from}의 간판 {target.Name}을(를) 사들였다 (\"{buyer.Motto}\")"));
+            }
+        }
+
         // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
         BuildDivisionCards(1);
         BuildDivisionCards(2);
@@ -888,7 +927,8 @@ public sealed class Game
             // ☠ 원수의 도전장: 내 선수를 '원수'로 여기는 AI가 있으면 50%로 처형전을 걸어온다 (관계 발화)
             var nemesis = _cast.Where(ai => !ai.IsPlayer && _cast.Any(my => my.IsPlayer &&
                 _ledger.Get(ai.Id, my.Id).Classify(ai.PersonalityId) == RelationType.Nemesis)).FirstOrDefault();
-            if (nemesis != null && pRng.Roll(0.5f))
+            // 잔혹 개성(W10b): 피를 원하는 루두스 소속 원수는 처형전을 더 자주 걸어온다
+            if (nemesis != null && pRng.Roll(PersonaOf(nemesis.LudusId) == "blood" ? 0.75f : 0.5f))
             {
                 _pendingProposalOpp = nemesis.Id; _proposalExec = true;
                 _story.Add((0, "proposal", $"☠ 도전장 — 원수 {nemesis.Name}이(가) 처형전을 요구한다!"));
@@ -1126,8 +1166,12 @@ public sealed class Game
         var star = _cast.Where(g => g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault();
         if (star != null && star.Fame >= 20f && rng.Roll(0.6f))
         {
-            var buyer = ActiveRivalLudi.OrderBy(_ => rng.NextUInt64()).First();
-            sell = new TransferSellDoc(star.Id, star.Name, buyer.Name, (int)(TransferPrice(star) * 1.2f));
+            // 재력 개성(W10b): 큰손 루두스가 내 스타를 더 자주 노리고, 더 비싸게 부른다(×1.35)
+            var all = ActiveRivalLudi.ToList();
+            var golds = all.Where(b => b.Persona == "gold").ToList();
+            var buyer = (golds.Count > 0 && rng.Roll(0.7f) ? golds : all).OrderBy(_ => rng.NextUInt64()).First();
+            float mult = buyer.Persona == "gold" ? 1.35f : 1.2f;
+            sell = new TransferSellDoc(star.Id, star.Name, buyer.Name, (int)(TransferPrice(star) * mult));
         }
         return JsonSerializer.Serialize(new { ok = true, Buyables = pool, SellOffer = sell }, JsonOpts);
     }
@@ -2048,8 +2092,8 @@ public sealed class Game
         var emoRng = new SimRandom(SeasonSeed ^ 0x5EA5_04EDUL + (ulong)_matchIdx * 17UL);
         string? eA = EmotionGen.Roll(emoRng, res.Winner, 0, ko, res.StatsA.MinHpPct, A.Pers);
         string? eB = EmotionGen.Roll(emoRng, res.Winner, 1, ko, res.StatsB.MinHpPct, B.Pers);
-        if (eA != null) { A.PendingEmotions.Add(eA); _emoGen++; }
-        if (eB != null) { B.PendingEmotions.Add(eB); _emoGen++; }
+        if (eA != null) { A.PendingEmotions.Add(eA); A.EmoHistory[eA] = A.EmoHistory.GetValueOrDefault(eA) + 1; _emoGen++; }
+        if (eB != null) { B.PendingEmotions.Add(eB); B.EmoHistory[eB] = B.EmoHistory.GetValueOrDefault(eB) + 1; _emoGen++; }
 
         // 성장: 경기 자동 소량 + 3경기당 훈련 포인트. 방침(C1): 담금질=성장 2회, 아낀다=성장 없음
         var growRng = new SimRandom(SeasonSeed ^ 0x6120_6120UL + (ulong)_matchIdx * 13UL);
@@ -2141,7 +2185,10 @@ public sealed class Game
                 if (ex > 0f) { lose.Stats = WithAxis(lose.Stats, 5, -ex * 0.5f); for (int a = 0; a < 5; a++) lose.Stats = WithAxis(lose.Stats, a, -ex * 0.1f); }
                 Fate(round, "grave_injury", $"💀 {lose.Name} — 영구 중상, 몸이 예전 같지 않다 (상한 {lose.PotentialBudget:F0})");
             }
-            else if (loserBrutal && lose.SeasonBrutals >= 2 && fRng.Roll(0.04f))   // 🎭 트라우마 성격 변화
+            else if (loserBrutal && lose.SeasonBrutals >= 2
+                // 🎭 트라우마 성격 변화 — 감정 '이력'이 확률을 키운다(W10a): 무상처 2% ~ 상처 깊음 8%
+                && fRng.Roll(0.02f + 0.02f * Math.Min(3,
+                    lose.EmoHistory.GetValueOrDefault(EmotionTable.Trauma) + lose.EmoHistory.GetValueOrDefault(EmotionTable.Grudge))))
             {
                 string? shift = lose.PersonalityId switch
                 {
@@ -2151,9 +2198,18 @@ public sealed class Game
                 };
                 if (shift != null)
                 {
+                    int scars = lose.EmoHistory.GetValueOrDefault(EmotionTable.Trauma);
                     lose.PersonalityId = shift;
-                    Fate(round, "persona", $"🎭 {lose.Name} — 사선을 넘은 패배가 사람을 바꿨다 ({shift.Replace("PER_", "")})");
+                    Fate(round, "persona", $"🎭 {lose.Name} — 사선을 넘은 패배가 사람을 바꿨다{(scars >= 2 ? $" (쌓인 상처 {scars}번)" : "")} ({shift.Replace("PER_", "")})");
                 }
+            }
+            // 🎭 자만의 길(W10a): 승리와 자만이 쌓인 자는 오만해진다 — 감정 이력 → 성격 드리프트
+            if (win != null && _cast.Contains(win) && win.PersonalityId != "PER_ARROGANT"
+                && win.EmoHistory.GetValueOrDefault(EmotionTable.Hubris) + win.EmoHistory.GetValueOrDefault(EmotionTable.Confident) >= 4
+                && fRng.Roll(0.08f))
+            {
+                win.PersonalityId = "PER_ARROGANT";
+                Fate(round, "persona", $"🎭 {win.Name} — 연이은 영광이 그를 바꿨다: 오만해졌다");
             }
             // 🌟 각성 — 대역전·이변의 순간, 한계가 열린다 (승자·30세 이하)
             if (_cast.Contains(win) && (comeback || upset) && win.Age <= 30 && fRng.Roll(0.04f))
@@ -2445,9 +2501,13 @@ public sealed class Game
         foreach (var o in others)
         {
             string? joinedRival = null;
-            if (!_playerless && _cast.Count(x => !x.IsPlayer) < 9 && rRng.Roll(0.40f))
+            // 육성 개성(W10b): 육성 루두스가 있으면 놓친 원석을 더 자주(55%)·우선적으로 주워간다
+            var rivalsAll = ActiveRivalLudi.ToList();
+            var youthLudi = rivalsAll.Where(r => r.Persona == "youth").ToList();
+            float joinP = youthLudi.Count > 0 ? 0.55f : 0.40f;
+            if (!_playerless && _cast.Count(x => !x.IsPlayer) < 9 && rRng.Roll(joinP))
             {
-                var rivals = ActiveRivalLudi.ToList();
+                var rivals = youthLudi.Count > 0 && rRng.Roll(0.6f) ? youthLudi : rivalsAll;
                 var rl = rivals.Count > 0 ? rivals[(int)(rRng.NextUInt64() % (ulong)rivals.Count)] : default;
                 o.IsPlayer = false; o.LudusId = rl.Id ?? "RIV"; o.Division = 2;
                 _cast.Add(o); joinedRival = rl.Name ?? "라이벌 검투소";
@@ -2690,7 +2750,8 @@ public sealed class Game
         g.TraitIds, g.IsPlayer, g.Age, g.AgingStartAge, g.TrainingPoints, g.MatchCounter,
         g.CW, g.CL, g.CD, g.CKoW, g.Fame, g.Popularity,
         g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division, g.SeasonBrutals,
-        g.MGrit, g.MRecover, g.MShow, g.MPay);
+        g.MGrit, g.MRecover, g.MShow, g.MPay,
+        g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -2709,6 +2770,7 @@ public sealed class Game
             MGrit = r.MGrit, MRecover = r.MRecover, MShow = r.MShow, MPay = r.MPay,
         };
         g.PendingEmotions.AddRange(r.PendingEmotions);
+        if (r.EmoHistory != null) foreach (var kv in r.EmoHistory) g.EmoHistory[kv.Key] = kv.Value;
         return g;
     }
 

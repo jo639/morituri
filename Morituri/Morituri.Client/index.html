@@ -376,6 +376,7 @@ async function openProfile(id){
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
     <div class="row"><span>명성 / 인기 / 우승</span><b>${f.Fame} / ${f.Popularity} / 🏆${f.Titles}</b></div>
     <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
+    ${f.EmoBio?`<div class="row"><span>🧠 심리 이력</span><b class="note" title="쌓인 감정은 성격을 바꿀 수 있다 — 트라우마는 위축으로, 자만은 오만으로">${f.EmoBio}</b></div>`:''}
     <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">⚔ 관계</h4>${rel}
     <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">📜 연대기</h4>${chron}`;
   $('profModal').classList.add('on');
@@ -1414,7 +1415,9 @@ function renderRoster(){
   $('ludusTable').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">
     <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">💰재화</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
     + lt.map((l,i)=>`<tr style="${l.IsPlayer?'color:var(--gold);font-weight:700':''}">
-        <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}</td>
+        <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}${
+          l.Persona?` <span title="${l.Motto?('“'+l.Motto+'” — '):''}${l.Persona==='gold'?'재력 — 이적 시장의 큰손, 스타를 사들인다':l.Persona==='youth'?'육성 — 놓친 원석을 먼저 주워간다':'잔혹 — 처형전을 선호하고 도발 서신을 보낸다'}">${
+          l.Persona==='gold'?'💰':l.Persona==='youth'?'🌱':'🩸'}</span>`:''}</td>
         <td class="note">${l.TierName}</td><td style="text-align:right">${l.Rep}</td>
         <td style="text-align:right;padding-left:10px">${l.IsPlayer?'💰':''}${Math.round(l.Treasury)}${l.IsPlayer?'':' <span class="note" title="추정">≈</span>'}</td>
         <td style="text-align:right;padding-left:10px">${l.Members}</td>
