@@ -806,6 +806,11 @@ $('profModal').onclick = e=>{ if(e.target===$('profModal')) $('profModal').class
 
 // ── 단축키: Space/N = 다음 경기 · 1~5 = 탭 (모달·메뉴 열려있으면 무시) ──
 window.addEventListener('keydown', e=>{
+  // F11 = 전체화면 토글 (Photino 브리지 — 메뉴·모달 무관, 브라우저에선 기본 동작)
+  if (e.key === 'F11'){
+    try { window.external.sendMessage('fullscreen'); e.preventDefault(); } catch(_) {}
+    return;
+  }
   if ($('menu').style.display !== 'none') return;   // 메뉴(초기 '' 포함) 열림 = 무시
   if (document.querySelector('.modal.on')) return;
   if (e.code === 'Space' || e.key === 'n' || e.key === 'N'){ e.preventDefault(); $('next').click(); }

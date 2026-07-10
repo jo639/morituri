@@ -24,6 +24,10 @@
     <Content Include="index.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\league.html" Link="league.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\viewer.html" Link="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\melee.html" Link="melee.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\theme.css" Link="theme.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\icons.svg" Link="icons.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

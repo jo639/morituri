@@ -127,13 +127,32 @@ internal static class Program
             catch { return ""; }
         }
 
-        new PhotinoWindow()
+        // 창 없는 서버 전용 모드 (개발 검증: 브라우저로 localhost 접속)
+        if (Environment.GetEnvironmentVariable("MORITURI_NO_WINDOW") == "1")
+        {
+            Thread.Sleep(Timeout.Infinite);
+            return;
+        }
+
+        var window = new PhotinoWindow()
             .SetTitle("MORITURI · 검투장")
             .SetUseOsDefaultSize(false)
-            .SetSize(1180, 860)
+            .SetSize(1280, 900)
+            .SetMinSize(1100, 760)
+            .SetResizable(true)
             .Center()
             .SetContextMenuEnabled(false)
-            .Load($"http://localhost:{port}/index.html")
-            .WaitForClose();
+            .Load($"http://localhost:{port}/index.html");
+
+        bool fullscreen = false;
+        window.RegisterWebMessageReceivedHandler((_, msg) =>
+        {
+            if (msg == "fullscreen")
+            {
+                fullscreen = !fullscreen;
+                window.Invoke(() => window.SetFullScreen(fullscreen));
+            }
+        });
+        window.WaitForClose();
     }
 }

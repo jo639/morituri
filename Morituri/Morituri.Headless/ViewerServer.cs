@@ -90,6 +90,13 @@ public static class ViewerServer
                     {
                         ".html" => "text/html; charset=utf-8",
                         ".json" => "application/json; charset=utf-8",
+                        ".css" => "text/css; charset=utf-8",
+                        ".js" => "text/javascript; charset=utf-8",
+                        ".svg" => "image/svg+xml",
+                        ".woff2" => "font/woff2",
+                        ".woff" => "font/woff",
+                        ".ico" => "image/x-icon",
+                        ".webp" => "image/webp",
                         ".png" => "image/png",
                         ".jpg" or ".jpeg" => "image/jpeg",
                         _ => "application/octet-stream"
