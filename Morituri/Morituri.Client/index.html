@@ -13,21 +13,33 @@
         display:flex; flex-direction:column; }
   button{ font:inherit; cursor:pointer; }
   /* ── 상단 바 ── */
-  #top{ display:flex; align-items:center; gap:12px; padding:8px 16px; background:var(--panel);
-        border-bottom:1px solid #4a3a26; flex:0 0 auto; }
-  #logo{ font-weight:800; letter-spacing:1px; color:var(--gold); cursor:pointer; }
-  nav{ display:flex; gap:2px; }
-  nav button{ background:none; border:none; color:var(--dim); padding:6px 12px; border-radius:7px; }
-  nav button.on{ background:#3a2d1d; color:var(--ink); font-weight:700; }
-  #gold{ color:var(--gold); font-weight:700; }
-  #status{ margin-left:auto; color:var(--dim); font-size:12px; }
-  #next{ background:var(--gold); color:#231a12; border:none; font-weight:800; padding:7px 16px; border-radius:8px; }
-  #next:disabled{ opacity:.4; cursor:default; }
+  #top{ display:flex; align-items:center; gap:12px; padding:0 16px; height:54px; flex:0 0 auto;
+        background:linear-gradient(180deg,#2e2314,#231a0e);
+        border-bottom:1px solid var(--line);
+        box-shadow:0 1px 0 rgba(210,171,85,.10), 0 4px 16px rgba(0,0,0,.35);
+        position:relative; z-index:10; }
+  #logo{ font-family:var(--font-display); font-weight:800; font-size:16px; letter-spacing:.14em;
+         color:var(--gold); cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+  nav{ display:flex; gap:0; align-self:stretch; }
+  nav button{ background:none; border:none; color:var(--dim); padding:0 12px; position:relative;
+              display:inline-flex; align-items:center; gap:6px; transition:color .15s; }
+  nav button:hover{ color:var(--ink); }
+  nav button.on{ color:var(--gold); font-weight:700; }
+  nav button.on::after{ content:''; position:absolute; left:9px; right:9px; bottom:0; height:2px;
+                        background:linear-gradient(90deg,transparent,var(--gold),transparent); }
+  nav button .ic{ opacity:.75; }
+  .navdot{ width:6px; height:6px; border-radius:50%; background:#ff5d5d; box-shadow:0 0 6px rgba(255,93,93,.8); }
+  #topRight{ margin-left:auto; display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .res{ display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px;
+        background:rgba(0,0,0,.28); border:1px solid var(--line-soft); font-weight:700; font-size:12.5px;
+        font-variant-numeric:tabular-nums; }
+  .res.gold{ color:var(--gold); } .res.glory{ color:var(--glory); }
+  #status{ color:var(--dim); font-size:12px; }
   /* ── 화면 ── */
   #screens{ flex:1 1 auto; position:relative; min-height:0; }
   .screen{ position:absolute; inset:0; display:none; overflow:auto; }
-  .screen.on{ display:block; }
-  .screen > .pad{ padding:16px; max-width:1100px; margin:0 auto; }
+  .screen.on{ display:block; animation:fadeIn .18s ease; }
+  .screen > .pad{ padding:18px 20px 24px; max-width:min(1240px,94vw); margin:0 auto; }
   iframe{ width:100%; height:100%; border:0; background:var(--bg); }
   h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
   .note{ color:var(--dim); font-size:12px; }
@@ -73,9 +85,13 @@
   .cand{ border-top-color:var(--a); }
   .cand .recruit{ margin-top:8px; width:100%; background:#3a5a3a; border:none; color:#d6f0d6; font-weight:700; padding:6px; border-radius:7px; }
   /* 전술 모달 */
-  .modal{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:60; }
-  .modal.on{ display:flex; }
-  .mbox{ background:var(--panel); border:1px solid #4a3a26; border-radius:14px; padding:20px 22px; width:min(560px,92vw); }
+  .modal{ position:fixed; inset:0; background:rgba(10,6,2,.65); display:none; align-items:center; justify-content:center; z-index:60;
+          backdrop-filter:blur(2px); }
+  .modal.on{ display:flex; animation:fadeIn .15s ease; }
+  .mbox{ background:linear-gradient(180deg,rgba(210,171,85,.05),transparent 32%), var(--panel);
+         border:1px solid var(--line); border-radius:var(--r3); padding:20px 22px; width:min(560px,92vw);
+         box-shadow:var(--sh2); }
+  .modal.on .mbox{ animation:popIn .16s cubic-bezier(.2,.9,.3,1.2); }
   .mbox h3{ margin:0 0 4px; color:var(--gold); }
   .mbox .vsline{ font-size:13px; color:var(--dim); margin-bottom:12px; }
   .tacbtn{ display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid #4a3a26;
@@ -97,37 +113,52 @@
             opacity:0; animation:rvFlip .45s ease forwards; }
   .rv-step{ opacity:0; animation:rvPop .5s ease forwards; }
   .rv-jackpot{ animation:rvPop .5s ease forwards, rvGlow 1.2s ease forwards; }
-  /* 메뉴 */
-  #menu{ position:fixed; inset:0; background:radial-gradient(circle at 50% 42%, #2a2016, #16100a);
-         display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; z-index:50; }
-  #menu h1{ font-size:52px; letter-spacing:10px; color:var(--gold); margin:0 0 4px; font-weight:800; }
-  #menu .tag{ color:var(--dim); letter-spacing:3px; font-size:12px; margin-bottom:28px; }
-  #menu button{ width:240px; padding:12px; font-size:15px; font-weight:700; border-radius:9px;
-                border:1px solid #4a3a26; background:var(--panel); color:var(--ink); }
-  #menu button:hover{ border-color:var(--gold); }
-  #menu .info{ color:var(--dim); font-size:12px; margin-top:20px; }
+  /* 메뉴 — 타이틀 씬 */
+  #menu{ position:fixed; inset:0; z-index:50;
+         display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+         background:
+           var(--noise),
+           radial-gradient(ellipse at 50% 18%, rgba(210,171,85,.09), transparent 55%),
+           radial-gradient(circle at 50% 46%, #281e11, #100a05 78%); }
+  #menu h1{ font-family:var(--font-display); font-size:clamp(48px,7vw,76px); font-weight:900;
+            letter-spacing:.2em; text-indent:.2em; margin:0 0 2px; line-height:1.1;
+            background:linear-gradient(180deg,#f2d78d 8%,var(--gold) 55%,#8a6a2a 96%);
+            -webkit-background-clip:text; background-clip:text; color:transparent;
+            filter:drop-shadow(0 3px 22px rgba(210,171,85,.28)); }
+  #menu .tag{ color:var(--dim); letter-spacing:.28em; text-indent:.28em; font-size:12px; margin-bottom:8px; }
+  .menu-orn{ display:flex; align-items:center; gap:12px; color:var(--gold-deep); margin-bottom:26px; }
+  .menu-orn .hairline{ width:130px; }
+  #menu button{ width:280px; padding:13px; font-size:15px; font-weight:700; letter-spacing:.06em;
+                border-radius:var(--r1); border:1px solid var(--line); color:var(--ink);
+                background:linear-gradient(180deg,#2c2213,#241b0e);
+                transition:border-color .15s, color .15s, box-shadow .2s; }
+  #menu button:hover{ border-color:var(--gold); color:var(--gold); box-shadow:0 0 20px rgba(210,171,85,.14); }
+  #menu .info{ color:var(--dim); font-size:12px; margin-top:22px; }
+  #mSlots button{ width:auto; letter-spacing:0; font-weight:400; }
 </style>
 </head>
 <body class="fresco">
 <div id="top">
-  <span id="logo">⚔ MORITURI</span>
+  <span id="logo"><svg class="ic lg"><use href="icons.svg#swords"/></svg>MORITURI</span>
   <nav>
-    <button data-s="league" class="on">리그</button>
-    <button data-s="ludus">루두스</button>
-    <button data-s="market">영입</button>
-    <button data-s="roster">로스터</button>
-    <button data-s="watch">관전</button>
-    <button data-s="gamble">🎲 도박장</button>
-    <button data-s="codex">📖 도감</button>
+    <button data-s="league" class="on"><svg class="ic"><use href="icons.svg#arena"/></svg>리그</button>
+    <button data-s="ludus"><svg class="ic"><use href="icons.svg#ludus"/></svg>루두스</button>
+    <button data-s="market"><svg class="ic"><use href="icons.svg#recruit"/></svg>영입</button>
+    <button data-s="roster"><svg class="ic"><use href="icons.svg#helmet"/></svg>로스터</button>
+    <button data-s="watch"><svg class="ic"><use href="icons.svg#eye"/></svg>관전</button>
+    <button data-s="gamble"><svg class="ic"><use href="icons.svg#dice"/></svg>도박장</button>
+    <button data-s="codex"><svg class="ic"><use href="icons.svg#book"/></svg>도감</button>
   </nav>
-  <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
-  <span id="gold">💰 —</span>
-  <span id="glory" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="color:#c94ca8;font-weight:700"></span>
-  <span id="status">—</span>
-  <button id="autoBtn" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">⏩ 자동완주</button>
-  <button id="toMineBtn" title="내 경기 직전까지 AI 경기를 건너뛴다" style="background:none;border:1px solid #4a3a26;color:var(--dim);font-weight:600;padding:6px 12px;border-radius:8px">▶▶ 내 경기까지</button>
-  <button id="next">다음 경기 ▶</button>
-  <button id="cfgBtn" title="설정" style="background:none;border:none;color:var(--dim);font-size:16px">⚙</button>
+  <div id="topRight">
+    <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
+    <span class="res gold" title="골드"><svg class="ic"><use href="icons.svg#coin"/></svg><span id="gold">—</span></span>
+    <span class="res glory" id="gloryWrap" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="display:none"><svg class="ic"><use href="icons.svg#glory"/></svg><span id="glory"></span></span>
+    <span id="status">—</span>
+    <button id="autoBtn" class="btn ghost" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)"><svg class="ic"><use href="icons.svg#ff"/></svg>자동완주</button>
+    <button id="toMineBtn" class="btn ghost" title="내 경기 직전까지 AI 경기를 건너뛴다"><svg class="ic"><use href="icons.svg#play"/></svg>내 경기까지</button>
+    <button id="next" class="btn primary">다음 경기 ▶</button>
+    <button id="cfgBtn" class="btn ghost" title="설정" style="border:none;padding:6px"><svg class="ic lg"><use href="icons.svg#gear"/></svg></button>
+  </div>
 </div>
 
 <div id="screens">
@@ -312,6 +343,7 @@
 <div id="menu">
   <h1>MORITURI</h1>
   <div class="tag">MORITURI TE SALUTANT — 곧 죽을 자들이 경례합니다</div>
+  <div class="menu-orn"><span class="hairline"></span><svg class="ic lg"><use href="icons.svg#laurel"/></svg><span class="hairline"></span></div>
   <button id="mCont">계속하기</button>
   <button id="mNew">새 커리어 (현재 슬롯)</button>
   <div id="mSlots" style="display:flex;gap:8px;margin-top:10px"></div>
@@ -419,10 +451,12 @@ async function renderSlots(){
   const r = await api('/api/slots',{});
   if (r.error || !r.slots) return;
   $('mSlots').innerHTML = r.slots.map(s=>
-    `<button onclick="loadSlot(${s.n})" style="flex:1;padding:10px;border-radius:9px;cursor:pointer;text-align:left;
-      background:${s.active?'#3a2d1d':'#2f2418'};border:1px solid ${s.active?'var(--gold)':'#4a3a26'};color:var(--ink)">
-      <b style="color:var(--gold)">슬롯 ${s.n}${s.active?' ●':''}</b><br>
-      <span style="font-size:11px;color:var(--dim)">${s.exists?`${s.ludus} · 시즌 ${s.season} · 💰${s.gold}`:'빈 슬롯 — 새 세계'}</span></button>`).join('');
+    `<button onclick="loadSlot(${s.n})" style="flex:1;padding:11px 13px;text-align:left;
+      background:${s.active?'linear-gradient(180deg,#3b2d18,#31250f)':'linear-gradient(180deg,#2c2213,#241b0e)'};
+      border-color:${s.active?'var(--gold)':'var(--line)'};
+      ${s.active?'box-shadow:0 0 14px rgba(210,171,85,.12);':''}">
+      <b style="color:var(--gold);letter-spacing:.05em">${s.active?'◈ ':''}슬롯 ${s.n}</b><br>
+      <span style="font-size:11px;color:var(--dim)">${s.exists?`${s.ludus} · 시즌 ${s.season} · ${s.gold}G`:'빈 슬롯 — 새 세계'}</span></button>`).join('');
 }
 window.loadSlot = async (n)=>{
   st = await api('/api/loadslot',{n});
@@ -441,10 +475,11 @@ async function api(path, body){
 async function refresh(){
   st = await api('/api/state');
   const S = st.Season;
-  $('gold').textContent = `💰 ${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'') + (st.Debt>0?` · 💸빚 ${st.Debt}`:'');
-  $('glory').textContent = st.Glory>0 ? `✨ ${st.Glory}` : '';
+  $('gold').textContent = `${st.Gold}` + (st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'') + (st.Debt>0?` · 빚 ${st.Debt}`:'');
+  $('glory').textContent = st.Glory>0 ? `${st.Glory}` : '';
+  $('gloryWrap').style.display = st.Glory>0 ? '' : 'none';
   const L = st.Ludus;
-  $('ludus').textContent = L ? `🏛 ${L.TierName}` : '';
+  $('ludus').textContent = L ? L.TierName : '';
   $('ludus').title = L ? `루두스 명성 ${Math.round(L.Rep)}` + (L.NextTierName?` · 다음 등급 「${L.NextTierName}」까지 ${Math.max(0,Math.round(L.NextTierRep-L.Rep))}` : ' · 최고 등급') + ` · 수입 ×${L.IncomeMult.toFixed(2)}` : '';
   $('status').textContent = (st.RomanDate?st.RomanDate+' · ':'') + (st.SeasonActive ? `${S.Matches}/${S.TotalMatches}경기` : `시즌 ${S.SeasonNo} 종료`);
   const nm = st.NextMatch;
@@ -609,15 +644,15 @@ window.placeGb = async ()=>{
 };
 // ── 알림 배지: 할 일이 있는 탭에 🔴 ──
 function renderBadges(){
-  const dot = ' <span style="color:#ff5d5d">●</span>';
   const navs = document.querySelectorAll('nav button');
   navs.forEach(b=>{
-    let base = b.textContent.replace(' ●','');
     let need = false;
     if (b.dataset.s==='ludus') need = st.MyFighters.some(f=>f.TrainingPoints>0 || (f.AtCap && st.Glory>=f.BreakthroughCost));
     if (b.dataset.s==='market') need = st.FreeGachas>0;
     if (b.dataset.s==='league') need = !!(st.PendingEvent || st.PendingProposal);
-    b.innerHTML = need ? base+dot : base;
+    let dot = b.querySelector('.navdot');
+    if (need && !dot){ dot=document.createElement('span'); dot.className='navdot'; b.appendChild(dot); }
+    else if (!need && dot) dot.remove();
   });
 }
 $('autoBtn').onclick = async ()=>{
@@ -1407,7 +1442,11 @@ window.build = async (fac)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-function refreshTop(){ $('gold').textContent=`💰 ${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:''); $('glory').textContent=st.Glory>0?`✨ ${st.Glory}`:''; }
+function refreshTop(){
+  $('gold').textContent = `${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'');
+  $('glory').textContent = st.Glory>0? `${st.Glory}` : '';
+  $('gloryWrap').style.display = st.Glory>0? '' : 'none';
+}
 
 // ── 영입 ──
 function renderMarket(){
