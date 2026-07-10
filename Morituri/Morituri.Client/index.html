@@ -361,6 +361,16 @@
     <label><input type="checkbox" id="cfgHl"> <span class="d">관전을 임팩트 구간만 점프 재생(~30초)으로 시작</span></label></div>
   <div class="rrow"><span>카메라 연출</span>
     <label><input type="checkbox" id="cfgCam" checked> <span class="d">결정타·KO 순간 카메라 펀치인 (멀미 시 끄기)</span></label></div>
+  <div class="rrow"><span>화면 모드</span>
+    <span style="display:inline-flex;gap:6px">
+      <button class="tgl" id="cfgFsOn" onclick="setScreenMode(true)">전체화면</button>
+      <button class="tgl cur" id="cfgFsOff" onclick="setScreenMode(false)">창모드</button>
+    </span> <span class="d">(F11로도 전환)</span></div>
+  <div class="rrow"><span>UI 배율</span>
+    <select id="cfgZoom" style="background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 8px">
+      <option value="80">80%</option><option value="90">90%</option><option value="100" selected>100%</option>
+      <option value="110">110%</option><option value="125">125%</option><option value="150">150%</option>
+    </select> <span class="d">Ctrl+마우스휠과 같은 배율 축</span></div>
   <div class="rrow"><span>단축키</span><span class="d">Space/N = 다음 경기 · 1~6 = 탭 전환 · F11 = 전체화면</span></div>
   <div style="display:flex; gap:8px; margin-top:14px">
     <button class="tacbtn" style="flex:1; text-align:center" onclick="$('menu').style.display='flex'; $('cfgModal').classList.remove('on')">메인 메뉴</button>
@@ -874,13 +884,29 @@ $('cfgSpoiler').checked = !!CFG.spoiler;
 $('cfgSound').checked = CFG.sound !== false;   // 기본 켜짐
 $('cfgHl').checked = CFG.highlight === true;
 $('cfgCam').checked = CFG.camzoom !== false;   // 기본 켜짐
+$('cfgZoom').value = String(CFG.zoom || 100);
 function saveCfg(){ localStorage.setItem('mor_settings',
-  JSON.stringify({speed: parseFloat($('cfgSpeed').value), spoiler: $('cfgSpoiler').checked, sound: $('cfgSound').checked, highlight: $('cfgHl').checked, camzoom: $('cfgCam').checked})); }
+  JSON.stringify({speed: parseFloat($('cfgSpeed').value), spoiler: $('cfgSpoiler').checked, sound: $('cfgSound').checked, highlight: $('cfgHl').checked, camzoom: $('cfgCam').checked, zoom: parseInt($('cfgZoom').value)||100, fullscreen: _fsMode})); }
 $('cfgSpeed').onchange = saveCfg;
 $('cfgSpoiler').onchange = saveCfg;
 $('cfgSound').onchange = saveCfg;
 $('cfgHl').onchange = saveCfg;
 $('cfgCam').onchange = saveCfg;
+// ── 화면 모드(전체화면/창모드) + UI 배율 — Photino 브리지(브라우저에선 무시) ──
+const bridge = msg => { try{ window.external.sendMessage(msg); }catch(_){} };
+let _fsMode = CFG.fullscreen === true;
+window.setScreenMode = (on)=>{
+  _fsMode = on;
+  bridge(on ? 'fullscreen:on' : 'fullscreen:off');
+  $('cfgFsOn').classList.toggle('cur', on);
+  $('cfgFsOff').classList.toggle('cur', !on);
+  saveCfg();
+};
+function applyZoom(){ bridge('zoom:'+(parseInt($('cfgZoom').value)||100)); }
+$('cfgZoom').onchange = ()=>{ saveCfg(); applyZoom(); };
+// 시작 시 저장된 배율·화면 모드 복원
+if (CFG.zoom && CFG.zoom !== 100) applyZoom();
+if (_fsMode){ bridge('fullscreen:on'); $('cfgFsOn').classList.add('cur'); $('cfgFsOff').classList.remove('cur'); }
 $('cfgBtn').onclick = ()=> $('cfgModal').classList.add('on');
 $('cfgModal').onclick = e=>{ if(e.target===$('cfgModal')) $('cfgModal').classList.remove('on'); };
 $('profModal').onclick = e=>{ if(e.target===$('profModal')) $('profModal').classList.remove('on'); };
@@ -889,7 +915,7 @@ $('profModal').onclick = e=>{ if(e.target===$('profModal')) $('profModal').class
 window.addEventListener('keydown', e=>{
   // F11 = 전체화면 토글 (Photino 브리지 — 메뉴·모달 무관, 브라우저에선 기본 동작)
   if (e.key === 'F11'){
-    try { window.external.sendMessage('fullscreen'); e.preventDefault(); } catch(_) {}
+    if (window.setScreenMode){ setScreenMode(!_fsMode); e.preventDefault(); }
     return;
   }
   if ($('menu').style.display !== 'none') return;   // 메뉴(초기 '' 포함) 열림 = 무시

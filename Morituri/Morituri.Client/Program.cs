@@ -145,13 +145,33 @@ internal static class Program
             .Load($"http://localhost:{port}/index.html");
 
         bool fullscreen = false;
+        void SetFs(bool on)
+        {
+            fullscreen = on;
+            window.Invoke(() =>
+            {
+                window.SetFullScreen(on);
+                if (on)
+                {
+                    // WebView가 전체화면 크기로 안 늘어나 우/하단 여백이 남는 버그 보정 — 모니터 크기로 강제 리사이즈
+                    var area = window.MainMonitor.MonitorArea;
+                    window.SetLocation(new System.Drawing.Point(area.X, area.Y));
+                    window.SetSize(area.Width, area.Height);
+                }
+                else
+                {
+                    window.SetSize(1280, 900);
+                    window.Center();
+                }
+            });
+        }
         window.RegisterWebMessageReceivedHandler((_, msg) =>
         {
-            if (msg == "fullscreen")
-            {
-                fullscreen = !fullscreen;
-                window.Invoke(() => window.SetFullScreen(fullscreen));
-            }
+            if (msg == "fullscreen") SetFs(!fullscreen);
+            else if (msg == "fullscreen:on") SetFs(true);
+            else if (msg == "fullscreen:off") SetFs(false);
+            else if (msg != null && msg.StartsWith("zoom:") && int.TryParse(msg.AsSpan(5), out int z))
+                window.Invoke(() => window.SetZoom(Math.Clamp(z, 50, 200)));   // UI 배율 (Ctrl+휠과 동일 축)
         });
         window.WaitForClose();
     }

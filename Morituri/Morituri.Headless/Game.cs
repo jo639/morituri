@@ -128,7 +128,8 @@ public sealed class Game
         string? NextA, string? NextB, bool NextIsEvent, string Champion,
         List<FighterDoc> Fighters, List<RelDoc> Relations, List<EventDoc> Events, List<StoryDoc> Story,
         List<MatchLogDoc> MatchLog, List<ChampionRec>? Champions = null, List<HallRec>? Hall = null,
-        List<CalDoc>? Calendar = null, int Auc = 0);   // 달력: 전 일정(과거+미래)+로마 날짜
+        List<CalDoc>? Calendar = null, int Auc = 0,
+        string? CurMonth = null, int CurDay = 0);   // 달력: 전 일정(과거+미래)+로마 날짜 · Cur* = 현재 날짜(오늘 강조)
     private sealed record CalDoc(int Idx, string Month, int Day, string A, string B, string Kind, string Format,
         string? Winner, bool IsPlayerMatch, bool IsNext, float Hype,
         bool Hot = false);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1) · Hot = 참가자 3연승+ (스트릭 하이라이트)
@@ -2964,6 +2965,14 @@ public sealed class Game
                                 || (_cast.FirstOrDefault(g => g.Id == s.B)?.Streak ?? 0) >= 3);   // 연승 걸린 경기(DDD)
             cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor, hype, hot));
         }
+        // 현재 로마력 날짜(달력 오늘 강조) — RomanDate()와 동일한 스케줄 위치 비례
+        string? curMonth = null; int curDay = 0;
+        if (SeasonActive)
+        {
+            int d0 = (int)(Math.Clamp((float)_cursor / Math.Max(1, _schedule.Count), 0f, 1f) * 239f);
+            curMonth = RomanMonths[Math.Min(RomanMonths.Length - 1, d0 / 30)];
+            curDay = d0 % 30 + 1;
+        }
         return new SeasonDoc(SchemaVer, Math.Max(1, _seasonNo), _rounds, _matchIdx, total, !SeasonActive,
             next != null ? ById(next.A).Name : null, next != null ? ById(next.B).Name : null, next?.IsEvent ?? true,
             standings[0].Name, fighters, rels, _eventDocs.ToList(),
@@ -2971,7 +2980,7 @@ public sealed class Game
             _matchLog.Select(e => new MatchLogDoc(e.Idx, e.Round, e.IsEvent, e.AName, e.BName, e.Winner, e.Reason, e.IsPlayerMatch)).ToList(),
             _champions.Count > 0 ? _champions.ToList() : null,
             _hall.Count > 0 ? _hall.OrderByDescending(h => h.Fame).ToList() : null,
-            cal, 680 + Math.Max(1, _seasonNo));
+            cal, 680 + Math.Max(1, _seasonNo), curMonth, curDay);
     }
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
