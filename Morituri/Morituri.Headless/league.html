@@ -164,14 +164,19 @@ function renderDivision(){
     `<span class="rd">${m.IsEvent?'🎪':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
     `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
     || '<div class="empty">아직 경기 없음</div>';
+
+  renderCalendar(divOf);   // 달력도 선택된 부만 (탭 전환 시 함께 갱신)
 }
 
-// ── 시즌 달력(상시): 전 일정을 월별로 — 치른 경기(승자·클릭=관전) + 남은 경기(예정) ──
-// #4 진짜 달력: 월별 30일 그리드(6열). 경기일 셀에 카드, 내 루두스 경기 강조.
-function renderCalendar(d){
-  const cal = d.Calendar || [];
-  document.getElementById('calSub').textContent = cal.length ? `AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · 🟡 내 루두스` : '';
-  if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">일정 없음 — 시즌 개막 전</div>'; return; }
+// ── 시즌 달력(상시): 선택된 부(리그)의 일정만 월별로 — 치른 경기(승자·클릭=관전) + 남은 경기(예정) ──
+// #4 진짜 달력: 월별 30일 그리드(6열). 경기일 셀에 카드, 내 루두스 경기 강조. divOf = 이름→부(renderDivision 제공).
+function renderCalendar(divOf){
+  const d = curDoc; if (!d) return;
+  divOf = divOf || (()=>{ const m={}; (d.Fighters||[]).forEach(f=>m[f.Name]=f.Division||1); return m; })();
+  // 선택된 부의 선수가 하나라도 낀 경기만(교차 카드는 어느 쪽이든 낀 부에 표시)
+  const cal = (d.Calendar || []).filter(c=> (divOf[c.A]||1)===curDiv || (divOf[c.B]||1)===curDiv);
+  document.getElementById('calSub').textContent = cal.length ? `${DIVN[curDiv]||curDiv+'부'} · AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · 🟡 내 루두스` : (DIVN[curDiv]||'');
+  if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">이 리그 일정 없음</div>'; return; }
   const months = [...new Set(cal.map(c=>c.Month))];
   const kindIcon = c => c.Kind==='cup_final'?'🏆':c.Kind==='cup_sf'?'🏆':c.Kind==='proposal'?'🎤':
     c.Format==='execution'?'☠':(c.Format||'').startsWith('same:')?'⚔':c.Kind==='event'?'🎪':'';
@@ -211,8 +216,7 @@ function load(d){
   document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${prog} (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
 
   curDoc = d;
-  renderDivision();
-  renderCalendar(d);
+  renderDivision();   // 순위·명성·경기결과·달력을 선택된 부로 렌더(달력은 renderDivision이 호출)
 
   // 이벤트 매치
   const ev = document.getElementById('events');

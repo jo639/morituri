@@ -157,9 +157,10 @@ public sealed class Game
         string? Stage = null,         // 컵 단계 라벨 (4강 결승) — 정규경기는 null
         float MyWinPct = 50f, float MyOdds = 2f, float OppOdds = 2f,   // 배당(파워 모델 — 표시용)
         bool CrowdFavorsMe = false, float Hype = 0f,   // 군중 선호(인기)·흥행지수
-        float OddsA = 2f, float OddsB = 2f,   // 범용 배당(A/B 기준 — AI 경기 베팅용)
+        float OddsA = 2f, float OddsB = 2f,   // 범용 배당(A/B 승 — AI 경기 베팅용)
         float FeeEstimate = 0f, float WinBonusEstimate = 0f,   // 예상 출전료·승리 보너스(#15 수익 가시화)
-        float OddsKo = 2f, float OddsDec = 2f);   // 스페셜 베팅: KO 결착/판정 결착 배당
+        float OddsAKo = 2f, float OddsADec = 2f, float OddsBKo = 2f, float OddsBDec = 2f,   // 승자×방식 조합 배당
+        string? AId = null, string? BId = null);   // AI 경기 양측 선수 id(도박장 상세 열람용)
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -1163,8 +1164,16 @@ public sealed class Game
     /// 하한 1.20(대세팀도 최소 +20% 회수), 상한 6.0(약체 대박). 저배당 무이득 버그 해소.</summary>
     private static float BetOdds(float p) => Math.Clamp(0.92f / Math.Clamp(p, 0.08f, 0.95f), 1.2f, 6f);
 
-    /// <summary>다음 AI 경기에 베팅: side 0=A/1=B/2=KO 결착/3=판정 결착. 경기당 1회, 배당 고정.
-    /// 연속 적중 3회부터 배당 +10%(스트릭 보너스 — 계속 걸 이유).</summary>
+    /// <summary>베팅 종류 라벨: 0=A승 1=B승 2=A KO승 3=A 판정승 4=B KO승 5=B 판정승.</summary>
+    private static string BetLabel(int side, Gladiator A, Gladiator B) => side switch
+    {
+        0 => $"{A.Name} 승", 1 => $"{B.Name} 승",
+        2 => $"{A.Name} KO승", 3 => $"{A.Name} 판정승",
+        4 => $"{B.Name} KO승", 5 => $"{B.Name} 판정승", _ => "?",
+    };
+
+    /// <summary>다음 AI 경기에 베팅: side 0=A승 1=B승 2=A KO승 3=A판정승 4=B KO승 5=B판정승 — 누가 어떻게 이길지까지.
+    /// 경기당 1회, 배당 고정. 연속 적중 3회부터 배당 +10%(스트릭 보너스).</summary>
     public string BetJson(int side, float amount)
     {
         if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
@@ -1172,17 +1181,14 @@ public sealed class Game
         var A = ById(s.A); var B = ById(s.B);
         if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
         if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
-        if (side is < 0 or > 3) return Err("잘못된 선택");
+        if (side is < 0 or > 5) return Err("잘못된 선택");
         amount = MathF.Floor(MathF.Min(amount, MathF.Floor(_gold)));   // 전액 베팅 안전: 잔고 이하로 클램프(부동소수 오탐 방지)
         if (amount < 5) return Err("최소 5 데나리우스 (잔고 부족)");
-        float pA = CursorProbA();   // 시뮬 기반(상성 반영) — 파워식은 예측력 없음(MAE 35%p)
-        float p = side switch { 0 => pA, 1 => 1f - pA, 2 => CursorProbKo(), _ => 1f - CursorProbKo() };
-        float odds = BetOdds(p);
+        float odds = BetOddsFor(side);   // 승자×방식 조합 확률에서 산정(상성 반영)
         if (_betStreak >= 2) odds = MathF.Round(odds * 1.10f * 100f) / 100f;   // 🔥 스트릭 보너스
         _gold -= amount; _seasonBetNet -= amount;
         _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
-        string on = side switch { 0 => A.Name, 1 => B.Name, 2 => "💥 KO 결착", _ => "🕊 판정 결착" };
-        _story.Add((s.Round, "bet", $"🎲 베팅 — {on}에 {amount:F0} (배당 {odds:F2}{(_betStreak >= 2 ? " · 스트릭 보너스" : "")})"));
+        _story.Add((s.Round, "bet", $"🎲 베팅 — {BetLabel(side, A, B)}에 {amount:F0} (배당 {odds:F2}{(_betStreak >= 2 ? " · 스트릭 보너스" : "")})"));
         SaveWorld();
         return StateJson();
     }
@@ -1720,15 +1726,19 @@ public sealed class Game
         if (_betCursor == _cursor - 1)
         {
             _betCursor = -1;
-            string on = _betSide switch { 0 => A.Name, 1 => B.Name, 2 => "💥 KO 결착", _ => "🕊 판정 결착" };
-            bool won = _betSide <= 1 ? res.Winner == _betSide : (res.Reason == "KO") == (_betSide == 2);
+            string on = BetLabel(_betSide, A, B);
+            bool bko = res.Reason == "KO";
+            bool won = _betSide switch {   // 승자 × 방식(KO/판정) 조합 판정
+                0 => res.Winner == 0, 1 => res.Winner == 1,
+                2 => res.Winner == 0 && bko, 3 => res.Winner == 0 && !bko,
+                4 => res.Winner == 1 && bko, 5 => res.Winner == 1 && !bko, _ => false };
             _betStreak = won ? _betStreak + 1 : 0;   // 🔥 연속 적중 스트릭
             float payout = won ? MathF.Round(_betAmount * _betOdds) : 0f;   // 마진은 배당에 내장
             if (won)
             {
                 _gold += payout; _seasonBetNet += payout;
                 if (++_betHits >= 10) Unlock("gambler");   // 행운의 도박사
-                _story.Add((s.Round, "bet", $"🎲 적중! {on} 승 — 배당금 +{payout:F0}"));
+                _story.Add((s.Round, "bet", $"🎲 적중! {on} — 배당금 +{payout:F0}"));
             }
             else _story.Add((s.Round, "bet", $"🎲 빗나감 — {_betAmount:F0} 데나리우스가 모래에 묻혔다"));
             betWon = won;
@@ -2458,18 +2468,15 @@ public sealed class Game
         }
     }
 
-    /// <summary>시뮬 기반 승률 추정(A 기준) — 본경기와 다른 시드 스트림 K판, 라플라스 스무딩. koRate = KO 결착률(KO 베팅용).</summary>
-    private static float SimProb(FighterDef dA, FighterDef dB, ulong seedBase, int k) => SimProb(dA, dB, seedBase, k, out _);
-    private static float SimProb(FighterDef dA, FighterDef dB, ulong seedBase, int k, out float koRate)
+    /// <summary>시뮬 기반 승률 추정(A 기준) — 본경기와 다른 시드 스트림 K판, 라플라스 스무딩.</summary>
+    private static float SimProb(FighterDef dA, FighterDef dB, ulong seedBase, int k)
     {
-        int wins = 0, decided = 0, kos = 0;
+        int wins = 0, decided = 0;
         for (int t = 1; t <= k; t++)
         {
             var r = new MatchSim().Run(dA, dB, seedBase + (ulong)t * 104729UL);
             if (r.Winner >= 0) { decided++; if (r.Winner == 0) wins++; }
-            if (r.Reason == "KO") kos++;
         }
-        koRate = Math.Clamp((kos + 1f) / (k + 2f), 0.05f, 0.95f);
         return Math.Clamp((wins + 1f) / (decided + 2f), 0.05f, 0.95f);
     }
 
@@ -2480,15 +2487,17 @@ public sealed class Game
         return s + g.Fame * 0.15f + g.Streak * 2f - (g.InjuryMatches > 0 ? 15f : 0f);
     }
 
-    private int _oddsCursor = -1; private float _oddsProbA, _oddsProbKo;   // 커서별 배당 캐시(시뮬 15판 — MAE ~10%p)
+    // 커서 경기 결과 분포(승자 × 방식) — 승자만이 아니라 "어떻게 이길지"까지 배당에 반영. 시뮬 15판 캐시.
+    private readonly record struct BetOutcomes(float A, float B, float AKo, float ADec, float BKo, float BDec);
+    private int _oddsCursor = -1; private float _oddsProbA; private BetOutcomes _oddsOut;
     private float _seasonBetNet;                              // 시즌 베팅 수지(결산 표시)
     private int _gauntletStage, _gauntletWins;                // 황제의 초청전: 0=미편성 1=편성됨 · 승수
     private int _betStreak;                                   // 연속 적중(스트릭 보너스 — 3연속부터 배당 +10%)
 
-    /// <summary>커서 경기의 A 승률(시뮬 15판, 캐시) — 본경기와 다른 시드 스트림이라 결과 유출 없음. 전술은 경기와 동일 로직으로 예측.</summary>
-    private float CursorProbA()
+    /// <summary>커서 경기의 결과 분포(시뮬 15판, 캐시) — 승자×방식(KO/판정) 6종 확률. 다른 시드 스트림이라 결과 유출 없음.</summary>
+    private BetOutcomes CursorOutcomes()
     {
-        if (_oddsCursor == _cursor) return _oddsProbA;
+        if (_oddsCursor == _cursor) return _oddsOut;
         var s = _schedule[_cursor];
         var A = ById(s.A); var B = ById(s.B);
         var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);   // PlayNext와 동일 소비 순서
@@ -2496,11 +2505,30 @@ public sealed class Game
         string tB = B.IsPlayer ? B.TacticId : SelectTacticAi(B, A, tacRng);
         var (dA, dB) = BuildDefs(A, B, s.Format);
         dA = dA with { TacticsId = tA }; dB = dB with { TacticsId = tB };
-        _oddsProbA = SimProb(dA, dB, SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL, 15, out _oddsProbKo);
+        const int K = 15;
+        ulong seed = SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL;
+        int aKo = 0, aDec = 0, bKo = 0, bDec = 0, decided = 0;
+        for (int t = 1; t <= K; t++)
+        {
+            var r = new MatchSim().Run(dA, dB, seed + (ulong)t * 104729UL);
+            if (r.Winner == 0) { decided++; if (r.Reason == "KO") aKo++; else aDec++; }
+            else if (r.Winner == 1) { decided++; if (r.Reason == "KO") bKo++; else bDec++; }
+        }
+        float Sm(int c) => Math.Clamp((c + 0.5f) / (K + 1f), 0.03f, 0.92f);   // 조합 결과 확률(라플라스 스무딩)
+        _oddsProbA = Math.Clamp((aKo + aDec + 1f) / (decided + 2f), 0.05f, 0.95f);   // VS 표시용 승률(decided 기준)
+        _oddsOut = new BetOutcomes(Sm(aKo + aDec), Sm(bKo + bDec), Sm(aKo), Sm(aDec), Sm(bKo), Sm(bDec));
         _oddsCursor = _cursor;
-        return _oddsProbA;
+        return _oddsOut;
     }
-    private float CursorProbKo() { CursorProbA(); return _oddsProbKo; }   // KO 결착률(같은 캐시)
+    private float CursorProbA() { CursorOutcomes(); return _oddsProbA; }
+
+    /// <summary>베팅 종류별 배당: 0=A승 1=B승 2=A KO승 3=A 판정승 4=B KO승 5=B 판정승. 조합 확률에서 산정.</summary>
+    private float BetOddsFor(int side)
+    {
+        var o = CursorOutcomes();
+        float p = side switch { 0 => o.A, 1 => o.B, 2 => o.AKo, 3 => o.ADec, 4 => o.BKo, 5 => o.BDec, _ => 0.5f };
+        return BetOdds(p);
+    }
 
     private static void Record(Gladiator a, Gladiator b, MatchResult r, bool standing)
     {
@@ -3000,14 +3028,16 @@ public sealed class Game
                 MyWinPct: pctInt, MyOdds: MathF.Round(10000f / pctInt) / 100f, OppOdds: MathF.Round(10000f / (100 - pctInt)) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: MathF.Round((A.Popularity + B.Popularity) * (s.Format == "execution" ? 2f : s.IsEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f),
-                OddsA: MathF.Round(BetOdds(probA) * 100f) / 100f, OddsB: MathF.Round(BetOdds(1f - probA) * 100f) / 100f,
+                OddsA: MathF.Round(BetOddsFor(0) * 100f) / 100f, OddsB: MathF.Round(BetOddsFor(1) * 100f) / 100f,
                 // 예상 수익(#15): Play의 출전료 공식과 동일 — 인기 hype·이벤트·처형전·협상 마스터리 반영
                 FeeEstimate: mine == null ? 0f : MathF.Round(
                     (FeeBase + (mine.Popularity + opp.Popularity) * FeePopScale)
                     * (s.Format == "execution" ? 3f : s.IsEvent ? 2f : 1f) * IncomeMult * (1f + 0.08f * mine.MPay)),
                 WinBonusEstimate: mine == null ? 0f : MathF.Round(WinBonus * IncomeMult),
-                OddsKo: MathF.Round(BetOdds(CursorProbKo()) * 100f) / 100f,
-                OddsDec: MathF.Round(BetOdds(1f - CursorProbKo()) * 100f) / 100f);
+                // 승자×방식 조합 배당(누가 어떻게 이길지) — AI 경기 도박용
+                OddsAKo: MathF.Round(BetOddsFor(2) * 100f) / 100f, OddsADec: MathF.Round(BetOddsFor(3) * 100f) / 100f,
+                OddsBKo: MathF.Round(BetOddsFor(4) * 100f) / 100f, OddsBDec: MathF.Round(BetOddsFor(5) * 100f) / 100f,
+                AId: A.Id, BId: B.Id);
         }
 
         // 루두스 등급
@@ -3045,8 +3075,7 @@ public sealed class Game
                 .Select((x, i) => new GreatDoc(_greatest.IndexOf(x), x.Season, x.Entry.AName, x.Entry.BName,
                     x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null,
             _betCursor == _cursor && SeasonActive && _cursor < _schedule.Count
-                ? new BetDoc(_betSide switch { 0 => ById(_schedule[_cursor].A).Name, 1 => ById(_schedule[_cursor].B).Name,
-                                               2 => "💥 KO 결착", _ => "🕊 판정 결착" }, _betAmount, _betOdds) : null,
+                ? new BetDoc(BetLabel(_betSide, ById(_schedule[_cursor].A), ById(_schedule[_cursor].B)), _betAmount, _betOdds) : null,
             _favor,
             HasMyMatchAhead: SeasonActive && Enumerable.Range(_cursor, Math.Max(0, _schedule.Count - _cursor))
                 .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer),
