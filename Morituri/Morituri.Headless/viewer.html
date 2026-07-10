@@ -221,20 +221,28 @@ function postMatchEnded(){
 }
 // 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (감독의 "멈춰!")
 window.addEventListener('message', e=>{
-  if (e.data && e.data.cmd === 'pauseGetTime'){
+  if (!e.data) return;
+  if (e.data.cmd === 'pauseGetTime'){
     setPlaying(false);
     if (window.parent !== window) window.parent.postMessage({liveTime: t}, '*');
+  } else if (e.data.cmd === 'stop'){       // 관전 종료(정산·닫기) — 재생·효과음 완전 정지
+    setPlaying(false); postGame = false;
+    if (AC){ try{ AC.suspend(); }catch(_){} }
+  } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
+    audioResume();
   }
 });
 
 // ── 합성 효과음 (에셋 없음 — WebAudio 신시사이즈. 설정 mor_settings.sound=false로 끔) ──
 let AC = null, lastSfxT = 0, koSlowT = -1;
-function sndOn(){ return AC && SET.sound !== false; }
+function sndOn(){ return AC && AC.state === 'running' && SET.sound !== false; }
 function sndInit(){
   if (AC || SET.sound === false) return;
   try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
 }
-['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev, ()=>{ sndInit(); if (AC&&AC.state==='suspended') AC.resume(); }));
+// iframe은 부모 클릭으로는 자체 사용자 활성화가 안 생긴다 → allow="autoplay" 위임 + 로드 시 즉시 재개 시도.
+function audioResume(){ sndInit(); if (AC && AC.state === 'suspended'){ try{ AC.resume(); }catch(_){} } }
+['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev, audioResume));
 function beep(freq, dur, type, vol, slide){
   if (!sndOn()) return;
   const t0=AC.currentTime, o=AC.createOscillator(), g=AC.createGain();
@@ -321,6 +329,7 @@ function load(json){
   document.getElementById('drop').classList.add('hidden');
   t = 0; postGame = false; postGameElapsed = 0; vScrA = null; vScrB = null; hitstopUntil = 0; setPlaying(true);
   lastSfxT = 0;
+  audioResume();   // allow="autoplay" 위임 시 클릭 없이도 효과음 재생 (무음 관전 버그 해소)
   // 라이브 전술 개입: 재시뮬 후 ?seek= 시각부터 이어서 재생 (감독이 바꾼 그 순간부터 새 운명)
   const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
   if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; }

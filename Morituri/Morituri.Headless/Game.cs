@@ -21,6 +21,7 @@ public sealed class Game
     private const int SchemaVer = 2;      // v1(관전 시즌) 파일은 비호환 → 새 세계
     private const int ConstantsVer = 1;
     private readonly string _worldPath = "world.json";   // 세이브 슬롯: 슬롯별 world{n}.json
+    private bool _autosave = true;   // false면 SaveWorld() 자동 기록 생략 → 수동 저장(ManualSave) 시점만 디스크 반영
 
     // ── 경제 상수 (초안 — 튜닝 전제) ──
     private const float GachaCost = 100f, StartGold = 50f;
@@ -2850,8 +2851,27 @@ public sealed class Game
         return true;
     }
 
+    /// <summary>자동저장 on/off. off로 두면 진행이 디스크에 안 쌓이고, 재시작 시 마지막 수동 저장 시점으로 로드.</summary>
+    public string SetAutosaveJson(bool on)
+    {
+        _autosave = on;
+        if (on) SaveWorld();   // 켤 때 현재 상태를 곧바로 반영
+        return """{"ok":true}""";
+    }
+
+    /// <summary>수동 저장 — 자동저장 off여도 강제로 현재 상태를 슬롯 파일에 기록.</summary>
+    public string ManualSaveJson()
+    {
+        bool prev = _autosave;
+        _autosave = true;
+        SaveWorld();
+        _autosave = prev;
+        return """{"ok":true}""";
+    }
+
     private void SaveWorld()
     {
+        if (!_autosave) return;   // 자동저장 off — 메모리 상태만 유지(수동 저장/재시작 로드 기준)
         try { if (File.Exists(_worldPath)) File.Copy(_worldPath, _worldPath + ".bak", true); } catch { }   // 저장 전 스냅샷
         File.WriteAllText(_worldPath, JsonSerializer.Serialize(new WorldV2(
             SchemaVer, ConstantsVer, _worldSeed, _gold, _gachaCount, _freeGachas,

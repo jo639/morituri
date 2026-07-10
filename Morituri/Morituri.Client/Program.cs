@@ -72,8 +72,18 @@ internal static class Program
             "/api/newcareer" when method == "POST" => NewCareer(),
             "/api/slots" when method == "POST" => SlotsJson(),
             "/api/loadslot" when method == "POST" => LoadSlot(IntOf(body ?? "", "n")),
+            "/api/save" when method == "POST" => game.ManualSaveJson(),
+            "/api/autosave" when method == "POST" => game.SetAutosaveJson(BoolOf(body ?? "", "on")),
+            "/api/quit" when method == "POST" => Quit(),
             _ => null,
         });
+
+        string Quit()
+        {
+            // 응답을 돌려준 뒤 프로세스 종료 (자동저장 off면 미저장 진행은 버려짐 = 마지막 수동저장 로드)
+            new Thread(() => { Thread.Sleep(120); Environment.Exit(0); }) { IsBackground = true }.Start();
+            return """{"ok":true}""";
+        }
 
         string NewCareer()
         {
@@ -126,6 +136,11 @@ internal static class Program
             try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetString() ?? ""; }
             catch { return ""; }
         }
+        static bool BoolOf(string body, string key)
+        {
+            try { return JsonDocument.Parse(body).RootElement.GetProperty(key).GetBoolean(); }
+            catch { return false; }
+        }
 
         // 창 없는 서버 전용 모드 (개발 검증: 브라우저로 localhost 접속)
         if (Environment.GetEnvironmentVariable("MORITURI_NO_WINDOW") == "1")
@@ -142,9 +157,10 @@ internal static class Program
             .SetResizable(true)
             .Center()
             .SetContextMenuEnabled(false)
+            .SetFullScreen(true)          // 기본 전체화면 (설정에서 창모드 선택 시 로드 직후 index가 전환)
             .Load($"http://localhost:{port}/index.html");
 
-        bool fullscreen = false;
+        bool fullscreen = true;
         void SetFs(bool on)
         {
             fullscreen = on;
