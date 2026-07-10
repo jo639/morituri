@@ -230,6 +230,11 @@ window.addEventListener('message', e=>{
     if (AC){ try{ AC.suspend(); }catch(_){} }
   } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
     audioResume();
+  } else if (e.data.cmd === 'reloadSeek'){  // 실시간 전술 변경: 재시뮬된 viewer.json을 깜빡임 없이 이어서 재생
+    const keep = t;                          // 현재 재생 시각 유지(전환점 이전 프레임은 결정론적으로 동일 → 매끄럽게 이어짐)
+    fetch('viewer.json?t=' + Date.now(), {cache:'no-store'}).then(r=>r.text()).then(txt=>{
+      _resumeAt = keep; load(txt);
+    }).catch(()=>{});
   }
 });
 
@@ -288,6 +293,7 @@ function playSfxRange(t0, t1){
   }
 }
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
+let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 시각 (실시간 전술 변경 연속성)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
 
@@ -330,9 +336,10 @@ function load(json){
   t = 0; postGame = false; postGameElapsed = 0; vScrA = null; vScrB = null; hitstopUntil = 0; setPlaying(true);
   lastSfxT = 0;
   audioResume();   // allow="autoplay" 위임 시 클릭 없이도 효과음 재생 (무음 관전 버그 해소)
-  // 라이브 전술 개입: 재시뮬 후 ?seek= 시각부터 이어서 재생 (감독이 바꾼 그 순간부터 새 운명)
-  const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
-  if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; }
+  // 라이브 전술 개입: 재시뮬 후 이어서 재생. reloadSeek(_resumeAt) > URL ?seek= 우선.
+  if (_resumeAt != null){ t = Math.min(_resumeAt, duration); lastSfxT = t; _resumeAt = null; }
+  else { const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
+         if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; } }
   // KO 슬로모션: 결정타(마지막 유효타) 주변에서 시간이 느려진다
   koSlowT = -1;
   if (r.Reason === 'KO'){
@@ -842,29 +849,30 @@ function drawBleed(fx, fy, sc, stacks){
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 타격 임팩트 → 화면 흔들림 + 결정타 펀치인 줌 (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
-  let shx=0, shy=0, kick=1;
-  const CAMKICK = SET.camzoom !== false;   // 설정에서 끌 수 있음 (mor_settings.camzoom=false)
+  // 타격 임팩트 → 화면 흔들림 + 좌우 기울기(틸트) (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
+  let shx=0, shy=0, tilt=0;
+  const CAMSHAKE = SET.camzoom !== false;   // 설정 '카메라 흔들림'에서 끌 수 있음 (mor_settings.camzoom=false)
   for (const im of impacts){ const age=t-im.t;
     if (age>=0 && age<=0.22){ const d=1-age/0.22, m=im.mag*d*d;
       shx += Math.sin(age*185+im.t*31)*m;
       shy += Math.cos(age*152+im.t*27)*m*0.55; }
-    // 결정타·KO 카메라 당겨찍기 — 보수적 강도(KO +15% / 다운·강타 +6%), 부드러운 감쇠
-    if (CAMKICK){
-      const big = im.kind==='ko' || im.kind==='down' || im.stop>=0.07;
-      if (big){ const life=im.kind==='ko'?0.6:0.34;
-        if (age>=0 && age<=life){ const e=1-age/life;
-          kick = Math.max(kick, 1 + (im.kind==='ko'?0.15:0.06)*e*e); } }
+    // 피격 카메라 틸트 — 좌우로 기울었다 감쇠 진동으로 복귀. 약공(mag 작음)은 제곱 스케일로 매우 작게.
+    if (CAMSHAKE){
+      const life=0.34;
+      if (age>=0 && age<=life){ const d=1-age/life;
+        const amp=Math.min(1, im.mag/13); const strength=amp*amp;    // 강타 13→1.0 · 약공 2.2→0.03
+        const dir=((im.t*971|0)&1)?1:-1;                             // 피격마다 좌/우 방향 교차
+        tilt += Math.sin(age*38) * 0.055 * strength * d * dir;        // 최대 ~3°, age=0에서 0으로 시작(부드러운 진입)
+      }
     }
   }
   // ── 카메라 (연출 전용): 줌 모드는 ZOOM배 확대하며 두 선수 중점을 화면 중앙(CX,CY)에 두고 부드럽게 추적.
-  //    기본 모드는 아레나 중심 고정·등배. 펀치인 킥은 두 선수 중점 쪽으로 시선을 끌며 확대. sim 위치/밸런스 무관.
+  //    기본 모드는 아레나 중심 고정·등배. sim 위치/밸런스 무관. (피격 연출=틸트, 줌 아님)
   {
     const cf=frameAt(t), ck=cf.k;
     const mx=((cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck)+(cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck))/2;
     const my=((cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck)+(cf.f.By+(cf.g.By-cf.f.By)*ck))/2;
-    const pm = proj(mx,my);
-    const tgt = viewMode==='zoom' ? pm : {x:CX,y:CY};
+    const tgt = viewMode==='zoom' ? proj(mx,my) : {x:CX,y:CY};
     const zTgt = viewMode==='zoom' ? 1.9 : 1.0;
     if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
     camZoom += (zTgt-camZoom)*0.12;
@@ -874,12 +882,9 @@ function render(){
     const mgnX=Math.max(0, RX-halfW+30), mgnY=Math.max(0, RY-halfH+20);
     camX=Math.min(CX+mgnX, Math.max(CX-mgnX, camX));
     camY=Math.min(CY+mgnY, Math.max(CY-mgnY, camY));
-    // 펀치인: 킥이 있는 동안 카메라 중심을 두 선수 중점 쪽으로 이동(강도 비례)
-    var ciX = camX, ciY = camY;
-    if (kick>1){ const kw=Math.min(1,(kick-1)/0.15)*0.8; ciX += (pm.x-camX)*kw; ciY += (pm.y-camY)*kw; }
   }
   ctx.save(); ctx.translate(shx, shy);
-  ctx.translate(CX, CY); ctx.scale(camZoom*kick, camZoom*kick); ctx.translate(-ciX, -ciY);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
   // 경기장 배경 — 프리렌더 1장 (관중석·모래 질감·벽, buildArenaBg)
   ctx.drawImage(bgcv, 0, 0, W, H);
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
@@ -1089,8 +1094,13 @@ function tick(now){
     if (postGameElapsed >= TAUNT_DUR) postGame = false;
   } else lastWall = now;
   if (frames) render();
+  // 실시간 재생 시각을 부모 셸에 보고 (라이브 화면의 실시간 전술 변경이 현재 시각을 알도록) — 10Hz 스로틀
+  if (frames && window.parent !== window && now - lastLiveReport > 100){
+    lastLiveReport = now; window.parent.postMessage({liveNow: t}, '*');
+  }
   requestAnimationFrame(tick);
 }
+let lastLiveReport = 0;
 function setPlaying(p){ playing = p && t < duration;
   document.getElementById('play').textContent = playing ? '⏸ 일시정지' : '▶ 재생';
   if (playing && t>=duration) t=0; }

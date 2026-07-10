@@ -41,6 +41,32 @@
   .screen.on{ display:block; animation:fadeIn .18s ease; }
   .screen > .pad{ padding:18px 20px 24px; max-width:min(1240px,94vw); margin:0 auto; }
   iframe{ width:100%; height:100%; border:0; background:var(--bg); }
+  /* ── 라이브 경기(전용 게임플레이 화면) ── */
+  #livesc{ overflow:hidden; }
+  #liveF{ position:absolute; inset:0; }
+  #liveTop{ position:absolute; top:0; left:0; right:0; z-index:5; display:flex; align-items:center; gap:12px;
+            padding:8px 16px; background:linear-gradient(180deg,rgba(18,12,6,.94),rgba(18,12,6,0)); pointer-events:none; }
+  #liveTop .btn{ pointer-events:auto; }
+  #liveTop .lvtag{ font-family:var(--font-display); font-weight:800; letter-spacing:.1em; color:var(--b);
+                   display:inline-flex; align-items:center; gap:5px; }
+  #liveTop .lvtag::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--b);
+                           box-shadow:0 0 8px var(--b); animation:livePulse 1.1s ease-in-out infinite; }
+  @keyframes livePulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
+  #liveCmd{ position:absolute; left:14px; top:56px; z-index:6; width:160px;
+            background:rgba(18,12,6,.86); border:1px solid var(--line); border-radius:var(--r2);
+            padding:10px 11px; box-shadow:var(--sh2); backdrop-filter:blur(3px); }
+  #liveCmd .lchead{ font-size:11px; color:var(--gold); font-weight:700; letter-spacing:.05em;
+                    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  #liveCmd .lchead .rem{ color:var(--dim); font-weight:400; }
+  .livetac{ display:flex; align-items:center; gap:6px; width:100%; margin-top:5px; padding:6px 9px;
+            border-radius:var(--r1); cursor:pointer; text-align:left; font-size:13px;
+            background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+            transition:border-color .12s, background .12s; }
+  .livetac:hover:not(:disabled){ border-color:var(--gold-deep); background:var(--panel3); }
+  .livetac.cur{ background:linear-gradient(180deg,#e0bd6a,var(--gold) 55%,#b8923f); color:#231604;
+                border-color:#8a6a2a; font-weight:800; }
+  .livetac:disabled{ opacity:.45; cursor:default; }
+  #liveCmd .lcnote{ font-size:10px; color:var(--dim); margin-top:8px; line-height:1.35; }
   h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
   .note{ color:var(--dim); font-size:12px; }
   .err{ color:var(--b); font-size:12px; min-height:16px; }
@@ -243,11 +269,13 @@
   </div></div>
 
   <div class="screen" id="livesc">
-    <div id="watchbar" style="background:#2f2418;border-bottom:2px solid var(--gold)">
-      <span class="card" id="liveCard" style="color:var(--gold);font-weight:800">⚔ LIVE</span>
-      <button id="liveTacBtn" onclick="liveAskTactic()" style="background:var(--gold);color:#231a12;border:none;font-weight:800;padding:5px 14px;border-radius:7px">⏸ 전술 변경 (2회)</button>
-      <button onclick="doSettle()" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button></div>
     <iframe id="liveF" src="about:blank" allow="autoplay"></iframe>
+    <div id="liveTop">
+      <span class="lvtag">⚔ LIVE</span>
+      <span id="liveCard" style="font-weight:700;color:var(--ink)"></span>
+      <button onclick="doSettle()" class="btn primary" style="margin-left:auto" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button>
+    </div>
+    <div id="liveCmd"></div>
   </div>
 
   <div class="screen" id="watch">
@@ -360,7 +388,7 @@
   <div class="rrow"><span>하이라이트 기본</span>
     <label><input type="checkbox" id="cfgHl"> <span class="d">관전을 임팩트 구간만 점프 재생(~30초)으로 시작</span></label></div>
   <div class="rrow"><span>카메라 연출</span>
-    <label><input type="checkbox" id="cfgCam" checked> <span class="d">결정타·KO 순간 카메라 펀치인 (멀미 시 끄기)</span></label></div>
+    <label><input type="checkbox" id="cfgCam" checked> <span class="d">피격 시 카메라 좌우 흔들림(틸트) (멀미 시 끄기)</span></label></div>
   <div class="rrow"><span>자동 저장</span>
     <label><input type="checkbox" id="cfgAuto" checked> <span class="d">경기·결정마다 자동 저장. 끄면 「저장」한 최신 시점으로만 불러온다</span></label></div>
   <div class="rrow"><span>화면 모드</span>
@@ -493,6 +521,8 @@ async function openProfile(id){
 }
 
 function go(s){
+  if (liveActive && s!=='livesc') return;   // 경기 진행 중엔 탭 이동 차단(정산 후에만 나갈 수 있다)
+  $('top').style.display = (s==='livesc') ? 'none' : '';   // 라이브=전용 게임플레이 화면(상단탭 숨김)
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
   if (s==='league') $('leagueF').src='league.html?t='+Date.now();
@@ -1051,45 +1081,45 @@ window.setPrep = k=>{ _selPrep=k;
 window.pickTac = tc => { $('tacModal').classList.remove('on'); doPlay(tc); };
 $('tacModal').onclick = e => { if(e.target===$('tacModal')) $('tacModal').classList.remove('on'); };
 
-// ── 라이브 경기(전용 화면): 잠정 시뮬 관전 → 전술 개입(2회) → 정산 ──
-let liveActive = false, liveRemaining = 2, livePool = null, liveTac = null;
+// ── 라이브 경기(전용 게임플레이 화면): 잠정 시뮬 관전 → 실시간 전술 개입(2회) → 정산 ──
+let liveActive = false, liveRemaining = 2, livePool = null, liveTac = null, _liveNow = 0;
 async function doPlay(tacticId){
   const nx=$('next'); nx.disabled=true;
   try{
     const r = await api('/api/live', {tacticId: tacticId||'', prep:_selPrep});
     if (r.error){ alert(r.error); return; }
-    liveActive = true; liveRemaining = r.remaining ?? 2;
-    livePool = (st.NextMatch&&st.NextMatch.MyPool)||[]; liveTac = tacticId||(st.NextMatch&&st.NextMatch.MyTactic);
-    $('liveCard').textContent = `⚔ LIVE — ${r.a} vs ${r.b}` + (r.kind&&r.kind.startsWith('cup')?' 🏆':'');
-    $('liveTacBtn').disabled = false;
-    $('liveTacBtn').textContent = `⏸ 전술 변경 (${liveRemaining}회)`;
+    liveActive = true; liveRemaining = r.remaining ?? 2; _liveNow = 0;
+    livePool = (st.NextMatch&&st.NextMatch.MyPool)||[];   // 단축형(DECISION 등)
+    liveTac = (tacticId || (st.NextMatch&&st.NextMatch.MyTactic) || '').replace('TAC_','');   // 풀과 같은 단축형으로 비교
+    $('liveCard').textContent = `${r.a} vs ${r.b}` + (r.kind&&r.kind.startsWith('cup')?' 🏆':'');
+    renderLiveCmd();
     $('liveF').src = 'viewer.html?t=' + Date.now();
     go('livesc');
   } finally { nx.disabled=false; }
 }
-window.liveAskTactic = ()=>{
-  if (!liveActive || liveRemaining<=0) return;
-  $('liveF').contentWindow.postMessage({cmd:'pauseGetTime'}, '*');   // viewer가 liveTime으로 응답
-};
-let liveT = 0;
-function liveTacModal(tm){
-  liveT = tm;
-  $('tmTitle').textContent = `⏸ ${tm.toFixed(1)}s — 전술 변경 (남은 ${liveRemaining}회)`;
-  $('tmVersus').innerHTML = ''; $('tmPrep').innerHTML = '';
-  $('tmOdds').innerHTML = '<div class="note">지금 이 순간부터 새 전술로 싸운다 — 이후의 운명이 갈린다.</div>';
-  $('tmOpts').innerHTML = livePool.map(tc=>
-    `<button class="tacbtn" onclick="liveSwitch('${tc}')"><b>${t(tc)}</b>${tc===liveTac?' <span class="d">(현재)</span>':''}<div class="d">${TACD[tc]||''}</div></button>`).join('')
-    + `<button class="tacbtn" style="opacity:.7;text-align:center" onclick="$('tacModal').classList.remove('on')">그대로 간다</button>`;
-  $('tacModal').classList.add('on');
+// 항시 노출 전술 패널 — 현재 전술 강조·남은 변경 횟수·실시간 클릭
+function renderLiveCmd(){
+  const spent = liveRemaining<=0;
+  $('liveCmd').innerHTML =
+    `<div class="lchead">⚔ 전술 <span class="rem">${spent?'변경 소진':'변경 '+liveRemaining+'회'}</span></div>` +
+    (livePool||[]).map(tc=>{
+      const cur = tc===liveTac;
+      const dis = spent && !cur;
+      return `<button class="livetac${cur?' cur':''}" ${dis?'disabled':''} onclick="liveSetTactic('${tc}')" title="${TACD[tc]||''}">${t(tc)}${cur?' ✓':''}</button>`;
+    }).join('') +
+    `<div class="lcnote">정지 없이 실시간 전환 — 지금 이 순간부터 새 전술로 싸운다.</div>`;
 }
-window.liveSwitch = async (tc)=>{
-  $('tacModal').classList.remove('on');
-  const r = await api('/api/liveswitch',{time:liveT, tacticId:tc});
-  if (r.error){ alert(r.error); return; }
-  liveRemaining = r.remaining; liveTac = tc;
-  $('liveTacBtn').textContent = `⏸ 전술 변경 (${liveRemaining}회)`;
-  $('liveTacBtn').disabled = liveRemaining<=0;
-  $('liveF').src = `viewer.html?seek=${liveT.toFixed(2)}&t=${Date.now()}`;   // 그 시점부터 새 운명 재생
+// 실시간 전술 전환: 일시정지·모달 없이 현재 시각에 예약 → viewer가 깜빡임 없이 이어받음
+window.liveSetTactic = async (tc)=>{
+  if (!liveActive || liveRemaining<=0 || tc===liveTac) return;
+  const r = await api('/api/liveswitch', {time: _liveNow, tacticId: tc});
+  if (r.error){ toast('⚠ '+r.error); return; }
+  liveTac = tc;
+  if (!r.nochange){
+    liveRemaining = r.remaining;
+    try{ $('liveF').contentWindow.postMessage({cmd:'reloadSeek'}, '*'); }catch(_){}
+  }
+  renderLiveCmd();
 };
 function stopLive(){   // 라이브 관전 종료 — 백그라운드 재생·효과음 정지
   const f=$('liveF');
@@ -1244,7 +1274,7 @@ window.openGreat = (idx)=> loadReplay('/api/watchgreat', idx, '🎞 명경기');
 window.addEventListener('message', e=>{
   if (!e.data) return;
   if (typeof e.data.watchIdx === 'number') openWatch(e.data.watchIdx);
-  if (typeof e.data.liveTime === 'number') liveTacModal(e.data.liveTime);   // 라이브 일시정지 응답
+  if (typeof e.data.liveNow === 'number') _liveNow = e.data.liveNow;   // 실시간 재생 시각(전술 전환 기준)
   if (e.data.matchEnded && liveActive) doSettle();   // 라이브 관전 종료 → 정산 → 결과
 });
 // 리그 진입 시 자동 진행 안내
