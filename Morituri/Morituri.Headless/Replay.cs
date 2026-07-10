@@ -121,7 +121,7 @@ internal static class Replay
     }
 
     // "무기/전술/성격[/특성+특성][/감정+감정]" 한 빌드 → FighterDef. 빈 필드는 기본값.
-    // 4번째 필드 = +로 구분된 특성(예: GIANT+ZOMBIE). 5번째 필드 = +로 구분된 감정(예: GRUDGE 또는 TRAUMA+CONFIDENT).
+    // 4번째 필드 = +로 구분된 특성(예: GIANT+ZOMBIE). 5번째 필드 = +로 구분된 감정(예: TRAUMA+CONFIDENT). 원한은 감정 아닌 관계(NEMESIS).
     private static FighterDef BuildFighter(string spec, int idx)
     {
         var f = spec.Split('/');

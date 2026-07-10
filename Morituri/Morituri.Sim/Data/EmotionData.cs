@@ -34,7 +34,8 @@ public static class EmotionTable
     public const string Frustrated = "EMO_FRUSTRATED";
     // ── KO 패배 ──
     public const string Trauma    = "EMO_TRAUMA";
-    public const string Grudge    = "EMO_GRUDGE";
+    // 원한은 감정이 아니라 '특정 상대를 향한 관계'(RelationType.Nemesis)로 다룬다 — EMO_GRUDGE 폐지.
+    // KO패를 내면화하면 트라우마(자기 상태), 외부화하면 상대에게 원한(원수 관계)을 품는다.
 
     // GenChance(발생률): 강렬한 결과(KO·압승)일수록 잘 남고, 평범한 승리는 잘 안 남는다(이벤트성).
     // 튜닝(2026-06-26): 전체 발생률을 ~30%→~15%로 절반 + 자만은 오히려↑(0.35→0.50, 희귀하지만 더 또렷한 변화구). emotiongen으로 점검.
@@ -49,9 +50,8 @@ public static class EmotionTable
         new(Inferior,   "열등감",   -0.10f, new[] { Add(TParam.Aggression, -0.15f), Add(TParam.PreferredDistance, 0.4f), Add(TParam.GuardBias, 0.15f) },  0.15f), // 위축
         new(Motivated,  "동기부여", 0f,     new[] { Add(TParam.CommitThreshold, -0.10f), Add(TParam.Aggression, 0.10f), Add(TParam.CounterWindow, 0.05f) },0.18f), // 분발·집중
         new(Frustrated, "좌절",     0.10f,  new[] { Add(TParam.CommitThreshold, -0.15f), Add(TParam.Aggression, 0.10f), Add(TParam.GuardBias, -0.10f) },   0.15f), // 산만·자포자기
-        // KO 패배 (강렬 → 더 잘 남음)
+        // KO 패배 (강렬 → 더 잘 남음). 공격형의 '원한'은 감정이 아니라 관계(원수)로 — 아래 Classify 참조.
         new(Trauma,     "트라우마", -0.15f, new[] { Add(TParam.Aggression, -0.30f), Add(TParam.PreferredDistance, 1.0f), Add(TParam.GuardBias, 0.20f) },   0.22f), // 강한 공포
-        new(Grudge,     "원한",     0.20f,  new[] { Add(TParam.Aggression, 0.20f), Add(TParam.RiskTolerance, 0.20f), Add(TParam.CommitThreshold, -0.10f), Add(TParam.HeavyBias, 0.20f) }, 0.25f), // 특정 상대 복수
     };
 
     private static readonly Dictionary<string, EmotionDef> _byId = All.ToDictionary(e => e.Id);
@@ -68,6 +68,12 @@ public static class EmotionTable
 /// </summary>
 public static class EmotionGen
 {
+    /// <summary>복수심 성격(충동·잔혹·대담) — KO패 시 원한을 상대에게 품는다(감정 아닌 관계). Game 층이 관계 심화에 사용.</summary>
+    public static bool IsVengeful(string personalityId) =>
+        personalityId == PersonalityTable.Reckless.Id
+        || personalityId == PersonalityTable.Cruel.Id
+        || personalityId == PersonalityTable.Bold.Id;
+
     /// <summary>이 결과·성격이라면 '어떤' 감정 유형인가 (순수 분류, 난수 없음). 발생 여부는 <see cref="Roll"/>이 결정.</summary>
     /// <param name="winner">0 / 1 / -1(무승부)</param>
     /// <param name="selfIdx">이 선수의 index (0 또는 1)</param>
@@ -82,7 +88,6 @@ public static class EmotionGen
 
         bool timidType   = id == PersonalityTable.Coward.Id || id == PersonalityTable.Wary.Id;
         bool resolveType = id == PersonalityTable.Bold.Id || id == PersonalityTable.Honorable.Id || id == PersonalityTable.Opportunist.Id;
-        bool grudgeType  = id == PersonalityTable.Reckless.Id || id == PersonalityTable.Cruel.Id || id == PersonalityTable.Bold.Id;
         bool frustType   = id == PersonalityTable.Reckless.Id || id == PersonalityTable.Cruel.Id || id == PersonalityTable.Arrogant.Id;
         bool prideType   = id == PersonalityTable.Arrogant.Id || id == PersonalityTable.Showman.Id;
 
@@ -94,9 +99,10 @@ public static class EmotionGen
             return EmotionTable.Confident;
         }
 
-        // 패배
+        // KO 패배: 공격형(충동·잔혹·대담)은 '원한'을 감정이 아니라 상대를 향한 관계(원수)로 품는다(Game 층 처리) → 무감정.
+        //          그 외는 트라우마(자기 상태의 공포).
         if (wasKo)
-            return grudgeType ? EmotionTable.Grudge : EmotionTable.Trauma;
+            return IsVengeful(id) ? null : EmotionTable.Trauma;
 
         // 판정/시간 패배
         if (timidType)   return EmotionTable.Inferior;

@@ -59,6 +59,7 @@ public sealed class Game
         public int W, L, D, Streak;
         public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
         public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
+        public int GrudgeCount;                                     // 통산 원한(굴욕적 KO패) 횟수 — 성격 드리프트 입력(감정 아닌 관계로 대체)
         public int MGrit, MRecover, MShow, MPay;                    // 마스터리(0~5) — 투혼·회복력·흥행·협상 (비스탯, 메타 전용)
         public readonly List<string> PendingEmotions = new();
         public readonly Dictionary<string, int> EmoHistory = new(); // 커리어 감정 이력(누적) — 성격 변화(Phase 4)의 입력
@@ -79,7 +80,8 @@ public sealed class Game
         int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1, int SeasonBrutals = 0,
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,
         Dictionary<string, int>? EmoHistory = null,   // 감정 이력(성격 드리프트 입력)
-        string[]? Skills = null);                     // T12 패시브 스킬
+        string[]? Skills = null,                      // T12 패시브 스킬
+        int GrudgeCount = 0);                         // 통산 원한 횟수(감정→관계 전환)
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
         string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
@@ -110,6 +112,7 @@ public sealed class Game
         int BetHits = 0, float Patronage = 0f,   // 베팅 누적 적중·후원자 관계
         int BetStreak = 0,   // 연속 적중(스트릭 보너스)
         bool Redemption = false, int MyCupTitles = 0,   // 재기의 서약(강등 아크)·내 컵 우승 횟수(엔드게임)
+        string? FixFighterId = null, float FixReward = 0f,   // 승부조작 가담 예약(영속)
         List<BetLogRec>? BetLog = null, int StreetSeq = 0,   // 베팅 이력·거리 시비 카운터
         int SurgerySeq = 0);   // 의무실 수술 카운터(시드 결정론)
     private sealed record LudusRepRec(string Id, float Rep);
@@ -185,7 +188,8 @@ public sealed class Game
         string? MasterPending = null, int ScoutLevel = 0, string? Legacy = null,   // 은퇴 유산(#10)
         float Patronage = 0f,   // 후원자 관계도(#7)
         GambleDoc? Gamble = null,   // 도박장 탭(#32)
-        bool Redemption = false);   // 재기의 서약(강등 아크) 진행 중
+        bool Redemption = false,   // 재기의 서약(강등 아크) 진행 중
+        string? FixTarget = null);   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
     private sealed record GambleDoc(float SeasonNet, int Hits, int Total, List<BetLogRec> Log, int Streak = 0);
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
@@ -215,7 +219,8 @@ public sealed class Game
         float Hype = 0f, List<string>? Injuries = null,   // 흥행도·부상자(AI 결과 카드 #4)
         bool Upset = false, float WinnerOdds = 0f,        // 대이변·승자의 경기 전 배당(잭팟 연출 — 0=산출 불가)
         bool BetWon = false, string? BetNote = null,      // 이 경기 베팅 정산(결과 카드 연계)
-        ExecVerdict? Exec = null);                        // ☠처형전 엄지 판정(격전 패배 시)
+        ExecVerdict? Exec = null,                         // ☠처형전 엄지 판정(격전 패배 시)
+        string? FixNote = null, bool FixBad = false);     // 승부조작 결말(가담 선수 경기 시)
 
     /// <summary>☠처형전 엄지 판정 — 죽음은 주사위가 아니라 '군중과 황제의 마음'. 인기·드라마가 자비를 부른다.</summary>
     public sealed record ExecVerdict(string Loser, int DeathPct, bool Spared, string Factors);
@@ -279,6 +284,10 @@ public sealed class Game
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
     private string? _cupChampion;                            // 최근 컵 우승자 이름
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
+    private string? _fixFighterId;   // 승부조작: 이 선수가 다음 경기를 던져야 한다(가담 예약)
+    private float _fixReward;        // 승부조작 성공 보수
+    private string? _lastFixNote;    // 직전 경기의 승부조작 결말(결과 카드 표시)
+    private bool _lastFixBad;        // 직전 승부조작 결말이 나쁜 것(발각·보복)인가 — 색 구분
     private float _patronage;   // 후원자 관계도(−100 압박 ~ +100 총애) — #7. 선택으로 변동, 시즌말 정산
     private void Patron(float d) => _patronage = Math.Clamp(_patronage + d, -100f, 100f);
     private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
@@ -495,10 +504,13 @@ public sealed class Game
 
         // ── 신규 미션(#13) — 수락/거절 · 대사 포함(#9) · 일부는 후원 관계(#7) 변동 ──
         new EvtTemplate { Id = "fix", Icon = "🎲", Title = "승부조작 제안", NeedsFighter = true,
-            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n💬 복면인: \"다음 경기, {n}이(가) 져주기만 하면 되네. 이 금화는 침묵의 대가야.\"",
+            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n💬 복면인: \"다음 경기, {n}이(가) 져주기만 하면 되네. 보수는 지고 나서. 허튼짓하면… 알지?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("수락 (골드 +150, 발각 위험·명성 급락 가능)", g => { _gold += 150f;
-                    var rng = new SimRandom(SeasonSeed ^ 0xF15E_D000UL + (ulong)_matchIdx); if (rng.Roll(0.35f)) { _ludusRep = MathF.Max(0, _ludusRep - 40f); Patron(-25f); return "골드 +150 — ⚠ 발각! 명성 −40, 후원 −25 (더러운 소문이 퍼졌다)"; } return "골드 +150 — 아무도 모른다… 아직은"; }),
+                // 선입금 없음 — 실제로 그 선수가 다음 경기에서 져야 보수 지급(발각 리스크). 이기면 뒷돈 주인의 보복.
+                ("가담한다 (다음 경기에서 져야 골드 +150 · 이기면 보복)", g => {
+                    if (!SeasonActive) return "시즌이 시작되면 다시 오라 — 던질 경기가 없다";
+                    _fixFighterId = g!.Id; _fixReward = 150f;
+                    return $"🎲 검은 거래 성립 — {g.Name}이(가) 다음 경기를 던져야 한다. 이기거나 비기면 뒷돈의 주인이 가만있지 않는다"; }),
                 ("거절 (명성 +15, 후원 +10)", g => { AddRep(15f); Patron(10f); return "명성 +15, 후원 +10 — \"청렴한 라니스타라, 흔치 않지.\""; }) } },
 
         new EvtTemplate { Id = "tribute", Icon = "🏛", Title = "총독의 조공 요구", NeedsFighter = false,
@@ -539,7 +551,10 @@ public sealed class Game
         new EvtTemplate { Id = "taunt", Icon = "😤", Title = "라이벌의 조롱", NeedsFighter = true,
             Body = n => $"광장에서 한 검투사가 침을 뱉으며 비웃는다.\n💬 라이벌: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("맞받아친다 (인기 +6, 다음 경기 원한)", g => { g!.Popularity += 6f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Grudge); return $"{g.Name} 인기 +6, 다음 경기 '원한'"; }),
+                ("맞받아친다 (인기 +6, 라이벌에게 원한을 새긴다)", g => { g!.Popularity += 6f;
+                    var t = PickGrudgeTarget(g);
+                    if (t != null) { _ledger.DeepenGrudge(g.Id, t.Id, 20f); return $"{g.Name} 인기 +6 — {t.Name}을(를) 숙적으로 새겼다 (원한)"; }
+                    return $"{g.Name} 인기 +6"; }),
                 ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
 
         new EvtTemplate { Id = "mentor", Icon = "📜", Title = "노장의 지도", NeedsFighter = true,
@@ -553,9 +568,11 @@ public sealed class Game
                 string ln = b.Name ?? "경쟁 검투소";
                 return $"{ln}의 인장이 찍힌 서신이 도착했다 — 피 냄새가 나는 도발이다.\n💬 서신: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {ln}\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("공개 답신으로 맞받아친다 (인기 +8, 다음 경기 '원한')", g => { g!.Popularity += 8f;
-                    if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Grudge);
-                    return $"{g.Name} 인기 +8, 다음 경기 '원한' — 관중이 두 검투소의 신경전을 즐긴다"; }),
+                ("공개 답신으로 맞받아친다 (인기 +8, 그 검투소에 원한)", g => { g!.Popularity += 8f;
+                    var bl = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
+                    var t = PickGrudgeTarget(g, bl.Id);
+                    if (t != null) { _ledger.DeepenGrudge(g.Id, t.Id, 22f); return $"{g.Name} 인기 +8 — {t.Name}({LudusNameOf(t.LudusId)})에게 원한을 품었다"; }
+                    return $"{g.Name} 인기 +8 — 관중이 두 검투소의 신경전을 즐긴다"; }),
                 ("품위를 지킨다 (루두스 명성 +8)", _ => { AddRep(8f); return "루두스 명성 +8 — \"짖는 개는 물지 않는 법.\""; }) } },
 
         new EvtTemplate { Id = "blackmarket", Icon = "🗡", Title = "암시장 무기상", NeedsFighter = true,
@@ -564,6 +581,20 @@ public sealed class Game
                 ("산다 (골드 −60 · 부족분은 빚)", g => { var pay = SpendOrDebt(60f); var r = NudgeStat(g!, "Atk", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("정직하게 (명성 +10)", g => { AddRep(10f); return "루두스 명성 +10"; }) } },
     };
+
+    /// <summary>원한 이벤트용 실제 표적 선정 — 원한은 특정 상대에게 향한다. 이미 척진 상대(음의 affinity 최대) 우선,
+    /// 없으면 (선호 검투소의) 라이벌 AI 무작위. 추상적 도발을 실제 관계 그래프로 못박아 다음 대결의 서사를 만든다.</summary>
+    private Gladiator? PickGrudgeTarget(Gladiator self, string? preferLudus = null)
+    {
+        var ai = _cast.Where(g => !g.IsPlayer && g.Id != self.Id).ToList();
+        if (ai.Count == 0) return null;
+        var enemy = ai.OrderBy(g => _ledger.Get(self.Id, g.Id).Affinity).First();
+        if (_ledger.Get(self.Id, enemy.Id).Affinity < 0f) return enemy;   // 이미 척진 상대에게 원한이 깊어진다
+        var rng = new SimRandom(_worldSeed ^ 0x6D0E_5EEDUL + (ulong)(_matchIdx * 7 + 1));
+        var pool = preferLudus != null ? ai.Where(g => g.LudusId == preferLudus).ToList() : ai;
+        if (pool.Count == 0) pool = ai;
+        return pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
+    }
 
     /// <summary>플레이어 경기 후 확률적으로 이벤트 스폰(결정론 — 시드 파생). 대상=방금 싸운 내 선수.</summary>
     private void MaybeSpawnEvent(Gladiator? subject)
@@ -945,6 +976,14 @@ public sealed class Game
     {
         SeasonActive = false;
         _seasonsPlayed = _seasonNo;
+        // 승부조작 미이행(가담 선수가 시즌 내 더 안 싸움): 뒷돈 주인이 배신으로 간주 — 협박 채무·명성 압박
+        if (_fixFighterId != null)
+        {
+            var fixName = _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name ?? "그 검투사";
+            _ludusRep = MathF.Max(0f, _ludusRep - 25f); _debt += _fixReward;
+            _story.Add((_rounds + 1, "fix", $"🎲 미이행 — {fixName}이(가) 끝내 경기를 던지지 않았다. 뒷돈의 주인이 배신으로 여긴다 (명성 −25·협박 채무 +{_fixReward:F0})"));
+            _fixFighterId = null; _fixReward = 0f;
+        }
         var standings = Standings(1);                       // 리그 챔피언 = 1부 우승자
         var champ = standings[0];
         var d2 = Standings(2);
@@ -1343,10 +1382,9 @@ public sealed class Game
         if (target == null) return Err("시비 걸 상대가 없다");
         var res = RunExhibition(g, target, rng.NextUInt64());   // 실제 난투 시뮬 → viewer.json(길거리)
         bool win = res.Winner == 0;
-        // 감정 유발 + 관계 악화(그 상대 한정) — 다음 경기에서 발화
-        target.PendingEmotions.Add(EmotionTable.Grudge);
-        _ledger.Get(target.Id, g.Id).Affinity = Math.Clamp(_ledger.Get(target.Id, g.Id).Affinity - 20f, -100f, 100f);
-        _ledger.Get(g.Id, target.Id).Affinity = Math.Clamp(_ledger.Get(g.Id, target.Id).Affinity - 8f, -100f, 100f);
+        // 원한 = 관계(그 상대 한정): 시비 걸린 상대는 g에게 원한을 품는다(상대→나 강하게, 나→상대 약하게)
+        _ledger.DeepenGrudge(target.Id, g.Id, 20f);
+        _ledger.DeepenGrudge(g.Id, target.Id, 8f);
         g.Fatigue = Math.Min(100, g.Fatigue + 5);
         string note;
         if (win)
@@ -1361,7 +1399,7 @@ public sealed class Game
             if (res.StatsA.MinHpPct <= 0.20f && rng.Roll(0.40f)) { g.InjuryMatches = Math.Max(g.InjuryMatches, 1); note = $"🍺 {g.Name}, {target.Name}과의 난투에서 밀렸다 — 부상(1경기) · 인기 +4"; }
             else note = $"🍺 {g.Name} vs {target.Name} 난투 — {(res.Winner < 0 ? "팽팽했다" : "졌다")} · 인기 +4";
         }
-        _story.Add((0, "brawl", note + $" ({target.Name} 다음 경기 '원한')"));
+        _story.Add((0, "brawl", note + $" ({target.Name}이(가) {g.Name}에게 원한을 품었다)"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return JsonSerializer.Serialize(new { ok = true, note, target = target.Name, won = win, venue = "street", a = g.Name, b = target.Name }, JsonOpts);
@@ -1461,10 +1499,9 @@ public sealed class Game
         WriteMeleeJson(mres, frames, umeta, venue);
         bool won = mres.WinningTeam == 0;
 
-        // 집계: 참여자 피로, 관계 악화·상대 원한, 승패별 인기·부상(난투 결과 MinHpPct 반영)
+        // 집계: 참여자 피로, 상대는 g에게 원한(관계 악화), 승패별 인기·부상(난투 결과 MinHpPct 반영)
         foreach (var m in myside.Where(x => x.IsPlayer)) m.Fatigue = Math.Min(100, m.Fatigue + 8);
-        foreach (var f in foes) { f.PendingEmotions.Add(EmotionTable.Grudge);
-            _ledger.Get(f.Id, g.Id).Affinity = Math.Clamp(_ledger.Get(f.Id, g.Id).Affinity - 12f, -100f, 100f); }
+        foreach (var f in foes) _ledger.DeepenGrudge(f.Id, g.Id, 12f);
         if (won)
         {
             foreach (var m in myside.Where(x => x.IsPlayer)) { m.Popularity += 15f; if (SeasonActive) m.PendingEmotions.Add(EmotionTable.Motivated); }
@@ -1716,7 +1753,7 @@ public sealed class Game
             A.IsPlayer || B.IsPlayer, income, incomeNote, mine,
             _lastFates.Count > 0 ? _lastFates.ToList() : null,
             _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null,
-            _lastUpset, winnerOdds, betWon, betNote, _lastExec);
+            _lastUpset, winnerOdds, betWon, betNote, _lastExec, _lastFixNote, _lastFixBad);
     }
 
     /// <summary>
@@ -2003,6 +2040,7 @@ public sealed class Game
         bool isEvent = kind != "regular";   // 이벤트·컵 = 순위 무관(exhibition), 흥행 배수
         bool exec = format == "execution";  // ☠ 처형전 — 패자는 죽을 수 있다. 보상도 크다
         _lastInjuries.Clear();
+        _lastFixNote = null; _lastFixBad = false;
         _lastHype = MathF.Round((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f);   // 경기 관심도(#5)
         var (defA, defB) = BuildDefs(A, B, format);
         if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
@@ -2090,6 +2128,41 @@ public sealed class Game
             MarkEdictDone();
         CheckEdict();
         _ledger.RecordMatch(A.Id, B.Id, res.Winner, ko, res.StatsA.MinHpPct, res.StatsB.MinHpPct);
+        // 원한 = 관계(감정 아님): KO패한 복수심 성격은 그 상대에게 원한을 품는다(원수로 향하는 추가 affinity). 굴욕이 클수록 깊게.
+        if (ko && win != null && lose != null && EmotionGen.IsVengeful(lose.PersonalityId))
+        {
+            _ledger.DeepenGrudge(lose.Id, win.Id, 30f);
+            lose.GrudgeCount++;
+            _story.Add((round, "grudge", $"⚔ {lose.Name}, {win.Name}에게 원한을 품었다 — 이 치욕은 잊지 않는다"));
+        }
+
+        // 승부조작 정산: 가담 예약된 선수가 이 경기에 나섰다면 — 실제로 던졌는가로 성패가 갈린다(선입금 없음)
+        if (_fixFighterId != null && (A.Id == _fixFighterId || B.Id == _fixFighterId))
+        {
+            var fx = A.Id == _fixFighterId ? A : B;
+            var fxStats = A.Id == _fixFighterId ? res.StatsA : res.StatsB;
+            bool fxLost = res.Winner >= 0 && win != fx;   // 결정적 패배만 이행(무승부는 던진 게 아니다)
+            var frng = new SimRandom(SeasonSeed ^ 0xF15E_D000UL + (ulong)_matchIdx * 7UL);
+            if (fxLost)
+            {
+                _gold += _fixReward;
+                // 던진 티가 날수록 발각↑: 처절하게 진(KO·빈사) 패배는 진짜 같아 덜 의심받고, 맥없는 판정패는 수상하다
+                bool convincing = ko || fxStats.MinHpPct <= 0.15f;
+                if (frng.Roll(convincing ? 0.15f : 0.40f))
+                {
+                    _ludusRep = MathF.Max(0f, _ludusRep - 40f); Patron(-25f); _favor = Math.Max(0, _favor - 1);
+                    _lastFixNote = $"🎲 승부조작 발각! {fx.Name}의 석연찮은 패배가 들통났다 — 골드 +{_fixReward:F0}이나 명성 −40·후원 −25·총애 −1"; _lastFixBad = true;
+                }
+                else { _lastFixNote = $"🎲 검은 거래 완수 — {fx.Name}이(가) 조용히 던졌다. 골드 +{_fixReward:F0} (아무도 눈치채지 못했다)"; _lastFixBad = false; }
+            }
+            else   // 이기거나 비겼다 — 약속을 어겼다
+            {
+                _ludusRep = MathF.Max(0f, _ludusRep - 30f); Patron(-20f); _debt += _fixReward;
+                _lastFixNote = $"🎲 약속을 어겼다 — {fx.Name}이(가) 지지 않았다. 뒷돈의 주인이 이를 간다: 명성 −30·후원 −20·협박 채무 +{_fixReward:F0}"; _lastFixBad = true;
+            }
+            _story.Add((round, "fix", _lastFixNote));
+            _fixFighterId = null; _fixReward = 0f;
+        }
         ProcessFatigue(A, res.StatsA, res, 0, round);   // 피로 누적(메타) + 부상 판정(드묾, 부상만 스탯 영향)
         ProcessFatigue(B, res.StatsB, res, 1, round);
         var emoRng = new SimRandom(SeasonSeed ^ 0x5EA5_04EDUL + (ulong)_matchIdx * 17UL);
@@ -2189,9 +2262,10 @@ public sealed class Game
                 Fate(round, "grave_injury", $"💀 {lose.Name} — 영구 중상, 몸이 예전 같지 않다 (상한 {lose.PotentialBudget:F0})");
             }
             else if (loserBrutal && lose.SeasonBrutals >= 2
-                // 🎭 트라우마 성격 변화 — 감정 '이력'이 확률을 키운다(W10a): 무상처 2% ~ 상처 깊음 8%
+                // 🎭 트라우마 성격 변화 — 마음의 상처 '이력'이 확률을 키운다(W10a): 무상처 2% ~ 상처 깊음 8%
+                // (트라우마 감정 + 원한 관계 누적 = 사선을 넘은 패배의 누적 흉터)
                 && fRng.Roll(0.02f + 0.02f * Math.Min(3,
-                    lose.EmoHistory.GetValueOrDefault(EmotionTable.Trauma) + lose.EmoHistory.GetValueOrDefault(EmotionTable.Grudge))))
+                    lose.EmoHistory.GetValueOrDefault(EmotionTable.Trauma) + lose.GrudgeCount)))
             {
                 string? shift = lose.PersonalityId switch
                 {
@@ -2714,6 +2788,7 @@ public sealed class Game
         if (w.AxisCapBonus != null) for (int i = 0; i < 6 && i < w.AxisCapBonus.Length; i++) _axisCapBonus[i] = w.AxisCapBonus[i];
         _betHits = w.BetHits; _patronage = w.Patronage; _betStreak = w.BetStreak;
         _redemption = w.Redemption; _myCupTitles = w.MyCupTitles;
+        _fixFighterId = w.FixFighterId; _fixReward = w.FixReward;
         _betLog.Clear(); if (w.BetLog != null) _betLog.AddRange(w.BetLog);
         _streetSeq = w.StreetSeq; _surgerySeq = w.SurgerySeq;
         _lastSummary = w.LastSummary;
@@ -2770,7 +2845,7 @@ public sealed class Game
             _archive.Count > 0 ? _archive.ToList() : null,
             _masterName, _masterTrait, _masterTactic, _scoutLevel,
             _axisCapBonus.Any(x => x != 0f) ? _axisCapBonus.ToArray() : null, _betHits, _patronage, _betStreak,
-            _redemption, _myCupTitles,
+            _redemption, _myCupTitles, _fixFighterId, _fixReward,
             _betLog.Count > 0 ? _betLog.ToList() : null, _streetSeq, _surgerySeq), JsonOpts));
     }
 
@@ -2783,7 +2858,7 @@ public sealed class Game
         g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division, g.SeasonBrutals,
         g.MGrit, g.MRecover, g.MShow, g.MPay,
         g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null,
-        g.SkillIds.Length > 0 ? g.SkillIds : null);
+        g.SkillIds.Length > 0 ? g.SkillIds : null, g.GrudgeCount);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -2804,6 +2879,7 @@ public sealed class Game
         g.PendingEmotions.AddRange(r.PendingEmotions);
         if (r.EmoHistory != null) foreach (var kv in r.EmoHistory) g.EmoHistory[kv.Key] = kv.Value;
         if (r.Skills != null) g.SkillIds = r.Skills.Where(SkillTable.Exists).ToArray();
+        g.GrudgeCount = r.GrudgeCount;
         return g;
     }
 
@@ -2981,7 +3057,8 @@ public sealed class Game
             Patronage: MathF.Round(_patronage),
             Gamble: new GambleDoc(MathF.Round(_seasonBetNet), _betLog.Count(b => b.Won), _betLog.Count,
                 _betLog.AsEnumerable().Reverse().Take(40).ToList(), _betStreak),
-            Redemption: _redemption), JsonOpts);
+            Redemption: _redemption,
+            FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null), JsonOpts);
     }
     private string? BuildLegacyNote()
     {

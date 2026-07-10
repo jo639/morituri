@@ -135,6 +135,15 @@ public sealed class RelationLedger
         Apply(bId, aId, selfWon: winner == 1, isDraw: winner < 0, wasKo, close);
     }
 
+    /// <summary>특정 상대를 향한 원한을 깊게 한다(원한 = 감정이 아니라 관계). affinity를 낮춰 원수(Nemesis)로 향하게.
+    /// KO 굴욕(Play)·도발·서신·거리시비 등 경기 내외 사건이 호출. 아직 안 싸운 상대라도 원한은 성립(Encounters 보정).</summary>
+    public void DeepenGrudge(string self, string opp, float amount)
+    {
+        var st = Get(self, opp);
+        if (st.Encounters == 0) st.Encounters = 1;
+        st.Affinity = Math.Clamp(st.Affinity - amount, -100f, 100f);
+    }
+
     private void Apply(string self, string opp, bool selfWon, bool isDraw, bool wasKo, bool close)
     {
         var st = Get(self, opp);

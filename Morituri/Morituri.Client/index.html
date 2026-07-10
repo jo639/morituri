@@ -133,7 +133,8 @@
 <div id="screens">
   <div class="screen on" id="league">
     <div class="pad" style="padding-bottom:0"><div id="incomeBar"></div>
-    <div id="betBar" style="display:none;margin:8px 0;padding:8px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:6px;font-size:13px"></div></div>
+    <div id="betBar" style="display:none;margin:8px 0;padding:8px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:6px;font-size:13px"></div>
+    <div id="fixBar" style="display:none;margin:8px 0;padding:8px 14px;background:#2a1a1a;border-left:3px solid #b04040;border-radius:6px;font-size:13px;color:#e0a0a0"></div></div>
     <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
   </div>
 
@@ -454,8 +455,15 @@ async function refresh(){
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
-  renderBetBar(); renderBadges(); checkEpithets();
+  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets();
   return st;
+}
+// ── 승부조작 진행 배너: 가담한 선수가 다음 경기를 던져야 함을 상기 ──
+function renderFixBar(){
+  const fb=$('fixBar'); if(!fb) return;
+  if (st.FixTarget){ fb.style.display='block';
+    fb.innerHTML = `🎲 <b>검은 거래 진행 중</b> — <b style="color:#ffb0b0">${st.FixTarget}</b>이(가) 다음 경기를 <b>져야</b> 한다. 이기거나 비기면 뒷돈의 주인이 보복한다 <span class="note" style="color:#c08080">(전술·라이브로 패배를 만들어라)</span>`;
+  } else fb.style.display='none';
 }
 // ── 이명 토스트(DDD): 이명은 조용히 붙으면 컬렉션 욕구가 안 생긴다 — 획득의 '순간'을 만든다 ──
 let _epiSeen = null;   // 최초 로드는 스냅샷만(토스트 폭주 방지)
@@ -927,11 +935,14 @@ function showResult(m){
     <div class="rrow"><span>🔥 인기</span><b>${sign(d.PopDelta)}</b></div>
     ${d.Emotion?`<div class="rrow"><span>💭 감정</span><b>${d.Emotion}</b> <span class="d">(다음 경기에 영향)</span></div>`:''}
   `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>');
+  if (m.FixNote)   // 승부조작 결말 — 던졌는가로 갈린다
+    $('resBody').innerHTML += `<hr style="border-color:#4a3a26"><div class="rrow" style="font-weight:700;color:${m.FixBad?'var(--b)':'var(--grn)'}">${m.FixNote}</div>`;
   if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
     $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + execTheater(m) + sealedFates(fatesFor(m));
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
   if (isJackpot(m)) sfxJackpot();
+  if (m.FixNote) setTimeout(m.FixBad?sfxDoom:sfxCoins, 300);
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
   if (pendingSeason){ pendingSeason=false; showSeason(); }

@@ -439,6 +439,55 @@ public class GameTests
     }
 
     [Test]
+    public void Game_MatchFixing_ResolvesOnFixedFighterMatch()
+    {
+        // 여러 시드 × 여러 시즌에 걸쳐 '승부조작' 텍스트 이벤트가 뜨는 세계에서 상태머신을 검증한다(스폰 22% × 1/N).
+        bool covered = false;
+        for (int seed = 1; seed <= 12 && !covered; seed++)
+        {
+            TempDir("fix" + seed);
+            var g = new Game(1, (ulong)seed, fresh: true, interactive: false, playerless: false);
+            g.GachaJson(); g.RecruitJson(0);
+
+            int guard = 0;
+            while (guard++ < 400 && !covered)
+            {
+                var st = Parse(g.StateJson());
+                if (st.GetProperty("MyFighters").GetArrayLength() == 0) break;   // 선수 전멸 → 다음 시드
+                // 대기 이벤트 처리: 승부조작이면 가담·검증, 아니면 소극 선택으로 치워 새 이벤트가 스폰되게(안 치우면 잠김)
+                if (st.TryGetProperty("PendingEvent", out var ev) && ev.ValueKind != JsonValueKind.Null)
+                {
+                    if (ev.GetProperty("Id").GetString() == "fix")
+                    {
+                        string myName = st.GetProperty("MyFighters")[0].GetProperty("Name").GetString()!;
+                        g.ChooseEventJson(0);   // 가담 — 선입금 없이 예약
+                        Assert.That(Parse(g.StateJson()).GetProperty("FixTarget").GetString(), Is.EqualTo(myName),
+                            "가담 시 승부조작 대상 노출");
+                        int g2 = 0;
+                        while (g2++ < 300)
+                        {
+                            var s2 = Parse(g.StateJson());
+                            bool pending = s2.TryGetProperty("FixTarget", out var ft) && ft.ValueKind != JsonValueKind.Null;
+                            if (!pending) break;
+                            if (s2.GetProperty("MyFighters").GetArrayLength() == 0) break;
+                            if (s2.TryGetProperty("PendingEvent", out var ev2) && ev2.ValueKind != JsonValueKind.Null)
+                                g.ChooseEventJson(1);   // 정산 진행 중 다른 이벤트가 겹치면 치운다
+                            g.PlayNext();
+                        }
+                        bool cleared = !Parse(g.StateJson()).TryGetProperty("FixTarget", out var ftf) || ftf.ValueKind == JsonValueKind.Null;
+                        Assert.That(cleared, Is.True, "가담 선수 경기 후(또는 시즌말) 예약 해제");
+                        covered = true; break;
+                    }
+                    g.ChooseEventJson(1);   // 다른 이벤트 = 소극 선택으로 해소(잠금 방지)
+                    continue;
+                }
+                g.PlayNext();   // 개막·경기·다음 시즌 개막까지 자동 진행
+            }
+        }
+        Assert.That(covered, Is.True, "시드×시즌 순회 중 승부조작 이벤트가 최소 한 번은 떠 상태머신을 검증");
+    }
+
+    [Test]
     public void Game_LearnSkill_GatesAndEquips()
     {
         TempDir("skill");
