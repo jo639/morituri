@@ -59,8 +59,26 @@
   #watch iframe{ padding-top:36px; }
   /* 카드 그리드 */
   .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
-  .fc{ background:var(--panel); border-radius:11px; padding:12px 14px; border-top:3px solid var(--gold); }
+  .fc{ background:linear-gradient(180deg,rgba(210,171,85,.05),transparent 34%), var(--panel);
+       border:1px solid var(--line-soft); border-top:3px solid var(--gold);
+       border-radius:var(--r2); padding:12px 14px; box-shadow:var(--sh1); }
   .fc.ai{ border-top-color:#5a4a32; }
+  /* 루두스 명성 박스 */
+  #repBox{ background:linear-gradient(90deg,rgba(210,171,85,.10),rgba(210,171,85,.02) 60%), var(--panel);
+           border:1px solid var(--line-soft); border-top:3px solid var(--gold);
+           border-radius:var(--r2); padding:12px 16px; margin-bottom:14px; box-shadow:var(--sh1); }
+  /* 선수 카드 액션 버튼(소형) */
+  .act{ border:none; border-radius:var(--r1); padding:4px 6px; font-size:12.5px; cursor:pointer;
+        background:var(--panel3); color:var(--ink); transition:filter .12s, box-shadow .12s; }
+  .act:hover{ filter:brightness(1.18); box-shadow:var(--sh1); }
+  .act:disabled{ opacity:.4; cursor:default; }
+  .act.spar{ background:#26342a; color:#a8d8b0; }
+  .act.street{ background:#3a2a20; color:#e0b090; }
+  .act.brawl{ background:#402a20; color:#e0a878; }
+  .act.retire{ background:#3a3226; color:var(--gold); }
+  .act.release{ background:#4a2a26; color:#e0a89f; }
+  .act.bestow{ background:#3a2d40; color:#d8a0e0; }
+  .act.glory{ background:#3a2540; border:1px solid var(--glory); color:#e0a0d8; font-weight:700; }
   .fc h3{ margin:0; font-size:16px; display:flex; align-items:center; gap:6px; }
   .fc h3 .old{ color:var(--b); font-size:11px; }
   .fc .bd{ color:var(--dim); font-size:11px; margin:2px 0 6px; }
@@ -75,14 +93,17 @@
   .stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px 10px; margin-top:6px; font-size:12px; }
   .stats .st{ display:flex; justify-content:space-between; align-items:center; gap:4px; }
   .stats .st span{ color:var(--dim); }
-  .stats .st button{ background:#4a3a26; border:none; color:var(--gold); border-radius:4px; padding:0 6px; font-size:12px; line-height:18px; }
-  .cap{ height:6px; background:#0c0f14; border-radius:3px; margin-top:6px; overflow:hidden; }
-  .cap > i{ display:block; height:100%; background:linear-gradient(90deg,#8a6a2a,var(--gold)); }
+  .stats .st button{ background:var(--panel3); border:1px solid var(--gold-deep); color:var(--gold); border-radius:4px; padding:0 6px; font-size:12px; line-height:18px; transition:filter .12s; }
+  .stats .st button:hover{ filter:brightness(1.25); }
+  .cap{ height:6px; background:rgba(0,0,0,.45); border:1px solid var(--line-soft); border-radius:3px; margin-top:6px; overflow:hidden; }
+  .cap > i{ display:block; height:100%; background:linear-gradient(90deg,var(--gold-deep),var(--gold)); }
   /* 시설 */
   .fac{ display:flex; gap:10px; flex-wrap:wrap; }
-  .fac .f{ flex:1 1 240px; background:var(--panel); border-radius:10px; padding:10px 12px; }
+  .fac .f{ flex:1 1 240px; background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--r2); padding:10px 12px; box-shadow:var(--sh1); }
   .fac .f b{ color:var(--gold); }
-  .fac .f button{ margin-top:6px; background:#4a3a26; border:none; color:var(--ink); border-radius:6px; padding:4px 10px; }
+  .fac .f button{ margin-top:6px; background:var(--panel3); border:1px solid var(--line); color:var(--ink); border-radius:var(--r1); padding:4px 10px; transition:border-color .15s, filter .12s; }
+  .fac .f button:hover{ border-color:var(--gold-deep); filter:brightness(1.1); }
+  .fac .f button:disabled{ opacity:.4; }
   /* 영입 */
   #gachaBtn{ background:var(--gold); color:#231a12; border:none; font-weight:800; padding:9px 20px; border-radius:9px; }
   .cand{ border-top-color:var(--a); }
@@ -173,7 +194,7 @@
   </div>
 
   <div class="screen" id="ludus"><div class="pad">
-    <div id="repBox" style="background:var(--panel);border-radius:11px;padding:12px 16px;margin-bottom:14px;border-top:3px solid var(--gold)"></div>
+    <div id="repBox"></div>
     <h2>내 루두스 <span class="note" id="ludusNote"></span></h2>
     <div class="grid" id="myGrid"></div>
     <h2>시설</h2>
@@ -1188,7 +1209,7 @@ function renderLudus(){
         ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')" title="훈련 포인트로 ${STATH[a]||a} +1">+</button>`:''}</div>`).join('')}</div>
       <div class="cap"><i style="width:${cap}%"></i></div>
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
-      ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px;background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>💥 잠재력 돌파 (✨${f.BreakthroughCost})</button>`:''}
+      ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" class="act glory" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>💥 잠재력 돌파 (✨${f.BreakthroughCost})</button>`:''}
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b>${
         f.TrainingPoints>=3?`<button onclick="openSkillModal('${f.Id}')" title="패시브 스킬 수련(3pt) — 성격 전용, 슬롯 ${(f.Skills||[]).length}/${f.SkillSlots}" style="background:#26303f;border:1px solid #5b9be0;color:#9bc4ec;border-radius:5px;padding:0 8px;font-size:11px;cursor:pointer">📖 수련</button>`:''}</div>
       ${masteryRow(f)}
@@ -1196,13 +1217,13 @@ function renderLudus(){
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        ${f.Injured?`<button onclick="askSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" title="의무실 수술 — 부상 즉시 종료를 노리는 도박(완치/실패/악화). 의무실 Lv·회복력이 성공률을 올린다" style="flex:1;background:#3a2630;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700">⚕ 수술</button>`:''}
-        <button onclick="sparring('${f.Id}')" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)" style="flex:1;background:#26342a;border:none;color:#a8d8b0;border-radius:6px;padding:4px">🤺 스파링</button>
-        <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)" style="flex:1;background:#3a2a20;border:none;color:#e0b090;border-radius:6px;padding:4px">🍺 거리 시비</button>
-        <button onclick="gangbrawl('${f.Id}','${f.Name}')" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험" style="flex:1;background:#402a20;border:none;color:#e0a878;border-radius:6px;padding:4px">🥊 패싸움</button>
-        ${st.MasterPending?`<button onclick="bestow('${f.Id}')" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)" style="flex:1;background:#3a2d40;border:none;color:#d8a0e0;border-radius:6px;padding:4px">📜 전수받기</button>`:''}
-        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재" style="flex:1;background:#3a3226;border:none;color:var(--gold);border-radius:6px;padding:4px">🏛 은퇴</button>
-        <button onclick="release('${f.Id}','${f.Name}')" style="flex:1;background:#4a2a26;border:none;color:#e0a89f;border-radius:6px;padding:4px">👋 방출</button></div></div>`;
+        ${f.Injured?`<button onclick="askSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" class="act glory" style="flex:1" title="의무실 수술 — 부상 즉시 종료를 노리는 도박(완치/실패/악화). 의무실 Lv·회복력이 성공률을 올린다">⚕ 수술</button>`:''}
+        <button onclick="sparring('${f.Id}')" class="act spar" style="flex:1" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)">🤺 스파링</button>
+        <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" class="act street" style="flex:1" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)">🍺 거리 시비</button>
+        <button onclick="gangbrawl('${f.Id}','${f.Name}')" class="act brawl" style="flex:1" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험">🥊 패싸움</button>
+        ${st.MasterPending?`<button onclick="bestow('${f.Id}')" class="act bestow" style="flex:1" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)">📜 전수받기</button>`:''}
+        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" class="act retire" style="flex:1" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재">🏛 은퇴</button>
+        <button onclick="release('${f.Id}','${f.Name}')" class="act release" style="flex:1">👋 방출</button></div></div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
   const facs=[['training','훈련장',st.TrainingLv,3,'3경기당 훈련 포인트 '+st.TrainingLv+'pt',[200,500]],
