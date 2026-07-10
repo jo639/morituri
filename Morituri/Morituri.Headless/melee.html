@@ -1,7 +1,8 @@
+<link rel="stylesheet" href="theme.css">
 <style>
-  :root{ --bg:#1a130c; --ink:#e8dcc8; --panel:#2a2016; --dim:#8a7a5a; }
+  /* 디자인 토큰(:root)은 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui,sans-serif; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 var(--font-body); }
   #wrap{ max-width:920px; margin:0 auto; padding:10px; }
   #top{ display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
   #title{ font-weight:700; color:#e0a878; }

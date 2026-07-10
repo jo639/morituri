@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI · 리그</title>
+<link rel="stylesheet" href="theme.css">
 <style>
-  :root{ --bg:#231a12; --panel:#2f2418; --panel2:#3a2d1d; --ink:#f0e6d6; --dim:#a89576; --gold:#c9a84c;
-         --nem:#e0685f; --fear:#9b6fd1; --rival:#e0a24c; --envy:#d16fa0; --obs:#c94fc9; --resp:#6fbf8f; --friend:#5b9be0; }
+  /* 기본 토큰은 theme.css — 여기엔 관계 그래프 전용 색만 */
+  :root{ --nem:#e0685f; --fear:#9b6fd1; --rival:#e0a24c; --envy:#d16fa0; --obs:#c94fc9; --resp:#6fbf8f; --friend:#5b9be0; }
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,"Segoe UI","Malgun Gothic",sans-serif; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 var(--font-body); }
   #wrap{ max-width:1040px; margin:0 auto; padding:16px 16px 48px; }
   h1{ font-size:16px; margin:0; color:var(--dim); letter-spacing:.5px; font-weight:600; }
   h2{ font-size:13px; color:var(--gold); margin:26px 0 10px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:5px; }
@@ -58,7 +59,7 @@
   .empty{ color:var(--dim); font-style:italic; padding:6px 8px; }
 </style>
 </head>
-<body>
+<body class="fresco">
 <div id="wrap">
   <header>
     <h1>⚔ MORITURI · 리그</h1>

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI</title>
+<link rel="stylesheet" href="theme.css">
 <style>
-  :root{ --bg:#231a12; --panel:#2f2418; --panel2:#3a2d1d; --ink:#f0e6d6; --dim:#a89576; --gold:#c9a84c;
-         --a:#5b9be0; --b:#e0685f; --grn:#8fc98f; }
+  /* 디자인 토큰(:root)·폰트·공용 컴포넌트는 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
   html,body{ height:100%; }
-  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,"Segoe UI","Malgun Gothic",sans-serif;
+  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 var(--font-body);
         display:flex; flex-direction:column; }
   button{ font:inherit; cursor:pointer; }
   /* ── 상단 바 ── */
@@ -108,7 +108,7 @@
   #menu .info{ color:var(--dim); font-size:12px; margin-top:20px; }
 </style>
 </head>
-<body>
+<body class="fresco">
 <div id="top">
   <span id="logo">⚔ MORITURI</span>
   <nav>
