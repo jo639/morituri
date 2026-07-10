@@ -79,6 +79,12 @@
   .act.release{ background:#4a2a26; color:#e0a89f; }
   .act.bestow{ background:#3a2d40; color:#d8a0e0; }
   .act.glory{ background:#3a2540; border:1px solid var(--glory); color:#e0a0d8; font-weight:700; }
+  /* 도박장 조합 빌더 토글 */
+  .tgl{ border-radius:var(--r1); padding:6px 14px; cursor:pointer; font-weight:700;
+        border:1px solid var(--line); background:var(--panel2); color:var(--dim);
+        transition:border-color .12s, background .12s, color .12s; }
+  .tgl:hover{ border-color:var(--glory); color:var(--ink); }
+  .tgl.cur{ border-color:#e0a0d8; background:#4a2a54; color:#f0d0f0; }
   .fc h3{ margin:0; font-size:16px; display:flex; align-items:center; gap:6px; }
   .fc h3 .old{ color:var(--b); font-size:11px; }
   .fc .bd{ color:var(--dim); font-size:11px; margin:2px 0 6px; }
@@ -641,7 +647,7 @@ function renderGamble(){
         <span class="note">(잔고 💰${Math.floor(st.Gold)})</span></div>
       <div id="gbSummary" style="text-align:center;margin-top:10px;font-size:14px"></div>
       <div style="text-align:center;margin-top:8px">
-        <button onclick="placeGb()" style="background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;font-weight:800;border-radius:8px;padding:8px 28px;cursor:pointer">🎲 베팅</button></div>
+        <button onclick="placeGb()" class="act glory" style="padding:8px 28px;font-weight:800"><svg class="ic"><use href="icons.svg#dice"/></svg> 베팅</button></div>
       <div class="note" id="betMsgG" style="text-align:center;margin-top:6px"></div></div>`;
     gbRefresh();
   }
@@ -665,8 +671,7 @@ function gbLabel(){ const nm=st.NextMatch; const w=_gbWinner===0?nm.AName:nm.BNa
   return w + (_gbMethod===0?' 승':_gbMethod===1?' KO승':' 판정승'); }
 function gbRefresh(){
   const nm=st.NextMatch; if(!nm||!$('gbWin')) return;
-  const tgl=(fn,v,cur,label)=>`<button onclick="${fn}(${v})" style="border-radius:7px;padding:6px 14px;cursor:pointer;font-weight:700;
-    border:1px solid ${v===cur?'#e0a0d8':'#4a3a26'};background:${v===cur?'#4a2a54':'var(--panel2)'};color:${v===cur?'#f0d0f0':'var(--dim)'}">${label}</button>`;
+  const tgl=(fn,v,cur,label)=>`<button onclick="${fn}(${v})" class="tgl${v===cur?' cur':''}">${label}</button>`;
   $('gbWin').innerHTML = tgl('setGbWinner',0,_gbWinner,nm.AName) + tgl('setGbWinner',1,_gbWinner,nm.BName);
   $('gbMeth').innerHTML = tgl('setGbMethod',0,_gbMethod,'무관 (승만)') + tgl('setGbMethod',1,_gbMethod,'💥 KO승') + tgl('setGbMethod',2,_gbMethod,'🕊 판정승');
   const od=gbOdds(), amt=parseInt($('betAmtG').value)||0;
@@ -1753,7 +1758,7 @@ let codexCat = '무기';
 function renderCodex(){
   const cats = Object.keys(CODEX);
   $('codexTabs').innerHTML = cats.map(c=>
-    `<button class="tacbtn" style="width:auto;padding:6px 16px;${c===codexCat?'border-color:var(--gold);color:var(--gold);background:#3a2d1d':''}" onclick="codexCat='${c}';renderCodex()">${c} <span class="d">${CODEX[c].length}</span></button>`).join('');
+    `<button class="tacbtn" style="width:auto;padding:6px 16px;${c===codexCat?'border-color:var(--gold);color:var(--gold);background:var(--panel3)':''}" onclick="codexCat='${c}';renderCodex()">${c} <span class="d">${CODEX[c].length}</span></button>`).join('');
   $('codexBody').innerHTML = `<div class="grid">${CODEX[codexCat].map(e=>
     `<div class="fc"><h3>${e.n} <span class="note" style="font-weight:400;font-size:11px">${e.id}</span></h3>
       ${e.s?`<div class="chips"><span class="chip" style="background:rgba(201,168,76,.14);color:var(--gold)">${e.s}</span></div>`:''}
