@@ -1160,9 +1160,10 @@ public sealed class Game
     private sealed record BetLogRec(int Season, string On, float Amount, float Odds, bool Won, float Payout);
     private readonly List<BetLogRec> _betLog = new();   // 베팅 이력(최근 60, 영속)
 
-    /// <summary>승률 p → 표시 배당. 하우스 마진(8%)을 배당에 내장 → payout=amount×odds(이중 공제 없음).
-    /// 하한 1.20(대세팀도 최소 +20% 회수), 상한 6.0(약체 대박). 저배당 무이득 버그 해소.</summary>
-    private static float BetOdds(float p) => Math.Clamp(0.92f / Math.Clamp(p, 0.08f, 0.95f), 1.2f, 6f);
+    /// <summary>확률 p → 배당(decimal). odds = 1 + 마진×(1−p)/p — 순이익에 하우스 마진(10%) 부과.
+    /// 상한 없음(희귀 조합=진짜 고배당). 항상 &gt;1(적중 시 반드시 이득), 확률 다르면 배당도 다르다(동일 배당 방지).
+    /// p 하한은 0으로 나눔 방지 안전장치(0.004)만 — 실제 스무딩된 p는 훨씬 크다.</summary>
+    private static float BetOdds(float p) => 1f + 0.9f * (1f - MathF.Min(p, 0.999f)) / MathF.Max(p, 0.004f);
 
     /// <summary>베팅 종류 라벨: 0=A승 1=B승 2=A KO승 3=A 판정승 4=B KO승 5=B 판정승.</summary>
     private static string BetLabel(int side, Gladiator A, Gladiator B) => side switch
@@ -2505,18 +2506,23 @@ public sealed class Game
         string tB = B.IsPlayer ? B.TacticId : SelectTacticAi(B, A, tacRng);
         var (dA, dB) = BuildDefs(A, B, s.Format);
         dA = dA with { TacticsId = tA }; dB = dB with { TacticsId = tB };
-        const int K = 15;
+        const int K = 25;   // 조합(승자×방식) 해상도를 위해 표본 확대
         ulong seed = SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL;
-        int aKo = 0, aDec = 0, bKo = 0, bDec = 0, decided = 0;
+        int aKo = 0, aDec = 0, bKo = 0, bDec = 0;
         for (int t = 1; t <= K; t++)
         {
             var r = new MatchSim().Run(dA, dB, seed + (ulong)t * 104729UL);
-            if (r.Winner == 0) { decided++; if (r.Reason == "KO") aKo++; else aDec++; }
-            else if (r.Winner == 1) { decided++; if (r.Reason == "KO") bKo++; else bDec++; }
+            if (r.Winner == 0) { if (r.Reason == "KO") aKo++; else aDec++; }
+            else if (r.Winner == 1) { if (r.Reason == "KO") bKo++; else bDec++; }
         }
-        float Sm(int c) => Math.Clamp((c + 0.5f) / (K + 1f), 0.03f, 0.92f);   // 조합 결과 확률(라플라스 스무딩)
-        _oddsProbA = Math.Clamp((aKo + aDec + 1f) / (decided + 2f), 0.05f, 0.95f);   // VS 표시용 승률(decided 기준)
-        _oddsOut = new BetOutcomes(Sm(aKo + aDec), Sm(bKo + bDec), Sm(aKo), Sm(aDec), Sm(bKo), Sm(bDec));
+        int winsA = aKo + aDec, winsB = bKo + bDec, decided = winsA + winsB;
+        // 승 확률(전체 K 대비, 라플라스). 방식 = 승리 조건부(P(승)×P(방식|승)) → 언제나 승 확률보다 작다
+        // = 방식 배당이 항상 승 배당보다 크다(같은 배당 방지). 상한 없음 → 희귀 방식은 고배당.
+        float pA = (winsA + 0.5f) / (K + 1f), pB = (winsB + 0.5f) / (K + 1f);
+        float aKoC = (aKo + 0.5f) / (winsA + 1f), aDecC = (aDec + 0.5f) / (winsA + 1f);
+        float bKoC = (bKo + 0.5f) / (winsB + 1f), bDecC = (bDec + 0.5f) / (winsB + 1f);
+        _oddsProbA = Math.Clamp((winsA + 1f) / (decided + 2f), 0.05f, 0.95f);   // VS 표시용 승률(decided 기준)
+        _oddsOut = new BetOutcomes(pA, pB, pA * aKoC, pA * aDecC, pB * bKoC, pB * bDecC);
         _oddsCursor = _cursor;
         return _oddsOut;
     }
