@@ -125,7 +125,7 @@
          border:1px solid var(--line); border-radius:var(--r3); padding:20px 22px; width:min(560px,92vw);
          box-shadow:var(--sh2); }
   .modal.on .mbox{ animation:popIn .16s cubic-bezier(.2,.9,.3,1.2); }
-  .mbox h3{ margin:0 0 4px; color:var(--gold); }
+  .mbox h3{ margin:0 0 4px; color:var(--gold); font-family:var(--font-display); letter-spacing:.02em; }
   .mbox .vsline{ font-size:13px; color:var(--dim); margin-bottom:12px; }
   .tacbtn{ display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid #4a3a26;
            color:var(--ink); border-radius:9px; padding:9px 12px; margin-top:8px; }
@@ -765,7 +765,7 @@ function sealedFates(fates){
     const id = 'fate'+(++_fateSeq);
     const esc = f.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
     return `<div id="${id}" data-fate="${esc}" data-dark="${dark?1:0}" style="margin-top:6px">
-      <button class="tacbtn" style="text-align:center;border-color:#8a6a2a;color:var(--gold)" onclick="openFate('${id}')">📜 운명의 두루마리가 도착했다 — <b>개봉한다</b></button></div>`;
+      <button class="tacbtn" style="text-align:center;border-color:var(--gold-deep);color:var(--gold);background:linear-gradient(180deg,rgba(210,171,85,.08),transparent)" onclick="openFate('${id}')"><svg class="ic"><use href="icons.svg#scroll"/></svg> 운명의 두루마리가 도착했다 — <b>개봉한다</b></button></div>`;
   }).join('');
 }
 window.openFate = (id)=>{
@@ -815,15 +815,15 @@ function execTheater(m){
     const el=document.getElementById(id); if(!el) return;
     const sp=e.Spared;
     el.innerHTML=`<div class="rv-step" style="text-align:center;padding:10px;border:1px solid ${sp?'var(--grn)':'var(--b)'};border-radius:9px;background:${sp?'rgba(60,90,58,.18)':'rgba(90,42,38,.25)'}">
-      <div style="font-size:36px">${sp?'👍':'👎'}</div>
+      <div><svg style="width:42px;height:42px;color:${sp?'var(--grn)':'var(--b)'};${sp?'':'transform:scaleY(-1)'}"><use href="icons.svg#thumb"/></svg></div>
       <b style="color:${sp?'var(--grn)':'var(--b)'};font-size:15px">${sp?`황제의 자비 — ${e.Loser}, 오늘은 산다`:`죽음 — ${e.Loser}의 시간이 끝났다`}</b>
       <div class="note" style="margin-top:3px">사망 확률 ${e.DeathPct}% · ${e.Factors}</div>
       ${sp?'':'<div style="color:var(--b);font-weight:700;margin-top:4px">⚰ 모래 위에서 숨을 거두다. 검투사로 죽다</div>'}</div>`;
     sp?sfxReveal(2):sfxDoom();
   }, 2600);
-  return `<div id="${id}" style="text-align:center;padding:12px;border:1px solid var(--gold);border-radius:9px;margin:8px 0;background:var(--panel2)">
+  return `<div id="${id}" style="text-align:center;padding:12px;border:1px solid var(--gold);border-radius:9px;margin:8px 0;background:radial-gradient(ellipse at 50% 0%,rgba(210,171,85,.10),transparent 65%),var(--panel2)">
     <div class="note">☠ 처형전 — 패자가 쓰러졌다. 황제가 일어서고, 군중이 숨을 죽인다…</div>
-    <div style="font-size:36px;display:inline-block;animation:thumbRock .8s ease-in-out infinite;margin-top:4px">👍</div></div>`;
+    <div style="display:inline-block;animation:thumbRock .8s ease-in-out infinite;margin-top:6px"><svg style="width:42px;height:42px;color:var(--gold)"><use href="icons.svg#thumb"/></svg></div></div>`;
 }
 // ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
 $('toMineBtn').onclick = async ()=>{
@@ -1090,7 +1090,7 @@ function showResult(m){
   if (m.FixNote)   // 승부조작 결말 — 던졌는가로 갈린다
     $('resBody').innerHTML += `<hr style="border-color:#4a3a26"><div class="rrow" style="font-weight:700;color:${m.FixBad?'var(--b)':'var(--grn)'}">${m.FixNote}</div>`;
   if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
-    $('resBody').innerHTML += `<hr style="border-color:#4a3a26">` + execTheater(m) + sealedFates(fatesFor(m));
+    $('resBody').innerHTML += `<hr class="hairline">` + execTheater(m) + sealedFates(fatesFor(m));
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
   if (isJackpot(m)) sfxJackpot();
