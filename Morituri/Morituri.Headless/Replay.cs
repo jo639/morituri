@@ -131,7 +131,8 @@ internal static class Replay
         string[]? traits = null;
         if (f.Length > 3 && f[3].Length > 0)
             traits = f[3].Split('+', StringSplitOptions.RemoveEmptyEntries)
-                         .Select(t => "TRT_" + t.Trim().ToUpperInvariant())
+                         .Select(t => { var u = t.Trim().ToUpperInvariant();   // SKL_=스킬(T12)도 특성 슬롯으로 주입 가능(A/B 검증용)
+                                        return u.StartsWith("TRT_") || u.StartsWith("SKL_") ? u : "TRT_" + u; })
                          .Where(TraitTable.Exists).ToArray();
         string[]? emotions = null;
         if (f.Length > 4 && f[4].Length > 0)

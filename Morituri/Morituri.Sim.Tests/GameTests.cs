@@ -439,6 +439,43 @@ public class GameTests
     }
 
     [Test]
+    public void Game_LearnSkill_GatesAndEquips()
+    {
+        TempDir("skill");
+        var g = new Game(1, 53, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        var my = Parse(g.StateJson()).GetProperty("MyFighters")[0];
+        string id = my.GetProperty("Id").GetString()!;
+        string per = my.GetProperty("Personality").GetString()!;
+        string skill = per switch
+        {
+            "CALM" => "SKL_READ", "RECKLESS" => "SKL_RUSH", "ARROGANT" => "SKL_LEISURE",
+            "HONORABLE" => "SKL_AEGIS", "COWARD" => "SKL_SURVIVE", "CRUEL" => "SKL_VIGOR",
+            "BOLD" => "SKL_NERVE", "WARY" => "SKL_ECONOMY", "SHOWMAN" => "SKL_FLAIR", _ => "SKL_ANGLE",
+        };
+        string wrong = skill == "SKL_READ" ? "SKL_RUSH" : "SKL_READ";
+        Assert.That(Parse(g.LearnSkillJson(id, wrong)).GetProperty("error").GetString()!.Contains("성격"), Is.True, "성격 게이트");
+        Assert.That(Parse(g.LearnSkillJson(id, skill)).GetProperty("error").GetString()!.Contains("훈련 포인트"), Is.True, "포인트 게이트");
+
+        // 시즌 진행으로 훈련 포인트 적립(3경기당 1pt) → 습득
+        int guard = 0; bool ready = false;
+        while (guard++ < 200 && !ready)
+        {
+            g.PlayNext();
+            var st = Parse(g.StateJson());
+            var fs = st.GetProperty("MyFighters");
+            if (fs.GetArrayLength() == 0) Assert.That(false, Is.True, "선수 사망 — 시드 변경 필요");
+            ready = fs[0].GetProperty("TrainingPoints").GetInt32() >= 3;
+        }
+        Assert.That(ready, Is.True, "훈련 포인트 3 적립");
+        var ok = Parse(g.LearnSkillJson(id, skill));
+        Assert.That(ok.TryGetProperty("error", out _), Is.False, "습득 성공");
+        var skills = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Skills");
+        Assert.That(skills.EnumerateArray().Any(s => s.GetString() == skill), Is.True, "스킬 장착·영속 문서 노출");
+        Assert.That(Parse(g.LearnSkillJson(id, skill)).TryGetProperty("error", out _), Is.True, "중복 습득 거부");
+    }
+
+    [Test]
     public void Game_Mastery_SpendsTrainingPoints_AndPersists()
     {
         TempDir("mastery");

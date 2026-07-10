@@ -59,7 +59,10 @@ public static class TraitTable
         new(SlowAge,          "저속노화"),                                          // Meta: 노화 감소
     };
 
-    private static readonly Dictionary<string, TraitDef> _byId = All.ToDictionary(t => t.Id);
+    // 스킬(T12)도 같은 조회 파이프에 등록 — MatchSim은 특성과 스킬을 구분하지 않는다([6]§3.1 엔진 하나).
+    // 생성 추첨(TraitGen)은 All만 쓰므로 스킬이 타고나는 일은 없다.
+    private static readonly Dictionary<string, TraitDef> _byId =
+        All.Concat(SkillTable.All.Select(s => s.Def)).ToDictionary(t => t.Id);
     public static TraitDef Get(string id) => _byId[id];
     public static bool Exists(string id) => _byId.ContainsKey(id);
 }

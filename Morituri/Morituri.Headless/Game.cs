@@ -62,6 +62,7 @@ public sealed class Game
         public int MGrit, MRecover, MShow, MPay;                    // 마스터리(0~5) — 투혼·회복력·흥행·협상 (비스탯, 메타 전용)
         public readonly List<string> PendingEmotions = new();
         public readonly Dictionary<string, int> EmoHistory = new(); // 커리어 감정 이력(누적) — 성격 변화(Phase 4)의 입력
+        public string[] SkillIds = Array.Empty<string>();           // T12 패시브 스킬(장착형 특성) — 슬롯: 챔피언+ 2, 그외 1
         public int SeasonPoints => W * 3 + D;
         public int CareerPoints => CW * 3 + CD;
         public PersonalityDef Pers => PersonalityTable.Get(PersonalityId);
@@ -77,7 +78,8 @@ public sealed class Game
         int W, int L, int D, int Streak, string[] PendingEmotions,
         int Fatigue = 0, int InjuryMatches = 0, string LudusId = "PLAYER", int Division = 1, int SeasonBrutals = 0,
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,
-        Dictionary<string, int>? EmoHistory = null);   // 감정 이력(성격 드리프트 입력)
+        Dictionary<string, int>? EmoHistory = null,   // 감정 이력(성격 드리프트 입력)
+        string[]? Skills = null);                     // T12 패시브 스킬
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
         string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
@@ -138,7 +140,8 @@ public sealed class Game
         int Fatigue = 0, bool Injured = false,   // 피로도(0쌩쌩~100탈진)·부상 여부
         bool AtCap = false, int BreakthroughCost = 0,   // 상한 도달·잠재력 돌파 비용(영광)
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,   // 마스터리 레벨
-        int CKoW = 0);   // 통산 KO승(스카우터 은퇴 자격 표시)
+        int CKoW = 0,   // 통산 KO승(스카우터 은퇴 자격 표시)
+        string[]? Skills = null, int SkillSlots = 1);   // T12 패시브 스킬(id) + 슬롯 수
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic, int Age, string[]? Hints = null); // 마스킹! (나이 공개·스카우터 힌트)
     private sealed record RevealDoc(string Name, string Weapon, string Personality, int Age, string Talent, string Potential, string[] Traits, string? JoinedRival);
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
@@ -2332,8 +2335,10 @@ public sealed class Game
         var stats = g.InjuryMatches > 0
             ? g.Stats with { Rct = g.Stats.Rct * 0.90f, Aspd = g.Stats.Aspd * 0.92f, Spd = g.Stats.Spd * 0.94f }
             : g.Stats;
+        // 스킬(T12) = 장착형 특성 — 특성과 같은 파이프로 def에 합류(잠정·정산·재관전 스냅샷 전부 일관)
+        var tr = g.SkillIds.Length > 0 ? g.TraitIds.Concat(g.SkillIds).ToArray() : g.TraitIds;
         return new(g.Name, stats, g.WeaponId, g.TacticId, g.PersonalityId,
-            g.TraitIds.Length > 0 ? g.TraitIds : null,
+            tr.Length > 0 ? tr : null,
             g.PendingEmotions.Count > 0 ? g.PendingEmotions.ToArray() : null, rel, intensity);
     }
 
@@ -2548,6 +2553,32 @@ public sealed class Game
         return StateJson();
     }
 
+    /// <summary>T12 스킬 수련(패시브 MVP): 훈련 포인트 3으로 습득. 게이트 = 성격 일치 + 천부(Ⅱ급은 집정관+).
+    /// 슬롯(챔피언+ 2, 그외 1)이 차 있으면 forget으로 지정한 기존 스킬과 교체.</summary>
+    public string LearnSkillJson(string fighterId, string skillId, string? forget = null)
+    {
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        if (!SkillTable.Exists(skillId)) return Err("없는 스킬");
+        var sk = SkillTable.Get(skillId);
+        if (g.SkillIds.Contains(skillId)) return Err("이미 익힌 스킬");
+        if (sk.GatePersonality != g.PersonalityId) return Err($"성격 불일치 — {sk.Def.Name}은(는) {sk.GatePersonality.Replace("PER_", "")} 전용");
+        if (sk.RankTier >= 2 && (int)g.Talent < SkillTable.Tier2MinTalent) return Err("Ⅱ급 스킬은 집정관 이상의 그릇만 담을 수 있다");
+        if (g.TrainingPoints < 3) return Err("훈련 포인트 부족 (수련 3pt)");
+        int slots = g.Talent >= TalentGrade.Champion ? 2 : 1;
+        if (g.SkillIds.Length >= slots)
+        {
+            if (forget == null || !g.SkillIds.Contains(forget))
+                return Err($"스킬 슬롯 가득 ({slots}칸) — 잊을 스킬을 지정하라");
+            g.SkillIds = g.SkillIds.Where(s => s != forget).ToArray();
+        }
+        g.TrainingPoints -= 3;
+        g.SkillIds = g.SkillIds.Append(skillId).ToArray();
+        _story.Add((0, "skill", $"📖 수련 — {g.Name}, 「{sk.Def.Name.Replace("(스킬)", "")}」을(를) 익혔다"));
+        SaveWorld();
+        return StateJson();
+    }
+
     /// <summary>훈련: 포인트 1을 축에 분배 (axis: Atk/Def/Hp/Spd/Aspd/Rct).</summary>
     public string TrainJson(string fighterId, string axis)
     {
@@ -2751,7 +2782,8 @@ public sealed class Game
         g.CW, g.CL, g.CD, g.CKoW, g.Fame, g.Popularity,
         g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division, g.SeasonBrutals,
         g.MGrit, g.MRecover, g.MShow, g.MPay,
-        g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null);
+        g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null,
+        g.SkillIds.Length > 0 ? g.SkillIds : null);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -2771,6 +2803,7 @@ public sealed class Game
         };
         g.PendingEmotions.AddRange(r.PendingEmotions);
         if (r.EmoHistory != null) foreach (var kv in r.EmoHistory) g.EmoHistory[kv.Key] = kv.Value;
+        if (r.Skills != null) g.SkillIds = r.Skills.Where(SkillTable.Exists).ToArray();
         return g;
     }
 
@@ -2848,7 +2881,9 @@ public sealed class Game
             g.PendingEmotions.Select(e => EmotionTable.Get(e).Name).ToArray(), Epithets(g),
             g.Fatigue, g.InjuryMatches > 0,
             BudgetUsed(g.Stats) + 1f > g.PotentialBudget, BreakthroughCost(g),
-            g.MGrit, g.MRecover, g.MShow, g.MPay, g.CKoW)).ToList();
+            g.MGrit, g.MRecover, g.MShow, g.MPay, g.CKoW,
+            g.SkillIds.Length > 0 ? g.SkillIds : null,
+            g.Talent >= TalentGrade.Champion ? 2 : 1)).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),

@@ -332,6 +332,24 @@ const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;bor
 const stkBadge=s=> s>=3?` <span style="color:#ff9d5d;background:#4a3220;border-radius:4px;padding:0 5px;font-size:11px" title="${s}연승 — 패배하면 소멸된다">🔥${s}연승</span>`
   : s<=-3?` <span style="color:#9fb8e0;background:#26303f;border-radius:4px;padding:0 5px;font-size:11px" title="${-s}연패의 늪">❄${-s}연패</span>`:'';
 
+// ── T12 패시브 스킬 카탈로그 (SkillData.cs 미러 — 성격 전용·훈련 3pt 수련) ──
+const SKILLS=[
+ {id:'SKL_READ',   n:'간파',       per:'CALM',       tier:1, d:'상대의 예비동작을 읽는다 — 인지지연 −0.04s'},
+ {id:'SKL_RUSH',   n:'저돌',       per:'RECKLESS',   tier:1, d:'생각보다 몸이 먼저 — 이동속도 +6%'},
+ {id:'SKL_LEISURE',n:'여유',       per:'ARROGANT',   tier:1, d:'서두르지 않는 자의 호흡 — 스태미나 회복 +15%'},
+ {id:'SKL_AEGIS',  n:'수호자',     per:'HONORABLE',  tier:1, d:'정면으로 받아낸다 — 가드 시 받는 피해 −20%'},
+ {id:'SKL_SURVIVE',n:'생존술',     per:'COWARD',     tier:1, d:'맞지 않는 것이 이기는 것 — 받피 −4%·회피 소모 −15%'},
+ {id:'SKL_VIGOR',  n:'살육의 활력', per:'CRUEL',      tier:1, d:'피 냄새가 힘이 된다 — 스태미나 최대 +10%'},
+ {id:'SKL_NERVE',  n:'배짱',       per:'BOLD',       tier:1, d:'물러서지 않는 심장 — 포이즈 +12%'},
+ {id:'SKL_ECONOMY',n:'절제',       per:'WARY',       tier:1, d:'낭비 없는 몸놀림 — 회피 스태미나 소모 −30%'},
+ {id:'SKL_FLAIR',  n:'무대 장악',  per:'SHOWMAN',    tier:1, d:'관중이 보는 각도를 안다 — 이속 +4%·간격 +0.08'},
+ {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이속 +3%'},
+ {id:'SKL_READ2',  n:'전장 분석',  per:'CALM',       tier:2, d:'전장 전체가 느리게 보인다 — 인지지연 −0.08s (집정관+)'},
+ {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받피 −35%·이속 −4% (집정관+)'},
+];
+const SKL=id=>SKILLS.find(s=>s.id===id)||{n:id,d:''};
+const sklChip=id=>`<span class="chip" style="background:rgba(91,155,224,.18);color:#9bc4ec;border:1px solid rgba(91,155,224,.4)" title="${SKL(id).d}">📖 ${SKL(id).n}</span>`;
+
 // ── 합성 효과음(DDD): WebAudio 신스 — 설정 '효과음' 게이트, 에셋 무 ──
 let _ac=null;
 function sndOn(){ const c=$('cfgSound'); return c ? c.checked : true; }
@@ -1053,7 +1071,7 @@ function renderLudus(){
     return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span><button onclick="openRename('fighter','${f.Id}','${f.Name.replace(/'/g,"\\'")}')" title="개명" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px">✏</button> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}${stkBadge(stkOf(f.Name))}</h3>
       ${epi(f.Epithets)}
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
-      <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${
+      <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Skills||[]).map(sklChip).join('')}${
         (f.Emotions||[]).map(x=>`<span class="chip" style="background:rgba(201,168,76,.18);color:var(--gold)" title="다음 경기에 영향">💭 ${x}</span>`).join('')}</div>
       <div class="chips" title="클릭 = 기본 전술 변경 (경기 직전 모달에서도 변경 가능)">${f.TacticPool.map(x=>
         `<span class="chip tac${x===f.Tactic?' cur':''}" style="cursor:pointer" onclick="setTac('${f.Id}','${x}')">${t(x)}</span>`).join('')}</div>
@@ -1062,7 +1080,8 @@ function renderLudus(){
       <div class="cap"><i style="width:${cap}%"></i></div>
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
       ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px;background:#3a2540;border:1px solid #c94ca8;color:#e0a0d8;border-radius:6px;padding:4px;font-weight:700" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>💥 잠재력 돌파 (✨${f.BreakthroughCost})</button>`:''}
-      <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b></div>
+      <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b>${
+        f.TrainingPoints>=3?`<button onclick="openSkillModal('${f.Id}')" title="패시브 스킬 수련(3pt) — 성격 전용, 슬롯 ${(f.Skills||[]).length}/${f.SkillSlots}" style="background:#26303f;border:1px solid #5b9be0;color:#9bc4ec;border-radius:5px;padding:0 8px;font-size:11px;cursor:pointer">📖 수련</button>`:''}</div>
       ${masteryRow(f)}
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
@@ -1139,6 +1158,37 @@ function masteryRow(f){
         can?`<button onclick="mastery('${f.Id}','${tr}')" style="background:#4a3a26;border:none;color:var(--gold);border-radius:4px;margin-left:3px;padding:0 5px;cursor:pointer">+</button>`:''}</span>`;
     }).join('')}</div>`;
 }
+// ── T12 스킬 수련(패시브 MVP): 성격 전용 · 슬롯(챔피언+ 2, 그외 1) · 훈련 3pt ──
+window.openSkillModal = (id)=>{
+  const f=(st.MyFighters||[]).find(x=>x.Id===id); if(!f) return;
+  const rank=(TAL[f.Talent]||{r:0}).r, owned=f.Skills||[];
+  const avail=SKILLS.filter(s=>s.per===f.Personality);
+  const rows = avail.length ? avail.map(s=>{
+    const has=owned.includes(s.id), locked=s.tier>=2&&rank<3, full=owned.length>=f.SkillSlots&&!has;
+    return `<button class="tacbtn" ${has||locked?'disabled style="opacity:.45"':''} onclick="learnSkill('${id}','${s.id}',${full})">
+      <b>${s.tier>=2?'Ⅱ · ':''}${s.n}</b> ${has?'<span class="d">— 보유 중</span>':locked?'<span class="d" style="color:var(--b)">— 집정관 이상의 그릇 필요</span>':full?'<span class="d" style="color:#d8b24a">— 슬롯 가득(교체)</span>':''}
+      <div class="d">${s.d}</div></button>`;
+  }).join('') : '<div class="note">이 성격이 익힐 수 있는 스킬이 없다.</div>';
+  $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">📖 스킬 수련 — ${f.Name}</h3>
+    <div class="note" style="text-align:center">${p(f.Personality)} 전용 · 슬롯 ${owned.length}/${f.SkillSlots} · 수련 비용 훈련 3pt (보유 ${f.TrainingPoints}pt)</div>
+    <div style="margin-top:8px">${rows}</div>
+    <button class="tacbtn" style="text-align:center;margin-top:10px;opacity:.7" onclick="$('rvModal').classList.remove('on')">닫기</button>`;
+  $('rvModal').classList.add('on');
+};
+window.learnSkill = (id,skillId,needForget)=>{
+  if (!needForget) return doLearn(id,skillId,'');
+  const f=(st.MyFighters||[]).find(x=>x.Id===id); if(!f) return;
+  $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">교체 — 어떤 기술을 잊을까?</h3>
+    ${(f.Skills||[]).map(sid=>`<button class="tacbtn" onclick="doLearn('${id}','${skillId}','${sid}')">
+      「${SKL(sid).n}」을(를) 잊고 → <b>「${SKL(skillId).n}」</b>을(를) 익힌다</button>`).join('')}
+    <button class="tacbtn" style="text-align:center;margin-top:8px;opacity:.7" onclick="openSkillModal('${id}')">← 뒤로</button>`;
+};
+window.doLearn = async (id,skillId,forget)=>{
+  const r = await api('/api/learnskill',{id,skillId,forget});
+  if (r.error){ $('rvModal').classList.remove('on'); $('ludusErr').textContent=r.error; return; }
+  st=r; $('rvModal').classList.remove('on'); renderLudus(); refreshTop(); sfxReveal(2);
+  $('ludusErr').innerHTML = `<span style="color:#9bc4ec">📖 수련 완료 — 「${SKL(skillId).n}」을(를) 익혔다</span>`;
+};
 window.mastery = async (id,track)=>{
   const r = await api('/api/mastery',{id,track});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
@@ -1499,6 +1549,8 @@ const CODEX = {
     {n:'위험 관리', id:'RISK', d:'피로(경기당 +5, 격전 +12)가 쌓이면 부상 위험↑. 격전(KO패·빈사)을 반복하면 ⚰사망·💀영구 중상 같은 운명이 실시간으로 닥친다. 스파링은 안전한 성장.'},
     {n:'세대·유산', id:'LEGACY', d:'명성 60+ 전설을 은퇴시키면 스승으로 남아 영입 유산(원석 품질↑·신인 잠재 +10). 죽음은 유산 없이 끝 — 노장은 제때 보내라.'},
   ],
+  스킬: SKILLS.map(s=>({n:(s.tier>=2?'Ⅱ · ':'')+s.n, id:s.id,
+    s:`${PER[s.per]||s.per} 전용 · ${s.tier>=2?'집정관+ · ':''}수련 3pt`, d:s.d+' — 특성과 달리 수련으로 익히고 교체할 수 있다(슬롯: 챔피언+ 2칸, 그외 1칸).'})),
   '천부·잠재력': [
     {n:'천부 재능', id:'TALENT', s:'생성 시 결정 · 초기 스탯 총합(버짓)', d:'태어난 그릇. 최초 6스탯의 총합을 정한다 — 영입 전엔 비공개(뽑기 도박의 핵심). 루두스 등급·스승이 높으면 좋은 원석을 만날 확률↑(best-of-N 롤).'},
     {n:'노예', id:'SLAVE', s:'확률 50% · 버짓 395', d:'다수. 평균 이하의 시작 — 하지만 잠재력이 크면 대기만성.'},
