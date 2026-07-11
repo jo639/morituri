@@ -152,7 +152,8 @@ public sealed class Game
         bool AtCap = false, int BreakthroughCost = 0,   // 상한 도달·잠재력 돌파 비용(영광)
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,   // 마스터리 레벨
         int CKoW = 0,   // 통산 KO승(스카우터 은퇴 자격 표시)
-        string[]? Skills = null, int SkillSlots = 1);   // T12 패시브 스킬(id) + 슬롯 수
+        string[]? Skills = null, int SkillSlots = 1,   // T12 패시브 스킬(id) + 슬롯 수
+        string[]? PermInjuries = null);   // 영구 부상(#6) 표시명
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic, int Age, string[]? Hints = null); // 마스킹! (나이 공개·스카우터 힌트)
     private sealed record RevealDoc(string Name, string Weapon, string Personality, int Age, string Talent, string Potential, string[] Traits, string? JoinedRival);
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
@@ -3196,7 +3197,8 @@ public sealed class Game
             BudgetUsed(g.Stats) + 1f > g.PotentialBudget, BreakthroughCost(g),
             g.MGrit, g.MRecover, g.MShow, g.MPay, g.CKoW,
             g.SkillIds.Length > 0 ? g.SkillIds : null,
-            g.Talent >= TalentGrade.Champion ? 2 : 1)).ToList();
+            g.Talent >= TalentGrade.Champion ? 2 : 1,
+            g.PermInjuries.Count > 0 ? g.PermInjuries.Select(PermInjuryIcon).ToArray() : null)).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),

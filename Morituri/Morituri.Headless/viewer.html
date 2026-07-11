@@ -239,7 +239,7 @@ window.addEventListener('message', e=>{
 });
 
 // ── 합성 효과음 (에셋 없음 — WebAudio 신시사이즈. 설정 mor_settings.sound=false로 끔) ──
-let AC = null, lastSfxT = 0, koSlowT = -1;
+let AC = null, lastSfxT = 0, koSlowT = -1, koClutch = false;
 function sndOn(){ return AC && AC.state === 'running' && SET.sound !== false; }
 function sndInit(){
   if (AC || SET.sound === false) return;
@@ -341,9 +341,14 @@ function load(json){
   else { const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
          if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; } }
   // KO 슬로모션: 결정타(마지막 유효타) 주변에서 시간이 느려진다
-  koSlowT = -1;
+  koSlowT = -1; koClutch = false;
   if (r.Reason === 'KO'){
     for (const e of doc.Events) if (e.type === 'HitLanded' && !e.IsGuarded) koSlowT = e.Time;
+    // 막판 결착(#15): 승자마저 빈사인 채 마지막 일격으로 갈렸다면 슬로모를 더 깊고 길게 (철권식 클러치 피니시)
+    if (r.Winner >= 0){
+      const ws = r.Winner === 0 ? r.StatsA : r.StatsB;
+      koClutch = ws && ws.HpRemainPct != null && ws.HpRemainPct <= 0.20;
+    }
   }
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
@@ -1018,14 +1023,18 @@ function render(){
 
   ctx.restore(); // 화면 흔들림 종료
 
-  // KO 슬로모 비네트: 결정타의 시간이 느려지는 동안 화면 가장자리가 어두워진다 (t 파생 — 스크럽 안전)
+  // KO 슬로모 비네트: 결정타의 시간이 느려지는 동안 화면 가장자리가 어두워진다 (t 파생 — 스크럽 안전). 막판 결착=더 짙게·오래.
   if (koSlowT >= 0){
     const d = t - koSlowT;
-    if (d > -0.15 && d < 0.7){
-      const a = d < 0 ? (d+0.15)/0.15 : 1-(d/0.7);
-      const vg = ctx.createRadialGradient(W/2, H/2, H*0.32, W/2, H/2, H*0.78);
-      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,`rgba(18,4,2,${(0.5*a).toFixed(3)})`);
+    const span = koClutch ? 1.1 : 0.7, depth = koClutch ? 0.72 : 0.5, ir = koClutch ? 0.24 : 0.32;
+    if (d > -0.15 && d < span){
+      const a = d < 0 ? (d+0.15)/0.15 : 1-(d/span);
+      const vg = ctx.createRadialGradient(W/2, H/2, H*ir, W/2, H/2, H*0.78);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,`rgba(18,4,2,${(depth*a).toFixed(3)})`);
       ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
+      if (koClutch && d > -0.05 && d < 0.5){   // 결정적 순간 백색 섬광
+        ctx.fillStyle = `rgba(255,248,232,${(0.28*(1-Math.abs(d)/0.5)).toFixed(3)})`; ctx.fillRect(0,0,W,H);
+      }
     }
   }
 
@@ -1069,8 +1078,11 @@ function tick(now){
     const dt = (now-lastWall)/1000; lastWall = now;
     if (now >= hitstopUntil){            // 히트스톱 중이 아니면 진행
       let adv = dt*speed;
-      // KO 슬로모션: 결정타 전후 0.15~0.5s 구간은 시간이 1/4로 흐른다 (마지막 일격의 무게)
-      if (koSlowT >= 0 && t > koSlowT - 0.15 && t < koSlowT + 0.5) adv *= 0.25;
+      // KO 슬로모션: 결정타 전후 구간은 시간이 느려진다 (마지막 일격의 무게). 막판 결착=더 깊고 길게.
+      if (koSlowT >= 0){
+        const pre = koClutch ? 0.35 : 0.15, post = koClutch ? 0.9 : 0.5, scl = koClutch ? 0.14 : 0.25;
+        if (t > koSlowT - pre && t < koSlowT + post) adv *= scl;
+      }
       // 무게 있는 타격 직전까지만 전진 → 그 지점에서 짧게 정지(임팩트에 눈을 멈추게).
       for (const im of impacts){ if (im.stop>0 && im.t>t && im.t<=t+adv){ adv=im.t-t; hitstopUntil=now+im.stop; break; } }
       const prevT = t;
