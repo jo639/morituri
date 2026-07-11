@@ -23,6 +23,7 @@ public sealed partial class Game
     private readonly List<LegendRec> _legends = new();      // 전설 카탈로그
     private int _legendRefs;                                // 이번 시즌 카토 전설 참조 횟수(≤2)
     private bool _promotedFlag;                             // 이번 시즌 내 검투사 승격(종막 게이트, 시즌 내 한정)
+    private int _favorAtE1;                                 // E1 발화 시점의 총애 — E2 게이트("E1 후 특명 완수") 기준점
 
     private sealed record LegendRec(string Name, string Epithet, string Weapon, string Personality,
         string Record, string Fate, int Auc, string Source);   // Source: seed(창세) / hof(명전 승격)
@@ -53,10 +54,12 @@ public sealed partial class Game
 
     // ── 마일스톤 트리거 채널 (확률 아님 — 조건 충족 시 확정 발화, 랜덤 이벤트보다 우선) ──
 
-    /// <summary>다음 스토리 씬/비트를 스폰. 서막 씬은 언제든, 1막 비트는 내 경기 페이싱(afterMatch).</summary>
+    /// <summary>다음 스토리 씬/비트를 스폰. 서막 씬은 언제든, 1막 비트는 내 경기 페이싱(afterMatch).
+    /// 캠페인 종료(chronicle) 후엔 후일담 「황제의 게임」 아크(E1~E3)만 — 종막(finale)을 본 커리어 한정.</summary>
     private bool MaybeSpawnStoryEvent(bool afterMatch)
     {
-        if (_playerless || _pendingEventId != null || _storyStage == "chronicle") return false;
+        if (_playerless || _pendingEventId != null) return false;
+        if (_storyStage == "chronicle") return MaybeSpawnEmperorArc(afterMatch);
 
         // 서막 — 장례(S0) → 첫 방문자(S5, 첫 영입 후)
         if (!_storyBeats.Contains("s0")) return SpawnStory("story_s0", "s0");
@@ -82,6 +85,31 @@ public sealed partial class Game
         // ⑤ 승격 결전 전야 — 검은 인장의 요구 (다음 내 경기가 남아 있을 때)
         if (!_storyBeats.Contains("b5") && _cast.Any(g => g.IsPlayer) && HasMyMatchAheadNow())
             return SpawnStory("story_showdown", "b5");
+        return false;
+    }
+
+    /// <summary>후일담 「황제의 게임」 — 명성 사다리 후반에 예약된 서사(긴장 인계 장치 §6-3).
+    /// 독립 게이트: 1막 비트(b4·b5) 이수와 무관, 단 종막(finale)을 본 커리어만(각본 없이 시작·구세이브 제외).
+    /// E1 명문 루두스(4단계) → E2 특명 완수(또는 총애 상승·컵 우승) → E3 콜로세움의 지배자(6단계) 또는 컵 우승.</summary>
+    private bool MaybeSpawnEmperorArc(bool afterMatch)
+    {
+        if (!afterMatch || !SeasonActive || !_storyBeats.Contains("finale")) return false;
+        if (!_storyBeats.Contains("e1"))
+        {
+            if (LudusTier() < 3) return false;
+            _favorAtE1 = _favor;   // "E1 이후의 특명 완수"를 재기 위한 기준점
+            return SpawnStory("story_e1", "e1");
+        }
+        if (!_storyBeats.Contains("e2"))
+        {
+            if (_favor > _favorAtE1 || _edictDone || _myCupTitles > 0) return SpawnStory("story_e2", "e2");
+            return false;
+        }
+        if (!_storyBeats.Contains("e3"))
+        {
+            if (LudusTier() >= 5 || _myCupTitles > 0) return SpawnStory("story_e3", "e3");
+            return false;
+        }
         return false;
     }
 
@@ -258,6 +286,60 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("모래를 한 줌 움켜쥔다", _ => "따뜻했다. 오늘 흘린 피의 온기가 아직 남아 있었다 — 이제 전부 당신의 것이다"),
                 ("카토에게 고개를 숙인다", _ => "카토: \"…라니스타가 교관에게 고개를 숙이면 안 됩니다. 다시는요.\" 그의 눈가가 잠깐 붉었다") } },
+
+        // ═══ 후일담 「황제의 게임」 — 가이우스 미스터리의 나머지 반쪽 (명성 4단계+ 독립 게이트) ═══
+
+        // E1 「총애의 초대」 — 명문 루두스가 되자 궁정이 눈을 돌린다
+        new EvtTemplate { Id = "story_e1", Icon = "👁", Title = "총애의 초대", NeedsFighter = false,
+            Body = _ => "특명 두루마리에 낯선 봉랍이 하나 더 붙어 있다. 황제의 것이 아니다.\n" +
+                "💬 카토: \"요즘 궁정에서 당신 이름이 오르내린답니다. …가이우스도 딱 이만큼 올라갔을 때부터 그랬지요.\"\n" +
+                "💬 무레나: \"축하드립니다, 라니스타. 이제 '총애'가 무엇인지 배우실 차례군요. 그건 하사되는 게 아닙니다 — 팔리는 거지요.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("\"총애를 파는 자가 누구지?\"", _ => {
+                    AddClue("무레나 — \"총애는 하사되는 게 아니라 팔리는 것. 파는 손은 콜로세움 꼭대기에 있다.\"");
+                    return "무레나는 웃기만 했다 — \"더 올라오십시오. 그 높이에선 보입니다.\" (유품함에 기록)"; }),
+                ("무레나를 내쫓는다 (명성 +5)", _ => { AddRep(5f);
+                    AddClue("낯선 봉랍 — 황제의 것이 아닌 인장이 특명에 붙어 있었다.");
+                    return "명성 +5 — 문가에서 그가 말했다. \"가이우스도 처음엔 내쫓았습니다.\" (유품함에 기록)"; }) } },
+
+        // E2 「특명 뒤의 손」 — 특명의 진짜 발신인
+        new EvtTemplate { Id = "story_e2", Icon = "🕯", Title = "특명 뒤의 손", NeedsFighter = false,
+            Body = _ => "특명을 완수한 밤, 무레나가 축하주도 없이 찾아왔다. 처음 보는 얼굴을 하고서.\n" +
+                "💬 무레나: \"특명이 어디서 오는지 아십니까? 황제는 서명만 합니다. 문장을 고르는 건 — 총애를 파는 손이지요.\"\n" +
+                "💬 무레나: \"가이우스가 거절한 그 경기. 돈은 검은 인장에서 나오지 않았습니다. 그 손에서 나왔지요. 나는… 심부름꾼이었을 뿐입니다.\"\n" +
+                "💬 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("\"왜 이제 와서 말하지?\"", _ => {
+                    AddClue("무레나 — \"심부름꾼도 늙습니다. 그리고 늙은 심부름꾼은… 빚을 갚고 싶어지지요.\"");
+                    return "무레나: \"심부름꾼도 늙습니다. 늙은 심부름꾼은 빚을 갚고 싶어지지요.\" — 그의 눈이 처음으로 웃지 않았다"; }),
+                ("\"심부름꾼도 공범이다\" (명성 +8)", _ => { AddRep(8f);
+                    AddClue("특명 뒤의 손 — 황제는 서명만 한다. 문장을 고르는 건 총애를 파는 손.");
+                    return "명성 +8 — 무레나는 부정하지 않았다. \"그래서 갚으러 온 겁니다.\""; }) } },
+
+        // E3 「콜로세움의 귀빈석」 — 진실, 그리고 라니스타의 선택 (사실은 닫히되 선택의 무게는 남는다)
+        new EvtTemplate { Id = "story_e3", Icon = "🏛", Title = "콜로세움의 귀빈석", NeedsFighter = false,
+            Body = _ => "콜로세움 최상단, 자줏빛 차양 아래. 이름을 대지 않는 원로원의 손이 당신을 초대했다.\n" +
+                "💬 원로원의 손: \"가이우스는 좋은 라니스타였습니다. 셈이 나빴을 뿐. 경기 하나의 값과 목숨 하나의 값을 저울질하지 못했지요.\"\n" +
+                "💬 원로원의 손: \"독은 빠르고, 조용하고, 정확합니다. 셈이 빠른 사람은 그걸 마실 일이 없지요. — 당신은 셈이 빠르다고 들었습니다.\"\n" +
+                "💬 카토: \"(낮게) …저 자입니다. 이제 당신이 정하십시오. 가이우스의 아들로서가 아니라 — 라니스타로서.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("모든 것을 폭로한다 (명성 +40 ✨+10 · 검은 인장의 보복 리스크)", _ => {
+                    AddRep(40f); AddGlory(10f);
+                    AddClue("진실 — 가이우스는 독살당했다. 명령한 손은 총애를 파는 원로원, 무레나는 전달자였다.");
+                    var rng = new SimRandom(_worldSeed ^ 0xE3E3_0001UL);
+                    if (rng.Roll(0.6f) && _gold > 40f)
+                    {
+                        float loss = MathF.Round(_gold * 0.25f); _gold -= loss;
+                        _story.Add((0, "story", $"🔥 보복 — 그날 밤 루두스 창고에 불이 났다 (골드 −{loss:F0})"));
+                        return $"🏛 폭로 — 원로원이 뒤집혔다. 명성 +40 ✨+10. …그리고 그날 밤, 창고에 불이 났다 (골드 −{loss:F0})";
+                    }
+                    return "🏛 폭로 — 원로원이 뒤집혔다. 명성 +40 ✨+10. 카토: \"가이우스가 오늘 밤은 편히 자겠군요.\""; }),
+                ("침묵을 판다 (골드 +250)", _ => { _gold += 250f;
+                    AddClue("진실 — 가이우스는 독살당했다. 나는 그 값을 받았다.");
+                    return "💰 입막음의 값 +250 — 카토는 그날 밤 훈련장 갈퀴질을 평소보다 오래 했다"; }),
+                ("그 손을 잡는다 (총애 +2 · 명성 −20)", _ => { _favor += 2; _ludusRep = MathF.Max(0f, _ludusRep - 20f);
+                    AddClue("진실 — 가이우스는 독살당했다. 나는 그 손을 잡았다.");
+                    return "👁 총애 +2, 명성 −20 — \"현명하시군요. 가이우스보다.\" 어디서 들어본 말이었다"; }) } },
     };
 
     private void AddClue(string clue) { if (!_ghostClues.Contains(clue)) _ghostClues.Add(clue); }
@@ -397,7 +479,11 @@ public sealed partial class Game
         if (ko && lose.WeaponId == "WPN_AXE") pool.Add("도끼는 늘 욕심 때문에 죽지요.");
         if (ko && lose.PersonalityId == "PER_RECKLESS") pool.Add("저 성미로는 언젠가 이런 밤이 옵니다. 오늘이 그 밤이었을 뿐.");
         if (ko) pool.Add($"깨끗한 끝이었습니다. 군중은 {win.Name}의 이름을 오래 기억할 겁니다.");
+        if (!ko) pool.Add("판정은 군중의 몫입니다만 — 모래는 누가 더 절실했는지 압니다.");
         if (win.WeaponId is "WPN_SPEAR" or "WPN_WHIP") pool.Add($"{win.Name}은(는) 발이 빠르군요. 거리가 곧 목숨인 무기라서요.");
+        if (win.WeaponId is "WPN_HAMMER" or "WPN_GREATSWORD") pool.Add("무거운 무기는 서두르지 않습니다. 오늘은 기다림이 이겼군요.");
+        if (win.WeaponId == "WPN_SHIELD") pool.Add("방패가 이기는 밤은 조용합니다. 군중은 몰라도, 저는 압니다.");
+        if (win.WeaponId == "WPN_DUALBLADES") pool.Add("쌍검은 숨 쉴 틈을 안 줍니다. 진 쪽은 아직도 못 셌을 겁니다 — 몇 대 맞았는지.");
         if (lose.Fatigue >= 60) pool.Add("지친 검은 무딥니다. 오늘은 몸이 진 겁니다.");
         if (win.Streak >= 4) pool.Add($"{win.Name}… 챔피언이 될 놈입니다. 기억해 두십시오.");
         // 사망(극적 운명)으로 이미 원장에서 지워진 선수를 재조회하면 유령 엔트리가 생긴다(Get=지연 생성) — 생존자만
@@ -408,6 +494,7 @@ public sealed partial class Game
         if (pool.Count == 0) pool.Add(rng.Roll(0.5f)
             ? "오늘은 거리 싸움이었습니다. 반 보 차이가 전부였지요."
             : "모래는 오늘도 정직했습니다. 그 위의 인간들이 문제일 뿐.");
+        pool.Add("좋은 경기였습니다. 내일이면 아무도 기억 못 하겠지만 — 그게 모래지요.");
         return pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
     }
 }

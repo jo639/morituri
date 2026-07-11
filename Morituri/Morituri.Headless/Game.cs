@@ -124,7 +124,8 @@ public sealed partial class Game
         int SurgerySeq = 0,   // 의무실 수술 카운터(시드 결정론)
         string? StoryStage = null, List<string>? StoryBeats = null, string? StoryCtx = null,   // [13] 캠페인 (null=구세이브=chronicle)
         string? FixChoice = null, List<string>? GhostClues = null,   // 서막 선택·유품함 단서
-        float Unrest = 0f, List<LegendRec>? Legends = null, int LegendRefs = 0);   // 반란 지수·전설·카토 참조 카운터
+        float Unrest = 0f, List<LegendRec>? Legends = null, int LegendRefs = 0,   // 반란 지수·전설·카토 참조 카운터
+        int FavorAtE1 = 0);   // 「황제의 게임」 E2 게이트 기준점(E1 시점 총애)
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -3035,7 +3036,7 @@ public sealed partial class Game
         _storyBeats.Clear(); if (w.StoryBeats != null) foreach (var b in w.StoryBeats) _storyBeats.Add(b);
         _storyCtx = w.StoryCtx; _fixChoice = w.FixChoice;
         _ghostClues.Clear(); if (w.GhostClues != null) _ghostClues.AddRange(w.GhostClues);
-        _unrest = w.Unrest; _legendRefs = w.LegendRefs;
+        _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
         _legends.Clear();
         if (w.Legends != null) _legends.AddRange(w.Legends);
         else if (!_playerless) SeedLegends();
@@ -3116,7 +3117,7 @@ public sealed partial class Game
             _betLog.Count > 0 ? _betLog.ToList() : null, _streetSeq, _surgerySeq,
             _storyStage, _storyBeats.Count > 0 ? _storyBeats.ToList() : null, _storyCtx,
             _fixChoice, _ghostClues.Count > 0 ? _ghostClues.ToList() : null,
-            _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs), JsonOpts));
+            _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,

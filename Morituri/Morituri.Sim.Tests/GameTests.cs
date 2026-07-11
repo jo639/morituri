@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Morituri.Headless;
 
 namespace Morituri.Sim.Tests;
@@ -862,5 +863,79 @@ public class GameTests
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null), "S5 미발화(각본 꺼짐)");
         RunFullSeason(g);
         Assert.That(Parse(g.StateJson()).GetProperty("LastSeason").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "캠페인 없이 시즌 정상 완주");
+    }
+
+    /// <summary>세계 파일을 직접 교정해 후일담 게이트 조건을 만든다(명성·비트·총애·컵은 정상 플레이로는 수십 시즌).</summary>
+    private static void DoctorWorld(Action<JsonNode> mutate)
+    {
+        var json = JsonNode.Parse(File.ReadAllText("world.json"))!;
+        mutate(json);
+        File.WriteAllText("world.json", json.ToJsonString());
+    }
+
+    /// <summary>내 경기를 진행하며 특정 스토리 이벤트를 기다린다. 다른 이벤트는 소극(1) 선택으로 치움.
+    /// 선수가 전멸하면(극적 운명 사망) 재영입해 내 경기 페이싱을 유지한다(골드는 테스트가 넉넉히 교정).</summary>
+    private static bool PlayUntilStory(Game g, string wantId, int maxSteps = 200)
+    {
+        for (int i = 0; i < maxSteps; i++)
+        {
+            var st = Parse(g.StateJson());
+            if (st.GetProperty("PendingEvent").ValueKind != JsonValueKind.Null)
+            {
+                if (st.GetProperty("PendingEvent").GetProperty("Id").GetString() == wantId) return true;
+                g.ChooseEventJson(1);
+                continue;
+            }
+            if (st.GetProperty("MyFighters").GetArrayLength() == 0) { g.GachaJson(); g.RecruitJson(0); }
+            g.PlayNext();   // 개막·경기·다음 시즌 개막 자동
+        }
+        return false;
+    }
+
+    [Test]
+    public void Game_Story_EmperorArc_GatesAndOrder()
+    {
+        // [13] 후일담 「황제의 게임」: 종막(finale)을 본 커리어 한정, E1(4단계) → E2(특명/총애/컵) → E3(6단계/컵).
+        TempDir("earc");
+        var g = new Game(1, 91, fresh: true, interactive: false, playerless: false);
+        g.ChooseEventJson(1);                       // S0 해소
+        g.GachaJson(); g.RecruitJson(0);
+        g.ChooseEventJson(1);                       // S5 해소(거절)
+
+        // 0) 명성 4단계여도 종막 없인 후일담 없음(구세이브·스킵 보호). 골드는 재영입용으로 넉넉히.
+        DoctorWorld(j => { j["LudusRep"] = 900f; j["Gold"] = 5000f; j["StoryStage"] = "chronicle";
+                           j["StoryBeats"] = new JsonArray("s0", "s5", "skipped"); });
+        var g0 = new Game(1, 91, fresh: false, interactive: false, playerless: false);
+        Assert.That(PlayUntilStory(g0, "story_e1", 60), Is.False, "종막 없는 커리어엔 E1이 안 뜬다");
+
+        // 1) 종막 이수 + 명성 4단계 → E1
+        DoctorWorld(j => j["StoryBeats"] = new JsonArray("s0", "s5", "finale"));
+        var g1 = new Game(1, 91, fresh: false, interactive: false, playerless: false);
+        Assert.That(PlayUntilStory(g1, "story_e1"), Is.True, "명문 루두스(4단계) → E1 총애의 초대");
+        g1.ChooseEventJson(0);                      // 단서 획득
+        Assert.That(Parse(g1.StateJson()).GetProperty("Campaign").GetProperty("Clues").GetArrayLength(),
+            Is.GreaterThan(0), "E1 단서가 유품함에");
+        // E2 게이트 미충족(총애 정체) — 아직 안 뜬다
+        Assert.That(PlayUntilStory(g1, "story_e2", 40), Is.False, "특명 완수 전엔 E2가 안 뜬다");
+
+        // 2) 총애 상승(E1 이후 특명 완수 재현) → E2
+        DoctorWorld(j => j["Favor"] = 3);
+        var g2 = new Game(1, 91, fresh: false, interactive: false, playerless: false);
+        Assert.That(PlayUntilStory(g2, "story_e2"), Is.True, "총애 상승 → E2 특명 뒤의 손");
+        g2.ChooseEventJson(1);
+
+        // 3) 컵 우승 → E3 (3지선다·선택 효과)
+        DoctorWorld(j => j["MyCupTitles"] = 1);
+        var g3 = new Game(1, 91, fresh: false, interactive: false, playerless: false);
+        Assert.That(PlayUntilStory(g3, "story_e3"), Is.True, "컵 우승 → E3 콜로세움의 귀빈석");
+        var ev = Parse(g3.StateJson()).GetProperty("PendingEvent");
+        Assert.That(ev.GetProperty("Choices").GetArrayLength(), Is.EqualTo(3), "E3 = 폭로/침묵/가담 3지선다");
+        float gold0 = Parse(g3.StateJson()).GetProperty("Gold").GetSingle();
+        g3.ChooseEventJson(1);                      // 침묵을 판다(+250)
+        Assert.That(Parse(g3.StateJson()).GetProperty("Gold").GetSingle(), Is.GreaterThan(gold0 + 200f), "침묵의 값 지급");
+        // 진실 단서 + 아크 종결(재발화 없음)
+        var clues = Parse(g3.StateJson()).GetProperty("Campaign").GetProperty("Clues");
+        Assert.That(clues.EnumerateArray().Any(c => c.GetString()!.Contains("진실")), Is.True, "가이우스의 진실이 유품함에");
+        Assert.That(PlayUntilStory(g3, "story_e3", 40), Is.False, "E3는 한 번뿐");
     }
 }
