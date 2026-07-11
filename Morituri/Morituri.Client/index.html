@@ -449,7 +449,6 @@ const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${
 const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
 const fatColor=v=> v<40?'var(--grn)': v<70?'#d8b24a':'var(--b)';   // 피로도: 낮을수록 좋음(초록)
 const injBadge=f=> f.Injured?' <span style="color:#e0a89f;background:#5a2a26;border-radius:4px;padding:0 5px;font-size:11px">🩹 부상</span>':'';
-const permBadge=f=>(f.PermInjuries&&f.PermInjuries.length)?` <span style="color:#e6b3aa;background:#4a1f1c;border:1px solid #7a3b34;border-radius:4px;padding:0 5px;font-size:11px" title="영구 부상 — 회복되지 않는다">${f.PermInjuries.join('')} 영구부상</span>`:'';
 // 연승 스트릭 배지(DDD): 쌓아온 것이 걸려 있으면 다음 판의 무게가 달라진다
 const stkBadge=s=> s>=3?` <span style="color:#ff9d5d;background:#4a3220;border-radius:4px;padding:0 5px;font-size:11px" title="${s}연승 — 패배하면 소멸된다">🔥${s}연승</span>`
   : s<=-3?` <span style="color:#9fb8e0;background:#26303f;border-radius:4px;padding:0 5px;font-size:11px" title="${-s}연패의 늪">❄${-s}연패</span>`:'';
@@ -521,7 +520,7 @@ async function openProfile(id){
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
     <div class="row"><span>명성 / 인기 / 우승</span><b>${f.Fame} / ${f.Popularity} / 🏆${f.Titles}</b></div>
     <div class="row"><span>📊 기록</span><b>최다 ${f.BestStreak||0}연승 · 처형 ${f.Executions||0} · 평균 ${f.AvgTime?f.AvgTime.toFixed(0):'—'}초 · 평균피해 ${f.AvgDamage?f.AvgDamage.toFixed(0):'—'}</b></div>
-    ${(f.PermInjuries&&f.PermInjuries.length)?`<div class="row"><span>🩼 영구 부상</span><b style="color:var(--blood)">${f.PermInjuries.join(' · ')}</b></div>`:''}
+    ${(f.PermInjuries&&f.PermInjuries.length)?`<div class="row" style="align-items:flex-start"><span>🩼 영구 부상</span><b style="color:var(--blood);text-align:right">${f.PermInjuries.map(i=>`${i.Name} <span style="color:var(--dim);font-weight:400">(${i.Stat})</span>`).join('<br>')}</b></div>`:''}
     <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
     ${f.EmoBio?`<div class="row"><span>🧠 심리 이력</span><b class="note" title="쌓인 감정은 성격을 바꿀 수 있다 — 트라우마는 위축으로, 자만은 오만으로">${f.EmoBio}</b></div>`:''}
     <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">⚔ 관계</h4>${rel}
@@ -1344,7 +1343,7 @@ function renderLudus(){
   $('myGrid').innerHTML = st.MyFighters.length ? st.MyFighters.map(f=>{
     const axes=[['Atk',f.Stats.Atk],['Def',f.Stats.Def],['Hp',f.Stats.Hp],['Spd',f.Stats.Spd],['Aspd',f.Stats.Aspd],['Rct',f.Stats.Rct]];
     const cap = Math.min(100, 100*f.BudgetUsed/f.PotentialBudget);
-    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span><button onclick="openRename('fighter','${f.Id}','${f.Name.replace(/'/g,"\\'")}')" title="개명" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px">✏</button> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}${permBadge(f)}${stkBadge(stkOf(f.Name))}</h3>
+    return `<div class="fc"><h3><span style="cursor:pointer;text-decoration:underline dotted" onclick="openProfile('${f.Id}')" title="상세 보기">${f.Name}</span><button onclick="openRename('fighter','${f.Id}','${f.Name.replace(/'/g,"\\'")}')" title="개명" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px">✏</button> ${f.Aging?'<span class="old">노쇠 — 상한 감소 중</span>':''}${injBadge(f)}${stkBadge(stkOf(f.Name))}</h3>
       ${epi(f.Epithets)}
       <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세 · <b style="color:var(--gold)">${f.Talent}</b> / 잠재 ${f.Potential}</div>
       <div class="chips">${f.Traits.map(x=>`<span class="chip">${x}</span>`).join('')}${(f.Skills||[]).map(sklChip).join('')}${
@@ -1485,24 +1484,36 @@ window.askSurgery = (id,name,mrec)=>{
       <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('rvModal').classList.remove('on')">그냥 요양한다</button></div>`;
   $('rvModal').classList.add('on');
 };
-// 영구 부상 복원 대수술 — 고비용·저확률·악화 위험(일시 처치와 명확히 다르다)
+// 영구 부상 복원 대수술 — 고비용·저확률·악화 위험(일시 처치와 명확히 다르다). 중복 부상 시 수술 부위 선택.
+window._permSel = '';
 window.askPermSurgery = (id,name,mrec)=>{
+  const f = (st.MyFighters||[]).find(x=>x.Id===id) || {};
+  const injs = f.PermInjuries || [];
+  if (!injs.length) return;
+  window._permSel = injs[0].Id;
   const heal = Math.min(60, 30 + 8*((st.MedicalLv||1)-1) + 5*(mrec||0));
   const fail = Math.round((100-heal)*0.5), worse = 100-heal-fail;
+  const pick = injs.length>1
+    ? `<div class="note" style="margin:4px 0 2px">수술 부위 선택 — 한 번에 하나만 복원:</div>` + injs.map((inj,i)=>
+        `<label class="rrow" style="cursor:pointer;padding:3px 4px;border-radius:5px">
+          <span><input type="radio" name="permsel" value="${inj.Id}" ${i===0?'checked':''} onchange="window._permSel='${inj.Id}'"> ${inj.Name}</span>
+          <b style="color:var(--b)">${inj.Stat}</b></label>`).join('')
+    : `<div class="rrow"><span>복원 부위</span><b>${injs[0].Name} <span style="color:var(--b)">(${injs[0].Stat})</span></b></div>`;
   $('rvBox').innerHTML = `<h3 style="color:#e6b3aa;text-align:center;margin:0">🦴 대수술대 — ${name}</h3>
     <div class="note" style="text-align:center">의사가 오래 침묵한다. "영구 부상은… 장담 못 합니다. 각오하셔야 합니다."</div>
-    <div style="margin:10px 0">
-      <div class="rrow"><span style="color:var(--grn);font-weight:700">복원 ${heal}%</span><span class="d">가장 오래된 부위 스탯·상한 되돌림 · 피로 +10</span></div>
+    <div style="margin:8px 0">${pick}</div>
+    <div style="margin:6px 0">
+      <div class="rrow"><span style="color:var(--grn);font-weight:700">복원 ${heal}%</span><span class="d">선택 부위 스탯·상한 되돌림 · 피로 +10</span></div>
       <div class="rrow"><span style="color:#d8b24a;font-weight:700">실패 ${fail}%</span><span class="d">부상 그대로 — 돈·체력만 잃음 (피로 +12)</span></div>
       <div class="rrow"><span style="color:var(--b);font-weight:700">악화 ${worse}%</span><span class="d">잠재력 상한 −12 <b>영구</b> · 피로 +18</span></div>
       <div class="rrow"><span>대수술비</span><b style="color:var(--gold)">💰${220}</b> <span class="d">(잔고 ${Math.floor(st.Gold)})</span></div></div>
     <div style="display:flex;gap:8px">
-      <button class="tacbtn" style="flex:1;text-align:center;border-color:#7a3b34;color:#e6b3aa" onclick="doSurgery('${id}','perm')">🔪 대수술한다</button>
+      <button class="tacbtn" style="flex:1;text-align:center;border-color:#7a3b34;color:#e6b3aa" onclick="doSurgery('${id}','perm',window._permSel)">🔪 대수술한다</button>
       <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('rvModal').classList.remove('on')">그냥 안고 산다</button></div>`;
   $('rvModal').classList.add('on');
 };
-window.doSurgery = async (id,kind='temp')=>{
-  const r = await api('/api/surgery',{id,kind});
+window.doSurgery = async (id,kind='temp',part='')=>{
+  const r = await api('/api/surgery',{id,kind,part});
   if (r.error){ $('rvModal').classList.remove('on'); $('ludusErr').textContent=r.error; return; }
   $('rvBox').innerHTML = `<div style="text-align:center;padding:18px">
     <div style="font-size:34px;display:inline-block;animation:thumbRock .7s ease-in-out infinite">🔪</div>

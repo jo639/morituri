@@ -153,7 +153,7 @@ public sealed class Game
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,   // 마스터리 레벨
         int CKoW = 0,   // 통산 KO승(스카우터 은퇴 자격 표시)
         string[]? Skills = null, int SkillSlots = 1,   // T12 패시브 스킬(id) + 슬롯 수
-        string[]? PermInjuries = null);   // 영구 부상(#6) 표시명
+        PermInjuryInfo[]? PermInjuries = null);   // 영구 부상(#6) — 부위명 + 스탯 저하(수술 부위 선택용)
     private sealed record CandidateDoc(int Idx, string Name, string Weapon, string Personality, string RevealedTactic, int Age, string[]? Hints = null); // 마스킹! (나이 공개·스카우터 힌트)
     private sealed record RevealDoc(string Name, string Weapon, string Personality, int Age, string Talent, string Potential, string[] Traits, string? JoinedRival);
     private sealed record OppPreview(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
@@ -185,7 +185,7 @@ public sealed class Game
         RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus,
         string? EmoBio = null,   // 커리어 감정 이력 요약(심리 기질 — W10a)
         int BestStreak = 0, int Executions = 0, float AvgTime = 0f, float AvgDamage = 0f,   // 검투사 기록(#2)
-        string[]? PermInjuries = null);   // 영구 부상(#6) — 부위 표시명
+        PermInjuryInfo[]? PermInjuries = null);   // 영구 부상(#6) — 부위명 + 스탯 저하
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -417,34 +417,27 @@ public sealed class Game
     }
 
     private static uint HashId(string s) { uint h = 2166136261u; foreach (char c in s) { h ^= c; h *= 16777619u; } return h; }
-    private static readonly string[] NickBeast = { "늑대", "사자", "독수리", "코브라", "표범", "까마귀", "황소", "하이에나" };
 
-    /// <summary>자동 별명(#7) — 인기·성격·무기 기반 시그니처 모니커. 조건부 특수명 우선, 없으면 성격 수식 × 무기/짐승 상징(Id 결정론).</summary>
-    private string Nickname(Gladiator g)
+    /// <summary>별명(#7) — 캐릭터성이 서린 특별한 경우에만 부여(업적·기질이 만든 별명). 평범한 검투사는 별명 없음(null). 단순 성격+무기 조합은 부여하지 않는다.</summary>
+    private string? Nickname(Gladiator g)
     {
-        if (g.Executions >= 4) return "학살자";
-        if (g.WeaponId == "WPN_SHIELD" && g.Stats.Def >= 88f) return "철벽";
-        if (g.CW + g.CL + g.CD >= 35 && g.Fame >= 90f) return "콜로세움의 망령";
-        uint h = HashId(g.Id);
-        string sym = g.WeaponId switch
-        {
-            "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검", "WPN_DUALBLADES" => "쌍검",
-            "WPN_HAMMER" => "철퇴", "WPN_WHIP" => "독사", "WPN_SHIELD" => "방벽", _ => "검",
-        };
-        if (g.Popularity >= 30f && (h & 1u) == 0u) sym = NickBeast[(int)(h % (uint)NickBeast.Length)];   // 인기 높으면 짐승 상징으로 격상
-        string adj = g.PersonalityId switch
-        {
-            "PER_CRUEL" => "핏빛", "PER_SHOWMAN" => "황금", "PER_CALM" => "고요한", "PER_COWARD" => "잿빛",
-            "PER_RECKLESS" => "사나운", "PER_ARROGANT" => "오만한", "PER_HONORABLE" => "고결한",
-            "PER_BOLD" => "불굴의", "PER_WARY" => "신중한", "PER_OPPORTUNIST" => "교활한", _ => "붉은",
-        };
-        return $"{adj} {sym}";
+        int games = g.CW + g.CL + g.CD;
+        if (g.Executions >= 4) return "학살자";                                              // 처형을 즐긴 자
+        if (g.WeaponId == "WPN_SHIELD" && g.Stats.Def >= 95f && games >= 12) return "철벽";   // 뚫리지 않는 방패
+        if (games >= 35 && g.Fame >= 90f) return "콜로세움의 망령";                            // 오래 살아남은 전설
+        if (g.PersonalityId == "PER_CRUEL" && g.CKoW >= 8) return "피의 폭풍";                 // 잔혹 × 다수 KO
+        if (g.WeaponId == "WPN_AXE" && g.CKoW >= 6) return "붉은 늑대";                        // 도끼 × KO 사냥꾼
+        if (g.WeaponId == "WPN_SPEAR" && g.Popularity >= 60f) return "황금 창";                // 군중을 홀린 창잡이
+        if (g.PersonalityId == "PER_SHOWMAN" && g.Popularity >= 70f) return "콜로세움의 총아"; // 최고 인기 쇼맨
+        if (g.BestStreak >= 10) return "무패의 질주";                                          // 대연승 기록
+        return null;   // 별명 없음 — 별명은 아무나 얻는 게 아니다
     }
 
-    /// <summary>획득 이명 — 자동 별명(#7) + 통산 전적·KO·연승·우승·연륜 파생(저장 안 함, 읽을 때 계산). 넴시스 서사의 표지.</summary>
+    /// <summary>획득 이명 — 특별 별명(#7, 조건부) + 통산 전적·KO·연승·우승·연륜 파생(저장 안 함, 읽을 때 계산). 넴시스 서사의 표지.</summary>
     private string[] Epithets(Gladiator g)
     {
-        var e = new List<string> { "🏷 " + Nickname(g) };   // 자동 별명은 항상 첫 자리
+        var e = new List<string>();
+        if (Nickname(g) is { } nick) e.Add("🏷 " + nick);   // 별명은 있을 때만, 첫 자리
         int games = g.CW + g.CL + g.CD, titles = TitlesOf(g);
         if (titles >= 3) e.Add("👑 패왕");
         else if (titles >= 1) e.Add("👑 챔피언");
@@ -555,7 +548,7 @@ public sealed class Game
             BestStreak: g.BestStreak, Executions: g.Executions,
             AvgTime: (g.CW + g.CL + g.CD) > 0 ? g.TotalMatchTime / (g.CW + g.CL + g.CD) : 0f,
             AvgDamage: (g.CW + g.CL + g.CD) > 0 ? g.TotalDamage / (g.CW + g.CL + g.CD) : 0f,
-            PermInjuries: g.PermInjuries.Count > 0 ? g.PermInjuries.Select(PermInjuryName).ToArray() : null);
+            PermInjuries: g.PermInjuries.Count > 0 ? PermInjuryInfos(g) : null);
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 
@@ -1441,7 +1434,7 @@ public sealed class Game
 
     /// <summary>의무실 수술(도박): "내가 굴리는 주사위". kind=perm이면 영구 부상 복원 대수술(고비용·저확률·악화 위험),
     /// 그 외엔 일시 부상 처치(저비용·고확률·가벼운 실패). 의무실 Lv·회복 마스터리가 확률을 올린다. 시드 결정론.</summary>
-    public string SurgeryJson(string fighterId, string kind = "temp")
+    public string SurgeryJson(string fighterId, string kind = "temp", string part = "")
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
@@ -1454,8 +1447,8 @@ public sealed class Game
             if (g.PermInjuries.Count == 0) return Err("영구 부상이 아니다");
             if (_gold < PermSurgeryCost) return Err($"잔고 부족 (대수술비 {PermSurgeryCost:F0})");
             _gold -= PermSurgeryCost;
-            string part = g.PermInjuries[0];   // 가장 오래된 부상부터 복원 시도
-            var k = PermInjuryKinds.FirstOrDefault(x => x.Id == part);
+            string chosen = g.PermInjuries.Contains(part) ? part : g.PermInjuries[0];   // 부위 선택(없으면 가장 오래된 것)
+            var k = PermInjuryKinds.FirstOrDefault(x => x.Id == chosen);
             float heal = PermHealChance(g);
             if (roll < heal)
             {
@@ -1464,7 +1457,7 @@ public sealed class Game
                 g.Stats = WithAxis(g.Stats, k.Axis, -k.Pts);
                 if (k.Axis2 >= 0) g.Stats = WithAxis(g.Stats, k.Axis2, -k.Pts2);
                 g.PotentialBudget += removed;
-                g.PermInjuries.RemoveAt(0);
+                g.PermInjuries.Remove(chosen);
                 g.Fatigue = Math.Min(100, g.Fatigue + 10); healed = true;
                 outcome = $"⚕ 대수술 성공 — {g.Name}, {k.Name}을(를) 딛고 일어섰다 (부위 스탯·상한 복원 · 피로 +10)";
             }
@@ -2518,8 +2511,19 @@ public sealed class Game
         ("eye",  "한쪽 눈 실명", "👁", 5, -9f, -1, 0f),    // 눈 → RCT(반응)
         ("leg",  "다리 부상",    "🦵", 3, -8f, -1, 0f),    // 다리 → SPD(이속)
     };
-    internal static string PermInjuryName(string id) => PermInjuryKinds.FirstOrDefault(k => k.Id == id) is { Name: { } n } ? n : id;
-    internal static string PermInjuryIcon(string id) => PermInjuryKinds.FirstOrDefault(k => k.Id == id) is { Icon: { } c } ? c : "🩼";
+    /// <summary>영구 부상의 스탯 변경점 표기 — 예: "ATK −7 · ASPD −4".</summary>
+    private static string PermInjuryStatText(int axis, float pts, int axis2, float pts2)
+    {
+        string One(int a, float p) => $"{AxisNames[a].ToUpperInvariant()} {(p < 0 ? "−" : "+")}{Math.Abs(p):0}";
+        return axis2 >= 0 ? $"{One(axis, pts)} · {One(axis2, pts2)}" : One(axis, pts);
+    }
+    private sealed record PermInjuryInfo(string Id, string Name, string Stat);
+    /// <summary>선수의 영구 부상 목록 — 부위명 + 스탯 저하 명시(상세 창·수술 부위 선택용).</summary>
+    private static PermInjuryInfo[] PermInjuryInfos(Gladiator g) => g.PermInjuries
+        .Select(id => PermInjuryKinds.FirstOrDefault(k => k.Id == id) is { Id: { } } k
+            ? new PermInjuryInfo(id, k.Name, PermInjuryStatText(k.Axis, k.Pts, k.Axis2, k.Pts2))
+            : new PermInjuryInfo(id, id, ""))
+        .ToArray();
 
     /// <summary>영구 부상 부여 — 부위 무작위(중복 부위 제외), 코어 스탯 + 상한 동시 감소(재훈련 불가=진짜 영구). 이미 만신창이면 false.</summary>
     private bool PermInjure(Gladiator g, int round, SimRandom rng)
@@ -3235,7 +3239,7 @@ public sealed class Game
             g.MGrit, g.MRecover, g.MShow, g.MPay, g.CKoW,
             g.SkillIds.Length > 0 ? g.SkillIds : null,
             g.Talent >= TalentGrade.Champion ? 2 : 1,
-            g.PermInjuries.Count > 0 ? g.PermInjuries.Select(PermInjuryIcon).ToArray() : null)).ToList();
+            g.PermInjuries.Count > 0 ? PermInjuryInfos(g) : null)).ToList();
 
         var cands = _candidates.Select((c, i) => new CandidateDoc(i, c.Name,
             c.WeaponId.Replace("WPN_", ""), c.PersonalityId.Replace("PER_", ""),
