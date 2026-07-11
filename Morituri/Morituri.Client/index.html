@@ -199,6 +199,66 @@
   #menu button:hover{ border-color:var(--gold); color:var(--gold); box-shadow:0 0 20px rgba(210,171,85,.14); }
   #menu .info{ color:var(--dim); font-size:12px; margin-top:22px; }
   #mSlots button{ width:auto; letter-spacing:0; font-weight:400; }
+/* ── [13] 스토리 대화 UI (A안 하단 대화창 — 캠페인 전용, 검수 확정 2026-07-11) ── */
+#dlg{ position:fixed; inset:0; z-index:60; display:none }
+#dlg.on{ display:block }
+#dlg .dveil{ position:absolute; inset:0; background:rgba(10,6,2,.78); backdrop-filter:blur(3px); animation:dlgVeil .5s ease }
+@keyframes dlgVeil{ from{opacity:0} to{opacity:1} }
+.dlg-scene{ position:absolute; top:58px; left:50%; transform:translateX(-50%);
+  font-family:var(--font-display); letter-spacing:.18em; color:var(--gold); font-size:15px; font-weight:700;
+  padding:7px 26px; border:1px solid var(--gold-deep); border-radius:999px; background:rgba(26,18,8,.85);
+  box-shadow:var(--sh1); white-space:nowrap; animation:dlgDrop .6s ease; text-align:center }
+.dlg-scene small{ display:block; letter-spacing:.1em; color:var(--dim); font-size:10px; font-weight:400; margin-top:2px }
+@keyframes dlgDrop{ from{opacity:0; transform:translate(-50%,-8px)} to{opacity:1; transform:translate(-50%,0)} }
+.dlg-stage{ position:absolute; left:50%; bottom:36px; transform:translateX(-50%); width:min(940px,94vw) }
+.dlg-port{ position:absolute; left:-14px; bottom:100%; margin-bottom:-34px; z-index:2;
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.6)); transition:opacity .25s ease }
+.dlg-port.dimmed{ opacity:.35; filter:grayscale(.6) drop-shadow(0 6px 18px rgba(0,0,0,.6)) }
+.dlg-port img,.dlg-port svg{ width:190px; height:190px; object-fit:contain }
+.dlg-np{ position:absolute; top:-38px; left:190px }
+.dlg-nameplate{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:.12em;
+  color:var(--gold); background:linear-gradient(180deg,var(--panel3),var(--panel)); padding:6px 22px;
+  border:1px solid var(--gold-deep); border-radius:var(--r1) var(--r1) 0 0; border-bottom:none; box-shadow:var(--sh1) }
+.dlg-nameplate .role{ font-family:var(--font-body); font-weight:400; letter-spacing:.02em; font-size:11px; color:var(--dim); margin-left:8px }
+.dlg-nameplate.murena{ color:#cf8f8a; border-color:#6a3530 }
+.dlg-box{ position:relative; background:linear-gradient(180deg,rgba(44,33,18,.97),rgba(32,24,13,.97));
+  border:1px solid var(--gold-deep); border-radius:var(--r3); box-shadow:var(--sh2);
+  padding:18px 26px 16px 205px; min-height:150px; cursor:pointer }
+.dlg-box.nofig{ padding-left:26px }
+.dlg-text{ font-size:19px; line-height:1.75; color:var(--ink); min-height:3.6em; font-weight:500; word-break:keep-all }
+.dlg-text.narr{ font-style:italic; color:#d8c8a8; font-weight:400 }
+.dlg-caret{ display:inline-block; width:9px; height:19px; background:var(--gold); margin-left:2px; vertical-align:-3px; animation:dlgBlink .8s step-end infinite }
+@keyframes dlgBlink{ 50%{opacity:0} }
+.dlg-foot{ display:flex; justify-content:flex-end; gap:14px; margin-top:10px; align-items:center }
+.dlg-next{ background:linear-gradient(180deg,#5a4520,#3a2c12); color:var(--gold); border:1px solid var(--gold);
+  border-radius:var(--r2); padding:11px 34px; font-size:16px; font-weight:800; cursor:pointer; letter-spacing:.06em;
+  animation:dlgPulse 1.6s ease infinite }
+@keyframes dlgPulse{ 0%,100%{box-shadow:0 0 0 0 rgba(210,171,85,.35)} 50%{box-shadow:0 0 14px 3px rgba(210,171,85,.18)} }
+.dlg-next:hover{ background:linear-gradient(180deg,#6a5228,#463618) }
+.dlg-cnt{ font-size:11px; color:var(--dim) }
+.dlg-choices{ display:flex; flex-direction:column; gap:10px; width:100% }
+.dlg-choice{ text-align:left; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+  border-radius:var(--r2); padding:13px 18px; font-size:16px; cursor:pointer; transition:all .15s ease }
+.dlg-choice:hover{ border-color:var(--gold); color:var(--gold); background:var(--panel3); transform:translateX(4px) }
+.dlg-unlock{ margin:6px 0 4px; text-align:center; font-weight:800; color:var(--gold); animation:dlgVeil 1.2s ease }
+/* ── [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) ── */
+#coach{ position:fixed; inset:0; z-index:58; display:none }
+#coach.on{ display:block }
+#coach .spot{ position:absolute; border-radius:8px;
+  box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.6);
+  animation:coachPulse 1.4s ease infinite }
+@keyframes coachPulse{ 0%,100%{box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.6)}
+  50%{box-shadow:0 0 0 5px var(--gold),0 0 30px 10px rgba(210,171,85,.6),0 0 0 9999px rgba(10,6,2,.6)} }
+#coach .bub{ position:absolute; width:360px; background:var(--panel2); border:1px solid var(--gold-deep);
+  border-radius:var(--r2); box-shadow:var(--sh2); padding:14px 16px 12px; animation:dlgDrop2 .4s ease }
+@keyframes dlgDrop2{ from{opacity:0; transform:translateY(-8px)} to{opacity:1; transform:translateY(0)} }
+#coach .arrow{ position:absolute; top:-9px; width:16px; height:16px; background:var(--panel2);
+  border-left:1px solid var(--gold-deep); border-top:1px solid var(--gold-deep); transform:rotate(45deg) }
+#coach .bname{ font-family:var(--font-display); font-weight:900; font-size:12px; letter-spacing:.1em; color:var(--gold) }
+#coach .btxt{ font-size:14.5px; line-height:1.6; color:var(--ink) }
+#coach .btxt b{ color:var(--gold) }
+#coach .okbtn{ background:var(--panel3); border:1px solid var(--gold); color:var(--gold); font-weight:800;
+  border-radius:var(--r1); padding:7px 22px; cursor:pointer; font-size:14px; float:right; margin-top:10px }
 </style>
 </head>
 <body class="fresco">
@@ -433,6 +493,34 @@
   </div>
 </div></div>
 
+<!-- [13] 스토리 대화 오버레이 (캠페인 전용 — 자동 팝업, 전용 [다음] 버튼) -->
+<div id="dlg">
+  <div class="dveil" onclick="dlgAdvance()"></div>
+  <div class="dlg-scene" id="dlgScene"></div>
+  <div class="dlg-stage">
+    <div class="dlg-port" id="dlgPort"></div>
+    <div class="dlg-np" id="dlgNp"></div>
+    <div class="dlg-box" id="dlgBox" onclick="dlgAdvance()">
+      <div class="dlg-text" id="dlgText"></div>
+      <div class="dlg-foot" id="dlgFoot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) -->
+<div id="coach">
+  <div class="spot" id="coachSpot"></div>
+  <div class="bub" id="coachBub">
+    <div class="arrow" id="coachArrow"></div>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <span id="coachPort"></span>
+      <div><div class="bname">카토 · 교관</div><div class="btxt" id="coachTxt"></div></div>
+    </div>
+    <button class="okbtn" onclick="hideCoach()">알겠다</button>
+    <div style="clear:both"></div>
+  </div>
+</div>
+
 <div id="menu">
   <h1>MORITURI</h1>
   <div class="tag">MORITURI TE SALUTANT — 곧 죽을 자들이 경례합니다</div>
@@ -574,6 +662,7 @@ window.loadSlot = async (n)=>{
   $('leagueF').src='league.html?t='+Date.now();
   $('menu').style.display='none';
   go(st.MyFighters.length? 'league':'market');
+  maybeAutoStory(); maybeCoach();
 };
 
 async function api(path, body){
@@ -600,6 +689,7 @@ async function refresh(){
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
   renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderUnrest(); renderGhost();
+  maybeAutoStory(); maybeCoach();   // [13] 캠페인 대사는 버튼을 기다리지 않는다 + 튜토리얼 코치마크
   return st;
 }
 // ── [13] 캠페인: 카토의 조언(서막 튜토리얼 힌트 — 서버 계산, 여긴 표시만) ──
@@ -1255,7 +1345,7 @@ window.closeResult = ()=>{ $('resModal').classList.remove('on');
 // ── 시즌 중 텍스트 이벤트(감독의 선택) ──
 function showEvent(){
   const ev = st && st.PendingEvent; if (!ev) return;
-  if (ev.Id==='story_finale'){ showFinale(ev); return; }   // [13] 종막 = 라니스타가 되는 의식(전용 연출)
+  if (ev.Id.startsWith('story_')){ showDialogue(ev); return; }   // [13] 캠페인 = 전용 대화 UI(A안)
   $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
   // 상대 대사(💬) 줄은 강조 렌더(#9)
   $('evtBody').innerHTML = ev.Body.split('\n').map(line=>{
@@ -1269,39 +1359,135 @@ function showEvent(){
   $('evtChoices').innerHTML = ev.Choices.map((c,i)=>`<button class="tacbtn" onclick="chooseEvent(${i})">${c}</button>`).join('');
   $('evtModal').classList.add('on');
 }
-// ── [13] 종막 의식: 침묵 2.5초 → 대사 순차 리빌 → 전 시스템 개방 ──
-function showFinale(ev){
-  $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
-  $('evtBody').innerHTML = '';
-  $('evtOutcome').style.display='none'; $('evtClose').style.display='none'; $('evtChoices').style.display='none';
-  $('evtModal').classList.add('on');
-  const lines = ev.Body.split('\n');
-  let i = 0;
-  const step = ()=>{
-    if (i < lines.length){
-      const line = lines[i]; i++;
-      const esc = line.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      const d = document.createElement('div');
-      d.style.cssText = 'opacity:0;transition:opacity 1s ease' + (line.trim().startsWith('💬')
-        ? ';margin-top:8px;padding:7px 10px;border-left:3px solid var(--gold);background:var(--panel2);font-style:italic;color:#e8d8b0'
-        : ';margin-top:6px');
-      d.innerHTML = line.trim()==='…' ? '&nbsp;' : esc;
-      $('evtBody').appendChild(d);
-      requestAnimationFrame(()=>{ d.style.opacity='1'; });
-      setTimeout(step, line.trim()==='…' ? 2500 : 1400);   // '…' 줄 = 침묵
-    } else {
-      const un = document.createElement('div');
-      un.style.cssText = 'margin-top:12px;text-align:center;font-weight:800;color:var(--gold);opacity:0;transition:opacity 1.2s ease';
-      un.innerHTML = '⚜ 모든 것이 열렸다 — 이제 각본은 없다 ⚜';
-      $('evtBody').appendChild(un);
-      requestAnimationFrame(()=>{ un.style.opacity='1'; });
-      if (typeof sfxReveal==='function') sfxReveal(3);
-      $('evtChoices').style.display='';
-      $('evtChoices').innerHTML = ev.Choices.map((c,i2)=>`<button class="tacbtn" onclick="chooseEvent(${i2})">${c}</button>`).join('');
-    }
-  };
-  step();
+// ═══ [13] 스토리 대화 시스템 (A안 하단 대화창 — 검수 확정) ═══
+// 자동 팝업(개막·다음 경기 버튼과 분리) · 화자 초상+이름패 · 타자기 · 전용 [다음 ▶] · 선택 강제.
+const DLG_SCENES = {
+  story_s0:'서막 「유산」|카푸아 · 프리시즌 · AUC 681',
+  story_s5:'서막 「검은 인장」|해질녘의 루두스',
+  story_house_gold:'1막 「모래 위의 도시」|재력가의 환영',
+  story_house_youth:'1막 「모래 위의 도시」|육성가의 환영',
+  story_house_blood:'1막 「모래 위의 도시」|잔혹가의 도발',
+  story_challenge:'1막 「모래 위의 도시」|지목 격파',
+  story_unrest:'1막 「모래 위의 도시」|시대의 소음',
+  story_clue:'1막 「모래 위의 도시」|진상의 반쪽',
+  story_showdown:'1막 「모래 위의 도시」|결전 전야',
+  story_finale:'종막 「모래에게 배우다」|시즌의 먼지가 가라앉은 훈련장',
+};
+const DLG_CAST = { '카토':{key:'cato',role:'루두스의 교관'}, '무레나':{key:'murena',role:'검은 인장의 중개인'} };
+const escHtml = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+// 초상: 라니스타 제작 이미지(story_<key>.png — 투명 PNG) 우선, 없으면 실루엣 폴백
+window.dlgSilhouette = who => {
+  const tone = who==='murena' ? '#2e1e26' : '#5a4630';
+  const face = who==='murena' ? '#c9a88f' : '#b98a5e';
+  return `<svg viewBox="0 0 100 100"><rect width="100" height="100" rx="10" fill="var(--panel)" stroke="var(--gold-deep)"/>
+    <ellipse cx="50" cy="92" rx="30" ry="24" fill="${tone}"/><circle cx="50" cy="44" r="20" fill="${face}" opacity=".9"/>
+    ${who==='murena'?'<path d="M30 52 Q30 20 50 20 Q70 20 70 52 L70 34 Q50 16 30 34 Z" fill="#241820"/>':''}</svg>`;
+};
+const dlgPortrait = who => who==='none' ? '' :
+  `<img src="story_${who}.png" onerror="this.parentElement.innerHTML=dlgSilhouette('${who}')">`;
+function dlgParse(body){
+  return body.split('\n').map(l=>l.trim()).filter(l=>l.length).map(line=>{
+    const m = line.match(/^💬\s*([^:]+):\s*(.*)$/);
+    if (m){ const nm=m[1].trim(); const c=DLG_CAST[nm]||{key:'other',role:''};
+      return {who:c.key, name:nm, role:c.role, text:m[2].trim(), narr:false}; }
+    return {who:'none', name:'', role:'', text:line, narr:true};
+  });
 }
+let dlgEv=null, dlgLines=[], dlgIdx=0, dlgTyping=null, dlgLock=false;
+function showDialogue(ev){
+  dlgEv=ev; dlgLines=dlgParse(ev.Body); dlgIdx=0; dlgLock=false;
+  if (!dlgLines.length){ dlgEv=null; return; }
+  $('dlg').classList.add('on');
+  const sc=(DLG_SCENES[ev.Id]||`${ev.Icon} ${ev.Title}|`).split('|');
+  $('dlgScene').innerHTML = escHtml(sc[0]) + (sc[1]?`<small>${escHtml(sc[1])}</small>`:'');
+  dlgRender();
+}
+function dlgRender(){
+  const L=dlgLines[dlgIdx];
+  $('dlgFoot').style.flexDirection='row';
+  if (L.text==='…'){   // 침묵 라인(종막) — 입력 잠금 2.2초
+    $('dlgText').innerHTML='&nbsp;'; $('dlgFoot').innerHTML=''; dlgLock=true;
+    setTimeout(()=>{ dlgLock=false; dlgIdx++; dlgRender(); }, 2200); return;
+  }
+  $('dlgPort').innerHTML = dlgPortrait(L.who);
+  $('dlgPort').classList.toggle('dimmed', L.narr);
+  $('dlgNp').innerHTML = L.name?`<span class="dlg-nameplate ${L.who==='murena'?'murena':''}">${escHtml(L.name)}<span class="role">${escHtml(L.role)}</span></span>`:'';
+  const t=$('dlgText'); t.className='dlg-text'+(L.narr?' narr':'');
+  if (dlgTyping) clearInterval(dlgTyping);
+  const full=L.text; let i=0;
+  t.innerHTML='<span class="dlg-caret"></span>';
+  dlgTyping=setInterval(()=>{
+    i+=2; t.innerHTML=escHtml(full.slice(0,i))+'<span class="dlg-caret"></span>';
+    if(i>=full.length){ clearInterval(dlgTyping); dlgTyping=null; t.innerHTML=escHtml(full); dlgShowFoot(); }
+  },18);
+  $('dlgFoot').innerHTML='<span class="dlg-cnt">클릭 = 전체 표시</span>';
+}
+function dlgShowFoot(){
+  const last = dlgIdx >= dlgLines.length-1;
+  if (!last){
+    $('dlgFoot').innerHTML = `<span class="dlg-cnt">${dlgIdx+1} / ${dlgLines.length}</span><button class="dlg-next" onclick="dlgAdvance(event)">다음 ▶</button>`;
+    return;
+  }
+  // 마지막 줄: (종막이면 개방 배너) + 선택지 — 반드시 골라야 닫힌다
+  $('dlgFoot').style.flexDirection='column';
+  const pre = dlgEv.Id==='story_finale' ? `<div class="dlg-unlock">⚜ 모든 것이 열렸다 — 이제 각본은 없다 ⚜</div>` : '';
+  if (dlgEv.Id==='story_finale' && typeof sfxReveal==='function') sfxReveal(3);
+  $('dlgFoot').innerHTML = pre + `<div class="dlg-choices">` +
+    dlgEv.Choices.map((c,i)=>`<button class="dlg-choice" onclick="dlgPick(${i},event)">${i+1}. ${escHtml(c)}</button>`).join('') + `</div>`;
+}
+window.dlgAdvance = (ev2)=>{
+  if (ev2) ev2.stopPropagation();
+  if (dlgLock || !dlgEv) return;
+  const L = dlgLines[dlgIdx];
+  if (dlgTyping){ clearInterval(dlgTyping); dlgTyping=null; $('dlgText').innerHTML=escHtml(L.text); dlgShowFoot(); return; }
+  if (dlgIdx < dlgLines.length-1){ dlgIdx++; dlgRender(); }
+};
+window.dlgPick = async (i, ev2)=>{
+  if (ev2) ev2.stopPropagation();
+  const r = await api('/api/choose',{choice:i});
+  await refresh();
+  $('dlgPort').innerHTML=''; $('dlgNp').innerHTML='';
+  $('dlgText').className='dlg-text narr';
+  $('dlgText').innerHTML = '— ' + escHtml(r.outcome||'') + ' —';
+  $('dlgFoot').style.flexDirection='row';
+  $('dlgFoot').innerHTML = `<button class="dlg-next" onclick="dlgClose()">확인</button>`;
+};
+window.dlgClose = ()=>{
+  $('dlg').classList.remove('on'); dlgEv=null;
+  if (st && st.PendingProposal) showProposal();   // 지목 격파 수락 → 출전자 선택으로 연결
+  maybeCoach();
+};
+// 자동 팝업: 스토리 이벤트는 버튼을 기다리지 않는다 (메뉴·라이브 관전 중엔 대기)
+function maybeAutoStory(){
+  if (!st || !st.PendingEvent || !st.PendingEvent.Id.startsWith('story_')) return;
+  if ($('dlg').classList.contains('on')) return;
+  if ($('menu').style.display !== 'none') return;
+  if ($('livesc').classList.contains('on')) return;
+  showDialogue(st.PendingEvent);
+}
+// ═══ [13] 튜토리얼 코치마크: 카토의 조언이 실제 UI를 가리킨다 (힌트 변경 시 1회) ═══
+let _coachSeen = null;
+function maybeCoach(){
+  const hint = st && st.Campaign && st.Campaign.Hint;
+  if (!hint){ hideCoach(); _coachSeen=null; return; }
+  if (hint === _coachSeen) return;
+  if ($('dlg').classList.contains('on') || $('menu').style.display !== 'none') return;   // 대화·메뉴 먼저
+  const target = hint.includes('영입 탭') ? document.querySelector('nav button[data-s="market"]') : $('next');
+  if (!target) return;
+  _coachSeen = hint;
+  const [q, dir] = hint.split('→');
+  $('coachTxt').innerHTML = escHtml(q.replace(/^💬\s*카토:\s*/,'').trim()) + (dir?`<br><b>→ ${escHtml(dir.trim())}</b>`:'');
+  $('coachPort').innerHTML = `<span style="width:52px;height:52px;display:inline-block;flex-shrink:0">${dlgSilhouette('cato')}</span>`;
+  const r = target.getBoundingClientRect();
+  const spot=$('coachSpot');
+  spot.style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
+  const bl = Math.max(8, Math.min(window.innerWidth-376, r.left + r.width/2 - 180));
+  $('coachBub').style.top = (r.bottom+16)+'px';
+  $('coachBub').style.left = bl+'px';
+  $('coachArrow').style.left = Math.max(12, Math.min(332, r.left + r.width/2 - bl - 8))+'px';
+  $('coach').classList.add('on');
+}
+window.hideCoach = ()=> $('coach').classList.remove('on');
 window.chooseEvent = async (i)=>{
   const r = await api('/api/choose',{choice:i});
   await refresh();
@@ -1991,13 +2177,14 @@ function renderCodex(){
 }
 
 // ── 메뉴 ──
-$('mCont').onclick = ()=> $('menu').style.display='none';
+$('mCont').onclick = ()=>{ $('menu').style.display='none'; maybeAutoStory(); maybeCoach(); };
 $('mNew').onclick = async ()=>{
   st = await api('/api/newcareer',{skip: $('mSkip')&&$('mSkip').checked});
   await refresh();
   $('leagueF').src='league.html?t='+Date.now();
   $('menu').style.display='none';
   go('market');   // 새 커리어 = 영입부터
+  maybeAutoStory(); maybeCoach();   // [13] 서막 S0 자동 개막
 };
 
 refresh(); renderSlots();
