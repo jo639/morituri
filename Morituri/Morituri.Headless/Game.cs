@@ -27,6 +27,7 @@ public sealed class Game
     private const float GachaCost = 100f, StartGold = 50f;
     private const int StartFreeGachas = 2;
     private const float FeeBase = 5f, FeePopScale = 0.05f, WinBonus = 10f, KoBonus = 3f, DramaBonus = 5f;
+    private const float MainEventHype = 90f, SponsorPopReq = 50f, SponsorScale = 0.4f;   // 인기(#3) 페이오프: 메인이벤트 흥행 기준·스폰서 자격 인기·후원 배율
     private static readonly float[] RankBonus = { 150f, 100f, 60f };   // 1~3위, 이하 20
     private const float SalaryBase = 10f, SalaryFameScale = 0.10f;   // 인플레 흡수: 스타는 정말 비싸다 (0.03→0.10)
     private const float UpkeepPerFacLv = 8f;                          // 시설 유지비(레벨당/시즌) — 증축의 지속 비용
@@ -59,6 +60,9 @@ public sealed class Game
         public int CW, CL, CD, CKoW; public float Fame, Popularity;
         public int W, L, D, Streak;
         public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
+        public int BestStreak, Executions;                          // 검투사 기록(#2): 최다 연승·통산 처형 (은퇴 후에도 보존)
+        public float TotalMatchTime, TotalDamage;                   // 검투사 기록(#2): 통산 경기시간·피해량 (평균 산출용)
+        public readonly List<string> PermInjuries = new();          // 영구 부상(#6): arm/ribs/eye/leg — 부위별 코어 스탯 영구 감소
         public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
         public int GrudgeCount;                                     // 통산 원한(굴욕적 KO패) 횟수 — 성격 드리프트 입력(감정 아닌 관계로 대체)
         public int MGrit, MRecover, MShow, MPay;                    // 마스터리(0~5) — 투혼·회복력·흥행·협상 (비스탯, 메타 전용)
@@ -82,7 +86,9 @@ public sealed class Game
         int MGrit = 0, int MRecover = 0, int MShow = 0, int MPay = 0,
         Dictionary<string, int>? EmoHistory = null,   // 감정 이력(성격 드리프트 입력)
         string[]? Skills = null,                      // T12 패시브 스킬
-        int GrudgeCount = 0);                         // 통산 원한 횟수(감정→관계 전환)
+        int GrudgeCount = 0,                          // 통산 원한 횟수(감정→관계 전환)
+        int BestStreak = 0, int Executions = 0, float TotalMatchTime = 0f, float TotalDamage = 0f,  // 검투사 기록(#2)
+        string[]? PermInjuries = null);               // 영구 부상(#6)
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
         string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
@@ -133,7 +139,7 @@ public sealed class Game
         string? CurMonth = null, int CurDay = 0);   // 달력: 전 일정(과거+미래)+로마 날짜 · Cur* = 현재 날짜(오늘 강조)
     private sealed record CalDoc(int Idx, string Month, int Day, string A, string B, string Kind, string Format,
         string? Winner, bool IsPlayerMatch, bool IsNext, float Hype,
-        bool Hot = false);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1) · Hot = 참가자 3연승+ (스트릭 하이라이트)
+        bool Hot = false, string? Title = null);   // Idx = 재관전용 matchLog 인덱스(미래 경기는 -1) · Hot = 참가자 3연승+ · Title = 타이틀전 라벨(#5)
 
     private sealed record StatsDoc(float Atk, float Def, float Hp, float Spd, float Aspd, float Rct);
     private sealed record MyFighterDoc(string Id, string Name, string Weapon, string Personality, int Age, bool Aging,
@@ -162,7 +168,8 @@ public sealed class Game
         float OddsA = 2f, float OddsB = 2f,   // 범용 배당(A/B 승 — AI 경기 베팅용)
         float FeeEstimate = 0f, float WinBonusEstimate = 0f,   // 예상 출전료·승리 보너스(#15 수익 가시화)
         float OddsAKo = 2f, float OddsADec = 2f, float OddsBKo = 2f, float OddsBDec = 2f,   // 승자×방식 조합 배당
-        string? AId = null, string? BId = null);   // AI 경기 양측 선수 id(도박장 상세 열람용)
+        string? AId = null, string? BId = null,   // AI 경기 양측 선수 id(도박장 상세 열람용)
+        string? MyQuote = null, string? OppQuote = null);   // 전투 직전 대사(#4) — 내 선수·상대
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -175,7 +182,9 @@ public sealed class Game
         StatsDoc Stats, string[] Traits, string[] Epithets, string[] TacticPool, string Tactic,
         int W, int L, int D, int CW, int CL, int CD, int CKoW, int Titles, float Fame, float Popularity,
         RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus,
-        string? EmoBio = null);   // 커리어 감정 이력 요약(심리 기질 — W10a)
+        string? EmoBio = null,   // 커리어 감정 이력 요약(심리 기질 — W10a)
+        int BestStreak = 0, int Executions = 0, float AvgTime = 0f, float AvgDamage = 0f,   // 검투사 기록(#2)
+        string[]? PermInjuries = null);   // 영구 부상(#6) — 부위 표시명
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -249,7 +258,8 @@ public sealed class Game
 
     /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
     private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
-    private sealed record HallRec(string Name, string Weapon, float Fame, string Career, int Age, int RetiredSeason, bool IsPlayer);
+    private sealed record HallRec(string Name, string Weapon, float Fame, string Career, int Age, int RetiredSeason, bool IsPlayer,
+        int BestStreak = 0, int Executions = 0, int CKoW = 0, int Games = 0, float AvgTime = 0f, float AvgDmg = 0f);   // 검투사 기록(#2) 보존
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -397,10 +407,43 @@ public sealed class Game
     private string PersOf(string id) => ById(id).PersonalityId;
     private int TitlesOf(Gladiator g) => _champions.Count(c => c.Name == g.Name);
 
-    /// <summary>획득 이명 — 통산 전적·KO·연승·우승·연륜에서 파생(저장 안 함, 읽을 때 계산). 넴시스 서사의 표지.</summary>
+    /// <summary>명전 등재용 레코드 — 은퇴/전사 시 검투사 기록(#2, 연승·처형·평균)을 박제해 은퇴 후에도 보존.</summary>
+    private HallRec MakeHall(Gladiator g, string career, int season)
+    {
+        int n = g.CW + g.CL + g.CD;
+        return new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame), career, g.Age, season, g.IsPlayer,
+            g.BestStreak, g.Executions, g.CKoW, n, n > 0 ? g.TotalMatchTime / n : 0f, n > 0 ? g.TotalDamage / n : 0f);
+    }
+
+    private static uint HashId(string s) { uint h = 2166136261u; foreach (char c in s) { h ^= c; h *= 16777619u; } return h; }
+    private static readonly string[] NickBeast = { "늑대", "사자", "독수리", "코브라", "표범", "까마귀", "황소", "하이에나" };
+
+    /// <summary>자동 별명(#7) — 인기·성격·무기 기반 시그니처 모니커. 조건부 특수명 우선, 없으면 성격 수식 × 무기/짐승 상징(Id 결정론).</summary>
+    private string Nickname(Gladiator g)
+    {
+        if (g.Executions >= 4) return "학살자";
+        if (g.WeaponId == "WPN_SHIELD" && g.Stats.Def >= 88f) return "철벽";
+        if (g.CW + g.CL + g.CD >= 35 && g.Fame >= 90f) return "콜로세움의 망령";
+        uint h = HashId(g.Id);
+        string sym = g.WeaponId switch
+        {
+            "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검", "WPN_DUALBLADES" => "쌍검",
+            "WPN_HAMMER" => "철퇴", "WPN_WHIP" => "독사", "WPN_SHIELD" => "방벽", _ => "검",
+        };
+        if (g.Popularity >= 30f && (h & 1u) == 0u) sym = NickBeast[(int)(h % (uint)NickBeast.Length)];   // 인기 높으면 짐승 상징으로 격상
+        string adj = g.PersonalityId switch
+        {
+            "PER_CRUEL" => "핏빛", "PER_SHOWMAN" => "황금", "PER_CALM" => "고요한", "PER_COWARD" => "잿빛",
+            "PER_RECKLESS" => "사나운", "PER_ARROGANT" => "오만한", "PER_HONORABLE" => "고결한",
+            "PER_BOLD" => "불굴의", "PER_WARY" => "신중한", "PER_OPPORTUNIST" => "교활한", _ => "붉은",
+        };
+        return $"{adj} {sym}";
+    }
+
+    /// <summary>획득 이명 — 자동 별명(#7) + 통산 전적·KO·연승·우승·연륜 파생(저장 안 함, 읽을 때 계산). 넴시스 서사의 표지.</summary>
     private string[] Epithets(Gladiator g)
     {
-        var e = new List<string>();
+        var e = new List<string> { "🏷 " + Nickname(g) };   // 자동 별명은 항상 첫 자리
         int games = g.CW + g.CL + g.CD, titles = TitlesOf(g);
         if (titles >= 3) e.Add("👑 패왕");
         else if (titles >= 1) e.Add("👑 챔피언");
@@ -411,7 +454,59 @@ public sealed class Game
         if (g.Popularity >= 60f) e.Add("🎭 군중의 연인");
         if (g.Age >= 34 || games >= 40) e.Add("⚔ 백전노장");
         if (games == 0) e.Add("🌱 신예");
-        return e.Take(3).ToArray();
+        return e.Take(4).ToArray();   // 별명 1 + 획득 이명 최대 3
+    }
+
+    /// <summary>성격별 전투 직전 대사 풀(#4) — 쇼맨=화려·고결=예의·잔혹=살벌. 관계·감정이 없을 때의 기본.</summary>
+    private static string[] PersonaQuotes(string pid) => pid switch
+    {
+        "PER_SHOWMAN"   => new[] { "관중이여, 오늘 최고의 쇼를 보여주마!", "피와 환호 — 그것이 나의 무대다!", "눈을 떼지 마라. 순식간에 끝날 테니!" },
+        "PER_HONORABLE" => new[] { "정정당당한 승부를 바라오.", "검투사의 명예를 걸고 싸우겠소.", "그대의 무운을 빈다 — 모래 위에서 만나지." },
+        "PER_CRUEL"     => new[] { "오늘 반드시 죽이겠다.", "네 비명이 벌써 들리는군.", "천천히… 아주 천천히 끝내주마." },
+        "PER_CALM"      => new[] { "그는 내 상대가 아니다.", "감정은 필요 없다. 오직 검뿐.", "끝은 이미 정해져 있다." },
+        "PER_RECKLESS"  => new[] { "다 덤벼! 상관없다!", "몸이 근질거린다!", "생각 따윈 필요 없어 — 부딪칠 뿐!" },
+        "PER_ARROGANT"  => new[] { "감히 나와 같은 모래를 밟다니.", "이 몸의 상대가 될 줄 알았나?", "무릎 꿇을 준비는 됐나?" },
+        "PER_COWARD"    => new[] { "제발… 무사히 끝나기를.", "왜 하필 나란 말인가…", "살아남는 게 이기는 거다." },
+        "PER_BOLD"      => new[] { "난 아직 끝나지 않았다.", "물러설 곳은 없다. 나아갈 뿐.", "두려움? 그런 건 버린 지 오래다." },
+        "PER_WARY"      => new[] { "방심은 금물. 한 수 한 수 신중히.", "상대의 빈틈을 놓치지 않겠다.", "서두를 이유가 없다." },
+        _               => new[] { "기회는 한 번. 놓치지 않는다.", "네 실수가 곧 나의 승리다.", "언제 찌를지는 내가 정한다." },   // OPPORTUNIST·기타
+    };
+
+    /// <summary>전투 직전 대사(#4) — 관계(원수·라이벌·공포·친구) &gt; 감정(자만·트라우마·동기부여·자신감) &gt; 성격 순으로 유기적 선택. 연출 전용(Sim 무관).</summary>
+    private string PreMatchQuote(Gladiator self, Gladiator opp)
+    {
+        var h2h = _ledger.Get(self.Id, opp.Id);
+        var rel = h2h.Classify(self.PersonalityId);
+        string emo = self.PendingEmotions.FirstOrDefault() ?? "";
+        string[] pool =
+            rel == RelationType.Nemesis ? new[] { "오늘, 그 빚을 피로 갚겠다.", $"{opp.Name}… 이 순간을 얼마나 기다렸는지.", "다시는 일어서지 못하게 해주지." }
+          : rel == RelationType.Fear    ? new[] { "…또 저 자와 싸워야 하는가.", "침착하자. 이번엔 다르다.", "두렵지 않다… 두렵지 않다." }
+          : rel == RelationType.Rival   ? new[] { $"{opp.Name}, 오늘은 내가 위라는 걸 증명하겠다.", "너와의 승부는 언제나 짜릿하지.", "실력으로 가리자." }
+          : rel == RelationType.Friend  ? new[] { "미안하다, 친구. 봐주진 않겠다.", "모래 위에선 우리도 남이다.", "좋은 승부가 되길." }
+          : emo == EmotionTable.Hubris     ? new[] { $"{opp.Name}? 이름도 기억나지 않는군.", "이건 경기가 아니라 처형이다." }
+          : emo == EmotionTable.Trauma     ? new[] { "…아직 그날의 통증이 가시지 않았다.", "이번엔… 반드시 넘어서겠다." }
+          : emo == EmotionTable.Motivated  ? new[] { "지난 패배가 나를 더 강하게 만들었다.", "오늘, 모든 걸 쏟아붓겠다." }
+          : emo == EmotionTable.Confident  ? new[] { "몸이 가볍다. 오늘은 이긴다.", "준비는 끝났다." }
+          : PersonaQuotes(self.PersonalityId);
+        ulong seed = HashId(self.Id) ^ ((ulong)(uint)_cursor * 2654435761UL) ^ SeasonSeed;
+        return pool[(int)(new SimRandom(seed).NextFloat01() * pool.Length) % pool.Length];
+    }
+
+    /// <summary>타이틀전 다양성(#5) — 컵/처형/무기지정/복수전/라이벌전/신인전/노장전/빅매치를 관계·경력으로 분류. 없으면 null(평범한 경기).</summary>
+    private string? BoutTitle(Gladiator A, Gladiator B, SchedRec s)
+    {
+        if (s.Kind == "cup_final") return "👑 챔피언십 컵 결승";
+        if (s.Kind == "cup_sf") return "🏆 챔피언십 컵 4강";
+        if (s.Format == "execution") return "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)";
+        if (s.Format.StartsWith("same:")) return $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}";
+        var ab = _ledger.Get(A.Id, B.Id); var ba = _ledger.Get(B.Id, A.Id);
+        var ra = ab.Classify(A.PersonalityId); var rb = ba.Classify(B.PersonalityId);
+        if (ra == RelationType.Nemesis || rb == RelationType.Nemesis) return "⚔ 복수전 — 원한의 재대결";
+        if (ra == RelationType.Rival || rb == RelationType.Rival) return "🔥 라이벌전";
+        if (A.CW + A.CL + A.CD == 0 || B.CW + B.CL + B.CD == 0) return "🌱 신인전 — 데뷔 무대";
+        if (A.Age >= A.AgingStartAge + 5 || B.Age >= B.AgingStartAge + 5) return "🎖 노장의 무대";
+        if (s.IsEvent) return "⭐ 빅매치";
+        return null;
     }
 
     /// <summary>선수 상세(서사) — 이명·관계·감정·연대기. 기존 데이터 파생, 스키마 무변경.</summary>
@@ -455,7 +550,11 @@ public sealed class Game
             EmoBio: g.EmoHistory.Count > 0
                 ? string.Join(" · ", g.EmoHistory.OrderByDescending(kv => kv.Value).Take(3)
                     .Select(kv => $"{EmotionTable.Get(kv.Key).Name} ×{kv.Value}"))
-                : null);
+                : null,
+            BestStreak: g.BestStreak, Executions: g.Executions,
+            AvgTime: (g.CW + g.CL + g.CD) > 0 ? g.TotalMatchTime / (g.CW + g.CL + g.CD) : 0f,
+            AvgDamage: (g.CW + g.CL + g.CD) > 0 ? g.TotalDamage / (g.CW + g.CL + g.CD) : 0f,
+            PermInjuries: g.PermInjuries.Count > 0 ? g.PermInjuries.Select(PermInjuryName).ToArray() : null);
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 
@@ -1101,8 +1200,7 @@ public sealed class Game
             _cast.Remove(old);
             _ledger.RemoveFighter(old.Id);
             if (aged)   // 명예의 전당은 은퇴자만 — 방출자는 조용히 사라진다
-                _hall.Add(new HallRec(old.Name, old.WeaponId.Replace("WPN_", ""), MathF.Round(old.Fame),
-                    $"{old.CW}-{old.CL}-{old.CD}", old.Age, _seasonNo, old.IsPlayer));
+                _hall.Add(MakeHall(old, $"{old.CW}-{old.CL}-{old.CD}", _seasonNo));
             var rookie = SpawnRookie(old.LudusId, old.Division);
             string note = aged
                 ? $"{old.Name}({old.Age}세, 명성 {old.Fame:F0}) 은퇴 → 신인 {rookie.Name} 데뷔"
@@ -1550,8 +1648,7 @@ public sealed class Game
         _ledger.RemoveFighter(g.Id);
         bool hall = path is "instructor" or "master" or "scout";
         if (hall) Unlock("kingmaker");   // 명장의 산실 — 진로 은퇴자 배출
-        if (hall) _hall.Add(new HallRec(g.Name, g.WeaponId.Replace("WPN_", ""), MathF.Round(g.Fame),
-            $"{g.CW}-{g.CL}-{g.CD}", g.Age, Math.Max(1, _seasonsPlayed), true));
+        if (hall) _hall.Add(MakeHall(g, $"{g.CW}-{g.CL}-{g.CD}", Math.Max(1, _seasonsPlayed)));
 
         switch (path)
         {
@@ -2110,9 +2207,16 @@ public sealed class Game
             if (_playerless || !self.IsPlayer) continue;
             float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (exec ? 3f : isEvent ? 2f : 1f) * IncomeMult
                       * (1f + 0.08f * self.MPay);   // 협상 마스터리 = 출전료 협상력. 처형전 ×3(목숨값)
+            bool mainEvent = _lastHype >= MainEventHype;   // 🌟 인기(#3) 페이오프: 흥행 대박 = 메인 이벤트 출전료 가산
+            if (mainEvent) own *= 1.2f;
             bool staged = _prepKind == "show" && self.Id == _prepId;   // 방침: 무대를 띄운다 — 출전료 가산
             if (staged) own *= 1.15f;
-            var notes = new List<string> { $"출전료 +{own:F0}" + (staged ? " (무대 연출)" : "") };
+            var notes = new List<string> { $"출전료 +{own:F0}" + (mainEvent ? " 🌟메인이벤트" : "") + (staged ? " (무대 연출)" : "") };
+            if (self.Popularity >= SponsorPopReq)   // 🤝 인기(#3) 페이오프: 스타는 스폰서를 부른다 — 인기 비례 후원금
+            {
+                float spon = MathF.Round(self.Popularity * SponsorScale * IncomeMult);
+                own += spon; notes.Add($"스폰서 후원 +{spon:F0}");
+            }
             if (win == self)
             {
                 float bonus = (WinBonus + (ko ? KoBonus : 0f) + (comeback ? DramaBonus : 0f) + (upset ? DramaBonus : 0f)) * IncomeMult;
@@ -2232,11 +2336,11 @@ public sealed class Game
             bool loserBrutal = ko || loseStats.MinHpPct <= 0.15f;
             void Death()   // 사망 처리 공통: 명전 등재·대진 정리·공석 승계
             {
+                win.Executions++;   // 검투사 기록(#2): 통산 처형 — 이 승자가 상대를 저승으로 보냈다
                 _cast.Remove(lose); _ledger.RemoveFighter(lose.Id);
                 for (int i = _schedule.Count - 1; i >= _cursor; i--)   // 남은 대진에서 제거
                     if (_schedule[i].A == lose.Id || _schedule[i].B == lose.Id) _schedule.RemoveAt(i);
-                _hall.Add(new HallRec(lose.Name, lose.WeaponId.Replace("WPN_", ""), MathF.Round(lose.Fame),
-                    $"{lose.CW}-{lose.CL}-{lose.CD} ⚰전사", lose.Age, _seasonNo, lose.IsPlayer));
+                _hall.Add(MakeHall(lose, $"{lose.CW}-{lose.CL}-{lose.CD} ⚰전사", _seasonNo));
                 Fate(round, "death", $"⚰ {lose.Name}({lose.Age}세) — 모래 위에서 숨을 거두다. 검투사로 죽다");
                 if (!lose.IsPlayer)
                 {
@@ -2267,14 +2371,16 @@ public sealed class Game
                 // ⚰ 정규 경기 사망 — 격전 누적자만, 드묾. 컵 대진은 보호
                 Death(); killed = true;
             }
-            if (!killed && loserBrutal && fRng.Roll(0.03f))   // 💀 영구 중상 — 상한 자체가 깎인다 (사망자 제외)
+            // 💀 영구 부상(#6) — 부위별 코어 스탯 영구 감소. 격전 한정·드묾, 확률 의무실이 완화(일시부상과 별개, 자연치유 안 됨).
+            bool permInjured = false;
+            if (!killed && loserBrutal)
             {
-                lose.PotentialBudget = MathF.Max(MinPotentialBudget, lose.PotentialBudget - 12f);
-                float ex = BudgetUsed(lose.Stats) - lose.PotentialBudget;
-                if (ex > 0f) { lose.Stats = WithAxis(lose.Stats, 5, -ex * 0.5f); for (int a = 0; a < 5; a++) lose.Stats = WithAxis(lose.Stats, a, -ex * 0.1f); }
-                Fate(round, "grave_injury", $"💀 {lose.Name} — 영구 중상, 몸이 예전 같지 않다 (상한 {lose.PotentialBudget:F0})");
+                float pInj = 0.05f * (lose.SeasonBrutals >= 2 ? 1.3f : 1f);
+                if (lose.IsPlayer) pInj *= 1f - 0.25f * (_medicalLv - 1);   // 의무실 Lv → 영구부상률 감소
+                pInj *= 1f - 0.10f * lose.MRecover;                          // 회복력 마스터리
+                if (fRng.Roll(pInj)) permInjured = PermInjure(lose, round, fRng);
             }
-            else if (loserBrutal && lose.SeasonBrutals >= 2
+            if (!permInjured && loserBrutal && lose.SeasonBrutals >= 2
                 // 🎭 트라우마 성격 변화 — 마음의 상처 '이력'이 확률을 키운다(W10a): 무상처 2% ~ 상처 깊음 8%
                 // (트라우마 감정 + 원한 관계 누적 = 사선을 넘은 패배의 누적 흉터)
                 && fRng.Roll(0.02f + 0.02f * Math.Min(3,
@@ -2364,6 +2470,33 @@ public sealed class Game
                 _story.Add((round, "injury", $"🩹 부상! {g.Name} — 향후 {dur}경기 실효 스탯 저하"));
             }
         }
+    }
+
+    /// <summary>영구 부상(#6) 부위 카탈로그 — 부위별 코어 스탯 영구 감소. Pts는 음수(감소량). Axis2=−1이면 단일 축.</summary>
+    private static readonly (string Id, string Name, string Icon, int Axis, float Pts, int Axis2, float Pts2)[] PermInjuryKinds =
+    {
+        ("arm",  "오른팔 부상",  "🦾", 0, -7f, 4, -4f),   // 팔 → ATK + ASPD
+        ("ribs", "갈비뼈 골절",  "🫁", 2, -8f, -1, 0f),    // 갈비뼈 → HP(내구)
+        ("eye",  "한쪽 눈 실명", "👁", 5, -9f, -1, 0f),    // 눈 → RCT(반응)
+        ("leg",  "다리 부상",    "🦵", 3, -8f, -1, 0f),    // 다리 → SPD(이속)
+    };
+    internal static string PermInjuryName(string id) => PermInjuryKinds.FirstOrDefault(k => k.Id == id) is { Name: { } n } ? n : id;
+    internal static string PermInjuryIcon(string id) => PermInjuryKinds.FirstOrDefault(k => k.Id == id) is { Icon: { } c } ? c : "🩼";
+
+    /// <summary>영구 부상 부여 — 부위 무작위(중복 부위 제외), 코어 스탯 + 상한 동시 감소(재훈련 불가=진짜 영구). 이미 만신창이면 false.</summary>
+    private bool PermInjure(Gladiator g, int round, SimRandom rng)
+    {
+        var pool = PermInjuryKinds.Where(k => !g.PermInjuries.Contains(k.Id)).ToArray();
+        if (pool.Length == 0) return false;                          // 4부위 다 다침 — 더는 없음
+        var k = pool[Math.Min(pool.Length - 1, (int)(rng.NextFloat01() * pool.Length))];
+        float removed = -k.Pts + (k.Axis2 >= 0 ? -k.Pts2 : 0f);      // 제거된 총 포인트(양수)
+        g.Stats = WithAxis(g.Stats, k.Axis, k.Pts);
+        if (k.Axis2 >= 0) g.Stats = WithAxis(g.Stats, k.Axis2, k.Pts2);
+        g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - removed);   // 상한도 깎아 영구화
+        g.PermInjuries.Add(k.Id);
+        string note = $"{k.Icon} 영구 부상! {g.Name} — {k.Name} (다시는 예전 같지 않다)";
+        _lastFates.Add(note); _story.Add((round, "perm_injury", note));
+        return true;
     }
 
     /// <summary>경기 자동 성장 +0.5pt. 성장한 축 이름 반환(결과 화면 표시용), 상한 도달 시 null.</summary>
@@ -2543,6 +2676,10 @@ public sealed class Game
         if (r.Winner == 0) { a.CW++; b.CL++; if (r.Reason == "KO") a.CKoW++; if (standing) { a.W++; b.L++; a.Streak = a.Streak >= 0 ? a.Streak + 1 : 1; b.Streak = b.Streak <= 0 ? b.Streak - 1 : -1; } }
         else if (r.Winner == 1) { b.CW++; a.CL++; if (r.Reason == "KO") b.CKoW++; if (standing) { b.W++; a.L++; b.Streak = b.Streak >= 0 ? b.Streak + 1 : 1; a.Streak = a.Streak <= 0 ? a.Streak - 1 : -1; } }
         else { a.CD++; b.CD++; if (standing) { a.D++; b.D++; a.Streak = 0; b.Streak = 0; } }
+        // 검투사 기록(#2): 최다 연승·통산 경기시간·피해량 누적 (은퇴 후에도 GladRec/HallRec로 보존)
+        a.BestStreak = Math.Max(a.BestStreak, a.Streak); b.BestStreak = Math.Max(b.BestStreak, b.Streak);
+        a.TotalMatchTime += r.DurationSec; b.TotalMatchTime += r.DurationSec;
+        a.TotalDamage += r.StatsA.DamageDealt; b.TotalDamage += r.StatsB.DamageDealt;
     }
 
     // ── 감독 액션 API ──
@@ -2913,7 +3050,9 @@ public sealed class Game
         g.W, g.L, g.D, g.Streak, g.PendingEmotions.ToArray(), g.Fatigue, g.InjuryMatches, g.LudusId, g.Division, g.SeasonBrutals,
         g.MGrit, g.MRecover, g.MShow, g.MPay,
         g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null,
-        g.SkillIds.Length > 0 ? g.SkillIds : null, g.GrudgeCount);
+        g.SkillIds.Length > 0 ? g.SkillIds : null, g.GrudgeCount,
+        g.BestStreak, g.Executions, g.TotalMatchTime, g.TotalDamage,
+        g.PermInjuries.Count > 0 ? g.PermInjuries.ToArray() : null);
 
     private static Gladiator FromRec(GladRec r)
     {
@@ -2935,6 +3074,9 @@ public sealed class Game
         if (r.EmoHistory != null) foreach (var kv in r.EmoHistory) g.EmoHistory[kv.Key] = kv.Value;
         if (r.Skills != null) g.SkillIds = r.Skills.Where(SkillTable.Exists).ToArray();
         g.GrudgeCount = r.GrudgeCount;
+        g.BestStreak = r.BestStreak; g.Executions = r.Executions;
+        g.TotalMatchTime = r.TotalMatchTime; g.TotalDamage = r.TotalDamage;
+        if (r.PermInjuries != null) g.PermInjuries.AddRange(r.PermInjuries);
         return g;
     }
 
@@ -2966,7 +3108,7 @@ public sealed class Game
             int day = (int)((float)i / Math.Max(1, _schedule.Count) * 239f);
             string month = RomanMonths[Math.Min(RomanMonths.Length - 1, day / 30)];
             bool played = i < _cursor && i < _matchLog.Count;
-            string an, bn; string? winner = null; int idx = -1; bool mine;
+            string an, bn; string? winner = null; int idx = -1; bool mine; string? title = null;
             float hype = 0f;   // 예정 경기의 기대 흥행도(#5) — 치른 경기는 0
             if (played)
             {
@@ -2980,10 +3122,11 @@ public sealed class Game
                 mine = (ga?.IsPlayer ?? false) || (gb?.IsPlayer ?? false);
                 float ev = s.Format == "execution" ? 2f : s.IsEvent ? 1.5f : 1f;
                 hype = MathF.Round(((ga?.Popularity ?? 0) + (gb?.Popularity ?? 0)) * ev + ((ga?.Fame ?? 0) + (gb?.Fame ?? 0)) * 0.1f);
+                if (ga != null && gb != null) title = BoutTitle(ga, gb, s);   // 타이틀전 라벨(#5) — 예정 경기만
             }
             bool hot = !played && ((_cast.FirstOrDefault(g => g.Id == s.A)?.Streak ?? 0) >= 3
                                 || (_cast.FirstOrDefault(g => g.Id == s.B)?.Streak ?? 0) >= 3);   // 연승 걸린 경기(DDD)
-            cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor, hype, hot));
+            cal.Add(new CalDoc(idx, month, day % 30 + 1, an, bn, s.Kind, s.Format, winner, mine, SeasonActive && i == _cursor, hype, hot, title));
         }
         // 현재 로마력 날짜(달력 오늘 강조) — RomanDate()와 동일한 스케줄 위치 비례
         string? curMonth = null; int curDay = 0;
@@ -3004,6 +3147,37 @@ public sealed class Game
     }
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
+
+    private sealed record NewsIssue(int Round, string Headline, string[] Articles);
+
+    /// <summary>콜로세움 뉴스(#11) — 매주(라운드) 자동 생성 신문. 서사 이벤트(_story)를 라운드별로 묶어 헤드라인+기사로 편집. 순수 파생(연출).</summary>
+    public string NewsJson()
+    {
+        static int Pri(string k) => k switch   // 1면 헤드라인 우선순위 — 극적일수록 크게
+        {
+            "death" => 10, "perm_injury" => 9, "cup" => 8, "upset" => 7, "comeback" => 6,
+            "revenge" => 5, "greatest" => 4, "persona" => 3, "injury" => 2, "grudge" => 1, _ => 0,
+        };
+        static string Clean(string t)   // "R3 ★ …" 라운드 접두 제거 → 신문 문장
+        {
+            int sp = t.IndexOf(' ');
+            if (sp > 1 && t[0] == 'R' && int.TryParse(t.AsSpan(1, sp - 1), out _)) return t[(sp + 1)..];
+            return t;
+        }
+        var issues = _story
+            .Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix"))   // 베팅·승부조작은 사적 로그(신문 제외)
+            .GroupBy(s => s.Round)
+            .OrderByDescending(g => g.Key)
+            .Take(16)
+            .Select(g =>
+            {
+                var ordered = g.OrderByDescending(s => Pri(s.Kind)).ToList();
+                return new NewsIssue(g.Key, Clean(ordered[0].Text),
+                    ordered.Skip(1).Select(s => Clean(s.Text)).Take(5).ToArray());
+            })
+            .ToList();
+        return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), issues }, JsonOpts);
+    }
 
     public string StateJson()
     {
@@ -3057,9 +3231,7 @@ public sealed class Game
                     opp.PersonalityId.Replace("PER_", ""), opp.Age,
                     MathF.Round(opp.Fame), MathF.Round(opp.Popularity), $"{opp.CW}-{opp.CL}-{opp.CD}") : null,
                 vsRecord, relName, myEmo, oppKiter,
-                s.Kind == "cup_final" ? "🏆 챔피언십 컵 결승" : s.Kind == "cup_sf" ? "🏆 챔피언십 컵 4강"
-                    : s.Format == "execution" ? "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)"
-                    : s.Format.StartsWith("same:") ? $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}" : null,
+                BoutTitle(A, B, s),
                 MyWinPct: pctInt, MyOdds: MathF.Round(10000f / pctInt) / 100f, OppOdds: MathF.Round(10000f / (100 - pctInt)) / 100f,
                 CrowdFavorsMe: mine != null && mine.Popularity >= opp.Popularity,
                 Hype: MathF.Round((A.Popularity + B.Popularity) * (s.Format == "execution" ? 2f : s.IsEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f),
@@ -3072,7 +3244,9 @@ public sealed class Game
                 // 승자×방식 조합 배당(누가 어떻게 이길지) — AI 경기 도박용
                 OddsAKo: MathF.Round(BetOddsFor(2) * 100f) / 100f, OddsADec: MathF.Round(BetOddsFor(3) * 100f) / 100f,
                 OddsBKo: MathF.Round(BetOddsFor(4) * 100f) / 100f, OddsBDec: MathF.Round(BetOddsFor(5) * 100f) / 100f,
-                AId: A.Id, BId: B.Id);
+                AId: A.Id, BId: B.Id,
+                MyQuote: mine != null ? PreMatchQuote(mine, opp) : null,
+                OppQuote: mine != null ? PreMatchQuote(opp, mine) : null);
         }
 
         // 루두스 등급

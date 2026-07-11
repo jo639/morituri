@@ -38,6 +38,7 @@ internal static class Program
             "/api/watch" when method == "POST" => game.WatchJson(IntOf(body ?? "", "idx")),
             "/api/watchgreat" when method == "POST" => game.WatchGreatJson(IntOf(body ?? "", "idx")),
             "/api/archive" when method == "POST" => game.ArchiveListJson(),
+            "/api/news" when method == "POST" => game.NewsJson(),
             "/api/watcharchive" when method == "POST" => game.WatchArchiveJson(IntOf(body ?? "", "idx")),
             "/api/tactic" when method == "POST" => game.TacticJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "tacticId")),
             "/api/gacha" when method == "POST" => game.GachaJson(),
