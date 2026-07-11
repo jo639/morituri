@@ -796,4 +796,71 @@ public class GameTests
         Assert.That(season.GetProperty("Champions").GetArrayLength(), Is.EqualTo(25), "역대 챔피언 25명 기록");
         Assert.That(season.GetProperty("Hall").GetArrayLength(), Is.GreaterThan(0), "은퇴자(명예의 전당) 발생");
     }
+
+    [Test]
+    public void Game_Story_Campaign_ProloguesToChronicle()
+    {
+        // [13] 캠페인 상태머신: 장례(S0) → 첫 방문자(S5) → 1막 비트 → 종막(승격 or 시즌3 소프트 종료) = chronicle.
+        TempDir("story");
+        var g = new Game(1, 77, fresh: true, interactive: false, playerless: false);
+        var st0 = Parse(g.StateJson());
+        Assert.That(st0.GetProperty("Campaign").GetProperty("Stage").GetString(), Is.EqualTo("prologue"), "새 커리어 = 서막");
+        Assert.That(st0.GetProperty("PendingEvent").GetProperty("Id").GetString(), Is.EqualTo("story_s0"), "장례(S0)로 개막");
+        Assert.That(st0.GetProperty("Legends").GetArrayLength(), Is.EqualTo(4), "창세 전설 4명 시드");
+        Assert.That(st0.GetProperty("Campaign").GetProperty("Hint").ValueKind, Is.EqualTo(JsonValueKind.String), "카토의 조언(튜토리얼 힌트)");
+        g.ChooseEventJson(1);   // S0 해소
+        g.GachaJson(); g.RecruitJson(0);
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s5"), "첫 영입 → 검은 인장의 방문(S5)");
+        g.ChooseEventJson(1);   // 거절
+
+        // 카토 코멘터리: 내 경기는 항상 한 줄 평
+        var m = g.PlayNext();   // 개막
+        int mg = 0;
+        while (mg++ < 120 && !m.WasPlayerMatch) m = g.PlayNext();
+        Assert.That(m.WasPlayerMatch, Is.True, "내 경기 도달");
+        Assert.That(string.IsNullOrEmpty(m.Cato), Is.False, "내 경기 = 카토의 한 줄 평");
+
+        // 캠페인 완주(이벤트는 소극 선택으로 해소) — 늦어도 시즌 3 종료 시 소프트 종막
+        var seen = new HashSet<string>(); int guard = 0;
+        while (guard++ < 900)
+        {
+            var st = Parse(g.StateJson());
+            if (st.GetProperty("PendingEvent").ValueKind != JsonValueKind.Null)
+            {
+                string id = st.GetProperty("PendingEvent").GetProperty("Id").GetString()!;
+                if (id.StartsWith("story_")) seen.Add(id);
+                g.ChooseEventJson(1);
+                continue;
+            }
+            if (st.GetProperty("Campaign").GetProperty("Stage").GetString() == "chronicle") break;
+            g.PlayNext();
+        }
+        var fin = Parse(g.StateJson());
+        Assert.That(fin.GetProperty("Campaign").GetProperty("Stage").GetString(), Is.EqualTo("chronicle"), "종막 도달");
+        Assert.That(seen.Contains("story_finale"), Is.True, "라니스타가 되는 의식(종막)");
+        Assert.That(seen.Any(x => x.StartsWith("story_house_")), Is.True, "세 가문 비트 발화");
+        int unrest = fin.GetProperty("Unrest").GetProperty("Level").GetInt32();
+        Assert.That(unrest is >= 0 and <= 100, Is.True, "반란 지수 0~100 클램프");
+        // 재로드 영속
+        var g2 = new Game(1, 77, fresh: false, interactive: false, playerless: false);
+        Assert.That(Parse(g2.StateJson()).GetProperty("Campaign").GetProperty("Stage").GetString(),
+            Is.EqualTo("chronicle"), "스토리 상태 영속");
+        Assert.That(Parse(g2.StateJson()).GetProperty("Legends").GetArrayLength(), Is.GreaterThan(3), "전설 카탈로그 영속");
+    }
+
+    [Test]
+    public void Game_Story_SkipCampaign_UnlocksImmediately()
+    {
+        // [13] 각본 없이 시작(뉴게임 옵션) — 스토리 이벤트 제거·chronicle 즉시, 이후 정상 진행.
+        TempDir("storyskip");
+        var g = new Game(1, 88, fresh: true, interactive: false, playerless: false);
+        var st = Parse(g.SkipCampaignJson());
+        Assert.That(st.GetProperty("Campaign").GetProperty("Stage").GetString(), Is.EqualTo("chronicle"), "즉시 chronicle");
+        Assert.That(st.GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null), "대기 스토리 이벤트 제거");
+        g.GachaJson(); g.RecruitJson(0);
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null), "S5 미발화(각본 꺼짐)");
+        RunFullSeason(g);
+        Assert.That(Parse(g.StateJson()).GetProperty("LastSeason").ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "캠페인 없이 시즌 정상 완주");
+    }
 }

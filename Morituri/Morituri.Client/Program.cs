@@ -72,7 +72,7 @@ internal static class Program
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
             "/api/choose" when method == "POST" => game.ChooseEventJson(IntOf(body ?? "", "choice")),
-            "/api/newcareer" when method == "POST" => NewCareer(),
+            "/api/newcareer" when method == "POST" => NewCareer(BoolOf(body ?? "", "skip")),
             "/api/slots" when method == "POST" => SlotsJson(),
             "/api/loadslot" when method == "POST" => LoadSlot(IntOf(body ?? "", "n")),
             "/api/save" when method == "POST" => game.ManualSaveJson(),
@@ -88,10 +88,11 @@ internal static class Program
             return """{"ok":true}""";
         }
 
-        string NewCareer()
+        string NewCareer(bool skip)
         {
             try { File.Delete(SlotPath(slot)); } catch { }
             game = new Game(roundsPerSeason: 1, fresh: true, worldPath: SlotPath(slot));
+            if (skip) return game.SkipCampaignJson();   // [13] 각본 없이 시작(캠페인 생략)
             return game.StateJson();
         }
 

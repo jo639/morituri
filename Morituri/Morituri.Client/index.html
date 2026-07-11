@@ -216,6 +216,7 @@
   </nav>
   <div id="topRight">
     <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
+    <span id="unrest" title="" style="font-size:12px;font-weight:700"></span>
     <span class="res gold" title="골드"><svg class="ic"><use href="icons.svg#coin"/></svg><span id="gold">—</span></span>
     <span class="res glory" id="gloryWrap" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="display:none"><svg class="ic"><use href="icons.svg#glory"/></svg><span id="glory"></span></span>
     <span id="status">—</span>
@@ -230,7 +231,8 @@
   <div class="screen on" id="league">
     <div class="pad" style="padding-bottom:0"><div id="incomeBar" class="notice"></div>
     <div id="betBar" class="notice glory"></div>
-    <div id="fixBar" class="notice danger"></div></div>
+    <div id="fixBar" class="notice danger"></div>
+    <div id="storyBar" class="notice" style="border-color:var(--gold-deep);color:#dcc99a"></div></div>
     <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
   </div>
 
@@ -246,6 +248,8 @@
     <div id="cupBox"></div>
     <h2>🎖 업적</h2>
     <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <div id="ghostWrap" style="display:none"><h2>🕯 유품함 <span class="note">(선대 가이우스의 흔적 — 모은 단서)</span></h2>
+    <div id="ghostBox" style="display:flex;flex-direction:column;gap:6px"></div></div>
     <div class="err" id="ludusErr"></div>
   </div></div>
 
@@ -267,6 +271,7 @@
     <div class="grid" id="rosterGrid"></div>
     <h2>🏛 기록실 <span class="note">(통산 기록)</span></h2>
     <div id="records" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+    <div id="legends"></div>
   </div></div>
 
   <div class="screen" id="livesc">
@@ -434,6 +439,7 @@
   <div class="menu-orn"><span class="hairline"></span><svg class="ic lg"><use href="icons.svg#laurel"/></svg><span class="hairline"></span></div>
   <button id="mCont">계속하기</button>
   <button id="mNew">새 커리어 (현재 슬롯)</button>
+  <label class="note" style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="mSkip"> 각본 없이 시작 <span style="opacity:.7">(서막·1막 캠페인 생략 — 회차용)</span></label>
   <div id="mSlots" style="display:flex;gap:8px;margin-top:10px"></div>
   <div class="info" id="mInfo">—</div>
 </div>
@@ -593,9 +599,36 @@ async function refresh(){
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
-  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets();
+  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderUnrest(); renderGhost();
   return st;
 }
+// ── [13] 캠페인: 카토의 조언(서막 튜토리얼 힌트 — 서버 계산, 여긴 표시만) ──
+function renderStoryBar(){
+  const sb=$('storyBar'); if(!sb) return;
+  const c = st.Campaign;
+  if (c && c.Hint){ sb.style.display='block'; sb.innerHTML = c.Hint.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  else sb.style.display='none';
+}
+// ── [13] 반란 지수: 상단바 칩 — 소문 이상일 때만 (살아있는 세계) ──
+function renderUnrest(){
+  const el=$('unrest'); if(!el) return;
+  const U = st.Unrest;
+  if (U && U.Level>=25){
+    el.textContent = `${U.Icon} ${U.Stage}`;
+    el.title = `반란 지수 ${U.Level} — ${U.Effects}`;
+    el.style.color = U.Level>=75?'var(--b)':U.Level>=50?'#e0a89f':'var(--dim)';
+  } else { el.textContent=''; el.title=''; }
+}
+// ── [13] 유품함: 가이우스의 유령 — 모은 단서 (루두스 탭 조용한 코너) ──
+function renderGhost(){
+  const wrap=$('ghostWrap'); if(!wrap) return;
+  const clues = (st.Campaign&&st.Campaign.Clues)||[];
+  wrap.style.display = clues.length?'':'none';
+  $('ghostBox').innerHTML = clues.map(c=>
+    `<div style="padding:7px 12px;border-left:3px solid var(--gold-deep);background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:#cbb98d">🕯 ${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`).join('');
+}
+// ── [13] 카토의 한 줄 평 (결과 카드) ──
+const catoLine = c => c?`<div style="margin-top:8px;padding:7px 10px;border-left:3px solid #8a7a5a;background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:#cbb98d">🗣 카토 — “${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}”</div>`:'';
 // ── 승부조작 진행 배너: 가담한 선수가 다음 경기를 던져야 함을 상기 ──
 function renderFixBar(){
   const fb=$('fixBar'); if(!fb) return;
@@ -766,7 +799,11 @@ window.placeGb = async ()=>{
 // ── 알림 배지: 할 일이 있는 탭에 🔴 ──
 function renderBadges(){
   const navs = document.querySelectorAll('nav button');
+  // [13] 가벼운 잠금: 캠페인 중 도박장은 비트③(시대의 소음) 전까지 숨김
+  const camp = st.Campaign;
+  const gambleLocked = camp && camp.Stage!=='chronicle' && !(camp.Beats||[]).includes('b3');
   navs.forEach(b=>{
+    if (b.dataset.s==='gamble') b.style.display = gambleLocked ? 'none' : '';
     let need = false;
     if (b.dataset.s==='ludus') need = st.MyFighters.some(f=>f.TrainingPoints>0 || (f.AtCap && st.Glory>=f.BreakthroughCost));
     if (b.dataset.s==='market') need = st.FreeGachas>0;
@@ -821,6 +858,7 @@ function showMatchResult(m){
   if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>🩹 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
   html += execTheater(m);
   html += sealedFates(fatesFor(m));
+  html += catoLine(m.Cato);
   html += nextHook();
   $('mrBody').innerHTML = html;
   $('mrModal').classList.add('on');
@@ -1203,6 +1241,7 @@ function showResult(m){
     $('resBody').innerHTML += `<hr style="border-color:#4a3a26"><div class="rrow" style="font-weight:700;color:${m.FixBad?'var(--b)':'var(--grn)'}">${m.FixNote}</div>`;
   if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
     $('resBody').innerHTML += `<hr class="hairline">` + execTheater(m) + sealedFates(fatesFor(m));
+  $('resBody').innerHTML += catoLine(m.Cato);
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
   if (isJackpot(m)) sfxJackpot();
@@ -1216,6 +1255,7 @@ window.closeResult = ()=>{ $('resModal').classList.remove('on');
 // ── 시즌 중 텍스트 이벤트(감독의 선택) ──
 function showEvent(){
   const ev = st && st.PendingEvent; if (!ev) return;
+  if (ev.Id==='story_finale'){ showFinale(ev); return; }   // [13] 종막 = 라니스타가 되는 의식(전용 연출)
   $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
   // 상대 대사(💬) 줄은 강조 렌더(#9)
   $('evtBody').innerHTML = ev.Body.split('\n').map(line=>{
@@ -1228,6 +1268,39 @@ function showEvent(){
   $('evtChoices').style.display='';
   $('evtChoices').innerHTML = ev.Choices.map((c,i)=>`<button class="tacbtn" onclick="chooseEvent(${i})">${c}</button>`).join('');
   $('evtModal').classList.add('on');
+}
+// ── [13] 종막 의식: 침묵 2.5초 → 대사 순차 리빌 → 전 시스템 개방 ──
+function showFinale(ev){
+  $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
+  $('evtBody').innerHTML = '';
+  $('evtOutcome').style.display='none'; $('evtClose').style.display='none'; $('evtChoices').style.display='none';
+  $('evtModal').classList.add('on');
+  const lines = ev.Body.split('\n');
+  let i = 0;
+  const step = ()=>{
+    if (i < lines.length){
+      const line = lines[i]; i++;
+      const esc = line.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const d = document.createElement('div');
+      d.style.cssText = 'opacity:0;transition:opacity 1s ease' + (line.trim().startsWith('💬')
+        ? ';margin-top:8px;padding:7px 10px;border-left:3px solid var(--gold);background:var(--panel2);font-style:italic;color:#e8d8b0'
+        : ';margin-top:6px');
+      d.innerHTML = line.trim()==='…' ? '&nbsp;' : esc;
+      $('evtBody').appendChild(d);
+      requestAnimationFrame(()=>{ d.style.opacity='1'; });
+      setTimeout(step, line.trim()==='…' ? 2500 : 1400);   // '…' 줄 = 침묵
+    } else {
+      const un = document.createElement('div');
+      un.style.cssText = 'margin-top:12px;text-align:center;font-weight:800;color:var(--gold);opacity:0;transition:opacity 1.2s ease';
+      un.innerHTML = '⚜ 모든 것이 열렸다 — 이제 각본은 없다 ⚜';
+      $('evtBody').appendChild(un);
+      requestAnimationFrame(()=>{ un.style.opacity='1'; });
+      if (typeof sfxReveal==='function') sfxReveal(3);
+      $('evtChoices').style.display='';
+      $('evtChoices').innerHTML = ev.Choices.map((c,i2)=>`<button class="tacbtn" onclick="chooseEvent(${i2})">${c}</button>`).join('');
+    }
+  };
+  step();
 }
 window.chooseEvent = async (i)=>{
   const r = await api('/api/choose',{choice:i});
@@ -1665,6 +1738,10 @@ function renderMarket(){
   renderTransfers();
 }
 async function renderTransfers(){
+  // [13] 가벼운 잠금: 캠페인 중 이적 시장은 가문 접촉(비트①) 전까지 닫힘
+  const camp = st.Campaign;
+  if (camp && camp.Stage!=='chronicle' && !(camp.Beats||[]).some(x=>x.startsWith('house_'))){
+    $('transferBox').innerHTML = '<div class="note">아직 거래 선이 없다 — 시즌이 시작되면 가문들이 먼저 당신을 찾아올 것이다.</div>'; return; }
   if (st.SeasonActive){ $('transferBox').innerHTML = '<div class="note">시즌 중엔 닫혀 있다 — 프리시즌에 다시 오라.</div>'; return; }
   const r = await api('/api/transfers',{});
   if (r.error){ $('transferBox').innerHTML = `<div class="note">${r.error}</div>`; return; }
@@ -1812,6 +1889,15 @@ function renderRoster(){
     rec('👑 최다 우승', kingpin?`<b>${kingpin[0]}</b> <span class="note">${kingpin[1]}회</span>`:'—') +
     rec('🏛 명전 최고 명성', H.length?`<b>${H[0].Name}</b> <span class="note">명성 ${H[0].Fame}</span>`:'—') +
     rec('⚰ 전사자', `${H.filter(h=>(h.Career||'').includes('⚰')).length}명 <span class="note">/ 명전 ${H.length}명</span>`);
+  // [13] 전설 — 세계의 과거(창세)와 척도(명전 승격). 사람은 사건보다 사람을 기억한다.
+  const LG = st.Legends||[];
+  $('legends').innerHTML = !LG.length ? '' :
+    `<h2>🏛 전설 <span class="note">(이 모래가 기억하는 이름들 — 명전 헌액자는 세월이 지나면 여기 오른다)</span></h2>
+    <div class="grid">${LG.map(l=>
+      `<div class="fc" style="border-top-color:var(--gold-deep)"><h3>${l.Name} <span class="chip" style="color:var(--gold)">「${l.Epithet}」</span></h3>
+       <div class="bd">${w(l.Weapon)}${l.Personality?' · '+p(l.Personality.replace('PER_','')):''} · AUC ${l.Auc}${l.Source==='hof'?' · <span style="color:#c94ca8">이 시대</span>':''}</div>
+       <div class="bd" style="color:var(--gold)">${l.Record}</div>
+       <div class="note" style="font-style:italic;margin-top:3px">${l.Fate}</div></div>`).join('')}</div>`;
 }
 
 // ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──
@@ -1907,7 +1993,7 @@ function renderCodex(){
 // ── 메뉴 ──
 $('mCont').onclick = ()=> $('menu').style.display='none';
 $('mNew').onclick = async ()=>{
-  st = await api('/api/newcareer',{});
+  st = await api('/api/newcareer',{skip: $('mSkip')&&$('mSkip').checked});
   await refresh();
   $('leagueF').src='league.html?t='+Date.now();
   $('menu').style.display='none';

@@ -16,7 +16,7 @@ namespace Morituri.Headless;
 ///  - 성장: 경기 자동 소량 + 3경기당 훈련 포인트(감독 분배). 상한 = 잠재력 버짓 — 노화(30+ 랜덤)로 상한 자체가 감소.
 ///  - 영속: world.json v2 — 매 변이 후 저장, 미드시즌 완전 재개(모든 난수는 저장된 카운터에서 파생 = 결정론).
 /// </summary>
-public sealed class Game
+public sealed partial class Game
 {
     private const int SchemaVer = 2;      // v1(관전 시즌) 파일은 비호환 → 새 세계
     private const int ConstantsVer = 1;
@@ -121,7 +121,10 @@ public sealed class Game
         bool Redemption = false, int MyCupTitles = 0,   // 재기의 서약(강등 아크)·내 컵 우승 횟수(엔드게임)
         string? FixFighterId = null, float FixReward = 0f,   // 승부조작 가담 예약(영속)
         List<BetLogRec>? BetLog = null, int StreetSeq = 0,   // 베팅 이력·거리 시비 카운터
-        int SurgerySeq = 0);   // 의무실 수술 카운터(시드 결정론)
+        int SurgerySeq = 0,   // 의무실 수술 카운터(시드 결정론)
+        string? StoryStage = null, List<string>? StoryBeats = null, string? StoryCtx = null,   // [13] 캠페인 (null=구세이브=chronicle)
+        string? FixChoice = null, List<string>? GhostClues = null,   // 서막 선택·유품함 단서
+        float Unrest = 0f, List<LegendRec>? Legends = null, int LegendRefs = 0);   // 반란 지수·전설·카토 참조 카운터
     private sealed record LudusRepRec(string Id, float Rep);
 
     // ── season.json / API 문서 ──
@@ -202,7 +205,8 @@ public sealed class Game
         float Patronage = 0f,   // 후원자 관계도(#7)
         GambleDoc? Gamble = null,   // 도박장 탭(#32)
         bool Redemption = false,   // 재기의 서약(강등 아크) 진행 중
-        string? FixTarget = null);   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
+        string? FixTarget = null,   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
+        CampaignDoc? Campaign = null, UnrestDoc? Unrest = null, List<LegendRec>? Legends = null);   // [13] 캠페인·반란 지수·전설
     private sealed record GambleDoc(float SeasonNet, int Hits, int Total, List<BetLogRec> Log, int Streak = 0);
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
@@ -233,7 +237,8 @@ public sealed class Game
         bool Upset = false, float WinnerOdds = 0f,        // 대이변·승자의 경기 전 배당(잭팟 연출 — 0=산출 불가)
         bool BetWon = false, string? BetNote = null,      // 이 경기 베팅 정산(결과 카드 연계)
         ExecVerdict? Exec = null,                         // ☠처형전 엄지 판정(격전 패배 시)
-        string? FixNote = null, bool FixBad = false);     // 승부조작 결말(가담 선수 경기 시)
+        string? FixNote = null, bool FixBad = false,      // 승부조작 결말(가담 선수 경기 시)
+        string? Cato = null);                             // 카토의 한 줄 평([13] 상시 코멘터리)
 
     /// <summary>☠처형전 엄지 판정 — 죽음은 주사위가 아니라 '군중과 황제의 마음'. 인기·드라마가 자비를 부른다.</summary>
     public sealed record ExecVerdict(string Loser, int DeathPct, bool Spared, string Factors);
@@ -692,10 +697,13 @@ public sealed class Game
         return pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
     }
 
-    /// <summary>플레이어 경기 후 확률적으로 이벤트 스폰(결정론 — 시드 파생). 대상=방금 싸운 내 선수.</summary>
+    /// <summary>플레이어 경기 후 확률적으로 이벤트 스폰(결정론 — 시드 파생). 대상=방금 싸운 내 선수.
+    /// 스토리([13]) 마일스톤 이벤트가 랜덤 이벤트보다 우선한다.</summary>
     private void MaybeSpawnEvent(Gladiator? subject)
     {
-        if (_pendingEventId != null || subject == null || !subject.IsPlayer) return;
+        if (_pendingEventId != null) return;
+        if (MaybeSpawnStoryEvent(afterMatch: subject is { IsPlayer: true })) return;
+        if (subject == null || !subject.IsPlayer) return;
         var rng = new SimRandom(SeasonSeed ^ 0xE7E7_0A11UL + (ulong)_matchIdx * 131UL);
         if (!rng.Roll(0.22f)) return;                             // ~22% 발생
         var pool = EvtTemplates();
@@ -704,10 +712,14 @@ public sealed class Game
         _pendingEventFighter = t.NeedsFighter ? subject.Id : null;
     }
 
+    /// <summary>템플릿 탐색 — 스토리([13]) 이벤트는 story_ 접두로 구분(별도 템플릿 풀).</summary>
+    private EvtTemplate? FindTemplate(string id) =>
+        (id.StartsWith("story_") ? StoryTemplates() : EvtTemplates()).FirstOrDefault(x => x.Id == id);
+
     private TextEventDoc? PendingEventDoc()
     {
         if (_pendingEventId == null) return null;
-        var t = EvtTemplates().FirstOrDefault(x => x.Id == _pendingEventId);
+        var t = FindTemplate(_pendingEventId);
         if (t == null) return null;
         string nm = _pendingEventFighter != null ? (_cast.FirstOrDefault(g => g.Id == _pendingEventFighter)?.Name ?? "선수") : "";
         return new TextEventDoc(t.Id, t.Icon, t.Title, t.Body(nm), t.Choices.Select(c => c.Label).ToArray());
@@ -748,7 +760,7 @@ public sealed class Game
     /// <summary>이벤트 선택 적용 → 결과 문구. 대상 선수가 사라졌으면(방출 등) 이벤트 취소.</summary>
     public string ChooseEventJson(int choiceIdx)
     {
-        var t = _pendingEventId == null ? null : EvtTemplates().FirstOrDefault(x => x.Id == _pendingEventId);
+        var t = _pendingEventId == null ? null : FindTemplate(_pendingEventId);
         if (t == null) return Err("대기 중인 이벤트가 없다");
         if (choiceIdx < 0 || choiceIdx >= t.Choices.Length) return Err("잘못된 선택");
         Gladiator? subj = _pendingEventFighter != null ? _cast.FirstOrDefault(g => g.Id == _pendingEventFighter) : null;
@@ -788,6 +800,7 @@ public sealed class Game
         _freeGachas = playerless ? 0 : StartFreeGachas;
         CreateAiCast();
         SeasonActive = false; _seasonNo = 0;    // 프리시즌: 영입 후 [개막]이 시즌 시작
+        InitStoryNewWorld();                    // [13] 서막 개시(장례 S0) + 창세 전설 시드
         SaveWorld();
         if (_interactive) WriteSeasonJson();
     }
@@ -950,7 +963,7 @@ public sealed class Game
             down.Division = 2; up.Division = 1;
             _story.Add((_rounds + 1, "relegate", $"⬇ 강등 — {down.Name}({down.W}승 {down.L}패) → {DivName(2)}"));
             _story.Add((_rounds + 1, "promote", $"⬆ 승격 — {up.Name}({up.W}승 {up.L}패) → {DivName(1)}"));
-            if (up.IsPlayer) AddGlory(GloryPromote);   // 승격 = 위신
+            if (up.IsPlayer) { AddGlory(GloryPromote); _promotedFlag = true; }   // 승격 = 위신 + [13] 종막 게이트
             // 재기 아크(C2): 실패를 리셋 충동이 아니라 새 목표로 — 강등=서약, 복귀=씻어낸 굴욕
             if (up.IsPlayer && _redemption)
             {
@@ -1015,6 +1028,7 @@ public sealed class Game
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0;
+        _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
         // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
         foreach (var e in _matchLog) _archive.Add(new ArchRec(Math.Max(1, _seasonsPlayed), e));
         while (_archive.Count > 400) _archive.RemoveAt(0);
@@ -1171,6 +1185,10 @@ public sealed class Game
         _edict = null; _edictDone = false;
 
         SwapDivisions();   // 승강(성적 기반) — 다음 시즌 배치 확정. 챔피언은 1부 1위라 강등 불가
+
+        TickUnrest();        // [13] 살아있는 세계 — 반란 지수 시즌 틱(사이클, 결정론)
+        PromoteLegends();    // [13] 명전 → 전설 승격(시즌 1명)
+        CheckStoryFinale();  // [13] 종막 판정 — 승격 or 시즌 3 소프트 종료 → 라니스타가 되는 의식
 
         // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
         // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
@@ -1882,6 +1900,7 @@ public sealed class Game
         EnsureSchedule();   // 다음 페이즈 편성(예: 4강 후 결승) — 종료 판정 전에
         bool last = _cursor >= _schedule.Count && _cupStage == 3;
         if (!last) MaybeSpawnEvent(A.IsPlayer ? A : B.IsPlayer ? B : null);   // 내 경기 후 서사 이벤트(2b)
+        string? cato = CatoComment(A, B, res.Winner, res.Reason, A.IsPlayer || B.IsPlayer);   // [13] 저장 전(참조 카운터 영속)
         if (last) FinalizeSeason();
         else SaveWorld();
         if (_interactive) WriteSeasonJson();
@@ -1894,7 +1913,8 @@ public sealed class Game
             A.IsPlayer || B.IsPlayer, income, incomeNote, mine,
             _lastFates.Count > 0 ? _lastFates.ToList() : null,
             _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null,
-            _lastUpset, winnerOdds, betWon, betNote, _lastExec, _lastFixNote, _lastFixBad);
+            _lastUpset, winnerOdds, betWon, betNote, _lastExec, _lastFixNote, _lastFixBad,
+            Cato: cato);   // [13] 카토의 한 줄 평
     }
 
     /// <summary>
@@ -2182,7 +2202,8 @@ public sealed class Game
         bool exec = format == "execution";  // ☠ 처형전 — 패자는 죽을 수 있다. 보상도 크다
         _lastInjuries.Clear();
         _lastFixNote = null; _lastFixBad = false;
-        _lastHype = MathF.Round((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f);   // 경기 관심도(#5)
+        _lastHype = MathF.Round(((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f)
+                    * UnrestHypeMult);   // 경기 관심도(#5) — [13] 불안한 시대일수록 군중은 목마르다(최대 +15%)
         var (defA, defB) = BuildDefs(A, B, format);
         if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
         {
@@ -2237,7 +2258,8 @@ public sealed class Game
         {
             if (_playerless || !self.IsPlayer) continue;
             float own = (FeeBase + (self.Popularity + other.Popularity) * FeePopScale) * (exec ? 3f : isEvent ? 2f : 1f) * IncomeMult
-                      * (1f + 0.08f * self.MPay);   // 협상 마스터리 = 출전료 협상력. 처형전 ×3(목숨값)
+                      * (1f + 0.08f * self.MPay)   // 협상 마스터리 = 출전료 협상력. 처형전 ×3(목숨값)
+                      * UnrestIncomeMult;          // [13] 반란 지수 — 시국 불안 = 세금·검문(최대 −10%)
             bool mainEvent = _lastHype >= MainEventHype;   // 🌟 인기(#3) 페이오프: 흥행 대박 = 메인 이벤트 출전료 가산
             if (mainEvent) own *= 1.2f;
             bool staged = _prepKind == "show" && self.Id == _prepId;   // 방침: 무대를 띄운다 — 출전료 가산
@@ -2741,7 +2763,8 @@ public sealed class Game
         var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
         var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
         int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0) + _scoutLevel;   // 등급 + 스승 안목 + 스카우터 유산 = 원석 품질
-        for (int i = 0; i < 3; i++)
+        int nCand = UnrestStageIdx >= 2 ? 2 : 3;   // [13] 폭동+ 국면 = 노예 시장 위축(후보 2명)
+        for (int i = 0; i < nCand; i++)
         {
             string name = PickName(rng, usedNames); usedNames.Add(name);
             var g = RollGladiator(rng,
@@ -2837,6 +2860,7 @@ public sealed class Game
         if (g.Talent == TalentGrade.Caesar) Unlock("caesar");
         _story.Add((0, "recruit", $"📜 영입! {g.Name} ({ViewerExport.TalentName(g.Talent)}·{g.Age}세) 루두스 합류" +
                                    (SeasonActive ? (joined > 0 ? $" — 중도 투입: 합류전 {joined}경기 편성" : " — 다음 시즌부터 출전") : "")));
+        MaybeSpawnStoryEvent(afterMatch: false);   // [13] 서막: 첫 영입 → 첫 방문자(S5)
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
@@ -3006,6 +3030,15 @@ public sealed class Game
         _fixFighterId = w.FixFighterId; _fixReward = w.FixReward;
         _betLog.Clear(); if (w.BetLog != null) _betLog.AddRange(w.BetLog);
         _streetSeq = w.StreetSeq; _surgerySeq = w.SurgerySeq;
+        // [13] 캠페인·반란 지수·전설 — 구세이브(StoryStage 없음)는 캠페인 완료 취급(전부 해금), 전설은 소급 시드
+        _storyStage = w.StoryStage ?? "chronicle";
+        _storyBeats.Clear(); if (w.StoryBeats != null) foreach (var b in w.StoryBeats) _storyBeats.Add(b);
+        _storyCtx = w.StoryCtx; _fixChoice = w.FixChoice;
+        _ghostClues.Clear(); if (w.GhostClues != null) _ghostClues.AddRange(w.GhostClues);
+        _unrest = w.Unrest; _legendRefs = w.LegendRefs;
+        _legends.Clear();
+        if (w.Legends != null) _legends.AddRange(w.Legends);
+        else if (!_playerless) SeedLegends();
         _lastSummary = w.LastSummary;
         _champions.Clear(); if (w.Champions != null) _champions.AddRange(w.Champions);
         _hall.Clear(); if (w.Hall != null) _hall.AddRange(w.Hall);
@@ -3080,7 +3113,10 @@ public sealed class Game
             _masterName, _masterTrait, _masterTactic, _scoutLevel,
             _axisCapBonus.Any(x => x != 0f) ? _axisCapBonus.ToArray() : null, _betHits, _patronage, _betStreak,
             _redemption, _myCupTitles, _fixFighterId, _fixReward,
-            _betLog.Count > 0 ? _betLog.ToList() : null, _streetSeq, _surgerySeq), JsonOpts));
+            _betLog.Count > 0 ? _betLog.ToList() : null, _streetSeq, _surgerySeq,
+            _storyStage, _storyBeats.Count > 0 ? _storyBeats.ToList() : null, _storyCtx,
+            _fixChoice, _ghostClues.Count > 0 ? _ghostClues.ToList() : null,
+            _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -3339,7 +3375,9 @@ public sealed class Game
             Gamble: new GambleDoc(MathF.Round(_seasonBetNet), _betLog.Count(b => b.Won), _betLog.Count,
                 _betLog.AsEnumerable().Reverse().Take(40).ToList(), _betStreak),
             Redemption: _redemption,
-            FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null), JsonOpts);
+            FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null,
+            Campaign: BuildCampaignDoc(), Unrest: BuildUnrestDoc(),
+            Legends: _legends.Count > 0 ? _legends.ToList() : null), JsonOpts);
     }
     private string? BuildLegacyNote()
     {
