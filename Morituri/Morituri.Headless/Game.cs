@@ -1431,34 +1431,71 @@ public sealed class Game
     private int _myCupTitles;       // 내 컵 우승 누계(엔드게임 업적)
     private string? _prepKind, _prepId;   // 경기 전 방침(C1) — 이번 경기 한정, 시뮬 무영향(메타만)
 
-    /// <summary>의무실 수술(도박): 부상을 즉시 끝내려는 시도 — 완치/지연/악화. 의무실 Lv·회복 마스터리가 성공률을 올린다.
-    /// "내가 굴리는 주사위": 확률·위험을 보고 감독이 결정한다. 시드 결정론.</summary>
-    public string SurgeryJson(string fighterId)
+    // 의무실 수술 튜닝 — 일시(가벼운 처치)와 영구(대수술)를 확률·비용·페널티로 이원화.
+    private const float TempSurgeryCost = 40f, PermSurgeryCost = 220f;
+
+    /// <summary>일시 부상 완치 확률 — 가벼운 처치라 높다(의무실·회복 마스터리로 거의 확정까지). 프론트 표기와 동기화.</summary>
+    private float TempHealChance(Gladiator g) => Math.Clamp(0.72f + 0.08f * (_medicalLv - 1) + 0.04f * g.MRecover, 0.72f, 0.94f);
+    /// <summary>영구 부상 복원 확률 — 대수술이라 낮다(끽해야 절반 남짓). 실패는 돈만, 악화는 상한 영구 삭감.</summary>
+    private float PermHealChance(Gladiator g) => Math.Clamp(0.30f + 0.08f * (_medicalLv - 1) + 0.05f * g.MRecover, 0.30f, 0.60f);
+
+    /// <summary>의무실 수술(도박): "내가 굴리는 주사위". kind=perm이면 영구 부상 복원 대수술(고비용·저확률·악화 위험),
+    /// 그 외엔 일시 부상 처치(저비용·고확률·가벼운 실패). 의무실 Lv·회복 마스터리가 확률을 올린다. 시드 결정론.</summary>
+    public string SurgeryJson(string fighterId, string kind = "temp")
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
-        if (g.InjuryMatches <= 0) return Err("부상이 아니다");
-        const float cost = 60f;
-        if (_gold < cost) return Err($"잔고 부족 (수술비 {cost:F0})");
-        _gold -= cost;
         var rng = new SimRandom(_worldSeed ^ 0x5069_CA1FUL + (ulong)(++_surgerySeq) * 53UL);
-        float heal = Math.Clamp(0.50f + 0.10f * (_medicalLv - 1) + 0.05f * g.MRecover, 0.50f, 0.85f);
         float roll = rng.NextFloat01();
         bool healed = false; string outcome;
-        if (roll < heal)
+
+        if (kind == "perm")
         {
-            g.InjuryMatches = 0; g.Fatigue = Math.Max(0, g.Fatigue - 10); healed = true;
-            outcome = $"⚕ 수술 성공 — {g.Name}, 붕대를 풀었다 (부상 완치 · 피로 −10)";
+            if (g.PermInjuries.Count == 0) return Err("영구 부상이 아니다");
+            if (_gold < PermSurgeryCost) return Err($"잔고 부족 (대수술비 {PermSurgeryCost:F0})");
+            _gold -= PermSurgeryCost;
+            string part = g.PermInjuries[0];   // 가장 오래된 부상부터 복원 시도
+            var k = PermInjuryKinds.FirstOrDefault(x => x.Id == part);
+            float heal = PermHealChance(g);
+            if (roll < heal)
+            {
+                // 복원: 부위별 스탯·상한을 되돌린다(PermInjure의 역연산)
+                float removed = -k.Pts + (k.Axis2 >= 0 ? -k.Pts2 : 0f);
+                g.Stats = WithAxis(g.Stats, k.Axis, -k.Pts);
+                if (k.Axis2 >= 0) g.Stats = WithAxis(g.Stats, k.Axis2, -k.Pts2);
+                g.PotentialBudget += removed;
+                g.PermInjuries.RemoveAt(0);
+                g.Fatigue = Math.Min(100, g.Fatigue + 10); healed = true;
+                outcome = $"⚕ 대수술 성공 — {g.Name}, {k.Name}을(를) 딛고 일어섰다 (부위 스탯·상한 복원 · 피로 +10)";
+            }
+            else if (roll < heal + 0.50f * (1f - heal))   // 남은 확률의 절반은 단순 실패
+            {
+                g.Fatigue = Math.Min(100, g.Fatigue + 12);
+                outcome = $"🩹 대수술 실패 — {k.Name}은(는) 그대로다. 돈과 체력만 잃었다 (피로 +12)";
+            }
+            else   // 나머지는 악화 — 칼이 더 깊이 들어갔다
+            {
+                g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - 12f);
+                g.Fatigue = Math.Min(100, g.Fatigue + 18);
+                outcome = $"💀 대수술 악화 — 칼이 더 깊이 빗나갔다. {g.Name} 잠재력 상한 −12 (상한 {g.PotentialBudget:F0}) · 피로 +18";
+            }
         }
-        else if (roll < heal + 0.30f)
+        else   // 일시 부상 — 가벼운 처치(저비용·고확률·가벼운 실패, 영구 페널티 없음)
         {
-            g.InjuryMatches += 1;
-            outcome = $"🩹 수술 실패 — 회복이 오히려 더뎌졌다 (부상 +1경기)";
-        }
-        else
-        {
-            g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - 8f); g.InjuryMatches += 1;
-            outcome = $"💀 수술 악화 — 칼이 빗나갔다. {g.Name} 잠재력 상한 −8 (상한 {g.PotentialBudget:F0}) · 부상 +1경기";
+            if (g.InjuryMatches <= 0) return Err("부상이 아니다");
+            if (_gold < TempSurgeryCost) return Err($"잔고 부족 (수술비 {TempSurgeryCost:F0})");
+            _gold -= TempSurgeryCost;
+            float heal = TempHealChance(g);
+            if (roll < heal)
+            {
+                g.InjuryMatches = 0; g.Fatigue = Math.Max(0, g.Fatigue - 10); healed = true;
+                outcome = $"⚕ 수술 성공 — {g.Name}, 붕대를 풀었다 (부상 완치 · 피로 −10)";
+            }
+            else
+            {
+                g.InjuryMatches += 1;
+                outcome = $"🩹 수술 실패 — 회복이 더뎌졌다 (부상 +1경기 · 돈만 날렸다). 요양이면 낫는 부상이었다";
+            }
         }
         _story.Add((0, "surgery", outcome));
         SaveWorld();

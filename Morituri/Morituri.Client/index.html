@@ -531,6 +531,11 @@ async function openProfile(id){
 
 function go(s){
   if (liveActive && s!=='livesc') return;   // 경기 진행 중엔 탭 이동 차단(정산 후에만 나갈 수 있다)
+  // 관전(리플레이)에서 다른 화면으로 나갈 때 뷰어를 정지 — iframe이 숨겨진 채 계속 재생·소리 나던 버그
+  if (document.querySelector('.screen.on')?.id==='replay' && s!=='replay'){
+    try{ $('watchF').contentWindow.postMessage({cmd:'stop'},'*'); }catch(_){}
+    $('watchF').src='about:blank';
+  }
   $('top').style.display = (s==='livesc') ? 'none' : '';   // 라이브=전용 게임플레이 화면(상단탭 숨김)
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
@@ -1358,7 +1363,8 @@ function renderLudus(){
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
       <div class="row"><span>피로도${f.Injured?' <span style="color:#e0a89f">🩹 부상 — 실효 스탯 저하</span>':''}</span><b style="color:${fatColor(f.Fatigue)}">${f.Fatigue}</b></div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        ${f.Injured?`<button onclick="askSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" class="act glory" style="flex:1" title="의무실 수술 — 부상 즉시 종료를 노리는 도박(완치/실패/악화). 의무실 Lv·회복력이 성공률을 올린다">⚕ 수술</button>`:''}
+        ${f.Injured?`<button onclick="askSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" class="act glory" style="flex:1" title="일시 부상 처치 — 저비용·고확률(완치/실패). 요양해도 낫지만 급할 때 즉시 종료. 의무실 Lv·회복력이 성공률↑">⚕ 수술</button>`:''}
+        ${(f.PermInjuries&&f.PermInjuries.length)?`<button onclick="askPermSurgery('${f.Id}','${f.Name.replace(/'/g,"\\'")}',${f.MRecover||0})" class="act glory" style="flex:1;border-color:#7a3b34;color:#e6b3aa" title="영구 부상 복원 대수술 — 고비용(220)·저확률(30~60%)·악화 위험(상한 −12). 요양으로는 낫지 않는다">🦴 대수술</button>`:''}
         <button onclick="sparring('${f.Id}')" class="act spar" style="flex:1" title="같은 부 상대와 연습 경기 — 무기록·부상 없음, 성장 소량+피로 약간 (시즌 중에도 가능)">🤺 스파링</button>
         <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" class="act street" style="flex:1" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)">🍺 거리 시비</button>
         <button onclick="gangbrawl('${f.Id}','${f.Name}')" class="act brawl" style="flex:1" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험">🥊 패싸움</button>
@@ -1467,22 +1473,36 @@ window.mastery = async (id,track)=>{
 };
 // ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 감독이 결정한다 ──
 window.askSurgery = (id,name,mrec)=>{
-  const heal = Math.min(85, 50 + 10*((st.MedicalLv||1)-1) + 5*(mrec||0));
-  const worse = 100 - heal - 30;
+  const heal = Math.min(94, 72 + 8*((st.MedicalLv||1)-1) + 4*(mrec||0));
   $('rvBox').innerHTML = `<h3 style="color:#e0a0d8;text-align:center;margin:0">⚕ 수술대 — ${name}</h3>
-    <div class="note" style="text-align:center">의사가 칼을 갈며 말한다. "확률은 정직하게 말씀드리죠."</div>
+    <div class="note" style="text-align:center">가벼운 처치다. "요양해도 낫지만, 급하시면 지금 끝내드리죠."</div>
     <div style="margin:10px 0">
       <div class="rrow"><span style="color:var(--grn);font-weight:700">완치 ${heal}%</span><span class="d">부상 즉시 종료 · 피로 −10</span></div>
-      <div class="rrow"><span style="color:#d8b24a;font-weight:700">실패 30%</span><span class="d">부상 +1경기 — 돈만 날린다</span></div>
-      <div class="rrow"><span style="color:var(--b);font-weight:700">악화 ${worse}%</span><span class="d">잠재력 상한 −8 <b>영구</b> · 부상 +1경기</span></div>
-      <div class="rrow"><span>수술비</span><b style="color:var(--gold)">💰60</b> <span class="d">(잔고 ${Math.floor(st.Gold)})</span></div></div>
+      <div class="rrow"><span style="color:#d8b24a;font-weight:700">실패 ${100-heal}%</span><span class="d">부상 +1경기 — 돈만 날린다 (영구 페널티 없음)</span></div>
+      <div class="rrow"><span>수술비</span><b style="color:var(--gold)">💰${40}</b> <span class="d">(잔고 ${Math.floor(st.Gold)})</span></div></div>
     <div style="display:flex;gap:8px">
-      <button class="tacbtn" style="flex:1;text-align:center;border-color:#c94ca8;color:#e0a0d8" onclick="doSurgery('${id}')">🔪 수술한다</button>
+      <button class="tacbtn" style="flex:1;text-align:center;border-color:#c94ca8;color:#e0a0d8" onclick="doSurgery('${id}','temp')">🔪 수술한다</button>
       <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('rvModal').classList.remove('on')">그냥 요양한다</button></div>`;
   $('rvModal').classList.add('on');
 };
-window.doSurgery = async (id)=>{
-  const r = await api('/api/surgery',{id});
+// 영구 부상 복원 대수술 — 고비용·저확률·악화 위험(일시 처치와 명확히 다르다)
+window.askPermSurgery = (id,name,mrec)=>{
+  const heal = Math.min(60, 30 + 8*((st.MedicalLv||1)-1) + 5*(mrec||0));
+  const fail = Math.round((100-heal)*0.5), worse = 100-heal-fail;
+  $('rvBox').innerHTML = `<h3 style="color:#e6b3aa;text-align:center;margin:0">🦴 대수술대 — ${name}</h3>
+    <div class="note" style="text-align:center">의사가 오래 침묵한다. "영구 부상은… 장담 못 합니다. 각오하셔야 합니다."</div>
+    <div style="margin:10px 0">
+      <div class="rrow"><span style="color:var(--grn);font-weight:700">복원 ${heal}%</span><span class="d">가장 오래된 부위 스탯·상한 되돌림 · 피로 +10</span></div>
+      <div class="rrow"><span style="color:#d8b24a;font-weight:700">실패 ${fail}%</span><span class="d">부상 그대로 — 돈·체력만 잃음 (피로 +12)</span></div>
+      <div class="rrow"><span style="color:var(--b);font-weight:700">악화 ${worse}%</span><span class="d">잠재력 상한 −12 <b>영구</b> · 피로 +18</span></div>
+      <div class="rrow"><span>대수술비</span><b style="color:var(--gold)">💰${220}</b> <span class="d">(잔고 ${Math.floor(st.Gold)})</span></div></div>
+    <div style="display:flex;gap:8px">
+      <button class="tacbtn" style="flex:1;text-align:center;border-color:#7a3b34;color:#e6b3aa" onclick="doSurgery('${id}','perm')">🔪 대수술한다</button>
+      <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('rvModal').classList.remove('on')">그냥 안고 산다</button></div>`;
+  $('rvModal').classList.add('on');
+};
+window.doSurgery = async (id,kind='temp')=>{
+  const r = await api('/api/surgery',{id,kind});
   if (r.error){ $('rvModal').classList.remove('on'); $('ludusErr').textContent=r.error; return; }
   $('rvBox').innerHTML = `<div style="text-align:center;padding:18px">
     <div style="font-size:34px;display:inline-block;animation:thumbRock .7s ease-in-out infinite">🔪</div>
