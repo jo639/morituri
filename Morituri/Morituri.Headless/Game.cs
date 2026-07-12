@@ -61,7 +61,8 @@ public sealed partial class Game
         public int W, L, D, Streak;
         public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
         public int BestStreak, Executions;                          // 검투사 기록(#2): 최다 연승·통산 처형 (은퇴 후에도 보존)
-        public float TotalMatchTime, TotalDamage;                   // 검투사 기록(#2): 통산 경기시간·피해량 (평균 산출용)
+        public float TotalMatchTime, TotalDamage, TotalDamageTaken; // 검투사 기록(#2): 통산 경기시간·가한 피해·받은 피해
+        public int TotalBlocks, TotalDodges;                        // 기록실: 통산 방어 성공·회피 성공
         public readonly List<string> PermInjuries = new();          // 영구 부상(#6): arm/ribs/eye/leg — 부위별 코어 스탯 영구 감소
         public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
         public int GrudgeCount;                                     // 통산 원한(굴욕적 KO패) 횟수 — 성격 드리프트 입력(감정 아닌 관계로 대체)
@@ -88,6 +89,8 @@ public sealed partial class Game
         string[]? Skills = null,                      // T12 패시브 스킬
         int GrudgeCount = 0,                          // 통산 원한 횟수(감정→관계 전환)
         int BestStreak = 0, int Executions = 0, float TotalMatchTime = 0f, float TotalDamage = 0f,  // 검투사 기록(#2)
+        float TotalDamageTaken = 0f, int TotalBlocks = 0, int TotalDodges = 0,   // 기록실: 받은 피해·방어·회피
+
         string[]? PermInjuries = null);               // 영구 부상(#6)
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
         string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
@@ -134,7 +137,8 @@ public sealed partial class Game
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
     private sealed record FighterDoc(string Id, string Name, string Weapon, string Tactic, string Personality, int Age,
         int W, int L, int D, int Points, int Streak, int CW, int CL, int CD, float Fame, float Popularity, bool IsPlayer,
-        string[]? Epithets = null, int Fatigue = 0, bool Injured = false, int Division = 1, int CKoW = 0);
+        string[]? Epithets = null, int Fatigue = 0, bool Injured = false, int Division = 1, int CKoW = 0,
+        string Ludus = "");
     private sealed record RelDoc(string Self, string Opp, string Type, float Affinity, int Wins, int Losses);
     private sealed record StoryDoc(int Round, string Kind, string Text);
     private sealed record SeasonDoc(int SchemaVer, int SeasonNo, int Rounds, int Matches, int TotalMatches, bool Completed,
@@ -463,6 +467,14 @@ public sealed partial class Game
         return e.Take(4).ToArray();   // 별명 1 + 획득 이명 최대 3
     }
 
+    /// <summary>성격 한글명 — 성격 변화 표기(이전 → 새) 등에 사용.</summary>
+    private static string PerKo(string id) => id switch
+    {
+        "PER_CALM" => "냉철", "PER_RECKLESS" => "충동", "PER_ARROGANT" => "오만", "PER_HONORABLE" => "고결",
+        "PER_COWARD" => "겁쟁이", "PER_SHOWMAN" => "쇼맨", "PER_OPPORTUNIST" => "기회주의", "PER_CRUEL" => "잔혹",
+        "PER_BOLD" => "대담", "PER_WARY" => "신중", _ => id.Replace("PER_", ""),
+    };
+
     /// <summary>성격별 전투 직전 대사 풀(#4) — 쇼맨=화려·고결=예의·잔혹=살벌. 관계·감정이 없을 때의 기본.</summary>
     private static string[] PersonaQuotes(string pid) => pid switch
     {
@@ -513,6 +525,67 @@ public sealed partial class Game
         if (A.Age >= A.AgingStartAge + 5 || B.Age >= B.AgingStartAge + 5) return "🎖 노장의 무대";
         if (s.IsEvent) return "⭐ 빅매치";
         return null;
+    }
+
+    // ── 기록실(#2): 리그 전체 검투사의 통산 지표 — 클라가 내림차순 막대그래프로 렌더 ──
+    private sealed record RecordRow(string Name, string Ludus, bool Mine, int BestStreak, int Executions,
+        float DamageDealt, float DamageTaken, int Blocks, int Dodges, float Fame, float Popularity,
+        int KoWins, int Wins, float AvgTime, int Titles);
+    public string RecordsJson()
+    {
+        if (_playerless) return Err("CLI 모드");
+        var rows = _cast.Select(g =>
+        {
+            int games = g.CW + g.CL + g.CD;
+            return new RecordRow(g.Name, LudusNameOf(g.LudusId), g.IsPlayer, g.BestStreak, g.Executions,
+                MathF.Round(g.TotalDamage), MathF.Round(g.TotalDamageTaken), g.TotalBlocks, g.TotalDodges,
+                MathF.Round(g.Fame), MathF.Round(g.Popularity), g.CKoW, g.CW,
+                games > 0 ? MathF.Round(g.TotalMatchTime / games * 10f) / 10f : 0f, TitlesOf(g));
+        }).ToList();
+        return JsonSerializer.Serialize(new { ok = true, rows }, JsonOpts);
+    }
+
+    // ── 후원자(#1): 명명·직급 + 검투소 관계표 ──
+    private static readonly (string Name, string Rank)[] PatronPool =
+    {
+        ("루키우스 코르넬리우스", "원로원 의원"), ("가이우스 아우렐리우스", "재무관(콰이스토르)"),
+        ("마르쿠스 발레리우스", "법무관(프라이토르)"), ("퀸투스 파비우스", "조영관(아이딜리스)"),
+        ("티투스 클라우디우스", "속주 총독"), ("푸블리우스 세르빌리우스", "기사 계급 부호(에퀴테스)"),
+    };
+    private sealed record PatronDoc(string Name, string Rank, string Ludus, int Relation, string RelationLabel, string Note);
+    private sealed record LudusRelRow(string Ludus, string Persona, string Motto, int Wins, int Losses, int Grudges, string Relation, string Icon);
+    public string PatronJson()
+    {
+        if (_playerless) return Err("CLI 모드");
+        var pt = PatronPool[(int)(_worldSeed % (ulong)PatronPool.Length)];
+        string label = _patronage >= 40f ? "총애" : _patronage >= 10f ? "호의적" : _patronage > -10f ? "관망" : _patronage > -40f ? "냉담" : "적대";
+        string note = _patronage >= 40f ? "\"자네 검투소라면 얼마든 대주지. 계속 이기게.\""
+                    : _patronage >= 10f ? "\"지켜보고 있네. 실망시키지 말게.\""
+                    : _patronage > -10f ? "\"아직 자네에 대한 판단은 미루고 있네.\""
+                    : _patronage > -40f ? "\"요즘 자네 소문이 영 좋지 않더군.\""
+                    : "\"자네에게 걸었던 내 이름값이 아깝네.\"";
+        var patron = new PatronDoc(pt.Name, pt.Rank, PlayerLudusName, (int)MathF.Round(_patronage), label, note);
+
+        var mine = _cast.Where(g => g.IsPlayer).ToList();
+        var rels = ActiveRivalLudi.Select(r =>
+        {
+            var theirs = _cast.Where(g => g.LudusId == r.Id).ToList();
+            int w = 0, l = 0, grudge = 0;
+            foreach (var me in mine)
+                foreach (var op in theirs)
+                {
+                    var e = _ledger.Get(me.Id, op.Id); w += e.Wins; l += e.Losses;
+                    if (e.Classify(me.PersonalityId) is RelationType.Nemesis) grudge++;
+                    if (_ledger.Get(op.Id, me.Id).Classify(op.PersonalityId) is RelationType.Nemesis) grudge++;
+                }
+            (string rl, string ic) = (grudge >= 2 || l > w + 2) ? ("앙숙", "⚔")
+                : grudge >= 1 ? ("라이벌", "🔥")
+                : w > l + 2 ? ("우세", "💪")
+                : w + l == 0 ? ("접점 없음", "·")
+                : ("경쟁", "🤝");
+            return new LudusRelRow(r.Name, r.Persona, r.Motto, w, l, grudge, rl, ic);
+        }).ToList();
+        return JsonSerializer.Serialize(new { ok = true, patron, ludusRelations = rels }, JsonOpts);
     }
 
     /// <summary>선수 상세(서사) — 이명·관계·감정·연대기. 기존 데이터 파생, 스키마 무변경.</summary>
@@ -698,7 +771,11 @@ public sealed partial class Game
                 ("침착하게 (명성 +8)", g => { g!.Fame += 8f; return $"{g.Name} 명성 +8"; }) } },
 
         new EvtTemplate { Id = "taunt", Icon = "😤", Title = "라이벌의 조롱", NeedsFighter = true,
-            Body = n => $"광장에서 한 검투사가 침을 뱉으며 비웃는다.\n💬 라이벌: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\"",
+            Body = n => {
+                var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
+                var foe = self != null ? PickGrudgeTarget(self) : null;
+                string fn = foe?.Name ?? "한 검투사";
+                return $"광장에서 {fn}이(가) {n}을(를) 향해 침을 뱉으며 비웃는다.\n💬 {fn}: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("맞받아친다 (인기 +6, 라이벌에게 원한을 새긴다)", g => { g!.Popularity += 6f;
                     var t = PickGrudgeTarget(g);
@@ -715,7 +792,10 @@ public sealed partial class Game
         new EvtTemplate { Id = "rival_letter", Icon = "🩸", Title = "라이벌 루두스의 서신", NeedsFighter = true, Kind = "letter",
             Body = n => { var b = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
                 string ln = b.Name ?? "경쟁 검투소";
-                return $"{ln}의 인장이 찍힌 서신이 도착했다 — 피 냄새가 나는 도발이다.\n💬 서신: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {ln}\""; },
+                var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
+                var foe = self != null ? PickGrudgeTarget(self, b.Id) : null;
+                string fn = foe?.Name ?? "간판 검투사";
+                return $"{ln}의 인장이 찍힌 서신이 도착했다 — {fn}의 이름으로 온 도발이다.\n💬 {fn}: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {fn}, {ln}\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("공개 답신으로 맞받아친다 (인기 +8, 그 검투소에 원한)", g => { g!.Popularity += 8f;
                     var bl = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
@@ -1347,7 +1427,8 @@ public sealed partial class Game
         if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
         if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
         if (side is < 0 or > 5) return Err("잘못된 선택");
-        amount = MathF.Floor(MathF.Min(amount, MathF.Floor(_gold)));   // 전액 베팅 안전: 잔고 이하로 클램프(부동소수 오탐 방지)
+        amount = MathF.Min(MathF.Floor(amount), _gold);
+        if (_gold - amount < 1f) amount = _gold;   // 전액 베팅: 잔돈(1 미만) 남기지 않고 전부 건다
         if (amount < 5) return Err("최소 5 데나리우스 (잔고 부족)");
         float odds = BetOddsFor(side);   // 승자×방식 조합 확률에서 산정(상성 반영)
         if (_betStreak >= 2) odds = MathF.Round(odds * 1.10f * 100f) / 100f;   // 🔥 스트릭 보너스
@@ -2485,7 +2566,8 @@ public sealed partial class Game
                 pInj *= 1f - 0.10f * lose.MRecover;                          // 회복력 마스터리
                 if (fRng.Roll(pInj)) permInjured = PermInjure(lose, round, fRng);
             }
-            if (!permInjured && loserBrutal && lose.SeasonBrutals >= 2
+            // 전사 시엔 사망만 남긴다(#9) — 죽은 자에게 성격 변화 등 다른 이벤트가 겹치지 않게
+            if (!killed && !permInjured && loserBrutal && lose.SeasonBrutals >= 2
                 // 🎭 트라우마 성격 변화 — 마음의 상처 '이력'이 확률을 키운다(W10a): 무상처 2% ~ 상처 깊음 8%
                 // (트라우마 감정 + 원한 관계 누적 = 사선을 넘은 패배의 누적 흉터)
                 && fRng.Roll(0.02f + 0.02f * Math.Min(3,
@@ -2500,8 +2582,9 @@ public sealed partial class Game
                 if (shift != null)
                 {
                     int scars = lose.EmoHistory.GetValueOrDefault(EmotionTable.Trauma);
+                    string from = lose.PersonalityId;
                     lose.PersonalityId = shift;
-                    Fate(round, "persona", $"🎭 {lose.Name} — 사선을 넘은 패배가 사람을 바꿨다{(scars >= 2 ? $" (쌓인 상처 {scars}번)" : "")} ({shift.Replace("PER_", "")})");
+                    Fate(round, "persona", $"🎭 {lose.Name} — 사선을 넘은 패배가 사람을 바꿨다{(scars >= 2 ? $" (쌓인 상처 {scars}번)" : "")} ({PerKo(from)} → {PerKo(shift)})");
                 }
             }
             // 🎭 자만의 길(W10a): 승리와 자만이 쌓인 자는 오만해진다 — 감정 이력 → 성격 드리프트
@@ -2509,8 +2592,9 @@ public sealed partial class Game
                 && win.EmoHistory.GetValueOrDefault(EmotionTable.Hubris) + win.EmoHistory.GetValueOrDefault(EmotionTable.Confident) >= 4
                 && fRng.Roll(0.08f))
             {
+                string from = win.PersonalityId;
                 win.PersonalityId = "PER_ARROGANT";
-                Fate(round, "persona", $"🎭 {win.Name} — 연이은 영광이 그를 바꿨다: 오만해졌다");
+                Fate(round, "persona", $"🎭 {win.Name} — 연이은 영광이 그를 바꿨다: 오만해졌다 ({PerKo(from)} → 오만)");
             }
             // 🌟 각성 — 대역전·이변의 순간, 한계가 열린다 (승자·30세 이하)
             if (_cast.Contains(win) && (comeback || upset) && win.Age <= 30 && fRng.Roll(0.04f))
@@ -2521,7 +2605,7 @@ public sealed partial class Game
                 Fate(round, "awakening", $"🌟 {win.Name} — 각성! 그 승리가 한계를 열었다 (상한 {win.PotentialBudget:F0})");
                 string? bloom = win.PersonalityId switch { "PER_COWARD" => "PER_BOLD", "PER_WARY" => "PER_BOLD", _ => null };
                 if (bloom != null && fRng.Roll(0.30f))
-                { win.PersonalityId = bloom; Fate(round, "persona", $"🎭 {win.Name} — 성격 개화: 대담해졌다"); }
+                { string from = win.PersonalityId; win.PersonalityId = bloom; Fate(round, "persona", $"🎭 {win.Name} — 성격 개화: 대담해졌다 ({PerKo(from)} → {PerKo(bloom)})"); }
             }
         }
         // ⚖ 강제 트레이드오프 — 몸의 적응(아주 드묾, 승패 무관)
@@ -2796,6 +2880,9 @@ public sealed partial class Game
         a.BestStreak = Math.Max(a.BestStreak, a.Streak); b.BestStreak = Math.Max(b.BestStreak, b.Streak);
         a.TotalMatchTime += r.DurationSec; b.TotalMatchTime += r.DurationSec;
         a.TotalDamage += r.StatsA.DamageDealt; b.TotalDamage += r.StatsB.DamageDealt;
+        a.TotalDamageTaken += r.StatsB.DamageDealt; b.TotalDamageTaken += r.StatsA.DamageDealt;   // 받은 피해 = 상대가 가한 피해(1:1)
+        a.TotalBlocks += r.StatsA.Blocks; b.TotalBlocks += r.StatsB.Blocks;
+        a.TotalDodges += r.StatsA.Dodges; b.TotalDodges += r.StatsB.Dodges;
     }
 
     // ── 감독 액션 API ──
@@ -3186,6 +3273,7 @@ public sealed partial class Game
         g.EmoHistory.Count > 0 ? new Dictionary<string, int>(g.EmoHistory) : null,
         g.SkillIds.Length > 0 ? g.SkillIds : null, g.GrudgeCount,
         g.BestStreak, g.Executions, g.TotalMatchTime, g.TotalDamage,
+        g.TotalDamageTaken, g.TotalBlocks, g.TotalDodges,
         g.PermInjuries.Count > 0 ? g.PermInjuries.ToArray() : null);
 
     private static Gladiator FromRec(GladRec r)
@@ -3210,6 +3298,7 @@ public sealed partial class Game
         g.GrudgeCount = r.GrudgeCount;
         g.BestStreak = r.BestStreak; g.Executions = r.Executions;
         g.TotalMatchTime = r.TotalMatchTime; g.TotalDamage = r.TotalDamage;
+        g.TotalDamageTaken = r.TotalDamageTaken; g.TotalBlocks = r.TotalBlocks; g.TotalDodges = r.TotalDodges;
         if (r.PermInjuries != null) g.PermInjuries.AddRange(r.PermInjuries);
         return g;
     }
@@ -3224,7 +3313,7 @@ public sealed partial class Game
             g.WeaponId.Replace("WPN_", ""), g.TacticId.Replace("TAC_", ""), g.PersonalityId.Replace("PER_", ""), g.Age,
             g.W, g.L, g.D, g.SeasonPoints, g.Streak, g.CW, g.CL, g.CD,
             MathF.Round(g.Fame), MathF.Round(g.Popularity), g.IsPlayer, Epithets(g),
-            g.Fatigue, g.InjuryMatches > 0, g.Division, g.CKoW)).ToList();
+            g.Fatigue, g.InjuryMatches > 0, g.Division, g.CKoW, LudusNameOf(g.LudusId))).ToList();
         var rels = _ledger.AllRelations(PersOf)
             .Select(x => new RelDoc(ById(x.Self).Name, ById(x.Opp).Name, RelationTable.Get(x.Type).Name,
                                     MathF.Round(x.State.Affinity), x.State.Wins, x.State.Losses)).ToList();

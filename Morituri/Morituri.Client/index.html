@@ -325,6 +325,8 @@
     <button data-s="gamble"><svg class="ic"><use href="icons.svg#dice"/></svg>도박장</button>
     <button data-s="codex"><svg class="ic"><use href="icons.svg#book"/></svg>도감</button>
     <button data-s="archive"><svg class="ic"><use href="icons.svg#scroll"/></svg>보관함</button>
+    <button data-s="records"><svg class="ic"><use href="icons.svg#trophy"/></svg>기록실</button>
+    <button data-s="patron"><svg class="ic"><use href="icons.svg#crown"/></svg>후원자</button>
   </nav>
   <div id="topRight">
     <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
@@ -432,6 +434,19 @@
   <div class="screen" id="archive"><div class="pad">
     <h2>🗄 보관함 <span class="note">선대 가이우스의 흔적과 모은 단서 — 문서를 눌러 펼쳐 본다</span></h2>
     <div id="archiveBody"></div>
+  </div></div>
+
+  <div class="screen" id="records"><div class="pad">
+    <h2>🏛 기록실 <span class="note">리그 전체 검투사 통산 지표 — 내림차순</span></h2>
+    <div id="recTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div id="recBody"></div>
+  </div></div>
+
+  <div class="screen" id="patron"><div class="pad">
+    <h2>👑 후원자 <span class="note">내 루두스를 봐주는 손 — 그리고 검투소들 사이의 공기</span></h2>
+    <div id="patronBody"></div>
+    <h2 style="margin-top:18px">🏛 검투소 관계 <span class="note">내 루두스와 라이벌 검투소의 공기 (경기 전적·원한으로 도출)</span></h2>
+    <div id="ludusRelBody"></div>
   </div></div>
 </div>
 
@@ -691,7 +706,6 @@ async function openProfile(id){
     <div class="stats" style="margin-top:8px">${axes.map(([a,v])=>`<div class="st" title="${STATH[a.charAt(0)+a.slice(1).toLowerCase()]||''}"><span>${a}</span> ${v}</div>`).join('')}</div>
     <div class="row" style="margin-top:6px"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD} (KO ${f.CKoW})</b></div>
     <div class="row"><span>명성 / 인기 / 우승</span><b>${f.Fame} / ${f.Popularity} / 🏆${f.Titles}</b></div>
-    <div class="row"><span>📊 기록</span><b>최다 ${f.BestStreak||0}연승 · 처형 ${f.Executions||0} · 평균 ${f.AvgTime?f.AvgTime.toFixed(0):'—'}초 · 평균피해 ${f.AvgDamage?f.AvgDamage.toFixed(0):'—'}</b></div>
     ${(f.PermInjuries&&f.PermInjuries.length)?`<div class="row" style="align-items:flex-start"><span>🩼 영구 부상</span><b style="color:var(--blood);text-align:right">${f.PermInjuries.map(i=>`${i.Name} <span style="color:var(--dim);font-weight:400">(${i.Stat})</span>`).join('<br>')}</b></div>`:''}
     <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
     ${f.EmoBio?`<div class="row"><span>🧠 심리 이력</span><b class="note" title="쌓인 감정은 성격을 바꿀 수 있다 — 트라우마는 위축으로, 자만은 오만으로">${f.EmoBio}</b></div>`:''}
@@ -719,6 +733,8 @@ function go(s){
   if (s==='gamble') renderGamble();
   if (s==='codex') renderCodex();
   if (s==='archive') renderArchive();
+  if (s==='records'){ _recCache=null; renderRecords(); }
+  if (s==='patron') renderPatron();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
 $('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
@@ -999,6 +1015,7 @@ function renderGamble(){
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">
         <span class="note">베팅액</span>
         <input id="betAmtG" type="number" min="5" max="${Math.floor(st.Gold)}" value="${Math.min(20,Math.floor(st.Gold))}" oninput="gbRefresh()" style="width:80px;background:var(--panel2);color:var(--ink);border:1px solid #4a3a26;border-radius:5px;padding:3px 7px">
+        <button onclick="$('betAmtG').value=Math.floor(st.Gold);gbRefresh()" class="btn ghost" style="padding:3px 10px;font-size:12px" title="전 재산을 건다">전액</button>
         <span class="note">(잔고 💰${Math.floor(st.Gold)})</span></div>
       <div id="gbSummary" style="text-align:center;margin-top:10px;font-size:14px"></div>
       <div style="text-align:center;margin-top:8px">
@@ -1707,7 +1724,9 @@ const TOUR = [
   { sel:'#gold', ic:'🪙', txt:'<b>골드</b>는 살림 밑천이다. 경기 출전료·승리와 서사 보너스·시즌 순위, 도박장 베팅으로 번다. 영입·시설·훈련·이벤트·빚 상환에 나간다.' },
   { sel:'#gloryWrap', ic:'✨', txt:'<b>영광</b>은 귀한 화폐다 — 업적·타이틀·컵 우승·승격에서만 얻는다. 잠재력의 벽을 넘거나 제국 특전을 사는 데 쓴다.', optional:true },
   { sel:'nav [data-s="league"]', ic:'⚔', txt:'<b>리그</b>에서 [다음 경기 ▶]로 하루하루를 진행한다. 정규시즌 → 상위 4인 <b>챔피언십 컵</b> → 다음 시즌. 순위가 오르면 루두스 등급이 오른다.' },
-  { sel:'nav [data-s="roster"]', ic:'📋', txt:'<b>로스터</b>엔 리그 전체 선수와 라이벌 검투소 순위가 있다. 카드를 누르면 스탯·특성·관계까지 볼 수 있다.' },
+  { sel:'nav [data-s="roster"]', ic:'📋', txt:'<b>로스터</b>엔 리그 전체 선수와 라이벌 검투소 순위가 있다. 카드엔 소속 검투소가 표시되고, 누르면 스탯·특성·관계까지 볼 수 있다.' },
+  { sel:'#ludus', ic:'🌟', txt:'<b>명성</b>은 통산 업적이다 — 승리·타이틀·컵으로 쌓이고 <b>줄지 않는다</b>. 검투사 급여와 루두스 등급, 전당(명전) 입성이 여기서 나온다.', optional:true },
+  { sel:'nav [data-s="roster"]', ic:'🎭', txt:'<b>인기</b>는 최근의 화제성이다 — 매 경기 서서히 식지만(감쇠), 선전패나 도발로도 오른다. 출전료(흥행)와 스폰서 후원이 인기를 따라온다.' },
   { sel:'nav [data-s="watch"]', ic:'🎬', txt:'<b>관전</b>은 지난 경기의 다시보기다. 명경기 보관함과 선수 검색으로 모래 위의 순간을 되짚는다.' },
   { sel:'nav [data-s="news"]', ic:'📰', txt:'<b>신문</b>은 매주 발행되는 콜로세움 뉴스 — 누가 떴고 누가 졌는지, 세상이 뭐라 떠드는지 여기 실린다.' },
   { sel:'nav [data-s="gamble"]', ic:'🎲', txt:'<b>도박장</b>에서 AI 경기에 베팅한다(내 경기는 금지 — 승부조작). <b>빚과 대출</b>도 여기 「검은 인장의 장부」에서 관리한다.', optional:true },
@@ -2319,6 +2338,7 @@ function renderRoster(){
      <h3>${f.Name}${f.IsPlayer?' <span class="chip">내 루두스</span>':''}${injBadge(f)}${stkBadge(f.Streak||0)}</h3>
      ${epi(f.Epithets)}
      <div class="bd">${w(f.Weapon)} · ${p(f.Personality)} · ${f.Age}세</div>
+     <div class="note" style="color:${f.IsPlayer?'var(--gold)':'var(--dim)'}">🏛 ${f.Ludus||(f.IsPlayer?'내 루두스':'—')}</div>
      <div class="row"><span>시즌</span><b>${f.W}-${f.L}-${f.D} (승점 ${f.Points})</b></div>
      <div class="row"><span>통산</span><b>${f.CW}-${f.CL}-${f.CD}</b></div>
      <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div></div>`;
@@ -2351,6 +2371,83 @@ function renderRoster(){
        <div class="bd">${w(l.Weapon)}${l.Personality?' · '+p(l.Personality.replace('PER_','')):''} · AUC ${l.Auc}${l.Source==='hof'?' · <span style="color:#c94ca8">이 시대</span>':''}</div>
        <div class="bd" style="color:var(--gold)">${l.Record}</div>
        <div class="note" style="font-style:italic;margin-top:3px">${l.Fate}</div></div>`).join('')}</div>`;
+}
+
+// ── 기록실(#2): 리그 전체 통산 지표 — 내림차순 막대그래프 ──
+let _recCache=null, _recMetric='streak';
+const REC_METRICS = [
+  {k:'streak', label:'🔥 최다 연승', f:r=>r.BestStreak, unit:''},
+  {k:'exec',   label:'☠ 통산 처형', f:r=>r.Executions, unit:''},
+  {k:'dmg',    label:'⚔ 통산 딜량', f:r=>r.DamageDealt, unit:''},
+  {k:'taken',  label:'🩸 받은 피해량', f:r=>r.DamageTaken, unit:''},
+  {k:'block',  label:'🛡 방어 성공', f:r=>r.Blocks, unit:'회'},
+  {k:'dodge',  label:'💨 회피 성공', f:r=>r.Dodges, unit:'회'},
+  {k:'fame',   label:'🌟 명성', f:r=>r.Fame, unit:''},
+  {k:'pop',    label:'🎭 인기', f:r=>r.Popularity, unit:''},
+  {k:'ko',     label:'💥 KO승', f:r=>r.KoWins, unit:''},
+  {k:'win',    label:'🏅 통산 승', f:r=>r.Wins, unit:''},
+  {k:'time',   label:'⏱ 평균 경기시간', f:r=>r.AvgTime, unit:'초'},
+  {k:'title',  label:'👑 우승', f:r=>r.Titles, unit:'회'},
+];
+async function renderRecords(){
+  if (!_recCache){ $('recBody').innerHTML='<div class="note">불러오는 중…</div>';
+    const r = await api('/api/records',{}); _recCache = (r&&r.rows)?r.rows:[]; }
+  $('recTabs').innerHTML = REC_METRICS.map(m=>
+    `<button class="tacbtn" style="width:auto;padding:5px 12px;${m.k===_recMetric?'border-color:var(--gold);color:var(--gold);background:var(--panel3)':''}" onclick="_recMetric='${m.k}';renderRecords()">${m.label}</button>`).join('');
+  const m = REC_METRICS.find(x=>x.k===_recMetric)||REC_METRICS[0];
+  const rows = [..._recCache].map(r=>({r, v:m.f(r)||0})).sort((a,b)=>b.v-a.v);
+  const max = Math.max(1, rows.length?rows[0].v:1);
+  $('recBody').innerHTML = rows.length ? `<div style="display:flex;flex-direction:column;gap:5px">${rows.map((x,i)=>{
+    const pct = Math.max(2, x.v/max*100), mine = x.r.Mine;
+    return `<div style="display:flex;align-items:center;gap:8px">
+      <span style="width:22px;text-align:right;color:var(--dim);font-size:12px">${i+1}</span>
+      <div style="flex:1;position:relative;background:var(--panel2);border-radius:6px;height:30px;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;height:100%;width:${pct}%;background:${mine?'linear-gradient(90deg,var(--gold-deep),var(--gold))':'linear-gradient(90deg,#3a2d1d,#5a4630)'};border-radius:6px;transition:width .4s ease"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px">
+          <b style="color:${mine?'#1a120a':'var(--ink)'};${mine?'':'text-shadow:0 1px 2px rgba(0,0,0,.7)'}">${escHtml(x.r.Name)}${mine?' ★':''} <span style="font-weight:400;opacity:.8;font-size:11px">${escHtml(x.r.Ludus)}</span></b>
+          <b style="color:${mine?'#1a120a':'var(--gold)'};${mine?'':'text-shadow:0 1px 2px rgba(0,0,0,.7)'}">${m.k==='time'?x.v.toFixed(1):Math.round(x.v)}${m.unit}</b>
+        </div></div></div>`;
+  }).join('')}</div>` : '<div class="note">아직 기록이 없다.</div>';
+}
+
+// ── 후원자(#1): 후원자 상세(직급·이름·후원 루두스·관계) + 검투소 관계 ──
+async function renderPatron(){
+  const r = await api('/api/patron',{});
+  if (!r || r.error){ $('patronBody').innerHTML='<div class="note">불러올 수 없다.</div>'; $('ludusRelBody').innerHTML=''; return; }
+  const p = r.patron;
+  const relCol = p.Relation>=40?'var(--grn)':p.Relation>=10?'var(--gold)':p.Relation>-10?'var(--ink)':p.Relation>-40?'#e0a89f':'var(--b)';
+  $('patronBody').innerHTML = `
+    <div style="display:flex;gap:16px;align-items:center;background:linear-gradient(180deg,var(--panel3),var(--panel));border:1px solid var(--gold-deep);border-radius:12px;padding:16px 20px">
+      <div style="width:70px;height:70px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#b98a2e,#5a4212);display:flex;align-items:center;justify-content:center;font-size:34px;flex-shrink:0">👑</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--font-display);font-size:20px;font-weight:900;color:var(--gold)">${escHtml(p.Name)}</div>
+        <div class="note" style="margin-top:2px">${escHtml(p.Rank)} · 후원 검투소 「${escHtml(p.Ludus)}」</div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          <span class="note">관계</span>
+          <div style="flex:1;max-width:260px;height:12px;background:var(--panel2);border-radius:6px;overflow:hidden;position:relative">
+            <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim)"></div>
+            <div style="position:absolute;top:0;bottom:0;${p.Relation>=0?`left:50%;width:${p.Relation/2}%`:`right:50%;width:${-p.Relation/2}%`};background:${relCol}"></div>
+          </div>
+          <b style="color:${relCol}">${p.RelationLabel} (${p.Relation>0?'+':''}${p.Relation})</b>
+        </div>
+        <div style="margin-top:8px;font-style:italic;color:#cbb98d">${escHtml(p.Note)}</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:8px">후원 관계는 미션·이벤트 선택으로 오르내리고, 높으면 시즌말 하사금·낮으면 명성 압박으로 돌아온다.</div>`;
+  const rels = r.ludusRelations||[];
+  const pIcon = pr=>pr==='gold'?'💰':pr==='youth'?'🌱':pr==='blood'?'🩸':'';
+  const rCol = rel=> rel==='앙숙'?'var(--b)':rel==='라이벌'?'#ff9d5d':rel==='우세'?'var(--grn)':'var(--gold)';
+  $('ludusRelBody').innerHTML = rels.length ? `<div style="display:flex;flex-direction:column;gap:6px">${rels.map(x=>
+    `<div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:9px;padding:10px 14px;border-left:4px solid ${rCol(x.Relation)}">
+      <span style="font-size:20px">${x.Icon}</span>
+      <div style="flex:1;min-width:0">
+        <b>${escHtml(x.Ludus)} ${pIcon(x.Persona)}</b>
+        ${x.Motto?`<div class="note" style="font-style:italic">“${escHtml(x.Motto)}”</div>`:''}
+      </div>
+      <div style="text-align:right;font-size:12px">
+        <div>상대전적 <b>${x.Wins}-${x.Losses}</b>${x.Grudges>0?` · <span style="color:var(--b)">원한 ${x.Grudges}</span>`:''}</div>
+        <b style="color:${rCol(x.Relation)}">${x.Relation}</b>
+      </div></div>`).join('')}</div>` : '<div class="note">아직 라이벌 검투소가 없다.</div>';
 }
 
 // ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──

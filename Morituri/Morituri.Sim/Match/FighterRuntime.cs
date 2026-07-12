@@ -126,6 +126,7 @@ public sealed class FighterRuntime
     // --- 통계 (판정 점수 + 검증 지표) ---
     public float DamageDealt, CornerTime;
     public int CleanHits, Knockdowns, AttackAttempts, Whiffs;
+    public int Blocks, Dodges;   // 기록실 계측: 방어(가드·패링) 성공·회피 성공 (전투 결과 무영향)
     public float MinHpPct = 1f;
     public bool EverTaunted;
 

@@ -7,7 +7,8 @@ namespace Morituri.Sim.Match;
 
 public sealed record MatchFighterStats(
     string Name, float DamageDealt, int CleanHits, int Knockdowns, int AttackAttempts,
-    int Whiffs, float CornerTime, float MinHpPct, float HpRemainPct, bool Taunted);
+    int Whiffs, float CornerTime, float MinHpPct, float HpRemainPct, bool Taunted,
+    int Blocks = 0, int Dodges = 0);
 
 public sealed record MatchResult(
     int Winner,            // 0 / 1 / -1(무승부)
@@ -1011,6 +1012,7 @@ public sealed class MatchSim
         // 1) 회피 무적 프레임
         if (ds.State == FighterState.Dodge && ds.StateElapsed <= _c.DodgeIFrameSec)
         {
+            def.Dodges++;   // 기록실 계측: 회피 성공 (흐름 무영향)
             RegisterWhiff(atk);
             return;
         }
@@ -1023,6 +1025,7 @@ public sealed class MatchSim
         // 2) 가드 판정
         if (ds.State == FighterState.Guard)
         {
+            def.Blocks++;   // 기록실 계측: 방어(가드·패링) 성공 (흐름 무영향)
             // 패링(방패 전용): 가드 진입 후 ParryWindowSec 이내 피격 = 자격 → ParryChance 롤 성공 시 무효+환급+프레임우위.
             // 자격창은 '반응 가드'만 포착(오래 든 가드·스팸 제외 = 타이밍 비용), 성공률은 ParryChance 다이얼(창 계단 회피).
             if (def.Weapon.ParryWindowSec > 0f && ds.StateElapsed <= def.Weapon.ParryWindowSec
@@ -1224,7 +1227,7 @@ public sealed class MatchSim
 
     private static MatchFighterStats Summary(FighterRuntime f) => new(
         f.Def.Name, f.DamageDealt, f.CleanHits, f.Knockdowns, f.AttackAttempts,
-        f.Whiffs, f.CornerTime, f.MinHpPct, MathF.Max(0f, f.HpPct), f.EverTaunted);
+        f.Whiffs, f.CornerTime, f.MinHpPct, MathF.Max(0f, f.HpPct), f.EverTaunted, f.Blocks, f.Dodges);
 
     // ───────────────────────── 관중 (문서[10]) ─────────────────────────
     /// <summary>군중게이지 감쇠 + 기세(유리)/위축(불리) 강도 갱신. 매 틱 — 이번 틱 데미지·이속·directive에 반영.</summary>
