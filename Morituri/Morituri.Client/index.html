@@ -241,6 +241,37 @@
   border-radius:var(--r2); padding:13px 18px; font-size:16px; cursor:pointer; transition:all .15s ease }
 .dlg-choice:hover{ border-color:var(--gold); color:var(--gold); background:var(--panel3); transform:translateX(4px) }
 .dlg-unlock{ margin:6px 0 4px; text-align:center; font-weight:800; color:var(--gold); animation:dlgVeil 1.2s ease }
+/* ── 서신 개봉 UI — 화면 중앙 봉인 편지(초상 없음, 발신·내용 명확) ── */
+#letter{ position:fixed; inset:0; z-index:61; display:none }
+#letter.on{ display:flex; align-items:center; justify-content:center }
+#letter .lveil{ position:absolute; inset:0; background:rgba(10,6,2,.82); backdrop-filter:blur(3px); animation:dlgVeil .5s ease }
+.lt-card{ position:relative; z-index:1; width:min(560px,92vw) }
+.lt-sealed{ cursor:pointer; text-align:center; padding:40px 30px; animation:dlgDrop .5s ease;
+  background:linear-gradient(180deg,#efe6cf,#ddca9f); color:#2a1d0c; border:1px solid #b9a06a;
+  border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.55); transition:transform .12s ease }
+.lt-sealed:hover{ transform:translateY(-2px) }
+.lt-sealed .seal{ width:84px; height:84px; margin:2px auto 16px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:34px; background:radial-gradient(circle at 40% 35%,#8a1f1f,#4a0f0f); color:#f3d9a0;
+  box-shadow:0 4px 14px rgba(0,0,0,.5), inset 0 2px 6px rgba(255,255,255,.25); animation:ltSeal 2.2s ease infinite }
+.lt-sealed.gold .seal{ background:radial-gradient(circle at 40% 35%,#b98a2e,#6a4a12) }
+.lt-sealed.black .seal{ background:radial-gradient(circle at 40% 35%,#2c2630,#0c0a10) }
+@keyframes ltSeal{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+.lt-sealed .ttl{ font-family:'Noto Serif KR',serif; font-weight:900; font-size:21px }
+.lt-sealed .from{ font-family:var(--font-display); letter-spacing:.1em; font-size:13px; color:#6b5427; margin-top:6px }
+.lt-sealed .hint{ margin-top:18px; font-size:12px; color:#8a6f3c; font-style:italic }
+.lt-open{ background:linear-gradient(180deg,#f2e9d2,#e2d2ac); color:#241c10; border:1px solid #b9a06a;
+  border-radius:10px; box-shadow:0 16px 44px rgba(0,0,0,.6); overflow:hidden; animation:ltUnfold .45s ease }
+@keyframes ltUnfold{ from{opacity:0; transform:scaleY(.82)} to{opacity:1; transform:scaleY(1)} }
+.lt-open .head{ padding:14px 24px 10px; border-bottom:2px solid #6b5427; display:flex; justify-content:space-between; align-items:baseline; gap:10px }
+.lt-open .head b{ font-family:var(--font-display); letter-spacing:.08em; font-size:14px; color:#4a3a18 }
+.lt-body{ padding:18px 26px 8px; max-height:50vh; overflow:auto }
+.lt-context{ font-style:italic; color:#5c4a28; font-size:13px; line-height:1.55; margin-bottom:13px }
+.lt-quote{ font-family:'Noto Serif KR',serif; font-size:17px; line-height:1.85; color:#241c10; white-space:pre-wrap; word-break:keep-all }
+.lt-sign{ text-align:right; margin-top:16px; font-family:var(--font-display); letter-spacing:.06em; color:#4a3a18 }
+.lt-choices{ padding:12px 22px 20px; display:flex; flex-direction:column; gap:9px; background:rgba(80,60,30,.08) }
+.lt-choice{ text-align:left; background:#e7d8b4; border:1px solid #b9a06a; color:#3a2c15; border-radius:8px;
+  padding:11px 16px; font-size:15px; cursor:pointer; transition:all .15s ease; font-weight:600 }
+.lt-choice:hover{ border-color:#8a1f1f; background:#efe2c4; transform:translateX(3px) }
 /* ── [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) ── */
 #coach{ position:fixed; inset:0; z-index:58; display:none }
 #coach.on{ display:block }
@@ -259,6 +290,26 @@
 #coach .btxt b{ color:var(--gold) }
 #coach .okbtn{ background:var(--panel3); border:1px solid var(--gold); color:var(--gold); font-weight:800;
   border-radius:var(--r1); padding:7px 22px; cursor:pointer; font-size:14px; float:right; margin-top:10px }
+/* ── 안내 투어: 시스템을 순회하는 코치마크(골드·리그·각 탭 설명) ── */
+#tour{ position:fixed; inset:0; z-index:62; display:none }
+#tour.on{ display:block }
+#tour .spot{ position:absolute; border-radius:8px; transition:top .3s ease,left .3s ease,width .3s ease,height .3s ease; pointer-events:none;
+  box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.72); animation:coachPulse 1.4s ease infinite }
+#tour .bub{ position:absolute; width:340px; max-width:92vw; background:var(--panel2); border:1px solid var(--gold-deep);
+  border-radius:var(--r2); box-shadow:var(--sh2); padding:15px 17px 13px; animation:dlgDrop2 .35s ease }
+#tour .bub .arrow{ position:absolute; width:16px; height:16px; background:var(--panel2);
+  border-left:1px solid var(--gold-deep); border-top:1px solid var(--gold-deep) }
+#tour .thead{ display:flex; align-items:center; gap:8px; margin-bottom:6px }
+#tour .thead .ti{ font-size:20px }
+#tour .tname{ font-family:var(--font-display); font-weight:900; font-size:13px; letter-spacing:.08em; color:var(--gold) }
+#tour .tprog{ margin-left:auto; font-size:11px; color:var(--dim) }
+#tour .ttxt{ font-size:14.5px; line-height:1.62; color:var(--ink) }
+#tour .ttxt b{ color:var(--gold) }
+#tour .tfoot{ display:flex; gap:8px; margin-top:12px; align-items:center }
+#tour .tbtn{ background:var(--panel3); border:1px solid var(--line); color:var(--ink); border-radius:var(--r1);
+  padding:7px 16px; cursor:pointer; font-size:13px; font-weight:700 }
+#tour .tbtn.prim{ border-color:var(--gold); color:var(--gold) }
+#tour .tbtn.skip{ margin-right:auto; border:none; color:var(--dim); padding:7px 4px }
 </style>
 </head>
 <body class="fresco">
@@ -273,6 +324,7 @@
     <button data-s="news"><svg class="ic"><use href="icons.svg#book"/></svg>신문</button>
     <button data-s="gamble"><svg class="ic"><use href="icons.svg#dice"/></svg>도박장</button>
     <button data-s="codex"><svg class="ic"><use href="icons.svg#book"/></svg>도감</button>
+    <button data-s="archive"><svg class="ic"><use href="icons.svg#scroll"/></svg>보관함</button>
   </nav>
   <div id="topRight">
     <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
@@ -283,6 +335,7 @@
     <button id="autoBtn" class="btn ghost" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)"><svg class="ic"><use href="icons.svg#ff"/></svg>자동완주</button>
     <button id="toMineBtn" class="btn ghost" title="내 경기 직전까지 AI 경기를 건너뛴다"><svg class="ic"><use href="icons.svg#play"/></svg>내 경기까지</button>
     <button id="next" class="btn primary">다음 경기 ▶</button>
+    <button id="helpBtn" class="btn ghost" title="안내 — 카토의 둘러보기(시스템 설명)" style="border:none;padding:6px;font-weight:800;color:var(--gold)" onclick="openTour()">❔</button>
     <button id="cfgBtn" class="btn ghost" title="설정" style="border:none;padding:6px"><svg class="ic lg"><use href="icons.svg#gear"/></svg></button>
   </div>
 </div>
@@ -308,8 +361,6 @@
     <div id="cupBox"></div>
     <h2>🎖 업적</h2>
     <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-    <div id="ghostWrap" style="display:none"><h2>🕯 유품함 <span class="note">(선대 가이우스의 흔적 — 모은 단서)</span></h2>
-    <div id="ghostBox" style="display:flex;flex-direction:column;gap:6px"></div></div>
     <div class="err" id="ludusErr"></div>
   </div></div>
 
@@ -366,6 +417,7 @@
   <div class="screen" id="gamble"><div class="pad">
     <h2>🎲 콜로세움 도박장 <span class="note">AI 경기에 베팅 — 내 루두스 경기엔 걸 수 없다(승부조작 금지)</span></h2>
     <div id="gambleStat" style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap"></div>
+    <div id="debtPanel" style="margin:12px 0"></div>
     <div id="gambleNext" style="margin:10px 0"></div>
     <h3>📜 베팅 이력</h3>
     <div id="gambleLog" style="display:flex;flex-direction:column;gap:3px;max-height:340px;overflow:auto"></div>
@@ -375,6 +427,11 @@
     <h2>📖 도감 <span class="note">무기·전술·성격·특성 설명</span></h2>
     <div id="codexTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
     <div id="codexBody"></div>
+  </div></div>
+
+  <div class="screen" id="archive"><div class="pad">
+    <h2>🗄 보관함 <span class="note">선대 가이우스의 흔적과 모은 단서 — 문서를 눌러 펼쳐 본다</span></h2>
+    <div id="archiveBody"></div>
   </div></div>
 </div>
 
@@ -507,6 +564,12 @@
   </div>
 </div>
 
+<!-- 서신(발신 문서) — 화면 중앙 봉인 편지 개봉 UI (초상 없이 발신·내용만) -->
+<div id="letter"><div class="lveil"></div><div class="lt-card" id="letterCard"></div></div>
+
+<!-- 보관함 문서 열람 모달 -->
+<div class="modal" id="kpModal"><div class="mbox" style="max-width:560px;background:none;border:none;box-shadow:none;padding:0" id="kpModalBody"></div></div>
+
 <!-- [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) -->
 <div id="coach">
   <div class="spot" id="coachSpot"></div>
@@ -518,6 +581,21 @@
     </div>
     <button class="okbtn" onclick="hideCoach()">알겠다</button>
     <div style="clear:both"></div>
+  </div>
+</div>
+
+<!-- 안내 투어: 카토가 시스템을 순회하며 짚어준다(코치마크 튜토리얼) -->
+<div id="tour">
+  <div class="spot" id="tourSpot"></div>
+  <div class="bub" id="tourBub">
+    <div class="arrow" id="tourArrow"></div>
+    <div class="thead"><span class="ti" id="tourIcon">💬</span><span class="tname">카토 · 교관</span><span class="tprog" id="tourProg"></span></div>
+    <div class="ttxt" id="tourTxt"></div>
+    <div class="tfoot">
+      <button class="tbtn skip" onclick="endTour()">그만 보기</button>
+      <button class="tbtn" id="tourPrev" onclick="tourGo(_tourI-1)">← 이전</button>
+      <button class="tbtn prim" id="tourNext" onclick="tourAdvance()">다음 →</button>
+    </div>
   </div>
 </div>
 
@@ -640,6 +718,7 @@ function go(s){
   if (s==='news') renderNews();
   if (s==='gamble') renderGamble();
   if (s==='codex') renderCodex();
+  if (s==='archive') renderArchive();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
 $('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
@@ -688,8 +767,8 @@ async function refresh(){
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
-  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderUnrest(); renderGhost();
-  maybeAutoStory(); maybeCoach();   // [13] 캠페인 대사는 버튼을 기다리지 않는다 + 튜토리얼 코치마크
+  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderUnrest();
+  maybeAutoStory(); maybeCoach(); maybeTour();   // 캠페인 대사·코치마크·안내 투어(신규 1회)
   return st;
 }
 // ── [13] 캠페인: 카토의 조언(서막 튜토리얼 힌트 — 서버 계산, 여긴 표시만) ──
@@ -709,14 +788,53 @@ function renderUnrest(){
     el.style.color = U.Level>=75?'var(--b)':U.Level>=50?'#e0a89f':'var(--dim)';
   } else { el.textContent=''; el.title=''; }
 }
-// ── [13] 유품함: 가이우스의 유령 — 모은 단서 (루두스 탭 조용한 코너) ──
-function renderGhost(){
-  const wrap=$('ghostWrap'); if(!wrap) return;
-  const clues = (st.Campaign&&st.Campaign.Clues)||[];
-  wrap.style.display = clues.length?'':'none';
-  $('ghostBox').innerHTML = clues.map(c=>
-    `<div style="padding:7px 12px;border-left:3px solid var(--gold-deep);background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:#cbb98d">🕯 ${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`).join('');
+// ── 보관함: 가이우스의 흔적·모은 단서 (유서·메모·서신·증서·단서 — 문서 클릭 열람) ──
+let _kpSeen = null;
+const KP_META = {
+  '유서': {ic:'📜', col:'#b98a5e', label:'유서'},
+  '서신': {ic:'✉',  col:'#a86a6a', label:'서신'},
+  '메모': {ic:'🗒', col:'#8a9a6a', label:'메모'},
+  '증서': {ic:'🖋', col:'#8a7a5a', label:'증서'},
+  '단서': {ic:'🕯', col:'var(--gold-deep)', label:'단서'},
+};
+function renderArchive(){
+  _kpSeen = (st.Keepsakes||[]).length; renderBadges();
+  const body=$('archiveBody'); if(!body) return;
+  const ks = st.Keepsakes||[];
+  if (!ks.length){ body.innerHTML='<div class="note" style="padding:20px 0">아직 보관된 문서가 없다 — 서신을 개봉하거나 유품을 손에 넣으면 이곳에 쌓인다.</div>'; return; }
+  window._kp = ks;
+  body.innerHTML = `<div style="display:flex;flex-direction:column;gap:9px;margin-top:6px">${ks.map((k,i)=>{
+    const m = KP_META[k.Type]||KP_META['단서'];
+    const snip = (k.Body||'').replace(/\n+/g,' ').slice(0,60);
+    return `<div onclick="openKeepsake(${i})" style="cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:12px 15px;border-radius:9px;background:var(--panel2);border-left:4px solid ${m.col};transition:transform .12s ease" onmouseover="this.style.transform='translateX(3px)'" onmouseout="this.style.transform=''">
+      <span style="font-size:22px;flex-shrink:0">${m.ic}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:8px;align-items:baseline"><b style="color:var(--ink);font-size:14px">${escHtml(k.Title)}</b><span class="chip" style="background:rgba(201,168,76,.14);color:var(--gold);font-size:10px">${m.label}</span></div>
+        <div class="note" style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(snip)}…</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px">${k.From?escHtml(k.From)+' · ':''}${escHtml(k.When||'')}</div>
+      </div>
+      <span style="color:var(--gold);align-self:center">▶</span></div>`;
+  }).join('')}</div>`;
 }
+// 문서 열람 모달 — 타입별 디자인(유서/메모=양피지·쪽지, 서신=편지, 단서=낡은 조각)
+window.openKeepsake = (i)=>{
+  const k = (window._kp||[])[i]; if(!k) return;
+  const m = KP_META[k.Type]||KP_META['단서'];
+  const paper = k.Type==='메모'
+    ? 'background:linear-gradient(180deg,#f6f1d8,#eae2bf);color:#33301c;font-family:var(--font-body)'
+    : k.Type==='단서'
+    ? 'background:linear-gradient(180deg,#e8ddc2,#d6c7a0);color:#2a2214;font-family:"Noto Serif KR",serif'
+    : 'background:linear-gradient(180deg,#f2e9d2,#e2d2ac);color:#241c10;font-family:"Noto Serif KR",serif';
+  $('kpModalBody').innerHTML =
+    `<div style="${paper};border:1px solid #b9a06a;border-radius:10px;box-shadow:0 16px 44px rgba(0,0,0,.6);overflow:hidden">
+       <div style="padding:13px 22px 10px;border-bottom:2px solid #6b5427;display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+         <b style="font-family:var(--font-display);letter-spacing:.06em;font-size:15px;color:#4a3a18">${m.ic} ${escHtml(k.Title)}</b>
+         <span style="font-size:11px;color:#6b5b38">${escHtml(k.When||'')}</span></div>
+       <div style="padding:20px 26px;max-height:56vh;overflow:auto;font-size:16px;line-height:1.85;white-space:pre-wrap;word-break:keep-all">${escHtml(k.Body||'')}${k.From?`<div style="text-align:right;margin-top:16px;font-family:var(--font-display);letter-spacing:.06em;color:#4a3a18">— ${escHtml(k.From)}</div>`:''}</div>
+     </div>
+     <button class="tacbtn" style="margin-top:12px;text-align:center" onclick="$('kpModal').classList.remove('on')">닫기</button>`;
+  $('kpModal').classList.add('on');
+};
 // ── [13] 카토의 한 줄 평 (결과 카드) ──
 const catoLine = c => c?`<div style="margin-top:8px;padding:7px 10px;border-left:3px solid #8a7a5a;background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:#cbb98d">🗣 카토 — “${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}”</div>`:'';
 // ── 승부조작 진행 배너: 가담한 선수가 다음 경기를 던져야 함을 상기 ──
@@ -792,6 +910,60 @@ async function renderNews(){
     </article>`).join('');
 }
 
+// ── 빚 상세 (검은 인장의 장부) — 출처·셈법·신용·대출 한도 + 대출/상환 ──
+let _debtOpen = false;
+const dstat=(l,v,c)=>`<div style="background:var(--panel2);border-radius:9px;padding:8px 14px"><div class="note">${l}</div><div style="font-size:16px;font-weight:700;color:${c||'var(--ink)'}">${v}</div></div>`;
+function renderDebtPanel(){
+  const el=$('debtPanel'); if(!el) return;
+  const d = st.DebtInfo; if(!d){ el.innerHTML=''; return; }
+  const trustCol = d.Trust>=75?'var(--grn)':d.Trust>=50?'var(--gold)':d.Trust>=25?'#e0a89f':'var(--b)';
+  const hasDebt = d.Total>0;
+  let html = `<div style="background:linear-gradient(180deg,#1c1620,#120d16);border:1px solid #3a2f3a;border-radius:10px;overflow:hidden">
+    <div onclick="_debtOpen=!_debtOpen;renderDebtPanel()" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 16px">
+      <span style="font-size:22px">🖤</span>
+      <div style="flex:1"><b style="color:#c9a0c0">검은 인장의 장부</b>
+        <div class="note" style="margin-top:2px">${hasDebt?`채무 <b style="color:var(--b)">💰${Math.round(d.Total)}</b> · `:'채무 없음 · '}채권자의 신뢰 <b style="color:${trustCol}">${d.TrustLabel}</b></div></div>
+      <span style="color:var(--dim);font-size:12px">${_debtOpen?'▲ 접기':'▼ 상세'}</span></div>`;
+  if (_debtOpen){
+    html += `<div style="padding:2px 16px 16px;border-top:1px solid #3a2f3a">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin:12px 0">
+        ${dstat('채무 총액','💰'+Math.round(d.Total), hasDebt?'var(--b)':'var(--dim)')}
+        ${dstat('채권자의 신뢰', Math.round(d.Trust)+' · '+d.TrustLabel, trustCol)}
+        ${dstat('빌릴 수 있는 한도','💰'+Math.round(d.LoanLimit), d.LoanLimit>0?'var(--grn)':'var(--dim)')}</div>
+      <div style="font-size:12px;color:#cbb98d;line-height:1.6;background:var(--panel2);border-left:3px solid #6a3560;border-radius:6px;padding:9px 13px;margin-bottom:12px">
+        <b style="color:#c9a0c0">셈법</b> — 급히 진 빚은 원금의 <b>1.5배</b>로 장부에 오르고, 미리 청하는 대출은 <b>1.2배</b>로 적힌다. 시즌이 끝날 때마다 남은 채무에 <b>이자 20%</b>가 붙고, 금고에서 갚을 만큼 자동으로 뜯긴다. 못 갚으면 루두스의 이름값(명성)이 깎인다.<br>
+        <span style="color:var(--dim)">신뢰는 루두스 등급과 명성이 쌓을수록 오르고, 진 빚이 많을수록 내려간다 — 신뢰가 곧 한도다.</span></div>`;
+    if (d.LoanLimit>0 || hasDebt){
+      html += `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <input id="debtAmt" type="number" min="1" placeholder="금액" style="width:110px;background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:7px 10px">
+        ${d.LoanLimit>0?`<button class="btn ghost" onclick="doLoan()" title="검은 인장에서 빌린다(원금 1.2배 채무)">🖤 빌린다</button>`:''}
+        ${hasDebt?`<button class="btn ghost" onclick="doRepay()" title="골드로 채무를 갚는다">💰 갚는다</button>`:''}
+        <span id="debtMsg" class="note"></span></div>`;
+    }
+    const log = (d.Log||[]).slice().reverse();
+    html += `<div style="font-size:11px;color:var(--dim);margin-bottom:4px">📒 장부 내역 (최근순)</div>`;
+    html += log.length ? `<div style="display:flex;flex-direction:column;gap:2px;max-height:200px;overflow:auto">${log.map(x=>
+      `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:4px 10px;background:var(--panel2);border-radius:5px">
+        <span>${escHtml(x.Reason)} <span style="color:var(--dim)">· S${x.Season}</span></span>
+        <b style="color:${x.Delta>0?'var(--b)':'var(--grn)'}">${x.Delta>0?'+':''}${Math.round(x.Delta)}</b></div>`).join('')}</div>`
+      : '<div class="note">아직 검은 인장에 빚진 적이 없다.</div>';
+    html += `</div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+window.doLoan = async ()=>{
+  const amt=parseInt($('debtAmt').value)||0;
+  const r=await api('/api/loan',{amount:amt});
+  if(r.error){ const m=$('debtMsg'); if(m){m.style.color='var(--b)';m.textContent=' ⚠ '+r.error;} return; }
+  st=r; _debtOpen=true; renderGamble(); refreshTop();
+};
+window.doRepay = async ()=>{
+  const amt=parseInt($('debtAmt').value)||0;
+  const r=await api('/api/repay',{amount:amt});
+  if(r.error){ const m=$('debtMsg'); if(m){m.style.color='var(--b)';m.textContent=' ⚠ '+r.error;} return; }
+  st=r; _debtOpen=true; renderGamble(); refreshTop();
+};
 function renderGamble(){
   if (!st) return;
   const g = st.Gamble||{SeasonNet:0,Hits:0,Total:0,Log:[]};
@@ -803,6 +975,7 @@ function renderGamble(){
     stat('베팅 횟수', g.Total, null) +
     stat('🔥 연속 적중', (g.Streak||0)+((g.Streak||0)>=2?' (배당 +10%)':''), (g.Streak||0)>=2?'#ff9d5d':null) +
     stat('보유 골드', '💰'+Math.round(st.Gold), 'var(--gold)');
+  renderDebtPanel();
   // 다음 경기 베팅(리그탭 betBar 재사용 로직)
   const nm=st.NextMatch, gn=$('gambleNext');
   if (st.PendingBet){ gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:8px">🎲 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 💰${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산</div>`; }
@@ -878,6 +1051,7 @@ function renderBadges(){
     if (b.dataset.s==='ludus') need = st.MyFighters.some(f=>f.TrainingPoints>0 || (f.AtCap && st.Glory>=f.BreakthroughCost));
     if (b.dataset.s==='market') need = st.FreeGachas>0;
     if (b.dataset.s==='league') need = !!(st.PendingEvent || st.PendingProposal);
+    if (b.dataset.s==='archive'){ const n=(st.Keepsakes||[]).length; if(_kpSeen===null)_kpSeen=n; need = n>_kpSeen; }
     let dot = b.querySelector('.navdot');
     if (need && !dot){ dot=document.createElement('span'); dot.className='navdot'; b.appendChild(dot); }
     else if (!need && dot) dot.remove();
@@ -1325,6 +1499,7 @@ window.closeResult = ()=>{ $('resModal').classList.remove('on');
 // ── 시즌 중 텍스트 이벤트(감독의 선택) ──
 function showEvent(){
   const ev = st && st.PendingEvent; if (!ev) return;
+  if (ev.Kind==='letter'){ showLetter(ev); return; }             // 발신 문서 = 화면 중앙 편지 개봉 UI(초상 없음)
   if (ev.Id.startsWith('story_')){ showDialogue(ev); return; }   // [13] 캠페인 = 전용 대화 UI(A안)
   $('evtTitle').textContent = `${ev.Icon} ${ev.Title}`;
   // 상대 대사(💬) 줄은 강조 렌더(#9)
@@ -1440,14 +1615,70 @@ window.dlgClose = ()=>{
   if (st && st.PendingProposal) showProposal();   // 지목 격파 수락 → 출전자 선택으로 연결
   maybeCoach();
 };
-// 자동 팝업: 스토리 이벤트는 버튼을 기다리지 않는다 (메뉴·라이브 관전 중엔 대기)
+// 자동 팝업: 스토리·서신 이벤트는 버튼을 기다리지 않는다 (메뉴·라이브 관전 중엔 대기)
 function maybeAutoStory(){
-  if (!st || !st.PendingEvent || !st.PendingEvent.Id.startsWith('story_')) return;
-  if ($('dlg').classList.contains('on')) return;
+  const ev = st && st.PendingEvent; if (!ev) return;
+  const isLetter = ev.Kind==='letter';
+  if (!isLetter && !ev.Id.startsWith('story_')) return;
+  if ($('dlg').classList.contains('on') || $('letter').classList.contains('on')) return;
   if ($('menu').style.display !== 'none') return;
   if ($('livesc').classList.contains('on')) return;
-  showDialogue(st.PendingEvent);
+  if (isLetter) showLetter(ev); else showDialogue(ev);
 }
+// ═══ 서신(발신 문서) UI — 봉인 편지 → 클릭 개봉 → 초상 없이 발신·내용 명확 → 선택 → 보관함 편철 ═══
+let letterEv=null;
+const LT_SEAL = { story_house_gold:{g:'💰',c:'gold'}, story_house_blood:{g:'🩸',c:''}, rival_letter:{g:'🩸',c:''} };
+function ltParse(body){
+  const ctx=[], quote=[];
+  body.split('\n').map(l=>l.trim()).filter(l=>l).forEach(line=>{
+    const m = line.match(/^💬\s*[^:]+:\s*(.*)$/);
+    if (m) quote.push(m[1].trim()); else ctx.push(line);
+  });
+  return { ctx: ctx.join(' '), quote: quote.join('\n\n') };
+}
+function showLetter(ev){
+  letterEv = ev;
+  const seal = LT_SEAL[ev.Id] || {g:'✉',c:''};
+  const from = ev.From || '발신 미상';
+  $('letter').classList.add('on');
+  $('letterCard').innerHTML =
+    `<div class="lt-sealed ${seal.c}" onclick="ltOpen()">
+       <div class="seal">${seal.g}</div>
+       <div class="ttl">서신이 도착했다</div>
+       <div class="from">발신 — ${escHtml(from)}</div>
+       <div class="hint">✉ 봉인을 뜯으려면 누르시오</div>
+     </div>`;
+}
+window.ltOpen = ()=>{
+  const ev=letterEv; if(!ev) return;
+  const seal = LT_SEAL[ev.Id] || {g:'✉',c:''};
+  const {ctx, quote} = ltParse(ev.Body);
+  const from = ev.From || '발신 미상';
+  if (typeof sfxReveal==='function') sfxReveal(2);
+  $('letterCard').innerHTML =
+    `<div class="lt-open">
+       <div class="head"><b>✉ ${escHtml(from)}로부터</b><span style="font-size:20px">${seal.g}</span></div>
+       <div class="lt-body">
+         ${ctx?`<div class="lt-context">${escHtml(ctx)}</div>`:''}
+         <div class="lt-quote">${escHtml(quote)}</div>
+         <div class="lt-sign">— ${escHtml(from)}</div>
+       </div>
+       <div class="lt-choices">${ev.Choices.map((c,i)=>`<button class="lt-choice" onclick="ltPick(${i})">${i+1}. ${escHtml(c)}</button>`).join('')}</div>
+     </div>`;
+};
+window.ltPick = async (i)=>{
+  const r = await api('/api/choose',{choice:i});
+  await refresh();
+  $('letterCard').innerHTML =
+    `<div class="lt-open"><div class="lt-body" style="padding:24px 26px">
+       <div class="lt-quote" style="font-size:15px;font-style:italic">— ${escHtml(r.outcome||'')} —</div></div>
+     <div class="lt-choices"><button class="lt-choice" onclick="ltClose()">📁 봉인하여 보관함에 넣는다</button></div></div>`;
+};
+window.ltClose = ()=>{
+  $('letter').classList.remove('on'); letterEv=null;
+  if (st && st.PendingProposal) showProposal();
+  maybeCoach();
+};
 // ═══ [13] 튜토리얼 코치마크: 카토의 조언이 실제 UI를 가리킨다 (힌트 변경 시 1회) ═══
 let _coachSeen = null;
 function maybeCoach(){
@@ -1471,6 +1702,59 @@ function maybeCoach(){
   $('coach').classList.add('on');
 }
 window.hideCoach = ()=> $('coach').classList.remove('on');
+// ═══ 안내 투어 — 카토가 골드·리그·각 탭을 순회하며 짚어준다 (코치마크 위주 튜토리얼) ═══
+const TOUR = [
+  { sel:'#gold', ic:'🪙', txt:'<b>골드</b>는 살림 밑천이다. 경기 출전료·승리와 서사 보너스·시즌 순위, 도박장 베팅으로 번다. 영입·시설·훈련·이벤트·빚 상환에 나간다.' },
+  { sel:'#gloryWrap', ic:'✨', txt:'<b>영광</b>은 귀한 화폐다 — 업적·타이틀·컵 우승·승격에서만 얻는다. 잠재력의 벽을 넘거나 제국 특전을 사는 데 쓴다.', optional:true },
+  { sel:'nav [data-s="league"]', ic:'⚔', txt:'<b>리그</b>에서 [다음 경기 ▶]로 하루하루를 진행한다. 정규시즌 → 상위 4인 <b>챔피언십 컵</b> → 다음 시즌. 순위가 오르면 루두스 등급이 오른다.' },
+  { sel:'nav [data-s="roster"]', ic:'📋', txt:'<b>로스터</b>엔 리그 전체 선수와 라이벌 검투소 순위가 있다. 카드를 누르면 스탯·특성·관계까지 볼 수 있다.' },
+  { sel:'nav [data-s="watch"]', ic:'🎬', txt:'<b>관전</b>은 지난 경기의 다시보기다. 명경기 보관함과 선수 검색으로 모래 위의 순간을 되짚는다.' },
+  { sel:'nav [data-s="news"]', ic:'📰', txt:'<b>신문</b>은 매주 발행되는 콜로세움 뉴스 — 누가 떴고 누가 졌는지, 세상이 뭐라 떠드는지 여기 실린다.' },
+  { sel:'nav [data-s="gamble"]', ic:'🎲', txt:'<b>도박장</b>에서 AI 경기에 베팅한다(내 경기는 금지 — 승부조작). <b>빚과 대출</b>도 여기 「검은 인장의 장부」에서 관리한다.', optional:true },
+  { sel:'nav [data-s="codex"]', ic:'📖', txt:'<b>도감</b>에 무기 8종·성격 10종·전술 10종의 설명이 있다. 무엇을 쥐었고, 어떤 기질이며, 무슨 전술을 쓰는지 — 검투사를 이해하려거든 여기서 배운다.' },
+  { sel:'nav [data-s="archive"]', ic:'🗄', txt:'<b>보관함</b>엔 유서·서신·메모·단서가 쌓인다. 문서를 누르면 펼쳐 읽을 수 있다 — 선대 가이우스가 남긴 것들도.' },
+  { sel:'#next', ic:'🏛', txt:'준비됐다면, 여기서 시작하라. 나머지는 모래가 가르칠 것이다. <span style="color:var(--dim)">— 카토</span>' },
+];
+let _tourI = 0, _tourList = [], _tourDoneSession = false;
+function startTour(){
+  if ($('dlg').classList.contains('on')||$('letter').classList.contains('on')||$('menu').style.display!=='none') return;
+  _tourList = TOUR.filter(s=>{ const el=document.querySelector(s.sel);
+    return el && (!s.optional || (el.offsetParent!==null && getComputedStyle(el).display!=='none')); });
+  if (!_tourList.length) return;
+  hideCoach();
+  $('tour').classList.add('on'); tourGo(0);
+}
+window.tourGo = (i)=>{
+  if (i<0 || i>=_tourList.length) return;
+  _tourI = i; const s=_tourList[i];
+  const el = document.querySelector(s.sel);
+  if (!el){ tourGo(i+1); return; }
+  try{ el.scrollIntoView({block:'nearest'}); }catch(_){}
+  const r = el.getBoundingClientRect();
+  $('tourIcon').textContent = s.ic;
+  $('tourTxt').innerHTML = s.txt;
+  $('tourProg').textContent = `${i+1} / ${_tourList.length}`;
+  $('tourPrev').style.visibility = i===0?'hidden':'';
+  $('tourNext').textContent = i===_tourList.length-1?'시작하자':'다음 →';
+  $('tourSpot').style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
+  const bw=340, bl = Math.max(8, Math.min(window.innerWidth-bw-8, r.left + r.width/2 - bw/2));
+  $('tourBub').style.top = (r.bottom+16)+'px'; $('tourBub').style.left = bl+'px';
+  $('tourArrow').style.cssText = `top:-8px;transform:rotate(45deg);left:${Math.max(12, Math.min(bw-24, r.left + r.width/2 - bl - 8))}px`;
+};
+window.tourAdvance = ()=>{ if (_tourI>=_tourList.length-1) endTour(); else tourGo(_tourI+1); };
+window.endTour = ()=>{ $('tour').classList.remove('on'); _tourDoneSession=true; try{ localStorage.setItem('mor_tourSeen','1'); }catch(_){} };
+window.openTour = ()=> startTour();
+// 새 플레이어 자동 1회 — 시즌 개막 후, 대화·서신·메뉴·대기 이벤트가 없을 때
+function maybeTour(){
+  if (_tourDoneSession) return;
+  let seen=false; try{ seen = localStorage.getItem('mor_tourSeen')==='1'; }catch(_){}
+  if (seen){ _tourDoneSession=true; return; }
+  if (!st || !st.SeasonActive) return;
+  if ($('tour').classList.contains('on')) return;
+  if ($('dlg').classList.contains('on')||$('letter').classList.contains('on')||$('menu').style.display!=='none') return;
+  if (st.PendingEvent||st.PendingProposal) return;
+  startTour();
+}
 window.chooseEvent = async (i)=>{
   const r = await api('/api/choose',{choice:i});
   await refresh();

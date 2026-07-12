@@ -123,10 +123,12 @@ public sealed partial class Game
         List<BetLogRec>? BetLog = null, int StreetSeq = 0,   // 베팅 이력·거리 시비 카운터
         int SurgerySeq = 0,   // 의무실 수술 카운터(시드 결정론)
         string? StoryStage = null, List<string>? StoryBeats = null, string? StoryCtx = null,   // [13] 캠페인 (null=구세이브=chronicle)
-        string? FixChoice = null, List<string>? GhostClues = null,   // 서막 선택·유품함 단서
+        string? FixChoice = null, List<string>? GhostClues = null,   // 서막 선택·(구)유품함 단서 문자열 — 마이그레이션용
         float Unrest = 0f, List<LegendRec>? Legends = null, int LegendRefs = 0,   // 반란 지수·전설·카토 참조 카운터
-        int FavorAtE1 = 0);   // 「황제의 게임」 E2 게이트 기준점(E1 시점 총애)
+        int FavorAtE1 = 0,   // 「황제의 게임」 E2 게이트 기준점(E1 시점 총애)
+        List<KeepsakeRec>? Keepsakes = null, List<DebtTxnRec>? DebtLog = null);   // 보관함 유품·채무 원장
     private sealed record LudusRepRec(string Id, float Rep);
+    private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
     // ── season.json / API 문서 ──
     private sealed record EventDoc(string A, string B, float Score, string Winner, bool Ko);
@@ -207,8 +209,11 @@ public sealed partial class Game
         GambleDoc? Gamble = null,   // 도박장 탭(#32)
         bool Redemption = false,   // 재기의 서약(강등 아크) 진행 중
         string? FixTarget = null,   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
-        CampaignDoc? Campaign = null, UnrestDoc? Unrest = null, List<LegendRec>? Legends = null);   // [13] 캠페인·반란 지수·전설
+        CampaignDoc? Campaign = null, UnrestDoc? Unrest = null, List<LegendRec>? Legends = null,   // [13] 캠페인·반란 지수·전설
+        DebtDoc? DebtInfo = null, List<KeepsakeRec>? Keepsakes = null);   // 채무 상세·보관함 유품
     private sealed record GambleDoc(float SeasonNet, int Hits, int Total, List<BetLogRec> Log, int Streak = 0);
+    private sealed record DebtTxnDoc(string Reason, float Delta, int Season);
+    private sealed record DebtDoc(float Total, List<DebtTxnDoc> Log, float Trust, string TrustLabel, float LoanLimit);
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
@@ -321,6 +326,7 @@ public sealed partial class Game
     private readonly List<GreatRec> _greatest = new();       // 명경기 보관함(top 12, 영속 — 스냅샷+시드 재관전)
     private int _rookieSeq;                                  // 신인 id 시리얼(중복 방지, 영속)
     private float _debt;                                     // 사채(이벤트 빚) — 시즌말 이자·상환·명성 압박
+    private readonly List<DebtTxnRec> _debtLog = new();      // 채무 원장(발생·이자·상환 거래 — 도박장 빚 상세 열람)
     private readonly Dictionary<string, float> _rivalRep = new();   // 라이벌 루두스별 명성(경쟁 순위표)
     private int _emoGen;
 
@@ -559,7 +565,7 @@ public sealed partial class Game
     }
 
     // ── 시즌 중 텍스트 이벤트(2b) — 감독의 선택. 효과는 전부 기존 메커니즘(재화·명성·인기·훈련·감정·스탯). ──
-    private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices);
+    private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices, string Kind = "dialogue", string? From = null);
     private sealed record ProposalPickDoc(string Id, string Name, string Weapon, string Personality, int Fatigue, bool Injured);
     private sealed record ProposalDoc(string OppName, string OppWeapon, string OppPersonality, int OppAge, float OppFame,
         string OppCareer, ProposalPickDoc[] Roster, bool Execution = false);
@@ -569,6 +575,7 @@ public sealed partial class Game
         public required bool NeedsFighter;
         public required Func<string, string> Body;                       // 대상 이름 → 본문
         public required (string Label, Func<Gladiator?, string> Apply)[] Choices;
+        public string Kind = "dialogue";                                 // "letter" = 화면 중앙 편지 개봉 UI(초상 없음), "dialogue" = 초상 대화
     }
 
     /// <summary>스탯을 상한(잠재력 버짓) 내에서 영구 조정 — 여유 없으면 훈련 포인트로 환급. axis: Atk/Def/Rct.</summary>
@@ -580,15 +587,55 @@ public sealed partial class Game
         return $"{axis} +{amt:F0}";
     }
 
+    /// <summary>채무 증감 1건 = 원장 기록 + 총액 반영(음수 = 상환). 총액은 0 밑으로 내려가지 않는다.</summary>
+    private void DebtTxn(string reason, float delta)
+    {
+        _debt = MathF.Max(0f, _debt + delta);
+        _debtLog.Add(new DebtTxnRec(reason, MathF.Round(delta), Math.Max(1, _seasonNo)));
+        if (_debtLog.Count > 40) _debtLog.RemoveRange(0, _debtLog.Count - 40);   // 원장 상한(최근 40건)
+    }
+
     /// <summary>이벤트 지불: 골드가 부족해도 거래는 성사된다 — 부족분은 사채(원금 1.5배)로. 빚은 시즌말 이자·명성 압박.</summary>
-    private string SpendOrDebt(float cost)
+    private string SpendOrDebt(float cost, string reason = "긴급 사채")
     {
         if (_gold >= cost) { _gold -= cost; return $"골드 −{cost:F0}"; }
         float shortfall = cost - _gold; _gold = 0f;
-        _debt += shortfall * 1.5f;
-        _story.Add((0, "debt", $"💸 사채 — 부족분 {shortfall:F0}을 빚으로 (원금 1.5배 기록, 채무 {_debt:F0})"));
+        DebtTxn($"{reason} (원금 1.5배)", shortfall * 1.5f);
+        _story.Add((0, "debt", $"💸 사채 — 부족분 {shortfall:F0}을 빚으로 (원금 1.5배, 채무 {_debt:F0})"));
         return $"골드 바닥 → 부족분 {shortfall:F0} 사채(채무 {_debt:F0})";
     }
+
+    // ── 채권자의 신뢰·대출 (검은 인장 사채업 — 도박장 빚 상세 탭) ──
+    /// <summary>채권자의 신뢰 0~100 — 명성·등급이 올리고, 현재 빚이 갉아먹는다.</summary>
+    private float DebtTrust => Math.Clamp(30f + LudusTier() * 12f + _ludusRep * 0.1f - _debt * 0.15f, 0f, 100f);
+    /// <summary>추가로 빌릴 수 있는 한도 — 신뢰·등급에 비례, 현재 빚을 제한다.</summary>
+    private float LoanLimit => MathF.Max(0f, MathF.Round(DebtTrust * (2f + LudusTier())) - _debt);
+    private static string TrustLabel(float t) => t >= 75f ? "귀한 손님" : t >= 50f ? "쓸 만한 고객" : t >= 25f ? "지켜보는 중" : "믿을 수 없는 자";
+
+    /// <summary>검은 인장에서 대출 — 즉시 골드, 채무는 원금 1.2배(계획적 차입은 비상 사채 ×1.5보다 유리).</summary>
+    public string LoanJson(float amount)
+    {
+        amount = MathF.Round(amount);
+        if (amount <= 0f) return Err("금액이 올바르지 않다");
+        if (amount > LoanLimit + 0.5f) return Err($"검은 인장이 그만큼은 내주지 않는다 (한도 {LoanLimit:F0})");
+        _gold += amount;
+        DebtTxn("검은 인장 대출 (원금 1.2배)", amount * 1.2f);
+        _story.Add((_rounds + 1, "debt", $"🖤 대출 — 검은 인장에서 {amount:F0}을 빌렸다 (채무 +{MathF.Round(amount * 1.2f):F0})"));
+        SaveWorld(); return StateJson();
+    }
+    /// <summary>임의 상환 — 골드·잔여 채무 한도에서 갚는다.</summary>
+    public string RepayJson(float amount)
+    {
+        if (_debt <= 0f) return Err("갚을 빚이 없다");
+        float pay = MathF.Min(MathF.Min(MathF.Round(amount), _gold), _debt);
+        if (pay <= 0f) return Err("상환할 골드가 없다");
+        _gold -= pay; DebtTxn("상환", -pay);
+        _story.Add((_rounds + 1, "debt", $"💰 상환 — {pay:F0}을 갚았다 (잔여 채무 {_debt:F0})"));
+        SaveWorld(); return StateJson();
+    }
+    private DebtDoc BuildDebtDoc() => new(MathF.Round(_debt),
+        _debtLog.Count > 0 ? _debtLog.Select(x => new DebtTxnDoc(x.Reason, x.Delta, x.Season)).ToList() : new(),
+        MathF.Round(DebtTrust), TrustLabel(DebtTrust), MathF.Round(LoanLimit));
 
     private List<EvtTemplate> EvtTemplates() => new()
     {
@@ -665,7 +712,7 @@ public sealed partial class Game
                 ("수련한다 (골드 −40 · 부족분은 빚)", g => { var pay = SpendOrDebt(40f); var r = NudgeStat(g!, "Rct", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("사양한다", g => "정중히 사양했다.") } },
 
-        new EvtTemplate { Id = "rival_letter", Icon = "🩸", Title = "라이벌 루두스의 서신", NeedsFighter = true,
+        new EvtTemplate { Id = "rival_letter", Icon = "🩸", Title = "라이벌 루두스의 서신", NeedsFighter = true, Kind = "letter",
             Body = n => { var b = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
                 string ln = b.Name ?? "경쟁 검투소";
                 return $"{ln}의 인장이 찍힌 서신이 도착했다 — 피 냄새가 나는 도발이다.\n💬 서신: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {ln}\""; },
@@ -723,7 +770,8 @@ public sealed partial class Game
         var t = FindTemplate(_pendingEventId);
         if (t == null) return null;
         string nm = _pendingEventFighter != null ? (_cast.FirstOrDefault(g => g.Id == _pendingEventFighter)?.Name ?? "선수") : "";
-        return new TextEventDoc(t.Id, t.Icon, t.Title, t.Body(nm), t.Choices.Select(c => c.Label).ToArray());
+        return new TextEventDoc(t.Id, t.Icon, t.Title, t.Body(nm), t.Choices.Select(c => c.Label).ToArray(),
+            t.Kind, t.Kind == "letter" ? LetterSender(t.Id) : null);
     }
 
     private ProposalDoc? PendingProposalDoc()
@@ -778,6 +826,8 @@ public sealed partial class Game
                 fight = new { venue = "bar", a = subj.Name, b = foe.Name };
             }
         }
+        if (t.Kind == "letter")   // 발신 문서 = 열람한 서신을 보관함에 편철
+            ArchiveLetter(LetterSender(t.Id), t.Title, t.Body(subj?.Name ?? MyFirst?.Name ?? ""));
         string outcome = t.Choices[choiceIdx].Apply(subj);
         _story.Add((0, "event_choice", $"{t.Icon} {t.Title} — {outcome}"));
         _pendingEventId = _pendingEventFighter = null;
@@ -1091,7 +1141,7 @@ public sealed partial class Game
         if (_fixFighterId != null)
         {
             var fixName = _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name ?? "그 검투사";
-            _ludusRep = MathF.Max(0f, _ludusRep - 25f); _debt += _fixReward;
+            _ludusRep = MathF.Max(0f, _ludusRep - 25f); DebtTxn("검은 인장의 협박 채무", _fixReward);
             _story.Add((_rounds + 1, "fix", $"🎲 미이행 — {fixName}이(가) 끝내 경기를 던지지 않았다. 뒷돈의 주인이 배신으로 여긴다 (명성 −25·협박 채무 +{_fixReward:F0})"));
             _fixFighterId = null; _fixReward = 0f;
         }
@@ -1126,14 +1176,15 @@ public sealed partial class Game
             // 사채 정산: 이자 20% → 잔고에서 자동 상환 → 남으면 채권자의 압박(루두스 명성 −10)
             if (_debt > 0f)
             {
-                _debt *= 1.2f;
-                float pay = MathF.Min(_gold, _debt); _gold -= pay; _debt = MathF.Round(_debt - pay);
+                DebtTxn("채권자의 이자 (20%)", _debt * 0.2f);
+                float pay = MathF.Min(_gold, _debt); _gold -= pay;
+                if (pay > 0f) DebtTxn("시즌말 자동 상환", -pay);
                 if (_debt > 0.5f)
                 {
                     _ludusRep = MathF.Max(0f, _ludusRep - 10f);
                     _story.Add((_rounds + 1, "debt", $"💸 채권자의 압박 — 이자 20% · 상환 {pay:F0} · 잔여 채무 {_debt:F0} · 루두스 명성 −10"));
                 }
-                else { _debt = 0f; _story.Add((_rounds + 1, "debt", $"💸 빚 청산 — {pay:F0} 상환, 채무에서 벗어났다")); }
+                else _story.Add((_rounds + 1, "debt", $"💸 빚 청산 — {pay:F0} 상환, 채무에서 벗어났다"));
             }
         }
 
@@ -2328,7 +2379,7 @@ public sealed partial class Game
             }
             else   // 이기거나 비겼다 — 약속을 어겼다
             {
-                _ludusRep = MathF.Max(0f, _ludusRep - 30f); Patron(-20f); _debt += _fixReward;
+                _ludusRep = MathF.Max(0f, _ludusRep - 30f); Patron(-20f); DebtTxn("검은 인장의 협박 채무", _fixReward);
                 _lastFixNote = $"🎲 약속을 어겼다 — {fx.Name}이(가) 지지 않았다. 뒷돈의 주인이 이를 간다: 명성 −30·후원 −20·협박 채무 +{_fixReward:F0}"; _lastFixBad = true;
             }
             _story.Add((round, "fix", _lastFixNote));
@@ -3035,7 +3086,10 @@ public sealed partial class Game
         _storyStage = w.StoryStage ?? "chronicle";
         _storyBeats.Clear(); if (w.StoryBeats != null) foreach (var b in w.StoryBeats) _storyBeats.Add(b);
         _storyCtx = w.StoryCtx; _fixChoice = w.FixChoice;
-        _ghostClues.Clear(); if (w.GhostClues != null) _ghostClues.AddRange(w.GhostClues);
+        _keepsakes.Clear();
+        if (w.Keepsakes != null) _keepsakes.AddRange(w.Keepsakes);
+        else if (w.GhostClues != null) foreach (var c in w.GhostClues) AddClue(c);   // 구세이브 유품함 단서 → 보관함 문서 마이그레이션
+        _debtLog.Clear(); if (w.DebtLog != null) _debtLog.AddRange(w.DebtLog);
         _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
         _legends.Clear();
         if (w.Legends != null) _legends.AddRange(w.Legends);
@@ -3116,8 +3170,9 @@ public sealed partial class Game
             _redemption, _myCupTitles, _fixFighterId, _fixReward,
             _betLog.Count > 0 ? _betLog.ToList() : null, _streetSeq, _surgerySeq,
             _storyStage, _storyBeats.Count > 0 ? _storyBeats.ToList() : null, _storyCtx,
-            _fixChoice, _ghostClues.Count > 0 ? _ghostClues.ToList() : null,
-            _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1), JsonOpts));
+            _fixChoice, null,   // GhostClues: 더 이상 기록 안 함(Keepsakes로 대체)
+            _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1,
+            _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -3378,7 +3433,8 @@ public sealed partial class Game
             Redemption: _redemption,
             FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null,
             Campaign: BuildCampaignDoc(), Unrest: BuildUnrestDoc(),
-            Legends: _legends.Count > 0 ? _legends.ToList() : null), JsonOpts);
+            Legends: _legends.Count > 0 ? _legends.ToList() : null,
+            DebtInfo: BuildDebtDoc(), Keepsakes: BuildKeepsakes()), JsonOpts);
     }
     private string? BuildLegacyNote()
     {

@@ -18,7 +18,7 @@ public sealed partial class Game
     private readonly HashSet<string> _storyBeats = new();   // 스폰된 비트 id (s0, s5, house_*, b2~b5, finale)
     private string? _storyCtx;                              // 현재 대기 스토리 이벤트의 문맥(가문 비트 = ludusId)
     private string? _fixChoice;                             // 서막 S5의 선택(accept/refuse) — 무레나 대사 변주
-    private readonly List<string> _ghostClues = new();      // 가이우스의 유령 — 유품함 단서 누적
+    private readonly List<KeepsakeRec> _keepsakes = new();  // 가이우스의 유령 — 보관함 유품(유서·메모·서신·단서)
     private float _unrest;                                  // 반란 지수 0~100
     private readonly List<LegendRec> _legends = new();      // 전설 카탈로그
     private int _legendRefs;                                // 이번 시즌 카토 전설 참조 횟수(≤2)
@@ -27,7 +27,9 @@ public sealed partial class Game
 
     private sealed record LegendRec(string Name, string Epithet, string Weapon, string Personality,
         string Record, string Fate, int Auc, string Source);   // Source: seed(창세) / hof(명전 승격)
-    private sealed record CampaignDoc(string Stage, string[] Beats, string? Hint, string[] Clues);
+    /// <summary>보관함 문서 — 유서·메모·서신·증서·단서. 클릭 열람용 타입 있는 유품(구 유품함 단서를 승격).</summary>
+    private sealed record KeepsakeRec(string Type, string Title, string Body, string From, string When);
+    private sealed record CampaignDoc(string Stage, string[] Beats, string? Hint);
     private sealed record UnrestDoc(int Level, string Stage, string Icon, string Effects);
 
     // ── 신규 세계 / 구세이브 ──
@@ -172,8 +174,8 @@ public sealed partial class Game
                 "💬 카토: \"가이우스는 이길 수 없는 경기를 이겼습니다. 그리고 그날 밤 죽었지요. …남은 건 이 무너진 루두스와 빚, 그리고 접니다.\"\n" +
                 "💬 카토: \"유서에 이렇게 적혀 있더군요 — '모래는 정직하다. 그 위의 인간들이 문제일 뿐.'\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("아버지의 유서를 품에 넣는다", _ => { AddClue("유서 — \"모래는 정직하다. 그 위의 인간들이 문제일 뿐.\""); return "유서를 품었다 — 유품함에 보관 (그는 무엇을 거절했던 걸까)"; }),
-                ("무덤에 흙을 얹고 돌아선다", _ => { AddClue("유서 — \"모래는 정직하다. 그 위의 인간들이 문제일 뿐.\""); return "카토: \"…갑시다. 산 사람은 모래를 갈아야지요.\""; }) } },
+                ("아버지의 유서를 품에 넣는다", _ => { AddGaiusWill(); return "유서를 품었다 — 보관함에 보관 (그는 무엇을 거절했던 걸까)"; }),
+                ("무덤에 흙을 얹고 돌아선다", _ => { AddGaiusWill(); return "카토: \"…갑시다. 산 사람은 모래를 갈아야지요.\""; }) } },
 
         // ── 서막 S5 「첫 방문자」 — 무레나, 검은 인장 ──
         new EvtTemplate { Id = "story_s5", Icon = "🕯", Title = "검은 인장의 방문", NeedsFighter = false,
@@ -192,7 +194,7 @@ public sealed partial class Game
                     return "명성 +10 — 무레나: \"당신 아버지랑 똑같군. 그 고집이 어디로 이어졌는지는… 아실 텐데.\""; }) } },
 
         // ── 1막 비트① 「세 가문」 — 개성별 환영 ──
-        new EvtTemplate { Id = "story_house_gold", Icon = "💰", Title = "재력가의 환영", NeedsFighter = false,
+        new EvtTemplate { Id = "story_house_gold", Icon = "💰", Title = "재력가의 환영", NeedsFighter = false, Kind = "letter",
             Body = _ => $"{CtxLudusName}의 사절이 금박 두루마리를 펼친다.\n" +
                 $"💬 사절: \"주인께서 새 얼굴에게 인사를 전하랍니다 — '당신 별 하나, 값을 매겨 왔습니다. 언제든 파실 마음이 생기면.' 프리시즌의 이적 시장에서 뵙지요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
@@ -206,7 +208,7 @@ public sealed partial class Game
                 ("경쟁을 받아들인다 (인기 +4)", g => { var f = MyFirst; if (f != null) f.Popularity += 4f; return "군중이 두 양성소의 경쟁을 반긴다 — 인기 +4"; }),
                 ("훈련장에서 정중히 배웅한다 (명성 +5)", _ => { AddRep(5f); return "명성 +5 — \"예의는 아는 친구로군.\""; }) } },
 
-        new EvtTemplate { Id = "story_house_blood", Icon = "🩸", Title = "잔혹가의 도발", NeedsFighter = false,
+        new EvtTemplate { Id = "story_house_blood", Icon = "🩸", Title = "잔혹가의 도발", NeedsFighter = false, Kind = "letter",
             Body = _ => $"{CtxLudusName}의 인장이 찍힌 서신 — 피 냄새가 나는 환영 인사다.\n" +
                 $"💬 서신: \"무너진 루두스의 애송이가 모래를 밟는다지. 네 검투사들은 우리 모래 위에선 한 합도 못 버틴다. 얼마나 버티는지 구경이나 하마.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
@@ -342,7 +344,32 @@ public sealed partial class Game
                     return "👁 총애 +2, 명성 −20 — \"현명하시군요. 가이우스보다.\" 어디서 들어본 말이었다"; }) } },
     };
 
-    private void AddClue(string clue) { if (!_ghostClues.Contains(clue)) _ghostClues.Add(clue); }
+    /// <summary>기존 "발신 — 내용" 형식의 단서를 보관함 문서로 승격(발신처로 타입 추정). 구 AddClue 호출부 전부 재사용.</summary>
+    private void AddClue(string clue)
+    {
+        int dash = clue.IndexOf(" — ", StringComparison.Ordinal);
+        string from = dash > 0 ? clue[..dash].Trim() : "";
+        string body = dash > 0 ? clue[(dash + 3)..].Trim() : clue.Trim();
+        string type = from.Contains("유서") ? "유서"
+                    : from.Contains("서신") || from.Contains("봉랍") || from.Contains("인장") ? "서신"
+                    : from.Contains("메모") ? "메모" : "단서";
+        AddKeepsake(type, from.Length > 0 ? from : "단서", body, from);
+    }
+
+    /// <summary>보관함에 유품 문서를 편철(제목+본문 중복 제거). 서신·유서·메모 등 타입별로 클라가 전용 디자인 렌더.</summary>
+    private void AddKeepsake(string type, string title, string body, string from)
+    {
+        if (_keepsakes.Any(k => k.Title == title && k.Body == body)) return;
+        _keepsakes.Add(new KeepsakeRec(type, title, body, from, RomanDate()));
+    }
+
+    /// <summary>선대 가이우스의 유서 — 미스터리의 씨앗(게임 전체를 떠도는 유령 §v0.2). 서막 S0에서 편철.</summary>
+    private void AddGaiusWill() => AddKeepsake("유서", "가이우스의 유서",
+        "내 아들에게.\n\n모래는 정직하다 — 그 위의 인간들이 문제일 뿐이다.\n" +
+        "나는 이길 수 없는 경기를 이겼고, 그 값이 무엇인지 안다. 너는 나처럼 굴지 마라. …아니, 어쩌면 너도 나처럼 굴겠지. 그게 우리 핏줄이니.\n" +
+        "무너진 루두스와 빚을 남겨 미안하다. 카토를 믿어라 — 그는 나보다 정직한 사람이다.\n" +
+        "그리고, 검은 인장을 든 자가 찾아오거든… 문을 열어주더라도, 마음은 열지 마라.\n\n— 가이우스",
+        "선대 라니스타 가이우스");
 
     // ── 서막 튜토리얼 힌트 (카토의 조언 — 서버가 계산, 클라이언트는 표시만) ──
 
@@ -359,7 +386,23 @@ public sealed partial class Game
     }
 
     private CampaignDoc? BuildCampaignDoc() => _playerless ? null
-        : new CampaignDoc(_storyStage, _storyBeats.OrderBy(x => x).ToArray(), StoryHint(), _ghostClues.ToArray());
+        : new CampaignDoc(_storyStage, _storyBeats.OrderBy(x => x).ToArray(), StoryHint());
+
+    /// <summary>보관함 탭 문서 목록 — 최신 편철이 위로.</summary>
+    private List<KeepsakeRec>? BuildKeepsakes() => _playerless || _keepsakes.Count == 0 ? null
+        : Enumerable.Reverse(_keepsakes).ToList();
+
+    /// <summary>서신 이벤트 열람 시 그 편지를 보관함에 편철(발신 문서 = 서신). ChooseEventJson에서 호출.</summary>
+    private void ArchiveLetter(string from, string title, string body) => AddKeepsake("서신", title, body, from);
+
+    /// <summary>letter Kind 이벤트의 발신처 — 보관함 편철·편지 봉투 라벨용.</summary>
+    private string LetterSender(string id) => id switch
+    {
+        "story_house_gold" => $"{CtxLudusName}의 사절",
+        "story_house_blood" => CtxLudusName,
+        "rival_letter" => ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood").Name ?? "경쟁 검투소",
+        _ => "발신 미상",
+    };
 
     // ── 반란 지수 (살아있는 세계 — 사이클, 엔딩 없음) ──
 
