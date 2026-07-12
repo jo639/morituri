@@ -180,7 +180,8 @@ public sealed partial class Game
         float FeeEstimate = 0f, float WinBonusEstimate = 0f,   // 예상 출전료·승리 보너스(#15 수익 가시화)
         float OddsAKo = 2f, float OddsADec = 2f, float OddsBKo = 2f, float OddsBDec = 2f,   // 승자×방식 조합 배당
         string? AId = null, string? BId = null,   // AI 경기 양측 선수 id(도박장 상세 열람용)
-        string? MyQuote = null, string? OppQuote = null);   // 전투 직전 대사(#4) — 내 선수·상대
+        string? MyQuote = null, string? OppQuote = null,   // 전투 직전 대사(#4) — 내 선수·상대
+        bool IsMirror = false, string? OppId = null, string[]? OppPool = null, string? OppTactic = null);   // 내전(#6): 양측 다 내 검투사 → 이중 조종
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -2142,33 +2143,47 @@ public sealed partial class Game
         public required string InitialTactic;   // 개막 전술 — 같은 전술 재선택 판정용
         public required List<TacticSwitch> Switches;
         public string? Prep;                    // 경기 전 방침(C1) — 정산 시 적용(시뮬 무영향)
+        // 내전(#6): 두 번째 조종 대상(양측 다 내 검투사일 때만)
+        public string? MyId2; public string[]? MyPool2; public string? InitialTactic2; public List<TacticSwitch>? Switches2;
     }
     private LiveMatch? _live;                                       // 진행 중 라이브 매치(메모리 전용 — 영속 안 함)
     private (string FighterId, TacticSwitch[] Switches)? _liveSwitches;   // 정산 시 Play가 def에 주입
+    private (string FighterId, TacticSwitch[] Switches)? _liveSwitches2;  // 내전 2번째 조종 대상
 
     /// <summary>내 경기 라이브 시작: 커서 전진 없이 잠정 시뮬 → viewer.json. 정산(/api/settle) 전까지 세계 무변이.
     /// prep = 경기 전 방침(C1) — 시뮬 무영향이라 잠정·정산 동일성이 유지된다(정산 때 적용).</summary>
-    public string LiveBeginJson(string? tacticId, string? prep = null)
+    public string LiveBeginJson(string? tacticId, string? tacticIdB = null, string? prep = null)
     {
         if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
         var s = _schedule[_cursor];
         var A = ById(s.A); var B = ById(s.B);
         var mine = A.IsPlayer ? A : B.IsPlayer ? B : null;
         if (mine == null) return Err("내 경기가 아니다");
+        bool mirror = A.IsPlayer && B.IsPlayer;   // 내전(#6): 양측 다 내 검투사 = 이중 조종
 
         // PlayNext와 동일한 전술 결정(같은 rng 시드 → 정산 때 재현됨). 클라이언트는 TAC_ 접두사 없이 보낸다 → 정규화
-        if (tacticId is { Length: > 0 } && !tacticId.StartsWith("TAC_")) tacticId = "TAC_" + tacticId;
+        string? Norm(string? t) => t is { Length: > 0 } ? (t.StartsWith("TAC_") ? t : "TAC_" + t) : null;
+        tacticId = Norm(tacticId); tacticIdB = Norm(tacticIdB);   // tacticId = mine(첫 조종), tacticIdB = 내전 상대측
         var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);
-        if (A.IsPlayer) { if (tacticId != null && A.TacticPool.Contains(tacticId)) A.TacticId = tacticId; }
-        else A.TacticId = SelectTacticAi(A, B, tacRng);
-        if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
-        else B.TacticId = SelectTacticAi(B, A, tacRng);
+        // 각 선수의 전술: 내 조종이면 지정 전술(mine=tacticId·내전 상대=tacticIdB), AI면 SelectTacticAi
+        void SetTac(Gladiator f, Gladiator o)
+        {
+            if (!f.IsPlayer) { f.TacticId = SelectTacticAi(f, o, tacRng); return; }
+            string? want = f.Id == mine.Id ? tacticId : tacticIdB;
+            if (want != null && f.TacticPool.Contains(want)) f.TacticId = want;
+        }
+        SetTac(A, B); SetTac(B, A);
 
         _live = new LiveMatch { MyId = mine.Id, MyPool = mine.TacticPool, InitialTactic = mine.TacticId, Switches = new(),
                                 Prep = prep is "forge" or "rest" or "show" ? prep : null };
+        if (mirror)
+        {
+            var other = mine == A ? B : A;
+            _live.MyId2 = other.Id; _live.MyPool2 = other.TacticPool; _live.InitialTactic2 = other.TacticId; _live.Switches2 = new();
+        }
         LiveResim();
         return JsonSerializer.Serialize(new { ok = true, a = A.Name, b = B.Name, round = s.Round,
-            kind = s.Kind, remaining = 2 }, JsonOpts);
+            kind = s.Kind, remaining = 2, mirror }, JsonOpts);
     }
 
     /// <summary>라이브 재시뮬(같은 시드 + 현재 전환 예약) → viewer.json 재작성. Play와 동일한 def 조립 = 정산과 일치.</summary>
@@ -2183,6 +2198,12 @@ public sealed partial class Game
             if (A.Id == _live.MyId) defA = defA with { TacticSwitches = sw };
             else defB = defB with { TacticSwitches = sw };
         }
+        if (_live.Switches2 is { Count: > 0 } sw2list)   // 내전 2번째 조종 대상의 전환
+        {
+            var sw2 = sw2list.OrderBy(x => x.Time).ToArray();
+            if (A.Id == _live.MyId2) defA = defA with { TacticSwitches = sw2 };
+            else defB = defB with { TacticSwitches = sw2 };
+        }
         ulong seed = SeasonSeed + (ulong)(_matchIdx + 1);   // Play의 ++_matchIdx와 동일
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(defA, defB, seed, events, frames);
@@ -2191,19 +2212,24 @@ public sealed partial class Game
     }
 
     /// <summary>관전 중 전술 변경(2회 한정): 그 시각부터 새 전술로 재시뮬 — 이후의 운명이 갈린다.</summary>
-    public string LiveSwitchJson(float time, string tacticId)
+    public string LiveSwitchJson(float time, string tacticId, int side = 0)
     {
         if (_live == null) return Err("라이브 경기가 없다");
+        // side 1 = 내전 2번째 조종 대상, 그 외 = 첫 조종 대상
+        var pool = side == 1 ? _live.MyPool2 : _live.MyPool;
+        var switches = side == 1 ? _live.Switches2 : _live.Switches;
+        string init = side == 1 ? (_live.InitialTactic2 ?? "") : _live.InitialTactic;
+        if (pool == null || switches == null) return Err("조종 대상이 없다");
         string full = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
-        if (!_live.MyPool.Contains(full)) return Err("전술풀에 없는 전술");
+        if (!pool.Contains(full)) return Err("전술풀에 없는 전술");
         // 그 시각에 이미 적용 중인 전술을 다시 고르면 = 변화 없음 → 기회 미차감(#12)
-        string activeNow = _live.Switches.Where(x => x.Time <= time).OrderBy(x => x.Time).LastOrDefault()?.TacticId ?? _live.InitialTactic;
+        string activeNow = switches.Where(x => x.Time <= time).OrderBy(x => x.Time).LastOrDefault()?.TacticId ?? init;
         if (full == activeNow)
-            return JsonSerializer.Serialize(new { ok = true, remaining = 2 - _live.Switches.Count, nochange = true }, JsonOpts);
-        if (_live.Switches.Count >= 2) return Err("전술 변경은 경기당 2회");
-        _live.Switches.Add(new TacticSwitch(MathF.Max(0.1f, time), full));
+            return JsonSerializer.Serialize(new { ok = true, remaining = 2 - switches.Count, nochange = true }, JsonOpts);
+        if (switches.Count >= 2) return Err("전술 변경은 경기당 2회");
+        switches.Add(new TacticSwitch(MathF.Max(0.1f, time), full));
         LiveResim();
-        return JsonSerializer.Serialize(new { ok = true, remaining = 2 - _live.Switches.Count }, JsonOpts);
+        return JsonSerializer.Serialize(new { ok = true, remaining = 2 - switches.Count }, JsonOpts);
     }
 
     /// <summary>라이브 정산: 예약된 전환을 주입해 정식 경기 처리(수입·명성·관계·운명·저장). 관전한 것과 같은 시드 = 같은 결과.</summary>
@@ -2212,6 +2238,8 @@ public sealed partial class Game
         if (_live == null) return Err("정산할 라이브 경기가 없다");
         if (_live.Switches.Count > 0)
             _liveSwitches = (_live.MyId, _live.Switches.OrderBy(x => x.Time).ToArray());
+        if (_live.MyId2 != null && _live.Switches2 is { Count: > 0 } s2)
+            _liveSwitches2 = (_live.MyId2, s2.OrderBy(x => x.Time).ToArray());
         string? prep = _live.Prep;
         _live = null;
         return JsonSerializer.Serialize(PlayNext(null, prep), JsonOpts);
@@ -2343,6 +2371,12 @@ public sealed partial class Game
             if (A.Id == li.FighterId) defA = defA with { TacticSwitches = li.Switches };
             else if (B.Id == li.FighterId) defB = defB with { TacticSwitches = li.Switches };
             _liveSwitches = null;
+        }
+        if (_liveSwitches2 is { } li2)   // 내전 2번째 조종 대상의 전환
+        {
+            if (A.Id == li2.FighterId) defA = defA with { TacticSwitches = li2.Switches };
+            else if (B.Id == li2.FighterId) defB = defB with { TacticSwitches = li2.Switches };
+            _liveSwitches2 = null;
         }
         A.PendingEmotions.Clear(); B.PendingEmotions.Clear();   // 감정 소비 → 소멸 ([2]§6-1)
         float fameA0 = A.Fame, popA0 = A.Popularity, fameB0 = B.Fame, popB0 = B.Popularity;
@@ -3470,7 +3504,11 @@ public sealed partial class Game
                 OddsBKo: MathF.Round(BetOddsFor(4) * 100f) / 100f, OddsBDec: MathF.Round(BetOddsFor(5) * 100f) / 100f,
                 AId: A.Id, BId: B.Id,
                 MyQuote: mine != null ? PreMatchQuote(mine, opp) : null,
-                OppQuote: mine != null ? PreMatchQuote(opp, mine) : null);
+                OppQuote: mine != null ? PreMatchQuote(opp, mine) : null,
+                IsMirror: A.IsPlayer && B.IsPlayer,
+                OppId: A.IsPlayer && B.IsPlayer ? opp.Id : null,
+                OppPool: A.IsPlayer && B.IsPlayer ? opp.TacticPool.Select(t => t.Replace("TAC_", "")).ToArray() : null,
+                OppTactic: A.IsPlayer && B.IsPlayer ? opp.TacticId.Replace("TAC_", "") : null);
         }
 
         // 루두스 등급

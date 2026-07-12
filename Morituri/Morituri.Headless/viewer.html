@@ -230,6 +230,9 @@ window.addEventListener('message', e=>{
     if (AC){ try{ AC.suspend(); }catch(_){} }
   } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
     audioResume();
+  } else if (e.data.cmd === 'focusLoser'){  // #11 전사·성격변화 — 쓰러진 패자를 천천히 줌인하고 정지(부모가 3초 후 결과로)
+    focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
+    setPlaying(false);
   } else if (e.data.cmd === 'reloadSeek'){  // 실시간 전술 변경: 재시뮬된 viewer.json을 깜빡임 없이 이어서 재생
     const keep = t;                          // 현재 재생 시각 유지(전환점 이전 프레임은 결정론적으로 동일 → 매끄럽게 이어짐)
     fetch('viewer.json?t=' + Date.now(), {cache:'no-store'}).then(r=>r.text()).then(txt=>{
@@ -296,6 +299,7 @@ let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림
 let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 시각 (실시간 전술 변경 연속성)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
+let focusIdx = null;   // #11 전사·성격변화 시 쓰러진 패자(0=A/1=B) 줌인 연출
 
 // ── 로드 ──
 function load(json){
@@ -875,13 +879,20 @@ function render(){
   //    기본 모드는 아레나 중심 고정·등배. sim 위치/밸런스 무관. (피격 연출=틸트, 줌 아님)
   {
     const cf=frameAt(t), ck=cf.k;
-    const mx=((cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck)+(cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck))/2;
-    const my=((cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck)+(cf.f.By+(cf.g.By-cf.f.By)*ck))/2;
-    const tgt = viewMode==='zoom' ? proj(mx,my) : {x:CX,y:CY};
-    const zTgt = viewMode==='zoom' ? 1.9 : 1.0;
+    let mx, my;
+    if (focusIdx!==null){   // #11 쓰러진 패자 한 명에게 카메라 고정·확대
+      mx = focusIdx===0 ? cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck : cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck;
+      my = focusIdx===0 ? cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck : cf.f.By+(cf.g.By-cf.f.By)*ck;
+    } else {
+      mx=((cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck)+(cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck))/2;
+      my=((cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck)+(cf.f.By+(cf.g.By-cf.f.By)*ck))/2;
+    }
+    const tgt = (focusIdx!==null||viewMode==='zoom') ? proj(mx,my) : {x:CX,y:CY};
+    const zTgt = focusIdx!==null ? 2.9 : viewMode==='zoom' ? 1.9 : 1.0;
+    const lerp = focusIdx!==null ? 0.06 : 0.12;   // 패자 줌인은 더 천천히
     if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
-    camZoom += (zTgt-camZoom)*0.12;
-    camX += (tgt.x-camX)*0.12; camY += (tgt.y-camY)*0.12;
+    camZoom += (zTgt-camZoom)*lerp;
+    camX += (tgt.x-camX)*lerp; camY += (tgt.y-camY)*lerp;
     // 화면 밖(아레나 void)이 과하게 보이지 않게 추적 중심을 아레나 안으로 클램프
     const halfW=(W/2)/camZoom, halfH=(H/2)/camZoom;
     const mgnX=Math.max(0, RX-halfW+30), mgnY=Math.max(0, RY-halfH+20);
