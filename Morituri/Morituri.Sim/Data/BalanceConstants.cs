@@ -255,7 +255,7 @@ public readonly record struct BalanceConstants
         FeintCancelRatio = 0.5f,
         FeintRecoverySec = 0.25f,
         ArenaRadius = 12f,  // 지름 24m — 넓은 핏(외곽 선회·도주 공간↑). 뷰어가 R()로 정규화해 이동이 더 느려 보임. (밸런스: 카이터 여유↑)
-        StartGap = 4f,
+        StartGap = 20f,   // 거의 양쪽 끝에서 시작(±10, 반지름 12 아레나) — 코너 페널티존(>10.5) 바로 안쪽. 밸런스 무영향(buildmatrix A/B Δ<1%p)
         CornerZone = 1.5f,
         InnerRangeRatio = 0.4f,
         MinLongRange = 3.0f,   // 거리 ×1.5 스케일 동반(검 2.4 근접 유지, 대검3.0·창3.9·채찍4.5 장사거리)
