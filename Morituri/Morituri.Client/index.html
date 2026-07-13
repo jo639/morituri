@@ -936,12 +936,15 @@ async function renderNews(){
   }
   body.innerHTML = r.issues.map(is=>`
     <article style="background:linear-gradient(180deg,#efe6cf,#e4d6b2);color:#241c10;border:1px solid #b9a06a;border-radius:8px;padding:15px 18px;box-shadow:0 4px 14px rgba(0,0,0,.32)">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #6b5427;padding-bottom:5px;margin-bottom:9px">
-        <b style="font-family:var(--font-display);letter-spacing:.1em;font-size:15px;color:#4a3a18">COLOSSEVM · 콜로세움 뉴스</b>
-        <span style="font-size:11px;color:#6b5b38">시즌 ${r.season} · 제 ${is.Round}주</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px double #6b5427;padding-bottom:5px;margin-bottom:2px">
+        <b style="font-family:var(--font-display);letter-spacing:.14em;font-size:17px;color:#4a3a18">ACTA COLOSSEI · 콜로세움 월보</b>
+        <span style="font-size:11px;color:#6b5b38">AUC ${r.auc||''} · ${is.Month||''}월호 · 시즌 ${r.season}</span>
       </div>
-      <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:21px;margin:2px 0 9px;color:#2a1d0c;line-height:1.32">${is.Headline}</h3>
-      ${(is.Articles&&is.Articles.length)?`<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${is.Articles.map(a=>`<li style="font-size:13px;color:#3a2c15;line-height:1.4">${a}</li>`).join('')}</ul>`:'<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 조용한 한 주였다.</div>'}
+      <div style="font-size:10px;color:#8a6f3c;border-bottom:1px solid #b9a06a;padding-bottom:4px;margin-bottom:9px;letter-spacing:.06em">원로원과 로마 인민의 허가 아래 발행 · 한 부 2아스</div>
+      <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:22px;margin:2px 0 9px;color:#2a1d0c;line-height:1.32">${is.Headline}</h3>
+      ${(is.Articles&&is.Articles.length)?`<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${is.Articles.map(a=>`<li style="font-size:13px;color:#3a2c15;line-height:1.4">${a}</li>`).join('')}</ul>`:'<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 모래는 조용했다.</div>'}
+      ${is.Flavor?`<div style="margin-top:10px;padding-top:7px;border-top:1px solid #b9a06a;font-size:12.5px;color:#4a3a20;line-height:1.5"><b style="font-size:11px;letter-spacing:.08em;color:#6b5427">경기장 밖에서</b><br>${is.Flavor}</div>`:''}
+      ${is.Ad?`<div style="margin-top:8px;font-size:11px;color:#7a5f30;font-style:italic;text-align:center;border:1px dashed #b9a06a;border-radius:4px;padding:4px 8px">${is.Ad}</div>`:''}
     </article>`).join('');
 }
 
@@ -2430,11 +2433,12 @@ function renderRoster(){
   if (!st) return;
   const lt = st.LudusTable||[];
   $('ludusTable').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">
-    <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">💰재화</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
+    <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td style="padding-left:10px">라니스타</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">💰재화</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
     + lt.map((l,i)=>`<tr style="${l.IsPlayer?'color:var(--gold);font-weight:700':''}">
         <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}${
           l.Persona?` <span title="${l.Motto?('“'+l.Motto+'” — '):''}${l.Persona==='gold'?'재력 — 이적 시장의 큰손, 스타를 사들인다':l.Persona==='youth'?'육성 — 놓친 원석을 먼저 주워간다':'잔혹 — 처형전을 선호하고 도발 서신을 보낸다'}">${
           l.Persona==='gold'?'💰':l.Persona==='youth'?'🌱':'🩸'}</span>`:''}</td>
+        <td class="note" style="padding-left:10px" title="${l.PatronName?('후원 — '+l.PatronName):''}">${l.Lanista||'—'}${l.PatronName?' 👑':''}</td>
         <td class="note">${l.TierName}</td><td style="text-align:right">${l.Rep}</td>
         <td style="text-align:right;padding-left:10px">${l.IsPlayer?'💰':''}${Math.round(l.Treasury)}${l.IsPlayer?'':' <span class="note" title="추정">≈</span>'}</td>
         <td style="text-align:right;padding-left:10px">${l.Members}</td>
@@ -2550,6 +2554,7 @@ async function renderPatron(){
       <span style="font-size:20px">${x.Icon}</span>
       <div style="flex:1;min-width:0">
         <b>${escHtml(x.Ludus)} ${pIcon(x.Persona)}</b>
+        ${x.Lanista?`<div class="note">라니스타 ${escHtml(x.Lanista)}${x.PatronName?` · 후원 ${escHtml(x.PatronName)}`:''}</div>`:''}
         ${x.Motto?`<div class="note" style="font-style:italic">“${escHtml(x.Motto)}”</div>`:''}
       </div>
       <div style="text-align:right;font-size:12px">

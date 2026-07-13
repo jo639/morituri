@@ -191,7 +191,8 @@ public sealed partial class Game
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
     private sealed record LudusStandingDoc(string Name, float Rep, string TierName, int Members,
         string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer, float Treasury,
-        string Persona = "", string Motto = "");   // 개성(W10b): gold/youth/blood + 좌우명
+        string Persona = "", string Motto = "",   // 개성(W10b): gold/youth/blood + 좌우명
+        string Lanista = "", string PatronName = "");   // [10] 검투소 구체화 — 주인·후원자
     private sealed record RelRow(string OppName, string RelName, string RelIcon, int W, int L, int Enc, bool OppIsMine);
     private sealed record FighterProfileDoc(string Id, string Name, string Weapon, string Personality, int Age,
         bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
@@ -407,7 +408,8 @@ public sealed partial class Game
             var pool = RivalLudiPool.FirstOrDefault(r => r.Id == id);
             list.Add(new LudusStandingDoc(LudusNameOf(id), MathF.Round(rep), TierNameForRep(rep),
                 m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer, treasury,
-                pool.Persona ?? "", pool.Motto ?? ""));
+                pool.Persona ?? "", pool.Motto ?? "",
+                isPlayer ? "나" : LanistaOf(id), isPlayer ? "" : LudusPatronOf(id)));
         }
         if (!_playerless) Add(PlayerLudusId, _ludusRep, true);
         foreach (var r in ActiveRivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
@@ -561,7 +563,8 @@ public sealed partial class Game
         ("티투스 클라우디우스", "속주 총독"), ("푸블리우스 세르빌리우스", "기사 계급 부호(에퀴테스)"),
     };
     private sealed record PatronDoc(string Name, string Rank, string Ludus, int Relation, string RelationLabel, string Note);
-    private sealed record LudusRelRow(string Ludus, string Persona, string Motto, int Wins, int Losses, int Grudges, string Relation, string Icon);
+    private sealed record LudusRelRow(string Ludus, string Persona, string Motto, int Wins, int Losses, int Grudges, string Relation, string Icon,
+        string Lanista = "", string PatronName = "");   // [10] 검투소 구체화
     public string PatronJson()
     {
         if (_playerless) return Err("CLI 모드");
@@ -591,7 +594,7 @@ public sealed partial class Game
                 : w > l + 2 ? ("우세", "💪")
                 : w + l == 0 ? ("접점 없음", "·")
                 : ("경쟁", "🤝");
-            return new LudusRelRow(r.Name, r.Persona, r.Motto, w, l, grudge, rl, ic);
+            return new LudusRelRow(r.Name, r.Persona, r.Motto, w, l, grudge, rl, ic, LanistaOf(r.Id), LudusPatronOf(r.Id));
         }).ToList();
         return JsonSerializer.Serialize(new { ok = true, patron, ludusRelations = rels }, JsonOpts);
     }
@@ -987,6 +990,23 @@ public sealed partial class Game
     private string LudusNameOf(string id) => id == PlayerLudusId ? PlayerLudusName
         : RivalLudiPool.FirstOrDefault(r => r.Id == id).Name ?? id;
     private static string PersonaOf(string id) => RivalLudiPool.FirstOrDefault(r => r.Id == id).Persona ?? "";
+    /// <summary>라이벌 검투소의 라니스타(주인) — 검투소명과 짝지어진 고정 인물(세계관 실감·[10] 검투소 구체화).</summary>
+    private static string LanistaOf(string id) => id switch
+    {
+        "LUD_BATIATUS" => "퀸투스 바티아투스", "LUD_SOLONIUS" => "마르쿠스 솔로니우스",
+        "LUD_CRASSUS" => "리키니우스 크라수스", "LUD_GLABER" => "가이우스 글라베르",
+        "LUD_COSSUTIUS" => "푸블리우스 코수티우스", "LUD_OVIDIUS" => "티투스 오비디우스",
+        _ => "무명의 라니스타",
+    };
+    /// <summary>라이벌 검투소의 후원자 — 시드 파생, 내 후원자와 절대 겹치지 않게 오프셋.</summary>
+    private string LudusPatronOf(string id)
+    {
+        int mine = (int)(_worldSeed % (ulong)PatronPool.Length);
+        int h = 0; foreach (char c in id) h = h * 31 + c;   // 안정 해시(string.GetHashCode는 프로세스마다 달라짐)
+        int idx = (mine + 1 + (h & 0x7fffffff) % (PatronPool.Length - 1)) % PatronPool.Length;
+        var pt = PatronPool[idx];
+        return $"{pt.Name} · {pt.Rank}";
+    }
     /// <summary>이 세계에 실존하는 라이벌 루두스(캐스트 소속 + 명성 기록 보유) — 풀 순서 유지.</summary>
     private IEnumerable<(string Id, string Name, string Persona, string Motto)> ActiveRivalLudi =>
         RivalLudiPool.Where(r => _rivalRep.ContainsKey(r.Id) || _cast.Any(g => g.LudusId == r.Id));
@@ -3618,15 +3638,43 @@ public sealed partial class Game
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
 
-    private sealed record NewsIssue(int Round, string Headline, string[] Articles);
+    private sealed record NewsIssue(int Round, string Headline, string[] Articles,
+        string Month = "", string? Flavor = null, string? Ad = null);   // 월간 발행 — 로마력 월호·바깥 소식·광고
 
-    /// <summary>콜로세움 뉴스(#11) — 매주(라운드) 자동 생성 신문. 서사 이벤트(_story)를 라운드별로 묶어 헤드라인+기사로 편집. 순수 파생(연출).</summary>
+    // 경기장 바깥 소식(세계관 공기) — 반란 지수 국면별 풀, 시드 결정론
+    private static readonly string[][] StreetNews =
+    {
+        new[] { "포룸의 곡물 값이 안정세다. 시민들은 다음 흥행을 이야기한다.",
+                "항구에 누미디아산 맹수가 도착했다 — 맹수전 흥행주들이 값을 다툰다.",
+                "총독 관저에서 사흘 밤 연회가 열렸다. 포도주가 강처럼 흘렀다 한다.",
+                "신전 앞 점술사들이 성업 중이다 — 도박꾼들이 배당보다 신탁을 믿는 철이다." },
+        new[] { "남쪽 가도에서 탈주 노예 무리가 목격됐다는 소문이 시장을 돈다.",
+                "곡물 값이 들썩인다. 빵집 앞 줄이 길어지면 경기장 함성도 사나워진다.",
+                "밤길에 횃불 순찰이 늘었다. 여인숙 주인들은 문단속을 이른다." },
+        new[] { "폭동의 불길이 이웃 도시를 스쳤다 — 성문 검문이 강화됐다.",
+                "노예 값이 치솟았다. 시장 상인들은 '파는 쪽도 목숨값'이라 푸념한다.",
+                "군중은 흉흉할수록 피에 목마르다 — 관중석은 오히려 만원이다." },
+        new[] { "총독부가 흥행세를 올려 걷는다. 라니스타들의 곡소리가 포룸까지 들린다.",
+                "병사들이 거리를 순찰한다. 검투 흥행만이 유일하게 허가된 함성이다." },
+    };
+    private static readonly string[] RomanAds =
+    {
+        "【광고】 메빌리우스의 올리브유 — 챔피언들이 바르는 바로 그 기름!",
+        "【광고】 카푸아 대장간 — 부러지지 않는 검, 부러지면 두 자루로 보상.",
+        "【광고】 셉티무스 의원(醫院) — 검상·자상·수치심 빼고 다 꿰맵니다.",
+        "【광고】 투스쿨룸 포도주 — 승리의 밤에도, 패배의 밤에도.",
+        "【광고】 리비아의 세탁소 — 핏물 전문. 문의는 목욕탕 뒷골목.",
+    };
+
+    /// <summary>콜로세움 월보(#11 개편) — 로마력 월간 발행. 서사 이벤트를 월별로 묶어 헤드라인+기사로 편집하고,
+    /// 경기장 바깥 소식(반란 지수 국면)과 광고 한 줄로 세계의 공기를 싣는다. 순수 파생(연출).</summary>
     public string NewsJson()
     {
         static int Pri(string k) => k switch   // 1면 헤드라인 우선순위 — 극적일수록 크게
         {
-            "death" => 10, "perm_injury" => 9, "cup" => 8, "upset" => 7, "comeback" => 6,
-            "revenge" => 5, "greatest" => 4, "persona" => 3, "injury" => 2, "grudge" => 1, _ => 0,
+            "death" => 10, "perm_injury" => 9, "promote" => 9, "relegate" => 9, "cup" => 8, "season" => 8,
+            "upset" => 7, "comeback" => 6, "revenge" => 5, "greatest" => 4, "persona" => 3,
+            "unrest" => 3, "legend" => 3, "injury" => 2, "grudge" => 1, _ => 0,
         };
         static string Clean(string t)   // "R3 ★ …" 라운드 접두 제거 → 신문 문장
         {
@@ -3634,19 +3682,36 @@ public sealed partial class Game
             if (sp > 1 && t[0] == 'R' && int.TryParse(t.AsSpan(1, sp - 1), out _)) return t[(sp + 1)..];
             return t;
         }
-        var issues = _story
-            .Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix"))   // 베팅·승부조작은 사적 로그(신문 제외)
-            .GroupBy(s => s.Round)
-            .OrderByDescending(g => g.Key)
-            .Take(16)
-            .Select(g =>
-            {
-                var ordered = g.OrderByDescending(s => Pri(s.Kind)).ToList();
-                return new NewsIssue(g.Key, Clean(ordered[0].Text),
-                    ordered.Skip(1).Select(s => Clean(s.Text)).Take(5).ToArray());
-            })
-            .ToList();
-        return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), issues }, JsonOpts);
+        // 라운드 → 로마력 월(시즌 8개월에 비례 배분) — 발행 주기를 세계의 시간감각에 맞춘다.
+        // 시즌 진행 위치 기준: 경기가 있는 달은 반드시 발행(조용한 달도 경기 결과·바깥소식으로 지면을 채운다).
+        int maxRound = Math.Max(1, _schedule.Count > 0 ? _schedule.Max(s => s.Round) : _rounds);
+        int MonthOf(int round) => Math.Min(RomanMonths.Length - 1, (round - 1) * RomanMonths.Length / Math.Max(1, maxRound));
+        // 경기 진척도(커서) 기반 월 산정 — 라운드 번호가 성기어도 달이 흐른다
+        int matchesTotal = Math.Max(1, _schedule.Count);
+        int MonthOfIdx(int idx) => Math.Min(RomanMonths.Length - 1, idx * RomanMonths.Length / matchesTotal);
+        var stories = _story.Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix")).ToList();   // 베팅·승부조작은 사적 로그
+        var monthsSet = stories.Select(s => MonthOf(s.Round))
+            .Concat(_matchLog.Select((m, i) => MonthOfIdx(i)))
+            .Distinct().OrderByDescending(x => x).Take(8).ToList();
+        var issues = monthsSet.Select(mo =>
+        {
+            var ordered = stories.Where(s => MonthOf(s.Round) == mo).OrderByDescending(s => Pri(s.Kind)).ToList();
+            var results = _matchLog.Select((m, i) => (m, i)).Where(x => MonthOfIdx(x.i) == mo && x.m.Winner != "무승부")
+                .Select(x => $"⚔ {x.m.Winner}, {(x.m.Winner == x.m.AName ? x.m.BName : x.m.AName)}을(를) 꺾다 — {(x.m.Reason == "KO" ? "함성이 벽을 넘었다" : "심판의 손이 승자를 가리켰다")}")
+                .ToList();
+            string headline = ordered.Count > 0 ? Clean(ordered[0].Text)
+                : results.Count > 0 ? results[^1].Replace("⚔ ", "")
+                : "조용한 한 달 — 모래만 뜨거웠다";
+            var arts = ordered.Skip(1).Select(s => Clean(s.Text)).Take(4)
+                .Concat(Enumerable.Reverse(results).Skip(ordered.Count > 0 ? 0 : 1).Take(3)).Take(6).ToArray();
+            var rng = new SimRandom(SeasonSeed ^ 0x2E75_1E77UL + (ulong)mo * 97UL);
+            var pool = StreetNews[Math.Min(StreetNews.Length - 1, UnrestStageIdx)];
+            return new NewsIssue(mo + 1, headline, arts,
+                Month: RomanMonths[mo],
+                Flavor: pool[(int)(rng.NextUInt64() % (ulong)pool.Length)],
+                Ad: RomanAds[(int)(rng.NextUInt64() % (ulong)RomanAds.Length)]);
+        }).ToList();
+        return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), auc = 680 + Math.Max(1, _seasonNo), issues }, JsonOpts);
     }
 
     public string StateJson()
