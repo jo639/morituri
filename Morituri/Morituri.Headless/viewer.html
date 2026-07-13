@@ -657,7 +657,10 @@ function frameAt(time){
   return {f:a, g:b, k: span>0 ? (time-a.Time)/span : 0};
 }
 // ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
-const CX = W/2, CY = H*0.58, RX = W/2 - PAD, RY = (W/2 - PAD)*0.34;
+// ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
+//    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
+const CamHeight = 0.50, CamTilt = 0.34;
+const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
 const R = () => doc.Meta.ArenaRadius;
 const proj = (sx, sy) => ({ x: CX + (sx/R())*RX, y: CY + (sy/R())*RY });
 const mPx = () => RX/R();              // 가로 m→px
