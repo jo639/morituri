@@ -129,7 +129,11 @@ public sealed partial class Game
         string? FixChoice = null, List<string>? GhostClues = null,   // 서막 선택·(구)유품함 단서 문자열 — 마이그레이션용
         float Unrest = 0f, List<LegendRec>? Legends = null, int LegendRefs = 0,   // 반란 지수·전설·카토 참조 카운터
         int FavorAtE1 = 0,   // 「황제의 게임」 E2 게이트 기준점(E1 시점 총애)
-        List<KeepsakeRec>? Keepsakes = null, List<DebtTxnRec>? DebtLog = null);   // 보관함 유품·채무 원장
+        List<KeepsakeRec>? Keepsakes = null, List<DebtTxnRec>? DebtLog = null,   // 보관함 유품·채무 원장
+        string? TiebreakWinner = null,   // ⚖ 우승 결정전 승자(시즌 한정)
+        string[]? MasterTraitPool = null, string[]? MasterTacticPool = null,   // 스승 전수 후보 풀
+        int BanquetSeason = 0,   // 후원자 연회(시즌 1회) 마지막 시즌
+        int CampSeason = 0, int SparCupSeason = 0);   // 프리시즌 전지훈련·연습 대회(각 1회)
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -210,6 +214,7 @@ public sealed partial class Game
         bool HasMyMatchAhead = false,   // 남은 일정에 내 경기가 있는가(스킵 버튼 노출)
         List<RevealDoc>? RecruitReveal = null,   // 직전 영입에서 공개된 미선택 후보(#8)
         string? MasterPending = null, int ScoutLevel = 0, string? Legacy = null,   // 은퇴 유산(#10)
+        List<MasterGiftDoc>? MasterTraits = null, List<string>? MasterTactics = null,   // 스승 전수 후보(선택식)
         float Patronage = 0f,   // 후원자 관계도(#7)
         GambleDoc? Gamble = null,   // 도박장 탭(#32)
         bool Redemption = false,   // 재기의 서약(강등 아크) 진행 중
@@ -222,6 +227,7 @@ public sealed partial class Game
     private sealed record EdictDoc(string Desc, bool Done);
     private sealed record BetDoc(string On, float Amount, float Odds);
     private sealed record PerkDoc(string Id, string Name, string Desc, int Lv, int Max, int NextCost);
+    private sealed record MasterGiftDoc(string Id, string Name);   // 스승 전수 후보 특성
 
     // ── 로마력(시간감각): 시즌1 = AUC 681(기원전 73년, 스파르타쿠스 봉기의 해). 경기 시즌 = Martius~October. ──
     private static readonly string[] RomanMonths = { "Martius", "Aprilis", "Maius", "Iunius", "Quinctilis", "Sextilis", "September", "October" };
@@ -516,6 +522,7 @@ public sealed partial class Game
     {
         if (s.Kind == "cup_final") return "👑 챔피언십 컵 결승";
         if (s.Kind == "cup_sf") return "🏆 챔피언십 컵 4강";
+        if (s.Kind == "tiebreak") return "⚖ 우승 결정전 — 동률의 저울, 단판 승부";
         if (s.Format == "execution") return "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)";
         if (s.Format.StartsWith("same:")) return $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}";
         var ab = _ledger.Get(A.Id, B.Id); var ba = _ledger.Get(B.Id, A.Id);
@@ -1159,7 +1166,7 @@ public sealed partial class Game
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
-        _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0;
+        _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0; _tbWinnerId = null;
         _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
         // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
         foreach (var e in _matchLog) _archive.Add(new ArchRec(Math.Max(1, _seasonsPlayed), e));
@@ -1385,14 +1392,23 @@ public sealed partial class Game
     }
 
     /// <summary>방출(#3 시즌 중에도 가능): 관계 청산 + 잔여 일정 정리.</summary>
+    /// <summary>방출 — 비정한 계약 해지. 은퇴와 달리 리그에서 사라지지 않는다: 라이벌 검투소(육성가 우선)가
+    /// 주워가 리그에 잔류하고, 옛 루두스의 간판에게 원한을 새긴다 + 루두스 명성 소폭 하락(비정한 처사).</summary>
     public string ReleaseJson(string fighterId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
-        PurgeRemainingMatches(g.Id);
-        _cast.Remove(g);
-        _ledger.RemoveFighter(g.Id);
-        _story.Add((0, "release", $"👋 방출 — {g.Name}이(가) 루두스를 떠났다"));
+        var rng = new SimRandom(_worldSeed ^ 0x8E1E_A5EDUL + (ulong)(g.CW * 7 + g.CL * 3 + _seasonNo));
+        var pool = ActiveRivalLudi.ToList();
+        var youth = pool.Where(r => r.Persona == "youth").ToList();
+        var picks = youth.Count > 0 && rng.Roll(0.6f) ? youth : pool;   // 육성가 검투소가 원석을 먼저 줍는다(60%)
+        var dest = picks[(int)(rng.NextUInt64() % (ulong)picks.Count)];
+        g.IsPlayer = false;
+        g.LudusId = dest.Id;
+        var star = _cast.Where(x => x.IsPlayer && x.Id != g.Id).OrderByDescending(x => x.Fame).FirstOrDefault();
+        if (star != null) _ledger.DeepenGrudge(g.Id, star.Id, 25f);   // 버림받은 자의 원한 — 모래 위에서 갚는다
+        _ludusRep = MathF.Max(0f, _ludusRep - 5f);
+        _story.Add((0, "release", $"👋 방출 — {g.Name}, 짐을 싸기도 전에 {dest.Name}이(가) 주워갔다. 그는 잊지 않을 것이다 (루두스 명성 −5)"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
@@ -1846,12 +1862,14 @@ public sealed partial class Game
                 break;
             }
             case "master":
-                // 스승: 특성·전술을 한 선수에게 1회 전수(추가). bestow로 소비.
+                // 스승: 특성·전술을 한 선수에게 1회 전수(추가). bestow로 소비 — 무엇을 물려줄지는 라니스타가 고른다.
                 _masterName = g.Name;
-                _masterTrait = g.TraitIds.Length > 0 ? g.TraitIds[0] : null;
+                _masterTraitPool = g.TraitIds.ToArray();
+                _masterTacticPool = g.TacticPool.ToArray();
+                _masterTrait = g.TraitIds.Length > 0 ? g.TraitIds[0] : null;       // 구버전 호환 기본값
                 _masterTactic = g.TacticPool.Length > 0 ? g.TacticPool[^1] : null;
                 _mentorName = g.Name;   // 영입 유산도 겸함(기존 스승 효과 유지)
-                _story.Add((0, "retire", $"📜 {g.Name} 은퇴 → 스승 — 특성·전술을 물려줄 준비 (한 선수에게 1회 전수)"));
+                _story.Add((0, "retire", $"📜 {g.Name} 은퇴 → 스승 — 특성 {g.TraitIds.Length}종·전술 {g.TacticPool.Length}종 중 골라 한 선수에게 1회 전수"));
                 break;
             case "scout":
                 _scoutLevel++;
@@ -1866,19 +1884,28 @@ public sealed partial class Game
         return StateJson();
     }
 
-    /// <summary>스승의 유산 전수(1회 소비): 한 선수에게 특성·전술 추가(교체 아님).</summary>
-    public string BestowJson(string fighterId)
+    /// <summary>스승의 유산 전수(1회 소비): 한 선수에게 특성·전술 추가(교체 아님).
+    /// traitId·tacticId = 스승의 보유 풀에서 라니스타가 고른 것(빈 값 = 그 항목 생략, 둘 다 생략은 불가).</summary>
+    public string BestowJson(string fighterId, string? traitId = null, string? tacticId = null)
     {
-        if (_masterTrait == null && _masterTactic == null) return Err("전수할 스승의 유산이 없다");
+        var traits = _masterTraitPool ?? (_masterTrait != null ? new[] { _masterTrait } : Array.Empty<string>());
+        var tactics = _masterTacticPool ?? (_masterTactic != null ? new[] { _masterTactic } : Array.Empty<string>());
+        if (traits.Length == 0 && tactics.Length == 0) return Err("전수할 스승의 유산이 없다");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
         if (g == null) return Err("내 선수 아님");
+        // 선택 검증 — 미지정(구버전 호환)이면 기존 기본값
+        string? pickT = string.IsNullOrEmpty(traitId) ? null : traitId;
+        string? pickC = string.IsNullOrEmpty(tacticId) ? null : (tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId);
+        if (pickT == null && pickC == null) { pickT = _masterTrait; pickC = _masterTactic; }
+        if (pickT != null && !traits.Contains(pickT)) return Err("스승이 보유하지 않은 특성");
+        if (pickC != null && !tactics.Contains(pickC)) return Err("스승이 보유하지 않은 전술");
         var added = new List<string>();
-        if (_masterTrait != null && !g.TraitIds.Contains(_masterTrait))
-        { g.TraitIds = g.TraitIds.Append(_masterTrait).ToArray(); added.Add("특성 " + TraitTable.Get(_masterTrait).Name); }
-        if (_masterTactic != null && !g.TacticPool.Contains(_masterTactic))
-        { g.TacticPool = g.TacticPool.Append(_masterTactic).ToArray(); added.Add("전술 " + _masterTactic.Replace("TAC_","")); }
+        if (pickT != null && !g.TraitIds.Contains(pickT))
+        { g.TraitIds = g.TraitIds.Append(pickT).ToArray(); added.Add("특성 " + TraitTable.Get(pickT).Name); }
+        if (pickC != null && !g.TacticPool.Contains(pickC))
+        { g.TacticPool = g.TacticPool.Append(pickC).ToArray(); added.Add("전술 " + pickC.Replace("TAC_","")); }
         _story.Add((0, "master", $"📜 스승 {_masterName}의 유산 — {g.Name}에게 {(added.Count > 0 ? string.Join("·", added) : "이미 보유")} 전수"));
-        _masterTrait = null; _masterTactic = null;   // 소비
+        _masterTrait = null; _masterTactic = null; _masterTraitPool = null; _masterTacticPool = null;   // 소비
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
@@ -1887,7 +1914,8 @@ public sealed partial class Game
     private const float MentorFameMin = 60f, InstructorFameMin = 40f, MasterFameMin = 60f, ScoutFameMin = 30f;
     private const int ScoutKoMin = 12;
     private string? _mentorName;   // 루두스의 스승(은퇴 전설) — 영입 유산
-    private string? _masterName, _masterTrait, _masterTactic;   // 스승 전수 대기(소비성)
+    private string? _masterName, _masterTrait, _masterTactic;   // 스승 전수 대기(소비성 — 구버전 호환 기본값)
+    private string[]? _masterTraitPool, _masterTacticPool;      // 전수 후보 풀(라니스타가 고른다)
     private int _scoutLevel;                                     // 스카우터 누적 레벨
     private readonly float[] _axisCapBonus = new float[6];       // 교관 상한 보너스(축별 누적)
     private static int StrongestAxis(FighterStats s)
@@ -1925,9 +1953,154 @@ public sealed partial class Game
         return StateJson();
     }
 
-    private List<Gladiator> Standings(int? division = null) =>
-        _cast.Where(g => division == null || g.Division == division)
-             .OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W).ToList();
+    private string? _tbWinnerId;   // ⚖ 우승 결정전 승자(1부 1위 동률 단판) — 시즌 한정, 영속
+
+    // ── 골드 사용처(후반 인플레 해소): 흥행 개최·후원자 연회·프리미엄 영입·모리튜리 해방 ──
+    private const float HostShowCost = 120f, BanquetCost = 100f, PremiumGachaCost = 300f;
+    private int _banquetSeason;   // 마지막 연회 시즌(시즌당 1회, 영속)
+
+    /// <summary>🎪 흥행 개최: 골드를 태워 특별 흥행전을 직접 연다 — 리그 최고 명성 AI에게 도전장(기존 제안 파이프 재사용).
+    /// 수익은 흥행(양측 인기·이벤트 배율)으로 돌아온다. 큰돈의 사용처이자 서사 제조기.</summary>
+    public string HostShowJson()
+    {
+        if (!SeasonActive) return Err("시즌 중에만 흥행을 열 수 있다");
+        if (_pendingProposalOpp != null) return Err("이미 성사 대기 중인 대전이 있다");
+        if (!_cast.Any(g => g.IsPlayer)) return Err("출전시킬 모리튜리가 없다");
+        if (_gold < HostShowCost) return Err($"잔고 부족 (흥행 개최 {HostShowCost:F0})");
+        var opp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame + g.Popularity).FirstOrDefault();
+        if (opp == null) return Err("초청할 상대가 없다");
+        _gold -= HostShowCost;
+        _pendingProposalOpp = opp.Id; _proposalExec = false;
+        _story.Add((_rounds + 1, "event", $"🎪 흥행 개최 — 광장에 방이 붙었다: {LudusNameOf(opp.LudusId)}의 {opp.Name}을(를) 초청하는 특별 흥행전 (💰−{HostShowCost:F0}, 출전자를 정하라)"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>🍷 후원자 연회: 골드로 연회를 열어 후원자의 마음을 산다 — 시즌당 1회, 후원 관계 +12.</summary>
+    public string BanquetJson()
+    {
+        if (_banquetSeason == _seasonNo && _seasonNo > 0) return Err("이번 시즌 연회는 이미 열었다 — 과공은 비례다");
+        if (_gold < BanquetCost) return Err($"잔고 부족 (연회 {BanquetCost:F0})");
+        _gold -= BanquetCost; _banquetSeason = _seasonNo;
+        Patron(12f);
+        _story.Add((_rounds + 1, "patron", $"🍷 연회 — 포도주가 흐르고 후원자의 웃음이 길어졌다 (💰−{BanquetCost:F0} · 후원 +12)"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>🕊 모리튜리 해방(마누미시오): 큰돈을 들여 공로 모리튜리에게 자유(루디스)를 사준다 —
+    /// 명예의 전당 등재 + 루두스 명성·영광 획득. 세계관 페이오프이자 최고의 골드 사용처.</summary>
+    public string ManumitJson(string fighterId)
+    {
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        float cost = MathF.Round(150f + g.Fame * 1.5f);
+        if (_gold < cost) return Err($"잔고 부족 (해방 몸값 {cost:F0} = 150 + 명성×1.5)");
+        _gold -= cost;
+        PurgeRemainingMatches(g.Id);
+        _cast.Remove(g);
+        _ledger.RemoveFighter(g.Id);
+        _hall.Add(MakeHall(g, $"{g.CW}-{g.CL}-{g.CD} 🕊해방", Math.Max(1, _seasonsPlayed)));
+        AddRep(12f); AddGlory(4f);
+        _story.Add((0, "retire", $"🕊 해방 — {g.Name}, 목검(루디스)을 받고 자유민이 되다. 군중이 그 이름을 연호한다 (💰−{cost:F0} · 명성 +12 ✨+4)"));
+        SaveWorld();
+        if (_interactive) WriteSeasonJson();
+        return StateJson();
+    }
+
+    // ── 프리시즌 컨텐츠: 전지훈련·연습 대회 — 개막 전 준비 기간에 의미를 (각 프리시즌 1회) ──
+    private int _campSeason, _sparCupSeason;   // 마지막 실행 프리시즌(다음 시즌 번호 기준, 영속)
+    private const float CampCost = 60f;
+
+    /// <summary>⛰ 전지훈련(프리시즌 전용, 1회): 산악 담금질(훈련 포인트) / 해안 요양(피로·부상) / 도시 순회(인기·수익) 3택.</summary>
+    public string TrainingCampJson(string kind)
+    {
+        if (SeasonActive) return Err("전지훈련은 프리시즌에만 떠날 수 있다");
+        if (!_cast.Any(g => g.IsPlayer)) return Err("데려갈 모리튜리가 없다");
+        int next = _seasonNo + 1;
+        if (_campSeason == next) return Err("이번 프리시즌 전지훈련은 이미 다녀왔다");
+        if (_gold < CampCost) return Err($"잔고 부족 (전지훈련 {CampCost:F0})");
+        _gold -= CampCost; _campSeason = next;
+        var mine = _cast.Where(g => g.IsPlayer).ToList();
+        string note;
+        switch (kind)
+        {
+            case "mountain":
+                foreach (var g in mine) { g.TrainingPoints += 1; g.Fatigue = Math.Min(100, g.Fatigue + 8); }
+                note = "⛰ 산악 담금질 — 전원 훈련 포인트 +1 (피로 +8)"; break;
+            case "coast":
+                foreach (var g in mine) { g.Fatigue = 0; if (g.InjuryMatches > 0) g.InjuryMatches--; }
+                note = "🌊 해안 요양 — 전원 피로 완전 회복 · 부상 호전"; break;
+            default:
+                foreach (var g in mine) g.Popularity += 6f;
+                _gold += 40f;
+                note = "🏛 도시 순회 흥행 — 전원 인기 +6 · 순회 수익 +40"; break;
+        }
+        _story.Add((0, "camp", $"{note} (💰−{CampCost:F0})"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>🏟 프리시즌 연습 대회(1회): 내 전원이 같은 부 상대와 비공식 일전 — 무기록·부상 없음, 승당 상금 25·인기 +3·소량 성장.</summary>
+    public string PreseasonCupJson()
+    {
+        if (SeasonActive) return Err("연습 대회는 프리시즌에만 열린다");
+        var mine = _cast.Where(g => g.IsPlayer && g.InjuryMatches == 0).ToList();
+        if (mine.Count == 0) return Err("출전할 모리튜리가 없다 (부상자는 제외)");
+        int next = _seasonNo + 1;
+        if (_sparCupSeason == next) return Err("이번 프리시즌 대회는 이미 치렀다");
+        _sparCupSeason = next;
+        var rng = new SimRandom(_worldSeed ^ 0x5AC0_50FFUL + (ulong)next * 13UL);
+        int wins = 0; var lines = new List<string>();
+        foreach (var g in mine)
+        {
+            var peers = _cast.Where(x => !x.IsPlayer && x.Division == g.Division).ToList();
+            if (peers.Count == 0) peers = _cast.Where(x => !x.IsPlayer).ToList();
+            if (peers.Count == 0) break;
+            var opp = peers[(int)(rng.NextUInt64() % (ulong)peers.Count)];
+            var res = RunExhibition(g, opp, rng.NextUInt64());
+            if (res.Winner == 0) { wins++; g.Popularity += 3f; }
+            g.Fatigue = Math.Min(100, g.Fatigue + 3);
+            Grow(g, rng);
+            lines.Add($"{g.Name} vs {opp.Name}: {(res.Winner == 0 ? "승" : res.Winner == 1 ? "패" : "무")}");
+        }
+        float prize = wins * 25f; _gold += prize;
+        _story.Add((0, "sparring", $"🏟 프리시즌 연습 대회 — {lines.Count}전 {wins}승, 상금 +{prize:F0} ({string.Join(" · ", lines)})"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>이번 시즌 상대전적 차(a 기준 승−패) — 동률 판정용 승자승.</summary>
+    private int SeasonH2H(Gladiator a, Gladiator b)
+    {
+        int d = 0;
+        foreach (var m in _matchLog)
+        {
+            bool ab = m.AId == a.Id && m.BId == b.Id, ba = m.AId == b.Id && m.BId == a.Id;
+            if (!ab && !ba) continue;
+            if (m.Winner == a.Name) d++; else if (m.Winner == b.Name) d--;
+        }
+        return d;
+    }
+    private int SeasonKo(Gladiator g) => _matchLog.Count(m => m.Winner == g.Name && m.Reason == "KO");
+
+    /// <summary>순위표 — 동률 기준(명문화): 승점 → 승수 → ⚖결정전 승자 → 승자승(시즌 상대전적) → 시즌 KO승 → 명성.</summary>
+    private List<Gladiator> Standings(int? division = null)
+    {
+        var list = _cast.Where(g => division == null || g.Division == division)
+             .OrderByDescending(g => g.SeasonPoints).ThenByDescending(g => g.W)
+             .ThenByDescending(g => g.Id == _tbWinnerId ? 1 : 0)
+             .ThenByDescending(g => SeasonKo(g)).ThenByDescending(g => g.Fame).ToList();
+        // 승자승 보정: 인접 2인이 승점·승수 동률이고 뒤쪽이 상대전적 우세면 교환(결정전 승자는 불가침)
+        for (int i = 0; i + 1 < list.Count; i++)
+        {
+            var x = list[i]; var y = list[i + 1];
+            if (x.SeasonPoints != y.SeasonPoints || x.W != y.W) continue;
+            if (x.Id == _tbWinnerId || y.Id == _tbWinnerId) continue;
+            if (SeasonH2H(y, x) > 0) { list[i] = y; list[i + 1] = x; }
+        }
+        return list;
+    }
 
     // ── 진행 ──
 
@@ -1974,6 +2147,14 @@ public sealed partial class Game
         if (s.IsEvent)
             _eventDocs.Add(new EventDoc(A.Name, B.Name, s.Score,
                 res.Winner < 0 ? "무승부" : (res.Winner == 0 ? A.Name : B.Name), res.Reason == "KO"));
+
+        // ⚖ 우승 결정전: 1부 승점·승수 동률 1위끼리의 단판 — 모래가 챔피언을 정한다
+        if (s.Kind == "tiebreak" && res.Winner >= 0)
+        {
+            var tbW = res.Winner == 0 ? A : B;
+            _tbWinnerId = tbW.Id;
+            _story.Add((s.Round, "season", $"⚖ 우승 결정전 — {tbW.Name}이(가) 동률의 저울을 갈랐다! 시즌 순위 1위 확정"));
+        }
 
         // 컵 결승: 우승자 확정 + 상금·명성·업적
         if (s.Kind == "cup_final" && res.Winner >= 0)
@@ -2058,6 +2239,20 @@ public sealed partial class Game
     private void EnsureSchedule()
     {
         if (!SeasonActive || _cursor < _schedule.Count) return;
+
+        // 정규 소진 → ⚖ 우승 결정전: 1부 1·2위가 승점·승수 완전 동률이면 단판으로 가린다(최대 2회 — 무승부 재대결 1회).
+        // 이벤트·컵은 순위에 무영향이라 정규 직후가 유일한 판정 시점. 승자는 Standings 최우선.
+        if (_tbWinnerId == null && _schedule.Count(x => x.Kind == "tiebreak") < 2)
+        {
+            var d1 = Standings(1);
+            if (d1.Count >= 2 && d1[0].SeasonPoints == d1[1].SeasonPoints && d1[0].W == d1[1].W
+                && d1[0].SeasonPoints > 0)
+            {
+                _schedule.Add(new SchedRec(_rounds + 1, d1[0].Id, d1[1].Id, true, 0f, "tiebreak"));
+                _story.Add((_rounds + 1, "season", $"⚖ 승점 동률! {d1[0].Name} vs {d1[1].Name} — 우승 결정전이 편성됐다 (단판, 모래가 답한다)"));
+                return;
+            }
+        }
 
         // 정규 소진 → 이벤트 빅매치 (일부는 특수 형식: ☠처형전 / ⚔무기 지정전 — 시드 결정론)
         if (!_eventsAppended)
@@ -2923,11 +3118,17 @@ public sealed partial class Game
     // ── 라니스타 액션 API ──
 
     /// <summary>뽑기: 재화(또는 무료권) 소모 → 후보 3명(마스킹). 기존 후보는 소멸(포기).</summary>
-    public string GachaJson()
+    /// <summary>영입 뽑기. premium(💰300) = 노예 시장의 귀한 물건: 천부 굴림 +2(상급 확률↑) + 전 후보 천부 등급 공개.</summary>
+    public string GachaJson(bool premium = false)
     {
         if (_playerless) return Err("CLI 모드");
         if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err($"로스터 가득참 (상한 {RosterCap} — 숙소 증축 필요)");
-        if (_freeGachas > 0) _freeGachas--;
+        if (premium)
+        {
+            if (_gold < PremiumGachaCost) return Err($"잔고 부족 (프리미엄 영입 {PremiumGachaCost:F0})");
+            _gold -= PremiumGachaCost;
+        }
+        else if (_freeGachas > 0) _freeGachas--;
         else if (_gold >= EffGachaCost) _gold -= EffGachaCost;   // 원로원 인맥 특전 = 뽑기 할인
         else return Err($"잔고 부족 (뽑기 {EffGachaCost:F0})");
 
@@ -2936,7 +3137,8 @@ public sealed partial class Game
         var usedNames = _cast.Select(g => g.Name).Concat(_candidates.Select(c => c.Name)).ToHashSet();
         var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
         var pers = PersonalityTable.All.Select(p => p.Id).ToArray();
-        int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0) + _scoutLevel;   // 등급 + 스승 안목 + 스카우터 유산 = 원석 품질
+        int scouting = 1 + LudusTier() + (_mentorName != null ? 1 : 0) + _scoutLevel   // 등급 + 스승 안목 + 스카우터 유산 = 원석 품질
+                     + (premium ? 2 : 0);                                              // 프리미엄 = 시장 안쪽의 물건
         int nCand = UnrestStageIdx >= 2 ? 2 : 3;   // [13] 폭동+ 국면 = 노예 시장 위축(후보 2명)
         for (int i = 0; i < nCand; i++)
         {
@@ -2950,6 +3152,12 @@ public sealed partial class Game
         }
         // 스카우터 유산: 레벨만큼 후보 정보를 미리 엿본다(천부/잠재/특성/전술 중 랜덤 하나)
         _candHints.Clear();
+        if (premium)   // 프리미엄 = 상인이 혈통 문서를 내민다: 전 후보 천부 등급 공개
+        {
+            for (int ci = 0; ci < _candidates.Count; ci++)
+                _candHints[ci] = new List<string> { "천부 " + ViewerExport.TalentName(_candidates[ci].Talent) };
+            _story.Add((0, "recruit", $"💎 프리미엄 영입 — 상인이 혈통 문서와 함께 귀한 물건을 내놓았다 (💰{PremiumGachaCost:F0})"));
+        }
         for (int k = 0; k < _scoutLevel && k < 6; k++)
         {
             int ci = (int)(rng.NextFloat01() * _candidates.Count);
@@ -3198,6 +3406,7 @@ public sealed partial class Game
         _matchLog.Clear(); if (w.MatchLog != null) _matchLog.AddRange(w.MatchLog);
         _archive.Clear(); if (w.Archive != null) _archive.AddRange(w.Archive);
         _masterName = w.MasterName; _masterTrait = w.MasterTrait; _masterTactic = w.MasterTactic; _scoutLevel = w.ScoutLevel;
+        _masterTraitPool = w.MasterTraitPool; _masterTacticPool = w.MasterTacticPool;   // 구세이브 = null(단일 기본값 경로)
         if (w.AxisCapBonus != null) for (int i = 0; i < 6 && i < w.AxisCapBonus.Length; i++) _axisCapBonus[i] = w.AxisCapBonus[i];
         _betHits = w.BetHits; _patronage = w.Patronage; _betStreak = w.BetStreak;
         _redemption = w.Redemption; _myCupTitles = w.MyCupTitles;
@@ -3212,6 +3421,8 @@ public sealed partial class Game
         if (w.Keepsakes != null) _keepsakes.AddRange(w.Keepsakes);
         else if (w.GhostClues != null) foreach (var c in w.GhostClues) AddClue(c);   // 구세이브 유품함 단서 → 보관함 문서 마이그레이션
         _debtLog.Clear(); if (w.DebtLog != null) _debtLog.AddRange(w.DebtLog);
+        _tbWinnerId = w.TiebreakWinner; _banquetSeason = w.BanquetSeason;
+        _campSeason = w.CampSeason; _sparCupSeason = w.SparCupSeason;
         _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
         _legends.Clear();
         if (w.Legends != null) _legends.AddRange(w.Legends);
@@ -3294,7 +3505,8 @@ public sealed partial class Game
             _storyStage, _storyBeats.Count > 0 ? _storyBeats.ToList() : null, _storyCtx,
             _fixChoice, null,   // GhostClues: 더 이상 기록 안 함(Keepsakes로 대체)
             _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1,
-            _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null), JsonOpts));
+            _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null,
+            _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, _campSeason, _sparCupSeason), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -3552,7 +3764,12 @@ public sealed partial class Game
             HasMyMatchAhead: SeasonActive && Enumerable.Range(_cursor, Math.Max(0, _schedule.Count - _cursor))
                 .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer),
             RecruitReveal: _lastReveal.Count > 0 ? _lastReveal.ToList() : null,
-            MasterPending: (_masterTrait != null || _masterTactic != null) ? _masterName : null,
+            MasterPending: (_masterTrait != null || _masterTactic != null
+                            || _masterTraitPool is { Length: > 0 } || _masterTacticPool is { Length: > 0 }) ? _masterName : null,
+            MasterTraits: (_masterTraitPool ?? (_masterTrait != null ? new[] { _masterTrait } : Array.Empty<string>()))
+                .Where(TraitTable.Exists).Select(t => new MasterGiftDoc(t, TraitTable.Get(t).Name)).ToList() is { Count: > 0 } mt ? mt : null,
+            MasterTactics: (_masterTacticPool ?? (_masterTactic != null ? new[] { _masterTactic } : Array.Empty<string>()))
+                .Select(t => t.Replace("TAC_", "")).ToList() is { Count: > 0 } mc ? mc : null,
             ScoutLevel: _scoutLevel,
             Legacy: BuildLegacyNote(),
             Patronage: MathF.Round(_patronage),
