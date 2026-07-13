@@ -310,24 +310,6 @@
   padding:7px 16px; cursor:pointer; font-size:13px; font-weight:700 }
 #tour .tbtn.prim{ border-color:var(--gold); color:var(--gold) }
 #tour .tbtn.skip{ margin-right:auto; border:none; color:var(--dim); padding:7px 4px }
-/* ── 경기 직전 대사 — 전투 화면 진입 후, 재생 전 각자 한 마디 ── */
-#prematch{ position:absolute; inset:0; z-index:20; display:none; background:radial-gradient(ellipse at center,#1a120a,#0a0603);
-  align-items:center; justify-content:center }
-#prematch.on{ display:flex }
-.pm-stage{ display:flex; align-items:center; gap:clamp(12px,4vw,50px); width:min(1000px,96vw); padding:20px }
-.pm-fighter{ flex:1; text-align:center; animation:dlgDrop .6s ease both }
-.pm-fighter.right{ animation-delay:.15s }
-.pm-port{ filter:drop-shadow(0 8px 24px rgba(0,0,0,.7)) }
-.pm-port svg{ width:min(200px,34vw); height:min(200px,34vw) }
-.pm-name{ font-family:var(--font-display); font-weight:900; font-size:clamp(16px,2.4vw,24px); letter-spacing:.06em; color:var(--gold); margin-top:8px }
-.pm-fighter.right .pm-name{ color:var(--b) }
-.pm-quote{ margin-top:12px; font-family:'Noto Serif KR',serif; font-size:clamp(14px,1.8vw,19px); line-height:1.6;
-  color:var(--ink); font-style:italic; word-break:keep-all; min-height:2.6em }
-.pm-vs{ font-family:var(--font-display); font-weight:900; font-size:clamp(20px,3vw,34px); color:var(--gold-deep); flex-shrink:0 }
-#pmStart{ position:absolute; bottom:8%; left:50%; transform:translateX(-50%);
-  background:linear-gradient(180deg,#5a4520,#3a2c12); color:var(--gold); border:1px solid var(--gold);
-  border-radius:var(--r2); padding:13px 44px; font-size:17px; font-weight:800; cursor:pointer; letter-spacing:.08em;
-  animation:dlgPulse 1.6s ease infinite }
 </style>
 </head>
 <body class="fresco">
@@ -413,7 +395,6 @@
       <button onclick="doSettle()" class="btn primary" style="margin-left:auto" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button>
     </div>
     <div id="liveCmd"></div>
-    <div id="prematch"><div class="pm-stage"></div><button id="pmStart">⚔ 경기 시작</button></div>
   </div>
 
   <div class="screen" id="watch">
@@ -1463,38 +1444,9 @@ async function doPlay(tacticId, tacticIdB){
     liveNameA = (st.NextMatch&&st.NextMatch.MyName)||'A'; liveNameB = (st.NextMatch&&st.NextMatch.Opp&&st.NextMatch.Opp.Name)||'B';
     $('liveCard').textContent = `${r.a} vs ${r.b}` + (r.kind&&r.kind.startsWith('cup')?' 🏆':'');
     renderLiveCmd();
+    $('liveF').src = 'viewer.html?t=' + Date.now();   // 경기 직전 대사는 뷰어(경기장) 인트로에서 각자 줌인+대사
     go('livesc');
-    await showPrematch(st.NextMatch);   // 경기 직전 대사 — 전투 화면 진입 후, 재생 전 각자 한 마디
-    $('liveF').src = 'viewer.html?t=' + Date.now();
   } finally { nx.disabled=false; }
-}
-// 경기 직전 대사 — 양측 초상 + 대사 순차 노출 → [경기 시작]으로 재생
-function showPrematch(nm){
-  return new Promise(resolve=>{
-    if (!nm){ resolve(); return; }
-    const me = (st.MyFighters||[]).find(f=>f.Id===nm.MyId)||{};
-    const opp = nm.Opp||{};
-    const el = $('prematch');
-    const fCard = (name, wpn, per, quote, side, mine)=>
-      `<div class="pm-fighter ${side}">
-        <div class="pm-port">${portraitSvg(wpn, per, side==='left'?'a':'b')}</div>
-        <div class="pm-name">${escHtml(name||'')}${mine?' <span class="chip">내 루두스</span>':''}</div>
-        <div class="pm-quote" style="opacity:0">“${escHtml(quote||'…')}”</div>
-      </div>`;
-    el.querySelector('.pm-stage').innerHTML =
-      fCard(nm.MyName, me.Weapon, me.Personality, nm.MyQuote, 'left', true) +
-      `<div class="pm-vs">VS</div>` +
-      fCard(opp.Name, opp.Weapon, opp.Personality, nm.OppQuote, 'right', !!nm.IsMirror);
-    const startBtn = $('pmStart'); startBtn.style.opacity='0';
-    el.classList.add('on');
-    const quotes = el.querySelectorAll('.pm-quote');
-    let done=false;
-    const finish = ()=>{ if(done)return; done=true; el.classList.remove('on'); resolve(); };
-    setTimeout(()=>{ quotes[0].style.transition='opacity .5s'; quotes[0].style.opacity='1'; if(typeof sfxReveal==='function')sfxReveal(1); }, 450);
-    setTimeout(()=>{ if(quotes[1]){ quotes[1].style.transition='opacity .5s'; quotes[1].style.opacity='1'; if(typeof sfxReveal==='function')sfxReveal(1);} }, 1500);
-    setTimeout(()=>{ startBtn.style.transition='opacity .4s'; startBtn.style.opacity='1'; }, 2300);
-    startBtn.onclick = finish;
-  });
 }
 // 항시 노출 전술 패널 — 현재 전술 강조·남은 변경 횟수·실시간 클릭
 function renderLiveCmd(){

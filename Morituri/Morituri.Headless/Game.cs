@@ -2208,7 +2208,8 @@ public sealed partial class Game
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(defA, defB, seed, events, frames);
         ViewerExport.WriteDoc(defA, defB, seed, res, frames, events, "viewer.json",
-            EndowOf(A.Id, defA), EndowOf(B.Id, defB));
+            EndowOf(A.Id, defA), EndowOf(B.Id, defB),
+            PreMatchQuote(A, B), PreMatchQuote(B, A));   // 경기 직전 대사(#5) — 경기장 인트로 줌인용
     }
 
     /// <summary>관전 중 전술 변경(2회 한정): 그 시각부터 새 전술로 재시뮬 — 이후의 운명이 갈린다.</summary>
