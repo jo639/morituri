@@ -365,13 +365,8 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px" id="ludusActs">
       <button onclick="hostShow()" class="act glory" style="width:auto;padding:7px 16px" title="골드를 태워 특별 흥행전을 연다 — 리그 최고 명성의 상대를 초청, 출전자는 라니스타가 정한다. 수익은 흥행으로 (💰120)">🎪 흥행 개최 (💰120)</button>
       <button onclick="banquet()" class="act glory" style="width:auto;padding:7px 16px" title="연회를 열어 후원자의 마음을 산다 — 후원 관계 +12 (시즌 1회, 💰100)">🍷 후원자 연회 (💰100)</button>
-      <span id="preseasonActs" style="display:none">
-        <button onclick="camp('mountain')" class="act spar" style="width:auto;padding:7px 12px" title="전원 훈련 포인트 +1 (피로 +8) — 프리시즌 1회, 💰60">⛰ 산악 담금질</button>
-        <button onclick="camp('coast')" class="act spar" style="width:auto;padding:7px 12px" title="전원 피로 완전 회복·부상 호전 — 프리시즌 1회, 💰60">🌊 해안 요양</button>
-        <button onclick="camp('city')" class="act spar" style="width:auto;padding:7px 12px" title="전원 인기 +6 · 순회 수익 +40 — 프리시즌 1회, 💰60">🏛 도시 순회</button>
-        <button onclick="presecup()" class="act street" style="width:auto;padding:7px 12px" title="내 전원이 같은 부 상대와 비공식 일전 — 무기록·부상 없음, 승당 상금 25·인기 +3·소량 성장 (프리시즌 1회)">🏟 연습 대회</button>
-      </span>
     </div>
+    <div id="preseasonBoard" style="display:none;margin:2px 0 10px"></div>
     <div class="grid" id="myGrid"></div>
     <h2>시설</h2>
     <div class="fac" id="facRow"></div>
@@ -1944,7 +1939,7 @@ go = function(s){ _go(s);
 // ── 루두스 ──
 function renderLudus(){
   if (!st) return;
-  const pa=$('preseasonActs'); if (pa) pa.style.display = st.SeasonActive ? 'none' : 'inline';
+  renderPreseason();
   const L = st.Ludus;
   if (L){
     const pct = L.NextTierName ? Math.min(100, 100*L.Rep/L.NextTierRep) : 100;
@@ -2276,17 +2271,67 @@ window.bwApply=async ()=>{
   $('bwModal').classList.remove('on');
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-// 프리시즌 컨텐츠: 전지훈련 3택 + 연습 대회 (각 프리시즌 1회)
+// ── [19] 프리시즌 준비 주간 — 4주, 매주 활동 1개(훈련·원정·발굴·협상). 세 갈래(주간 프레임·원정 순회·심화 훈련)를 한 틀에 ──
+function renderPreseason(){
+  const el=$('preseasonBoard'); if(!el) return;
+  const P = st.Preseason;
+  if (st.SeasonActive || !P){ el.style.display='none'; return; }
+  el.style.display='block';
+  const done = P.Week >= P.MaxWeek;
+  const dots = Array.from({length:P.MaxWeek},(_,i)=>`<span style="color:${i<P.Week?'var(--gold)':'var(--dim)'}">●</span>`).join(' ');
+  if (done){
+    el.innerHTML = `<div style="background:var(--panel3);border:1px solid var(--gold);border-radius:10px;padding:12px 16px">
+      <b style="color:var(--gold)">🏋 프리시즌 준비 완료</b> <span class="note">${dots} · ${P.MaxWeek}/${P.MaxWeek}주</span>
+      <div class="note" style="margin-top:3px">준비를 마쳤다. 상단 [🏛 시즌 개막 ▶]으로 시즌을 연다.</div></div>`;
+    return;
+  }
+  const btn=(fn,label,tip)=>`<button onclick="${fn}" class="act spar" style="width:auto;padding:8px 12px;text-align:left" title="${tip}"><b>${label}</b></button>`;
+  el.innerHTML =
+    `<div style="background:var(--panel);border:1px solid var(--gold-deep);border-radius:10px;padding:12px 16px">
+       <div style="display:flex;justify-content:space-between;align-items:baseline"><b style="color:var(--gold)">🏋 프리시즌 준비 주간 — ${P.Week+1}주차</b><span class="note">${dots} (${P.Week}/${P.MaxWeek})</span></div>
+       <div class="note" style="margin:4px 0 8px">이번 주에 할 일 하나를 고른다. 각 활동이 한 주를 소모하고, 결과는 시즌으로 이어진다.</div>
+       <div style="display:flex;flex-wrap:wrap;gap:8px">
+         ${btn("camp('forge')",'🔥 담금질 훈련','전원 훈련 포인트 +1 (피로 +10)')}
+         ${btn("camp('spar')",'⚔ 실전 감각','전원 성장 굴림 — 낮은 부상 위험(10%)')}
+         ${btn("camp('rest')",'🌊 요양','전원 피로 완전 회복 · 부상 호전')}
+         ${btn("expedition()",`🗺 원정 친선전`,'모리튜리 1명을 도시로 보내 친선전 — 승리=골드·인기·명성, 부상 위험')}
+         ${btn("prescout()",'🔍 원석 발굴 (💰50)','확률로 무료 영입권 또는 명성')}
+         ${btn("prenegotiate()",'🍷 후원 협상 (💰40)','후원 관계 +10')}
+       </div>
+       <div style="margin-top:8px;padding:8px 12px;background:var(--panel2);border-radius:8px;border-left:3px solid #5b9be0">
+         <b style="color:#9bc4ec">🗺 이번 주 원정지</b> — <b>${escHtml(P.Expedition.City)}</b>
+         <span class="note">상대 ${escHtml(P.Expedition.Foe||'미정')} · 승리 보상 💰${P.Expedition.Reward} · 부상 위험 ${P.Expedition.RiskPct}%</span></div>
+     </div>`;
+}
 window.camp = async (kind)=>{
   const r = await api('/api/camp',{kind});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-window.presecup = async ()=>{
-  const r = await api('/api/presecup',{});
+window.prescout = async ()=>{
+  const r = await api('/api/prescout',{});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
-  toast('🏟 연습 대회 종료 — 결과는 리그 소식에');
+};
+window.prenegotiate = async ()=>{
+  const r = await api('/api/prenegotiate',{});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
+};
+// 원정 — 보낼 모리튜리 선택
+window.expedition = ()=>{
+  const fs=(st.MyFighters||[]).filter(f=>!f.Injured);
+  if (!fs.length){ $('ludusErr').textContent='보낼 수 있는(부상 아닌) 모리튜리가 없다'; return; }
+  $('propBody').innerHTML = `원정 친선전 — <b>${escHtml((st.Preseason&&st.Preseason.Expedition.City)||'')}</b>에 보낼 모리튜리를 고르시오.`;
+  $('propRoster').innerHTML = fs.map(f=>
+    `<button class="tacbtn" onclick="doExpedition('${f.Id}')"><b>${f.Name}</b> <span class="d">${w(f.Weapon)} · ${p(f.Personality)} · 피로 ${f.Fatigue}</span></button>`).join('');
+  $('propModal').classList.add('on');
+};
+window.doExpedition = async (id)=>{
+  $('propModal').classList.remove('on');
+  const r = await api('/api/presecup',{id});
+  if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 // 골드 사용처: 흥행 개최·후원자 연회·모리튜리 해방
 window.hostShow = async ()=>{

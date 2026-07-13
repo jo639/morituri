@@ -133,8 +133,9 @@ public sealed partial class Game
         string? TiebreakWinner = null,   // ⚖ 우승 결정전 승자(시즌 한정)
         string[]? MasterTraitPool = null, string[]? MasterTacticPool = null,   // 스승 전수 후보 풀
         int BanquetSeason = 0,   // 후원자 연회(시즌 1회) 마지막 시즌
-        int CampSeason = 0, int SparCupSeason = 0,   // 프리시즌 전지훈련·연습 대회(각 1회)
-        List<PressIssue>? PressArchive = null);   // 콜로세움 월보 영속 아카이브(#1)
+        int CampSeason = 0, int SparCupSeason = 0,   // (구) 프리시즌 1회 플래그 — 폐지, 호환용
+        List<PressIssue>? PressArchive = null,   // 콜로세움 월보 영속 아카이브(#1)
+        int PreWeek = 0);   // [19] 프리시즌 준비 주간 진척
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -223,7 +224,8 @@ public sealed partial class Game
         bool Redemption = false,   // 재기의 서약(강등 아크) 진행 중
         string? FixTarget = null,   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
         CampaignDoc? Campaign = null, UnrestDoc? Unrest = null, List<LegendRec>? Legends = null,   // [13] 캠페인·반란 지수·전설
-        DebtDoc? DebtInfo = null, List<KeepsakeRec>? Keepsakes = null);   // 채무 상세·보관함 유품
+        DebtDoc? DebtInfo = null, List<KeepsakeRec>? Keepsakes = null,   // 채무 상세·보관함 유품
+        PreseasonDoc? Preseason = null);   // [19] 프리시즌 준비 주간
     private sealed record GambleDoc(float SeasonNet, int Hits, int Total, List<BetLogRec> Log, int Streak = 0);
     private sealed record DebtTxnDoc(string Reason, float Delta, int Season);
     private sealed record DebtDoc(float Total, List<DebtTxnDoc> Log, float Trust, string TrustLabel, float LoanLimit);
@@ -1298,6 +1300,7 @@ public sealed partial class Game
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0; _tbWinnerId = null;
         _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
+        _preWeek = 0;   // [19] 프리시즌 준비 주간 리셋(개막 시)
         // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
         foreach (var e in _matchLog) _archive.Add(new ArchRec(Math.Max(1, _seasonsPlayed), e));
         while (_archive.Count > 400) _archive.RemoveAt(0);
@@ -2143,64 +2146,122 @@ public sealed partial class Game
         return StateJson();
     }
 
-    // ── 프리시즌 컨텐츠: 전지훈련·연습 대회 — 개막 전 준비 기간에 의미를 (각 프리시즌 1회) ──
-    private int _campSeason, _sparCupSeason;   // 마지막 실행 프리시즌(다음 시즌 번호 기준, 영속)
-    private const float CampCost = 60f;
+    // ── [19] 프리시즌 준비 주간 — 4주 동안 매주 활동 1개 선택(비용·리스크·보상 상충). 세 갈래를 한 틀에:
+    //     ① 준비 주간(프레임) ② 원정 순회(도시 친선전) ③ 심화 훈련 캠프(팀 프로그램). 결과는 시즌으로 이월. ──
+    private int _preWeek;   // 이번 프리시즌 소진한 주(0~PreWeeksMax) — 영속. StartSeason에서 0.
+    private const int PreWeeksMax = 4;
+    private static readonly (string City, float Reward, float Risk)[] PreCities =
+    {
+        ("폼페이 원형극장", 45f, 0.12f), ("네아폴리스 항구 흥행", 60f, 0.18f), ("타렌툼 변방 투기장", 35f, 0.08f),
+        ("시라쿠사이 대경기장", 80f, 0.25f), ("루카니아 산간 마을", 30f, 0.06f), ("브룬디시움 군항", 55f, 0.16f),
+    };
+    private (string City, float Reward, float Risk, Gladiator? Foe) PreExpedition(int week)
+    {
+        var c = PreCities[StableHash($"{_worldSeed}exp{_seasonNo}w{week}") % PreCities.Length];
+        var foe = _cast.Where(g => !g.IsPlayer).OrderBy(_ => new SimRandom(_worldSeed ^ (ulong)(week * 131 + _seasonNo)).NextUInt64()).FirstOrDefault();
+        return (c.City, c.Reward, c.Risk, foe);
+    }
+    private sealed record PreExpDoc(string City, string? Foe, int Reward, int RiskPct);
+    private sealed record PreseasonDoc(int Week, int MaxWeek, PreExpDoc Expedition);
+    private PreseasonDoc? BuildPreseasonDoc()
+    {
+        if (SeasonActive || _playerless) return null;
+        var (city, reward, risk, foe) = PreExpedition(_preWeek);
+        return new PreseasonDoc(_preWeek, PreWeeksMax, new PreExpDoc(city, foe?.Name, (int)reward, (int)MathF.Round(risk * 100f)));
+    }
+    private bool PreGuard(out string err)
+    {
+        err = "";
+        if (SeasonActive) { err = "프리시즌에만 준비할 수 있다"; return false; }
+        if (_preWeek >= PreWeeksMax) { err = "준비 기간이 끝났다 — 이제 개막하라"; return false; }
+        if (!_cast.Any(g => g.IsPlayer)) { err = "데려갈 모리튜리가 없다"; return false; }
+        return true;
+    }
 
-    /// <summary>⛰ 전지훈련(프리시즌 전용, 1회): 산악 담금질(훈련 포인트) / 해안 요양(피로·부상) / 도시 순회(인기·수익) 3택.</summary>
+    /// <summary>심화 훈련 캠프(한 주) — 팀 프로그램 3택: 담금질(성장·피로)/실전 감각(성장·부상위험)/요양(회복).</summary>
     public string TrainingCampJson(string kind)
     {
-        if (SeasonActive) return Err("전지훈련은 프리시즌에만 떠날 수 있다");
-        if (!_cast.Any(g => g.IsPlayer)) return Err("데려갈 모리튜리가 없다");
-        int next = _seasonNo + 1;
-        if (_campSeason == next) return Err("이번 프리시즌 전지훈련은 이미 다녀왔다");
-        if (_gold < CampCost) return Err($"잔고 부족 (전지훈련 {CampCost:F0})");
-        _gold -= CampCost; _campSeason = next;
+        if (!PreGuard(out var err)) return Err(err);
+        var rng = new SimRandom(_worldSeed ^ 0xCA37_0001UL + (ulong)(_seasonNo * 17 + _preWeek));
         var mine = _cast.Where(g => g.IsPlayer).ToList();
         string note;
         switch (kind)
         {
-            case "mountain":
-                foreach (var g in mine) { g.TrainingPoints += 1; g.Fatigue = Math.Min(100, g.Fatigue + 8); }
-                note = "⛰ 산악 담금질 — 전원 훈련 포인트 +1 (피로 +8)"; break;
-            case "coast":
+            case "forge":
+                foreach (var g in mine) { g.TrainingPoints += 1; g.Fatigue = Math.Min(100, g.Fatigue + 10); }
+                note = "🔥 담금질 훈련 — 전원 훈련 포인트 +1 (피로 +10)"; break;
+            case "spar":   // 실전 감각 — 성장 굴림 + 낮은 부상 위험(리스크)
+            {
+                var hurt = new List<string>();
+                foreach (var g in mine)
+                {
+                    Grow(g, rng); g.Fatigue = Math.Min(100, g.Fatigue + 5);
+                    if (g.InjuryMatches == 0 && rng.Roll(0.10f)) { g.InjuryMatches = 1; hurt.Add(g.Name); }
+                }
+                note = "⚔ 실전 감각 훈련 — 전원 성장 굴림" + (hurt.Count > 0 ? $" · 부상: {string.Join(",", hurt)}(1경기)" : " · 무사고"); break;
+            }
+            default:   // rest
                 foreach (var g in mine) { g.Fatigue = 0; if (g.InjuryMatches > 0) g.InjuryMatches--; }
-                note = "🌊 해안 요양 — 전원 피로 완전 회복 · 부상 호전"; break;
-            default:
-                foreach (var g in mine) g.Popularity += 6f;
-                _gold += 40f;
-                note = "🏛 도시 순회 흥행 — 전원 인기 +6 · 순회 수익 +40"; break;
+                note = "🌊 요양 — 전원 피로 완전 회복 · 부상 호전"; break;
         }
-        _story.Add((0, "camp", $"{note} (💰−{CampCost:F0})"));
+        _preWeek++;
+        _story.Add((0, "camp", $"[{_preWeek}주차] {note}"));
         SaveWorld();
         return StateJson();
     }
 
-    /// <summary>🏟 프리시즌 연습 대회(1회): 내 전원이 같은 부 상대와 비공식 일전 — 무기록·부상 없음, 승당 상금 25·인기 +3·소량 성장.</summary>
-    public string PreseasonCupJson()
+    /// <summary>원정 친선전(한 주) — 지목 모리튜리를 다른 도시로 보내 비공식 일전. 승리=골드·인기·성장, 패배도 성장, 부상 위험.</summary>
+    public string PreseasonCupJson(string fighterId)
     {
-        if (SeasonActive) return Err("연습 대회는 프리시즌에만 열린다");
-        var mine = _cast.Where(g => g.IsPlayer && g.InjuryMatches == 0).ToList();
-        if (mine.Count == 0) return Err("출전할 모리튜리가 없다 (부상자는 제외)");
-        int next = _seasonNo + 1;
-        if (_sparCupSeason == next) return Err("이번 프리시즌 대회는 이미 치렀다");
-        _sparCupSeason = next;
-        var rng = new SimRandom(_worldSeed ^ 0x5AC0_50FFUL + (ulong)next * 13UL);
-        int wins = 0; var lines = new List<string>();
-        foreach (var g in mine)
+        if (!PreGuard(out var err)) return Err(err);
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("보낼 모리튜리를 고르라");
+        if (g.InjuryMatches > 0) return Err("부상 중 — 원정은 무리다");
+        var (city, reward, risk, foe) = PreExpedition(_preWeek);
+        if (foe == null) return Err("상대가 없다");
+        var rng = new SimRandom(_worldSeed ^ 0x5AC0_50FFUL + (ulong)(_seasonNo * 29 + _preWeek * 7));
+        var res = RunExhibition(g, foe, rng.NextUInt64());
+        Grow(g, rng); g.Fatigue = Math.Min(100, g.Fatigue + 8);
+        string outcome;
+        if (res.Winner == 0)
         {
-            var peers = _cast.Where(x => !x.IsPlayer && x.Division == g.Division).ToList();
-            if (peers.Count == 0) peers = _cast.Where(x => !x.IsPlayer).ToList();
-            if (peers.Count == 0) break;
-            var opp = peers[(int)(rng.NextUInt64() % (ulong)peers.Count)];
-            var res = RunExhibition(g, opp, rng.NextUInt64());
-            if (res.Winner == 0) { wins++; g.Popularity += 3f; }
-            g.Fatigue = Math.Min(100, g.Fatigue + 3);
-            Grow(g, rng);
-            lines.Add($"{g.Name} vs {opp.Name}: {(res.Winner == 0 ? "승" : res.Winner == 1 ? "패" : "무")}");
+            float prize = MathF.Round(reward); _gold += prize; g.Popularity += 5f; AddRep(2f);
+            outcome = $"승리! 상금 💰+{prize:F0} · 인기 +5 · 명성 +2";
         }
-        float prize = wins * 25f; _gold += prize;
-        _story.Add((0, "sparring", $"🏟 프리시즌 연습 대회 — {lines.Count}전 {wins}승, 상금 +{prize:F0} ({string.Join(" · ", lines)})"));
+        else outcome = res.Winner == 1 ? "패배 — 그러나 원정의 경험은 남는다" : "무승부 — 팽팽했다";
+        // 부상 위험(도시 난이도에 비례)
+        if (g.InjuryMatches == 0 && rng.Roll(risk)) { g.InjuryMatches = 1; outcome += " · 부상(1경기)"; }
+        _preWeek++;
+        _story.Add((0, "sparring", $"[{_preWeek}주차] 🗺 원정 — {g.Name}, {city} 원정 친선전: {outcome}"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>원석 발굴(한 주) — 골드를 들여 숨은 원석을 찾는다. 확률로 무료 뽑기권(다음 영입 1회 무료) 또는 후보 정보.</summary>
+    public string PreScoutJson()
+    {
+        if (!PreGuard(out var err)) return Err(err);
+        const float cost = 50f;
+        if (_gold < cost) return Err($"잔고 부족 (발굴 {cost:F0})");
+        _gold -= cost; _preWeek++;
+        var rng = new SimRandom(_worldSeed ^ 0x5C00_7A11UL + (ulong)(_seasonNo * 41 + _preWeek));
+        string note;
+        if (rng.Roll(0.45f)) { _freeGachas++; note = "💎 대성공 — 원석의 행방을 잡았다! 무료 영입권 +1"; }
+        else if (rng.Roll(0.5f)) { AddRep(3f); note = "🔍 소득 — 시장에 안면을 텄다 (루두스 명성 +3)"; }
+        else note = "…허탕 — 이번엔 쓸 만한 원석이 없었다";
+        _story.Add((0, "recruit", $"[{_preWeek}주차] 🔍 원석 발굴 — {note} (💰−{cost:F0})"));
+        SaveWorld();
+        return StateJson();
+    }
+
+    /// <summary>후원 협상(한 주) — 후원자를 접대해 관계를 다진다. 후원 +10, 소액 비용.</summary>
+    public string PreNegotiateJson()
+    {
+        if (!PreGuard(out var err)) return Err(err);
+        const float cost = 40f;
+        if (_gold < cost) return Err($"잔고 부족 (협상 {cost:F0})");
+        _gold -= cost; _preWeek++; Patron(10f);
+        _story.Add((0, "patron", $"[{_preWeek}주차] 🍷 후원 협상 — 포도주와 약속이 오갔다 (후원 +10 · 💰−{cost:F0})"));
         SaveWorld();
         return StateJson();
     }
@@ -3572,8 +3633,7 @@ public sealed partial class Game
         if (w.Keepsakes != null) _keepsakes.AddRange(w.Keepsakes);
         else if (w.GhostClues != null) foreach (var c in w.GhostClues) AddClue(c);   // 구세이브 유품함 단서 → 보관함 문서 마이그레이션
         _debtLog.Clear(); if (w.DebtLog != null) _debtLog.AddRange(w.DebtLog);
-        _tbWinnerId = w.TiebreakWinner; _banquetSeason = w.BanquetSeason;
-        _campSeason = w.CampSeason; _sparCupSeason = w.SparCupSeason;
+        _tbWinnerId = w.TiebreakWinner; _banquetSeason = w.BanquetSeason; _preWeek = w.PreWeek;
         _pressArchive.Clear(); if (w.PressArchive != null) _pressArchive.AddRange(w.PressArchive);
         _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
         _legends.Clear();
@@ -3658,8 +3718,8 @@ public sealed partial class Game
             _fixChoice, null,   // GhostClues: 더 이상 기록 안 함(Keepsakes로 대체)
             _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1,
             _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null,
-            _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, _campSeason, _sparCupSeason,
-            _pressArchive.Count > 0 ? _pressArchive.ToList() : null), JsonOpts));
+            _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, 0, 0,
+            _pressArchive.Count > 0 ? _pressArchive.ToList() : null, _preWeek), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -4017,7 +4077,7 @@ public sealed partial class Game
             FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null,
             Campaign: BuildCampaignDoc(), Unrest: BuildUnrestDoc(),
             Legends: _legends.Count > 0 ? _legends.ToList() : null,
-            DebtInfo: BuildDebtDoc(), Keepsakes: BuildKeepsakes()), JsonOpts);
+            DebtInfo: BuildDebtDoc(), Keepsakes: BuildKeepsakes(), Preseason: BuildPreseasonDoc()), JsonOpts);
     }
     private string? BuildLegacyNote()
     {
