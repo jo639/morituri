@@ -608,6 +608,9 @@
 <div class="modal" id="bwModal"><div class="mbox" style="max-width:520px">
   <h3 style="color:#d8a0e0">📜 스승의 유산</h3><div id="bwBody"></div></div></div>
 
+<!-- 검투소 상세 명부 모달 -->
+<div class="modal" id="ludusModal"><div class="mbox" style="max-width:600px;max-height:90vh;overflow:auto" id="ludusModalBody"></div></div>
+
 <!-- [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) -->
 <div id="coach">
   <div class="spot" id="coachSpot"></div>
@@ -2461,7 +2464,7 @@ function renderRoster(){
   const lt = st.LudusTable||[];
   $('ludusTable').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">
     <tr style="color:var(--dim);font-size:11px"><td style="padding:2px 8px 2px 2px">#</td><td>검투소</td><td style="padding-left:10px">라니스타</td><td>등급</td><td style="text-align:right">명성</td><td style="text-align:right;padding-left:10px">💰재화</td><td style="text-align:right;padding-left:10px">선수</td><td style="padding-left:10px">간판</td><td style="text-align:right;padding-left:10px">시즌</td></tr>`
-    + lt.map((l,i)=>`<tr style="${l.IsPlayer?'color:var(--gold);font-weight:700':''}">
+    + lt.map((l,i)=>`<tr onclick="openLudusDossier('${l.Id}')" style="cursor:pointer;${l.IsPlayer?'color:var(--gold);font-weight:700':''}" title="클릭 = 검투소 상세 명부">
         <td style="padding:2px 8px 2px 2px">${i+1}</td><td>${l.Name}${
           l.Persona?` <span title="${l.Motto?('“'+l.Motto+'” — '):''}${l.Persona==='gold'?'재력 — 이적 시장의 큰손, 스타를 사들인다':l.Persona==='youth'?'육성 — 놓친 원석을 먼저 주워간다':'잔혹 — 처형전을 선호하고 도발 서신을 보낸다'}">${
           l.Persona==='gold'?'💰':l.Persona==='youth'?'🌱':'🩸'}</span>`:''}</td>
@@ -2549,6 +2552,39 @@ async function renderRecords(){
   }).join('')}</div>` : '<div class="note">아직 기록이 없다.</div>';
 }
 
+// ── [18] 검투소 상세 명부 — 라니스타 인물·후원자 정치·시즌 동향·로스터 ──
+window.openLudusDossier = async (id)=>{
+  if (!id) return;
+  const d = await api('/api/ludusdossier',{id});
+  if (!d || d.error){ return; }
+  const pIcon = d.persona==='gold'?'💰':d.persona==='youth'?'🌱':d.persona==='blood'?'🩸':'🏛';
+  $('ludusModalBody').innerHTML =
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-bottom:2px solid var(--gold-deep);padding-bottom:8px;margin-bottom:12px">
+       <h2 style="margin:0;color:var(--gold)">${pIcon} ${escHtml(d.name)}</h2>
+       <span class="note">${escHtml(d.tier)} · 명성 ${d.rep} · 💰${d.treasury}</span></div>
+     ${d.motto?`<div style="font-style:italic;color:#cbb98d;text-align:center;margin-bottom:12px">“${escHtml(d.motto)}”</div>`:''}
+     ${d.dynamic?`<div style="background:var(--panel3);border-left:4px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+       <b style="color:var(--gold)">${d.dynamic.Icon} 이번 시즌 동향 — ${escHtml(d.dynamic.Title)}</b>
+       <div class="note" style="margin-top:3px">${escHtml(d.dynamic.Desc)}</div></div>`:''}
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+       <div style="background:var(--panel2);border-radius:8px;padding:11px 14px">
+         <div class="note">라니스타</div><b>${escHtml(d.lanista)}</b>
+         <div class="note" style="margin-top:2px;color:var(--gold)">${escHtml(d.lanistaTrait||'')}</div>
+         ${d.lanistaQuote?`<div style="font-style:italic;font-size:12px;color:#cbb98d;margin-top:4px">${escHtml(d.lanistaQuote)}</div>`:''}</div>
+       <div style="background:var(--panel2);border-radius:8px;padding:11px 14px">
+         <div class="note">후원자 👑</div><b>${escHtml(d.patron)}</b>
+         ${d.patronRel?`<div class="note" style="margin-top:2px">${escHtml(d.patronRel)}</div>`:''}
+         <div class="note" style="margin-top:6px">육성 철학</div><div style="font-size:12px">${escHtml(d.philosophy)}</div></div>
+     </div>
+     <h4 style="color:var(--gold);margin:6px 0">소속 모리튜리 <span class="note">${(d.members||[]).length}인</span></h4>
+     <div style="display:flex;flex-direction:column;gap:4px">${(d.members||[]).map(m=>
+       `<div style="display:flex;gap:8px;align-items:baseline;font-size:13px;padding:4px 10px;background:var(--panel2);border-radius:5px">
+          <b>${escHtml(m.Name)}</b><span class="note">${escHtml(m.Weapon)}·${escHtml(m.Personality)}·${m.Age}세</span>
+          <span style="margin-left:auto" class="note">명성 ${m.Fame} · ${m.Career}</span></div>`).join('')||'<div class="note">소속 모리튜리 없음</div>'}</div>
+     <button class="tacbtn" style="margin-top:14px;text-align:center" onclick="$('ludusModal').classList.remove('on')">닫기</button>`;
+  $('ludusModal').classList.add('on');
+};
+
 // ── 후원자(#1): 후원자 상세(직급·이름·후원 루두스·관계) + 검투소 관계 ──
 async function renderPatron(){
   const r = await api('/api/patron',{});
@@ -2576,8 +2612,9 @@ async function renderPatron(){
   const rels = r.ludusRelations||[];
   const pIcon = pr=>pr==='gold'?'💰':pr==='youth'?'🌱':pr==='blood'?'🩸':'';
   const rCol = rel=> rel==='앙숙'?'var(--b)':rel==='라이벌'?'#ff9d5d':rel==='우세'?'var(--grn)':'var(--gold)';
+  const idOf = nm => ((st.LudusTable||[]).find(l=>l.Name===nm)||{}).Id||'';
   $('ludusRelBody').innerHTML = rels.length ? `<div style="display:flex;flex-direction:column;gap:6px">${rels.map(x=>
-    `<div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:9px;padding:10px 14px;border-left:4px solid ${rCol(x.Relation)}">
+    `<div onclick="openLudusDossier('${idOf(x.Ludus)}')" title="클릭 = 검투소 상세 명부" style="cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:9px;padding:10px 14px;border-left:4px solid ${rCol(x.Relation)}">
       <span style="font-size:20px">${x.Icon}</span>
       <div style="flex:1;min-width:0">
         <b>${escHtml(x.Ludus)} ${pIcon(x.Persona)}</b>

@@ -193,7 +193,8 @@ public sealed partial class Game
     private sealed record LudusStandingDoc(string Name, float Rep, string TierName, int Members,
         string? TopFighter, int SeasonW, int SeasonL, int SeasonD, bool IsPlayer, float Treasury,
         string Persona = "", string Motto = "",   // 개성(W10b): gold/youth/blood + 좌우명
-        string Lanista = "", string PatronName = "");   // [10] 검투소 구체화 — 주인·후원자
+        string Lanista = "", string PatronName = "",   // [10] 검투소 구체화 — 주인·후원자
+        string Id = "");   // [18] 상세 명부 열람용
     private sealed record RelRow(string OppName, string RelName, string RelIcon, int W, int L, int Enc, bool OppIsMine);
     private sealed record FighterProfileDoc(string Id, string Name, string Weapon, string Personality, int Age,
         bool IsPlayer, bool Aging, string Talent, string Potential, float PotentialBudget, float BudgetUsed,
@@ -410,7 +411,7 @@ public sealed partial class Game
             list.Add(new LudusStandingDoc(LudusNameOf(id), MathF.Round(rep), TierNameForRep(rep),
                 m.Count, top?.Name, m.Sum(x => x.W), m.Sum(x => x.L), m.Sum(x => x.D), isPlayer, treasury,
                 pool.Persona ?? "", pool.Motto ?? "",
-                isPlayer ? "나" : LanistaOf(id), isPlayer ? "" : LudusPatronOf(id)));
+                isPlayer ? "나" : LanistaOf(id), isPlayer ? "" : LudusPatronOf(id), id));
         }
         if (!_playerless) Add(PlayerLudusId, _ludusRep, true);
         foreach (var r in ActiveRivalLudi) Add(r.Id, _rivalRep.GetValueOrDefault(r.Id), false);
@@ -617,6 +618,38 @@ public sealed partial class Game
             return new LudusRelRow(r.Name, r.Persona, r.Motto, w, l, grudge, rl, ic, LanistaOf(r.Id), LudusPatronOf(r.Id));
         }).ToList();
         return JsonSerializer.Serialize(new { ok = true, patron, ludusRelations = rels }, JsonOpts);
+    }
+
+    // ── [18] 검투소 상세 명부(클릭 열람) ──
+    private sealed record LudusRosterRow(string Name, string Weapon, string Personality, int Age, float Fame, float Popularity, string Career);
+    public string LudusDossierJson(string id)
+    {
+        var pool = RivalLudiPool.FirstOrDefault(r => r.Id == id);
+        bool isPlayer = id == PlayerLudusId;
+        if (pool.Id == null && !isPlayer) return Err("검투소를 찾을 수 없다");
+        var members = _cast.Where(g => g.LudusId == (isPlayer ? PlayerLudusId : id))
+            .OrderByDescending(g => g.Fame)
+            .Select(g => new LudusRosterRow(g.Name, WpnKo(g.WeaponId), PerKo(g.PersonalityId), g.Age,
+                MathF.Round(g.Fame), MathF.Round(g.Popularity), $"{g.CW}-{g.CL}-{g.CD}")).ToList();
+        float rep = isPlayer ? _ludusRep : _rivalRep.GetValueOrDefault(id);
+        var lc = isPlayer ? ("나 자신", "\"모래가 곧 이야기다.\"") : LanistaCharOf(id);
+        var dyn = isPlayer ? null : LudusDynamic(id, Math.Max(1, _seasonNo));
+        return JsonSerializer.Serialize(new
+        {
+            ok = true,
+            name = isPlayer ? PlayerLudusName : pool.Name,
+            persona = isPlayer ? "" : pool.Persona,
+            motto = isPlayer ? "" : pool.Motto,
+            lanista = isPlayer ? "나 (라니스타)" : LanistaOf(id),
+            lanistaTrait = lc.Item1, lanistaQuote = lc.Item2,
+            patron = isPlayer ? "—" : LudusPatronOf(id),
+            patronRel = isPlayer ? "" : PatronEmperorRel(id),
+            philosophy = isPlayer ? "직접 쓰는 이야기" : PhilosophyOf(pool.Persona),
+            tier = TierNameForRep(rep), rep = MathF.Round(rep),
+            treasury = isPlayer ? MathF.Round(_gold) : MathF.Round(rep * 6f + members.Sum(m => m.Popularity) * 2f),
+            dynamic = dyn == null ? null : new { dyn.Icon, dyn.Title, dyn.Desc },
+            members
+        }, JsonOpts);
     }
 
     /// <summary>선수 상세(서사) — 이명·관계·감정·연대기. 기존 데이터 파생, 스키마 무변경.</summary>
@@ -1022,10 +1055,67 @@ public sealed partial class Game
     private string LudusPatronOf(string id)
     {
         int mine = (int)(_worldSeed % (ulong)PatronPool.Length);
-        int h = 0; foreach (char c in id) h = h * 31 + c;   // 안정 해시(string.GetHashCode는 프로세스마다 달라짐)
-        int idx = (mine + 1 + (h & 0x7fffffff) % (PatronPool.Length - 1)) % PatronPool.Length;
+        int h = StableHash(id);
+        int idx = (mine + 1 + h % (PatronPool.Length - 1)) % PatronPool.Length;
         var pt = PatronPool[idx];
         return $"{pt.Name} · {pt.Rank}";
+    }
+    private static int StableHash(string s) { int h = 0; foreach (char c in s) h = h * 31 + c; return h & 0x7fffffff; }
+
+    // ── [18] 살아있는 검투소 명부 — 라니스타 인물·후원자 정치·시즌 동향 ──
+    private static readonly (string Trait, string Quote)[] LanistaTraits =
+    {
+        ("냉혹한 계산가", "\"검투사는 자산이다. 감정은 장부에 적지 않지.\""),
+        ("허영에 찬 귀족", "\"내 검투소의 이름값이 곧 로마의 취향이다.\""),
+        ("피에 굶주린 흥행사", "\"관중은 피를 원해. 나는 그저 공급할 뿐.\""),
+        ("노회한 노예상", "\"싸구려를 사서 챔피언으로 판다 — 그게 장사지.\""),
+        ("몰락한 명문의 후예", "\"조상의 이름을 모래로 되사겠다.\""),
+        ("신흥 벼락부자", "\"돈으로 못 사는 명예? 아직 값을 못 불렀을 뿐이지.\""),
+    };
+    private (string Trait, string Quote) LanistaCharOf(string id) => LanistaTraits[StableHash(id + "L") % LanistaTraits.Length];
+    private string PatronEmperorRel(string id) => (StableHash(id + "P") % 4) switch
+    {
+        0 => "황제의 총신 — 궁정에서 목소리가 크다",
+        1 => "원로원 강경파 — 검투 흥행을 정치에 쓴다",
+        2 => "재정난에 빠진 가문 — 후원이 예전 같지 않다",
+        _ => "야심가 — 이 검투소를 발판 삼는다",
+    };
+    private string PhilosophyOf(string persona) => persona switch
+    {
+        "gold" => "재력으로 완성된 별을 사들여 즉시 전력화한다",
+        "youth" => "원석을 싸게 사 오래 다듬는다 — 인내가 곧 철학",
+        "blood" => "처형전과 도발로 관중을 끓인다 — 피가 곧 흥행",
+        _ => "균형 잡힌 운영",
+    };
+
+    private sealed record LudusDynamicRec(string Icon, string Title, string Desc, float RepDelta);
+    /// <summary>이 시즌 검투소의 동향(결정론 — worldSeed·id·시즌 파생). 명성에 소폭 반영돼 순위가 '스스로' 출렁인다.</summary>
+    private LudusDynamicRec LudusDynamic(string id, int season)
+    {
+        var pool = new (string Icon, string Title, string Desc, float Rep)[]
+        {
+            ("💰", "영입 공세", "노예 시장을 휩쓸며 별들을 쓸어 담는다 — 이번 시즌 야심이 크다", +8f),
+            ("📉", "재정난", "금고가 얇아졌다. 급여 체불 소문에 검투사들이 동요한다", -7f),
+            ("🌟", "간판의 각성", "간판 검투사가 물이 올랐다 — 검투소가 그 등에 올라탄다", +6f),
+            ("🗞", "추문", "라니스타의 승부조작 소문이 포룸을 돈다 — 이름값이 깎인다", -8f),
+            ("👑", "후원자의 영광", "후원자가 궁정에서 승진했다 — 뒷배가 든든해졌다", +5f),
+            ("🕊", "간판의 은퇴", "노장 간판이 목검을 받았다 — 세대교체의 진통", -4f),
+            ("🌱", "원석 발굴", "숨은 원석을 값싸게 주웠다는 소문 — 미래가 밝다", +3f),
+            ("🕯", "평온한 시즌", "특별한 소식 없이 묵묵히 칼을 벼린다", 0f),
+        };
+        var pick = pool[StableHash(id + season) % pool.Length];
+        return new LudusDynamicRec(pick.Icon, pick.Title, pick.Desc, pick.Rep);
+    }
+    /// <summary>개막 시 각 라이벌 검투소의 동향을 명성에 반영 + 신문 소식으로 — 살아있는 세계.</summary>
+    private void ApplyLudusDynamics()
+    {
+        foreach (var r in ActiveRivalLudi)
+        {
+            var dyn = LudusDynamic(r.Id, _seasonNo);
+            if (dyn.RepDelta != 0f) AddRivalRep(r.Id, dyn.RepDelta);
+            if (dyn.Title != "평온한 시즌")
+                _story.Add((0, "ludus", $"{dyn.Icon} {r.Name} — {dyn.Title}: {dyn.Desc}"));
+        }
     }
     /// <summary>이 세계에 실존하는 라이벌 루두스(캐스트 소속 + 명성 기록 보유) — 풀 순서 유지.</summary>
     private IEnumerable<(string Id, string Name, string Persona, string Motto)> ActiveRivalLudi =>
@@ -1233,6 +1323,8 @@ public sealed partial class Game
                 _story.Add((0, "transfer", $"🤝 라이벌 이적 — {buyer.Name}, {from}의 간판 {target.Name}을(를) 사들였다 (\"{buyer.Motto}\")"));
             }
         }
+
+        if (_seasonNo > 1) ApplyLudusDynamics();   // [18] 살아있는 검투소 — 시즌 동향을 명성에 반영·신문에 실음
 
         // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
         BuildDivisionCards(1);
