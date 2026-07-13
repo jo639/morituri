@@ -214,10 +214,15 @@
 .dlg-port{ position:absolute; left:-200px; bottom:100%; margin-bottom:-170px; z-index:2;
   filter:drop-shadow(0 6px 18px rgba(0,0,0,.6)); transition:opacity .25s ease }
 .dlg-port.dimmed{ opacity:.35; filter:grayscale(.6) drop-shadow(0 6px 18px rgba(0,0,0,.6)) }
-.dlg-port img,.dlg-port svg{ width:500px; height:500px; object-fit:contain;
-  /* 하단 자연스러운 페이드아웃 — 초상이 대화창 위에 뜬 느낌 제거 */
+/* 전신 PNG 초상(카토 기준 튜닝) — 하단 페이드아웃 */
+.dlg-port img{ width:500px; height:500px; object-fit:contain; object-position:bottom;
   -webkit-mask-image:linear-gradient(180deg,#000 74%,rgba(0,0,0,.55) 88%,transparent 100%);
   mask-image:linear-gradient(180deg,#000 74%,rgba(0,0,0,.55) 88%,transparent 100%) }
+/* 무레나 PNG는 캔버스 우측에 치우쳐 있어 대사를 가림 → 왼쪽으로 보정(카토와 얼굴 위치·오른쪽 여백 정렬) */
+.dlg-port[data-who="murena"] img{ margin-left:-58px }
+/* 실루엣 폴백(도형)은 카드형 흉상 — 전신 PNG와 프레이밍이 달라 전용 크기·위치(원래 값 복원) */
+.dlg-port:has(svg){ left:-14px; margin-bottom:-34px }
+.dlg-port svg{ width:min(260px,34vw); height:min(260px,34vw) }
 .dlg-np{ position:absolute; top:-38px; left:250px }
 .dlg-nameplate{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:.12em;
   color:var(--gold); background:linear-gradient(180deg,var(--panel3),var(--panel)); padding:6px 22px;
@@ -774,6 +779,8 @@ async function renderSlots(){
 window.loadSlot = async (n)=>{
   st = await api('/api/loadslot',{n});
   if (st.error) return;
+  // 슬롯 전환은 세이브 스냅샷 교체일 뿐 — 이명·칭호 등 '새로 얻은' 알림이 다시 뜨지 않게 기준선 리셋
+  _epiSeen = null; _kpSeen = null;
   await refresh();
   $('leagueF').src='league.html?t='+Date.now();
   renderSlots();   // ◈ 활성 표시 갱신 — 메뉴는 유지
@@ -1636,6 +1643,7 @@ function dlgRender(){
     setTimeout(()=>{ dlgLock=false; dlgIdx++; dlgRender(); }, 2200); return;
   }
   $('dlgPort').innerHTML = dlgPortrait(L.who);
+  $('dlgPort').dataset.who = L.who;   // 화자별 초상 위치 보정(무레나 등)
   $('dlgPort').classList.toggle('dimmed', L.narr);
   $('dlgNp').innerHTML = L.name?`<span class="dlg-nameplate ${L.who==='murena'?'murena':''}">${escHtml(L.name)}<span class="role">${escHtml(L.role)}</span></span>`:'';
   const t=$('dlgText'); t.className='dlg-text'+(L.narr?' narr':'');
