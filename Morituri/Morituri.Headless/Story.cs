@@ -22,7 +22,7 @@ public sealed partial class Game
     private float _unrest;                                  // 반란 지수 0~100
     private readonly List<LegendRec> _legends = new();      // 전설 카탈로그
     private int _legendRefs;                                // 이번 시즌 카토 전설 참조 횟수(≤2)
-    private bool _promotedFlag;                             // 이번 시즌 내 검투사 승격(종막 게이트, 시즌 내 한정)
+    private bool _promotedFlag;                             // 이번 시즌 내 모리튜리 승격(종막 게이트, 시즌 내 한정)
     private int _favorAtE1;                                 // E1 발화 시점의 총애 — E2 게이트("E1 후 특명 완수") 기준점
 
     private sealed record LegendRec(string Name, string Epithet, string Weapon, string Personality,
@@ -137,7 +137,7 @@ public sealed partial class Game
                     .ThenByDescending(g => g.Fame).FirstOrDefault();
     }
 
-    /// <summary>종막 판정(시즌말) — 내 검투사 1부 진입(승격) 또는 시즌 3 소프트 종료 → 라니스타가 되는 의식.</summary>
+    /// <summary>종막 판정(시즌말) — 내 모리튜리 1부 진입(승격) 또는 시즌 3 소프트 종료 → 라니스타가 되는 의식.</summary>
     private void CheckStoryFinale()
     {
         if (_playerless || _storyStage == "chronicle") return;
@@ -181,10 +181,10 @@ public sealed partial class Game
         new EvtTemplate { Id = "story_s5", Icon = "🕯", Title = "검은 인장의 방문", NeedsFighter = false,
             Body = _ => "해질녘, 값비싼 토가를 입은 사내가 빚 증서 뭉치를 탁자에 올려놓는다. 인장은 검다.\n" +
                 "💬 무레나: \"가이우스의 후계자시군. 빚은 피를 가리지 않습니다. …허나 갚을 방법은 여러 가지지요.\"\n" +
-                "💬 무레나: \"당신 검투사가 적당한 날에 적당히 져 주기만 하면 됩니다. 우린 아무도 죽이지 않아요 — 당신들이 돈 때문에 죽이는 거죠. 우린 그저 결과를 정리할 뿐.\"",
+                "💬 무레나: \"당신 모리튜리가 적당한 날에 적당히 져 주기만 하면 됩니다. 우린 아무도 죽이지 않아요 — 당신들이 돈 때문에 죽이는 거죠. 우린 그저 결과를 정리할 뿐.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +120)", _ => {
-                    var f = MyNextFighter(); if (f == null) return "던질 검투사가 없다 — 무레나가 코웃음 치며 떠났다";
+                    var f = MyNextFighter(); if (f == null) return "던질 모리튜리가 없다 — 무레나가 코웃음 치며 떠났다";
                     _fixFighterId = f.Id; _fixReward = 120f; _fixChoice = "accept";
                     AddClue("무레나 — \"우리가 없으면 이 경기장은 일주일도 못 갑니다.\"");
                     return $"🕯 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"현명하시군요. 가이우스보다는.\""; }),
@@ -210,10 +210,10 @@ public sealed partial class Game
 
         new EvtTemplate { Id = "story_house_blood", Icon = "🩸", Title = "잔혹가의 도발", NeedsFighter = false, Kind = "letter",
             Body = _ => $"{CtxLudusName}의 인장이 찍힌 서신 — 피 냄새가 나는 환영 인사다.\n" +
-                $"💬 서신: \"무너진 루두스의 애송이가 모래를 밟는다지. 네 검투사들은 우리 모래 위에선 한 합도 못 버틴다. 얼마나 버티는지 구경이나 하마.\"",
+                $"💬 서신: \"무너진 루두스의 애송이가 모래를 밟는다지. 네 모리튜리들은 우리 모래 위에선 한 합도 못 버틴다. 얼마나 버티는지 구경이나 하마.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("공개 답신으로 맞받아친다 (인기 +6, 원한)", g => {
-                    var f = MyFirst; if (f == null) return "답할 검투사가 없다";
+                    var f = MyFirst; if (f == null) return "답할 모리튜리가 없다";
                     f.Popularity += 6f;
                     var t = PickGrudgeTarget(f, _storyCtx);
                     if (t != null) { _ledger.DeepenGrudge(f.Id, t.Id, 22f); return $"{f.Name} 인기 +6 — {t.Name}({LudusNameOf(t.LudusId)})에게 원한을 새겼다"; }
@@ -229,7 +229,7 @@ public sealed partial class Game
                     $"💬 카토: \"받아들이면 저 녀석은 오늘을 잊지 않을 겁니다. …당신도요. 원한이란 그렇게 시작되지요.\"";
             },
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("도전을 받는다 (전시 경기 — 출전자는 감독이 고른다)", _ => {
+                ("도전을 받는다 (전시 경기 — 출전자는 라니스타이 고른다)", _ => {
                     var t = _storyCtx != null ? _cast.FirstOrDefault(g => g.Id == _storyCtx) : null;
                     t ??= ChallengeTarget();
                     var f = MyFirst;
@@ -241,8 +241,8 @@ public sealed partial class Game
 
         // ── 1막 비트③ 「시대의 소음」 — 반란 지수 점화 ──
         new EvtTemplate { Id = "story_unrest", Icon = "🔥", Title = "시대의 소음", NeedsFighter = false,
-            Body = _ => "남쪽 훈련소에서 검투사들이 탈주했다는 소문이 시장을 돈다. 노예 값이 뛰고, 관중은 어쩐지 더 피에 굶주렸다.\n" +
-                "💬 카토: \"검투사 값이 오릅니다. 군중은 더 목말라하고요. …시대가 흔들리면 모래가 제일 먼저 압니다.\"",
+            Body = _ => "남쪽 훈련소에서 모리튜리들이 탈주했다는 소문이 시장을 돈다. 노예 값이 뛰고, 관중은 어쩐지 더 피에 굶주렸다.\n" +
+                "💬 카토: \"모리튜리 값이 오릅니다. 군중은 더 목말라하고요. …시대가 흔들리면 모래가 제일 먼저 압니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("루두스 경비를 강화한다 (골드 −40)", _ => { var pay = SpendOrDebt(40f); _unrest = Math.Clamp(_unrest + 6f, 0f, 100f);
                     return $"{pay} — 담장을 올리고 자물쇠를 바꿨다. 소문은 소문으로 남기를"; }),
@@ -264,7 +264,7 @@ public sealed partial class Game
         new EvtTemplate { Id = "story_showdown", Icon = "🕯", Title = "결전 전야", NeedsFighter = false,
             Body = _ => {
                 var f = MyNextFighter();
-                string who = f?.Name ?? "당신의 검투사";
+                string who = f?.Name ?? "당신의 모리튜리";
                 string tail = _fixChoice == "accept" ? "지난번엔 현명하셨지요. 이번에도 그러시길."
                             : _fixChoice == "refuse" ? "지난번의 그 고집, 오늘은 접어 두시지요."
                             : "우리가 없으면 이 경기장은 일주일도 못 갑니다.";
@@ -377,7 +377,7 @@ public sealed partial class Game
     {
         if (_playerless || _storyStage == "chronicle") return null;
         if (!_cast.Any(g => g.IsPlayer))
-            return "💬 카토: \"돈이 없습니다. 무기와 기질만 보고 골라야 해요 — 나머지는 모래가 가르칠 겁니다.\" → 영입 탭에서 뽑기로 첫 검투사를 들이십시오";
+            return "💬 카토: \"돈이 없습니다. 무기와 기질만 보고 골라야 해요 — 나머지는 모래가 가르칠 겁니다.\" → 영입 탭에서 뽑기로 첫 모리튜리를 들이십시오";
         if (!SeasonActive)
             return "💬 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 훈련을 분배하고 [다음 경기 ▶]로 시즌을 여십시오";
         if (_cast.Where(g => g.IsPlayer).All(g => g.CW + g.CL + g.CD == 0))

@@ -211,10 +211,13 @@
 .dlg-scene small{ display:block; letter-spacing:.1em; color:var(--dim); font-size:10px; font-weight:400; margin-top:2px }
 @keyframes dlgDrop{ from{opacity:0; transform:translate(-50%,-8px)} to{opacity:1; transform:translate(-50%,0)} }
 .dlg-stage{ position:absolute; left:50%; bottom:36px; transform:translateX(-50%); width:min(940px,94vw) }
-.dlg-port{ position:absolute; left:-14px; bottom:100%; margin-bottom:-34px; z-index:2;
+.dlg-port{ position:absolute; left:-200px; bottom:100%; margin-bottom:-170px; z-index:2;
   filter:drop-shadow(0 6px 18px rgba(0,0,0,.6)); transition:opacity .25s ease }
 .dlg-port.dimmed{ opacity:.35; filter:grayscale(.6) drop-shadow(0 6px 18px rgba(0,0,0,.6)) }
-.dlg-port img,.dlg-port svg{ width:256px; height:256px; object-fit:contain }
+.dlg-port img,.dlg-port svg{ width:500px; height:500px; object-fit:contain;
+  /* 하단 자연스러운 페이드아웃 — 초상이 대화창 위에 뜬 느낌 제거 */
+  -webkit-mask-image:linear-gradient(180deg,#000 74%,rgba(0,0,0,.55) 88%,transparent 100%);
+  mask-image:linear-gradient(180deg,#000 74%,rgba(0,0,0,.55) 88%,transparent 100%) }
 .dlg-np{ position:absolute; top:-38px; left:250px }
 .dlg-nameplate{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:.12em;
   color:var(--gold); background:linear-gradient(180deg,var(--panel3),var(--panel)); padding:6px 22px;
@@ -367,7 +370,7 @@
   </div></div>
 
   <div class="screen" id="market"><div class="pad">
-    <h2>검투사 시장 <span class="note" id="marketNote"></span></h2>
+    <h2>모리튜리 시장 <span class="note" id="marketNote"></span></h2>
     <button id="gachaBtn" class="btn primary"><svg class="ic"><use href="icons.svg#dice"/></svg>뽑기</button>
     <span class="note">  후보 3명 — 무기·성격·전술 하나만 공개. 천부·잠재력·특성은 영입해야 안다.</span>
     <div class="err" id="marketErr"></div>
@@ -392,7 +395,7 @@
     <div id="liveTop">
       <span class="lvtag">⚔ LIVE</span>
       <span id="liveCard" style="font-weight:700;color:var(--ink)"></span>
-      <button onclick="doSettle()" class="btn primary" style="margin-left:auto" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button>
+      <button id="settleBtn" onclick="doSettle()" class="btn primary" style="margin-left:auto" title="관전을 끝내고 결과 확정">⏭ 결과 확정</button>
     </div>
     <div id="liveCmd"></div>
   </div>
@@ -437,7 +440,7 @@
   </div></div>
 
   <div class="screen" id="records"><div class="pad">
-    <h2>🏛 기록실 <span class="note">리그 전체 검투사 통산 지표 — 내림차순</span></h2>
+    <h2>🏛 기록실 <span class="note">리그 전체 모리튜리 통산 지표 — 내림차순</span></h2>
     <div id="recTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
     <div id="recBody"></div>
   </div></div>
@@ -622,6 +625,8 @@
   <button id="mNew">새 커리어 (현재 슬롯)</button>
   <label class="note" style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="mSkip"> 각본 없이 시작 <span style="opacity:.7">(서막·1막 캠페인 생략 — 회차용)</span></label>
   <div id="mSlots" style="display:flex;gap:8px;margin-top:10px"></div>
+  <div class="note" style="text-align:center;margin-top:4px">슬롯을 골라 [계속하기]로 입장</div>
+  <button id="mQuit" style="margin-top:8px;opacity:.75">게임 종료</button>
   <div class="info" id="mInfo">—</div>
 </div>
 
@@ -646,14 +651,14 @@ const SKILLS=[
  {id:'SKL_RUSH',   n:'저돌',       per:'RECKLESS',   tier:1, d:'생각보다 몸이 먼저 — 이동속도 +6%'},
  {id:'SKL_LEISURE',n:'여유',       per:'ARROGANT',   tier:1, d:'서두르지 않는 자의 호흡 — 스태미나 회복 +15%'},
  {id:'SKL_AEGIS',  n:'수호자',     per:'HONORABLE',  tier:1, d:'정면으로 받아낸다 — 가드 시 받는 피해 −20%'},
- {id:'SKL_SURVIVE',n:'생존술',     per:'COWARD',     tier:1, d:'맞지 않는 것이 이기는 것 — 받피 −4%·회피 소모 −15%'},
+ {id:'SKL_SURVIVE',n:'생존술',     per:'COWARD',     tier:1, d:'맞지 않는 것이 이기는 것 — 받는 피해 −4%·회피 소모 −15%'},
  {id:'SKL_VIGOR',  n:'살육의 활력', per:'CRUEL',      tier:1, d:'피 냄새가 힘이 된다 — 스태미나 최대 +10%'},
  {id:'SKL_NERVE',  n:'배짱',       per:'BOLD',       tier:1, d:'물러서지 않는 심장 — 포이즈 +12%'},
  {id:'SKL_ECONOMY',n:'절제',       per:'WARY',       tier:1, d:'낭비 없는 몸놀림 — 회피 스태미나 소모 −30%'},
- {id:'SKL_FLAIR',  n:'무대 장악',  per:'SHOWMAN',    tier:1, d:'관중이 보는 각도를 안다 — 이속 +4%·간격 +0.08'},
- {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이속 +3%'},
+ {id:'SKL_FLAIR',  n:'무대 장악',  per:'SHOWMAN',    tier:1, d:'관중이 보는 각도를 안다 — 이동 속도 +4%·간격 +0.08'},
+ {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이동 속도 +3%'},
  {id:'SKL_READ2',  n:'전장 분석',  per:'CALM',       tier:2, d:'전장 전체가 느리게 보인다 — 인지지연 −0.08s (집정관+)'},
- {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받피 −35%·이속 −4% (집정관+)'},
+ {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받는 피해 −35%·이동 속도 −4% (집정관+)'},
 ];
 const SKL=id=>SKILLS.find(s=>s.id===id)||{n:id,d:''};
 const sklChip=id=>`<span class="chip" style="background:rgba(91,155,224,.18);color:#9bc4ec;border:1px solid rgba(91,155,224,.4)" title="${SKL(id).d}">📖 ${SKL(id).n}</span>`;
@@ -750,14 +755,13 @@ async function renderSlots(){
       <b style="color:var(--gold);letter-spacing:.05em">${s.active?'◈ ':''}슬롯 ${s.n}</b><br>
       <span style="font-size:11px;color:var(--dim)">${s.exists?`${s.ludus} · 시즌 ${s.season} · ${s.gold}G`:'빈 슬롯 — 새 세계'}</span></button>`).join('');
 }
+// 슬롯 클릭 = 선택(로드)만 — 진입은 [계속하기]로 (오클릭 방지)
 window.loadSlot = async (n)=>{
   st = await api('/api/loadslot',{n});
   if (st.error) return;
   await refresh();
   $('leagueF').src='league.html?t='+Date.now();
-  $('menu').style.display='none';
-  go(st.MyFighters.length? 'league':'market');
-  maybeAutoStory(); maybeCoach();
+  renderSlots();   // ◈ 활성 표시 갱신 — 메뉴는 유지
 };
 
 async function api(path, body){
@@ -1196,7 +1200,7 @@ function execTheater(m){
       <div><svg style="width:42px;height:42px;color:${sp?'var(--grn)':'var(--b)'};${sp?'':'transform:scaleY(-1)'}"><use href="icons.svg#thumb"/></svg></div>
       <b style="color:${sp?'var(--grn)':'var(--b)'};font-size:15px">${sp?`황제의 자비 — ${e.Loser}, 오늘은 산다`:`죽음 — ${e.Loser}의 시간이 끝났다`}</b>
       <div class="note" style="margin-top:3px">사망 확률 ${e.DeathPct}% · ${e.Factors}</div>
-      ${sp?'':'<div style="color:var(--b);font-weight:700;margin-top:4px">⚰ 모래 위에서 숨을 거두다. 검투사로 죽다</div>'}</div>`;
+      ${sp?'':'<div style="color:var(--b);font-weight:700;margin-top:4px">⚰ 모래 위에서 숨을 거두다. 모리튜리로 죽다</div>'}</div>`;
     sp?sfxReveal(2):sfxDoom();
   }, 2600);
   return `<div id="${id}" style="text-align:center;padding:12px;border:1px solid var(--gold);border-radius:9px;margin:8px 0;background:radial-gradient(ellipse at 50% 0%,rgba(210,171,85,.10),transparent 65%),var(--panel2)">
@@ -1301,7 +1305,7 @@ window.addEventListener('keydown', e=>{
 // 성격별 투구 볏 색(절차적 초상화 악센트)
 const PERCOL={CALM:'#5b9be0',RECKLESS:'#e0685f',ARROGANT:'#c9a84c',HONORABLE:'#e8e0d0',COWARD:'#8a8f98',CRUEL:'#a03a5a',BOLD:'#e08a3a',WARY:'#6a8a6a',SHOWMAN:'#c94ca8',OPPORTUNIST:'#4ca8a0'};
 const cx=(cat,id)=>(CODEX[cat].find(e=>e.id===id)||{}).d||'';
-// 절차적 검투사 초상(투구+볏) — 진영색·성격색. 에셋 없이 코드 합성.
+// 절차적 모리튜리 초상(투구+볏) — 진영색·성격색. 에셋 없이 코드 합성.
 // 무기 미니 글리프(초상 배지용) — 24×24 스트로크 패스
 const WPNGLYPH={
   SWORD:'<path d="M12 3v12M8.5 9h7M12 15v5M10 17.5h4"/>',
@@ -1336,7 +1340,7 @@ function portraitSvg(weaponId, perId, side){
 function condLine(fat, injured){
   const f = fat==null?'?':fat;
   if (injured) return `<div class="row"><span>피로도</span><b style="color:var(--b)">${f} 🩹</b></div>
-    <div class="note" style="color:#e0a89f">부상 — 반응 −10% · 공속 −8% · 이속 −6%</div>`;
+    <div class="note" style="color:#e0a89f">부상 — 반응 −10% · 공격 속도 −8% · 이동 속도 −6%</div>`;
   return `<div class="row"><span>피로도</span><b style="color:${fatColor(f)}">${f}</b></div>
     <div class="note">${fat!=null&&fat>60?'피로 누적 — 부상 위험↑ (스탯 영향 없음)':'양호 (부상 아니면 스탯 영향 없음)'}</div>`;
 }
@@ -1393,7 +1397,7 @@ function openTacModal(nm){
     : nm.MyWinPct>=62 && fat<45 ? '교관: 손쉬운 상대 — 몸을 만들 기회입니다.'
     : nm.Hype>=70 ? '교관: 큰 무대입니다 — 흥행몰이가 돈이 됩니다.'
     : nm.MyWinPct<40 ? '교관: 어려운 싸움 — 컨디션을 최우선으로.'
-    : '교관: 평범한 일전입니다. 감독의 그림대로.';
+    : '교관: 평범한 일전입니다. 라니스타의 그림대로.';
   const prepBtn=(k,label,desc,warn)=>
     `<button class="prepbtn tacbtn" data-k="${k}" onclick="setPrep('${k}')" style="display:inline-block;width:auto;padding:5px 10px;margin:2px 6px 2px 0;${k==='std'?'border-color:var(--gold)':''}">
       <b>${label}</b> <span class="d">${desc}</span>${warn?`<div class="d" style="color:var(--b)">${warn}</div>`:''}</button>`;
@@ -1403,12 +1407,12 @@ function openTacModal(nm){
     ${prepBtn('forge','🔥 담금질',`성장 ×2 · 피로 ${fat}→${Math.min(100,fat+8)}`, fat+8>60?`⚠ 피로 ${Math.min(100,fat+8)} — 격전 시 부상 위험 증가`:null)}
     ${prepBtn('rest','🛡 아낀다',`피로 ${fat}→${Math.max(0,fat-10)} · 이번 경기 성장 없음`)}
     ${prepBtn('show','🎭 무대를 띄운다',`인기 +6 · 출전료 ×1.15(≈+${Math.round(fee*0.15)}) · 피로 ${fat}→${Math.min(100,fat+4)}`)}`;
-  if (nm.IsMirror){   // 내전(#6): 양측 다 내 검투사 → 두 전술을 각각 고르고 시작
+  if (nm.IsMirror){   // 내전(#6): 양측 다 내 모리튜리 → 두 전술을 각각 고르고 시작
     _mirA = nm.MyTactic; _mirB = nm.OppTactic;
     const col=(side,name,pool,cur)=>`<div style="flex:1;min-width:0">
       <div class="note" style="margin-bottom:4px;color:${side==='A'?'var(--a)':'var(--b)'}">${escHtml(name)} 전술</div>
       ${(pool||[]).map(tc=>`<button class="tacbtn mir${side}" data-tc="${tc}" onclick="pickMir('${side}','${tc}')" style="${tc===cur?`border-color:${side==='A'?'var(--gold)':'var(--b)'}`:''}"><b>${t(tc)}</b><div class="d">${TACD[tc]||''}</div></button>`).join('')}</div>`;
-    $('tmOpts').innerHTML = `<div class="note" style="text-align:center;margin-bottom:6px;color:var(--gold)">⚔ 내전 — 양측 모두 내 검투사다. 각자의 전술을 정하라 (경기 중에도 둘 다 바꿀 수 있다)</div>
+    $('tmOpts').innerHTML = `<div class="note" style="text-align:center;margin-bottom:6px;color:var(--gold)">⚔ 내전 — 양측 모두 내 모리튜리다. 각자의 전술을 정하라 (경기 중에도 둘 다 바꿀 수 있다)</div>
       <div style="display:flex;gap:12px">${col('A',nm.MyName,nm.MyPool,_mirA)}${col('B',nm.Opp.Name,nm.OppPool,_mirB)}</div>
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startMirror()">⚔ 내전 시작</button>`;
   } else {
@@ -1428,7 +1432,7 @@ $('tacModal').onclick = e => { if(e.target===$('tacModal')) $('tacModal').classL
 
 // ── 라이브 경기(전용 게임플레이 화면): 잠정 시뮬 관전 → 실시간 전술 개입(2회) → 정산 ──
 let liveActive = false, liveRemaining = 2, livePool = null, liveTac = null, _liveNow = 0;
-let liveMirror = false, livePoolB = null, liveTacB = null, liveRemB = 2, liveNameA = '', liveNameB = '';   // 내전(양쪽 다 내 검투사) 이중 조종
+let liveMirror = false, livePoolB = null, liveTacB = null, liveRemB = 2, liveNameA = '', liveNameB = '';   // 내전(양쪽 다 내 모리튜리) 이중 조종
 async function doPlay(tacticId, tacticIdB){
   const nx=$('next'); nx.disabled=true;
   try{
@@ -1476,22 +1480,28 @@ function stopLive(){   // 라이브 관전 종료 — 백그라운드 재생·�
   try{ f.contentWindow.postMessage({cmd:'stop'},'*'); }catch(_){}
   f.src='about:blank';
 }
+let _settling = false;   // 정산·줌 연출 중 재클릭 방지(연출 파괴 레이스)
 window.doSettle = async ()=>{
+  if (_settling) return;
   if (!liveActive) { stopLive(); go('league'); return; }
+  _settling = true;
+  const sb = $('settleBtn'); if (sb) sb.disabled = true;
   liveActive = false;
-  const m = await api('/api/settle', {});
-  if (m.error){ stopLive(); alert(m.error); go('league'); return; }
-  await refresh();
-  pendingSeason = !!m.SeasonCompleted;
-  // #11 전사·성격변화가 난 경기는 쓰러진 패자를 천천히 줌인해 3초간 보여준 뒤 결과로
-  const dramatic = (m.Fates||[]).some(f => f.includes('⚰') || f.includes('🎭'));
-  if (dramatic && m.Winner && m.Winner!=='무승부'){
-    const loserIdx = (m.Winner===m.A) ? 1 : 0;
-    try{ $('liveF').contentWindow.postMessage({cmd:'focusLoser', idx:loserIdx}, '*'); }catch(_){}
-    await new Promise(r=>setTimeout(r, 3200));
-  }
-  stopLive();
-  showResult(m);
+  try{
+    const m = await api('/api/settle', {});
+    if (m.error){ stopLive(); alert(m.error); go('league'); return; }
+    await refresh();
+    pendingSeason = !!m.SeasonCompleted;
+    // #11 전사·성격변화가 난 경기는 쓰러진 패자를 천천히 줌인해 3초간 보여준 뒤 결과로
+    const dramatic = (m.Fates||[]).some(f => f.includes('⚰') || f.includes('🎭'));
+    if (dramatic && m.Winner && m.Winner!=='무승부'){
+      const loserIdx = (m.Winner===m.A) ? 1 : 0;
+      try{ $('liveF').contentWindow.postMessage({cmd:'focusLoser', idx:loserIdx}, '*'); }catch(_){}
+      await new Promise(r=>setTimeout(r, 3200));
+    }
+    stopLive();
+    showResult(m);
+  } finally { _settling = false; if (sb) sb.disabled = false; }
 };
 let pendingResult = null;
 function fireResult(){
@@ -1536,7 +1546,7 @@ window.closeResult = ()=>{ $('resModal').classList.remove('on');
   else if (st && st.PendingEvent){ go('league'); showEvent(); }
   else go('league'); };
 
-// ── 시즌 중 텍스트 이벤트(감독의 선택) ──
+// ── 시즌 중 텍스트 이벤트(라니스타의 선택) ──
 function showEvent(){
   const ev = st && st.PendingEvent; if (!ev) return;
   if (ev.Kind==='letter'){ showLetter(ev); return; }             // 발신 문서 = 화면 중앙 편지 개봉 UI(초상 없음)
@@ -1748,12 +1758,12 @@ const TOUR = [
   { sel:'#gloryWrap', ic:'✨', txt:'<b>영광</b>은 귀한 화폐다 — 업적·타이틀·컵 우승·승격에서만 얻는다. 잠재력의 벽을 넘거나 제국 특전을 사는 데 쓴다.', optional:true },
   { sel:'nav [data-s="league"]', ic:'⚔', txt:'<b>리그</b>에서 [다음 경기 ▶]로 하루하루를 진행한다. 정규시즌 → 상위 4인 <b>챔피언십 컵</b> → 다음 시즌. 순위가 오르면 루두스 등급이 오른다.' },
   { sel:'nav [data-s="roster"]', ic:'📋', txt:'<b>로스터</b>엔 리그 전체 선수와 라이벌 검투소 순위가 있다. 카드엔 소속 검투소가 표시되고, 누르면 스탯·특성·관계까지 볼 수 있다.' },
-  { sel:'#ludus', ic:'🌟', txt:'<b>명성</b>은 통산 업적이다 — 승리·타이틀·컵으로 쌓이고 <b>줄지 않는다</b>. 검투사 급여와 루두스 등급, 전당(명전) 입성이 여기서 나온다.', optional:true },
+  { sel:'#ludus', ic:'🌟', txt:'<b>명성</b>은 통산 업적이다 — 승리·타이틀·컵으로 쌓이고 <b>줄지 않는다</b>. 모리튜리 급여와 루두스 등급, 명예의 전당 입성이 여기서 나온다.', optional:true },
   { sel:'nav [data-s="roster"]', ic:'🎭', txt:'<b>인기</b>는 최근의 화제성이다 — 매 경기 서서히 식지만(감쇠), 선전패나 도발로도 오른다. 출전료(흥행)와 스폰서 후원이 인기를 따라온다.' },
   { sel:'nav [data-s="watch"]', ic:'🎬', txt:'<b>관전</b>은 지난 경기의 다시보기다. 명경기 보관함과 선수 검색으로 모래 위의 순간을 되짚는다.' },
   { sel:'nav [data-s="news"]', ic:'📰', txt:'<b>신문</b>은 매주 발행되는 콜로세움 뉴스 — 누가 떴고 누가 졌는지, 세상이 뭐라 떠드는지 여기 실린다.' },
   { sel:'nav [data-s="gamble"]', ic:'🎲', txt:'<b>도박장</b>에서 AI 경기에 베팅한다(내 경기는 금지 — 승부조작). <b>빚과 대출</b>도 여기 「검은 인장의 장부」에서 관리한다.', optional:true },
-  { sel:'nav [data-s="codex"]', ic:'📖', txt:'<b>도감</b>에 무기 8종·성격 10종·전술 10종의 설명이 있다. 무엇을 쥐었고, 어떤 기질이며, 무슨 전술을 쓰는지 — 검투사를 이해하려거든 여기서 배운다.' },
+  { sel:'nav [data-s="codex"]', ic:'📖', txt:'<b>도감</b>에 무기 8종·성격 10종·전술 10종의 설명이 있다. 무엇을 쥐었고, 어떤 기질이며, 무슨 전술을 쓰는지 — 모리튜리를 이해하려거든 여기서 배운다.' },
   { sel:'nav [data-s="archive"]', ic:'🗄', txt:'<b>보관함</b>엔 유서·서신·메모·단서가 쌓인다. 문서를 누르면 펼쳐 읽을 수 있다 — 선대 가이우스가 남긴 것들도.' },
   { sel:'#next', ic:'🏛', txt:'준비됐다면, 여기서 시작하라. 나머지는 모래가 가르칠 것이다. <span style="color:var(--dim)">— 카토</span>' },
 ];
@@ -1807,11 +1817,11 @@ window.chooseEvent = async (i)=>{
   $('evtOutcome').innerHTML = `<span>결정</span><b style="color:var(--gold)">${r.outcome||''}</b>`;
   $('evtClose').style.display='';
 };
-// ── 빅매치 제안(감독 개입) ──
+// ── 빅매치 제안(라니스타 개입) ──
 function showProposal(){
   const pr = st && st.PendingProposal; if (!pr) return;
   $('propBody').innerHTML = (pr.Execution?`<b style="color:var(--b)">☠ 원수의 처형전 도전장!</b> `:'') +
-    `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 감독이 결정한다(전시 경기${pr.Execution?' — <b style="color:var(--b)">패자는 죽을 수 있다, 보상 ×3</b>':''}).</span>`;
+    `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 라니스타이 결정한다(전시 경기${pr.Execution?' — <b style="color:var(--b)">패자는 죽을 수 있다, 보상 ×3</b>':''}).</span>`;
   $('propRoster').innerHTML = pr.Roster.map(f=>
     `<button class="tacbtn" onclick="pickProposal('${f.Id}')"><b>${f.Name}</b> <span class="d">${w(f.Weapon)} · ${p(f.Personality)}${f.Injured?' 🩹':''} · 피로 ${f.Fatigue}</span></button>`).join('');
   $('propModal').classList.add('on');
@@ -1936,7 +1946,7 @@ function renderLudus(){
         <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" class="act street" style="flex:1" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)">🍺 거리 시비</button>
         <button onclick="gangbrawl('${f.Id}','${f.Name}')" class="act brawl" style="flex:1" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험">🥊 패싸움</button>
         ${st.MasterPending?`<button onclick="bestow('${f.Id}')" class="act bestow" style="flex:1" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)">📜 전수받기</button>`:''}
-        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" class="act retire" style="flex:1" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명전 미등재">🏛 은퇴</button>
+        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" class="act retire" style="flex:1" title="은퇴 진로 선택(교관·스승·스카우터). 자격 미달 단순 은퇴는 명예의 전당 미등재">🏛 은퇴</button>
         <button onclick="release('${f.Id}','${f.Name}')" class="act release" style="flex:1">👋 방출</button></div></div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
@@ -2038,7 +2048,7 @@ window.mastery = async (id,track)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-// ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 감독이 결정한다 ──
+// ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 라니스타이 결정한다 ──
 window.askSurgery = (id,name,mrec)=>{
   const heal = Math.min(94, 72 + 8*((st.MedicalLv||1)-1) + 4*(mrec||0));
   $('rvBox').innerHTML = `<h3 style="color:#e0a0d8;text-align:center;margin:0">⚕ 수술대 — ${name}</h3>
@@ -2104,7 +2114,7 @@ window.breakthrough = async (id)=>{
 let renCtx = null;   // {kind, id}
 window.openRename = (kind, id, cur)=>{
   renCtx = {kind, id};
-  $('renTitle').textContent = kind==='ludus' ? '📛 루두스 개명' : '📛 검투사 개명';
+  $('renTitle').textContent = kind==='ludus' ? '📛 루두스 개명' : '📛 모리튜리 개명';
   $('renInput').value = cur||''; $('renErr').textContent='';
   $('renModal').classList.add('on'); $('renInput').focus();
 };
@@ -2179,7 +2189,7 @@ window.retire = (id,name,fame,ckow)=>{
       <div class="d">${eff}</div><div class="d" style="font-size:11px">조건: ${crit}</div></button>`;
   $('retOpts').innerHTML =
     opt('instructor','🎓','교관',`명성 40+`,'생전 최고 능력치 축의 상한을 루두스 전체에 +6~16 (누적)', fame>=40) +
-    opt('master','📜','스승',`명성 60+`,'특성·전술을 한 선수에게 1회 전수(추가) + 영입 유산. 이후 명전 의미만', fame>=60) +
+    opt('master','📜','스승',`명성 60+`,'특성·전술을 한 선수에게 1회 전수(추가) + 영입 유산. 이후 명예의 전당 의미만', fame>=60) +
     opt('scout','🔭','스카우터',`통산 KO 12+ 또는 명성 30+`,'영입 안목 향상 + 후보 정보 1개 공개 (누적)', ckow>=12||fame>=30) +
     opt('','👋','단순 은퇴',`언제나`,'조용히 떠난다 — 명예의 전당에 오르지 못한다', true);
   $('retireModal').classList.add('on');
@@ -2372,7 +2382,7 @@ function renderRoster(){
     return `<h3 style="grid-column:1/-1;color:var(--gold);border-bottom:1px solid var(--line-soft);padding-bottom:4px;margin:6px 0">${divName(d)} <span class="note" style="font-weight:400">${fs.length}인</span></h3>` + fs.map(card).join('');
   }).join('');
 
-  // 🏛 기록실 — 현역·명전·역대 챔피언 집계(클라이언트)
+  // 🏛 기록실 — 현역·명예의 전당·역대 챔피언 집계(클라이언트)
   const F = st.Season.Fighters, H = st.Season.Hall||[], C = st.Season.Champions||[];
   const top = (arr,key,fmt)=>{ const s=[...arr].sort((a,b)=>b[key]-a[key])[0]; return s?`<b>${s.Name}</b> <span class="note">${fmt(s)}</span>`:'—'; };
   const champCount = {}; C.forEach(c=>champCount[c.Name]=(champCount[c.Name]||0)+1);
@@ -2383,12 +2393,12 @@ function renderRoster(){
     rec('🌟 현역 명성왕', top(F,'Fame',s=>`명성 ${s.Fame}`)) +
     rec('🔥 현역 최고 인기', top(F,'Popularity',s=>`인기 ${s.Popularity}`)) +
     rec('👑 최다 우승', kingpin?`<b>${kingpin[0]}</b> <span class="note">${kingpin[1]}회</span>`:'—') +
-    rec('🏛 명전 최고 명성', H.length?`<b>${H[0].Name}</b> <span class="note">명성 ${H[0].Fame}</span>`:'—') +
-    rec('⚰ 전사자', `${H.filter(h=>(h.Career||'').includes('⚰')).length}명 <span class="note">/ 명전 ${H.length}명</span>`);
-  // [13] 전설 — 세계의 과거(창세)와 척도(명전 승격). 사람은 사건보다 사람을 기억한다.
+    rec('🏛 명예의 전당 최고 명성', H.length?`<b>${H[0].Name}</b> <span class="note">명성 ${H[0].Fame}</span>`:'—') +
+    rec('⚰ 전사자', `${H.filter(h=>(h.Career||'').includes('⚰')).length}명 <span class="note">/ 명예의 전당 ${H.length}명</span>`);
+  // [13] 전설 — 세계의 과거(창세)와 척도(명예의 전당 승격). 사람은 사건보다 사람을 기억한다.
   const LG = st.Legends||[];
   $('legends').innerHTML = !LG.length ? '' :
-    `<h2>🏛 전설 <span class="note">(이 모래가 기억하는 이름들 — 명전 헌액자는 세월이 지나면 여기 오른다)</span></h2>
+    `<h2>🏛 전설 <span class="note">(이 모래가 기억하는 이름들 — 명예의 전당 헌액자는 세월이 지나면 여기 오른다)</span></h2>
     <div class="grid">${LG.map(l=>
       `<div class="fc" style="border-top-color:var(--gold-deep)"><h3>${l.Name} <span class="chip" style="color:var(--gold)">「${l.Epithet}」</span></h3>
        <div class="bd">${w(l.Weapon)}${l.Personality?' · '+p(l.Personality.replace('PER_','')):''} · AUC ${l.Auc}${l.Source==='hof'?' · <span style="color:#c94ca8">이 시대</span>':''}</div>
@@ -2506,7 +2516,7 @@ const CODEX = {
     {n:'잔혹', id:'CRUEL', d:'취약 상태(가드붕괴·빈사·지침)에 공격성 폭발. 다운 추가타.'},
     {n:'대담', id:'BOLD', d:'시간 부족+열세 시 전력. 역전을 노린 도발.'},
     {n:'신중', id:'WARY', d:'Commit +0.20 · 스태미나 낮으면 공격성 −0.3. 자원 관리형.'},
-    {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리("🎭 쇼타임"=화려한 강공 지시, 데미지 직접증가 아님). 도발·스펙터클로 관중게이지를 잘 채운다 → 관중 유리 시 피해 최대 +12%·이속 +8%(모든 선수 공통, 쇼맨이 잘 채울 뿐). 관중 외면 시 가장 크게 위축.'},
+    {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리("🎭 쇼타임"=화려한 강공 지시, 데미지 직접증가 아님). 도발·스펙터클로 관중게이지를 잘 채운다 → 관중 유리 시 피해 최대 +12%·이동 속도 +8%(모든 선수 공통, 쇼맨이 잘 채울 뿐). 관중 외면 시 가장 크게 위축.'},
     {n:'기회주의', id:'OPPORTUNIST', d:'평소 신중, 가드붕괴·지침 허점에 계산적으로 폭발.'},
   ],
   가이드: [
@@ -2532,18 +2542,18 @@ const CODEX = {
   ],
   특성: [
     {n:'유리몸', id:'BRITTLE', s:'받는 피해 ×1.20', d:'순수 페널티. 질긴가죽·둔감과 배타.'},
-    {n:'질긴가죽', id:'TOUGHHIDE', s:'받는 피해 ×0.88 · 이속 ×0.92', d:'맷집형. 유리몸과 배타.'},
+    {n:'질긴가죽', id:'TOUGHHIDE', s:'받는 피해 ×0.88 · 이동 속도 ×0.92', d:'맷집형. 유리몸과 배타.'},
     {n:'둔감', id:'DULL', s:'받는 피해 ×0.85 · 인지지연 +0.06', d:'맷집 ↔ 반응 트레이드오프.'},
     {n:'마르지않는샘', id:'SPRING', s:'스태미나max ×1.25 · 회복 ×1.20', d:'지구력형. 허약체질과 배타.'},
     {n:'허약체질', id:'FRAIL', s:'스태미나max ×0.75 · 회복 ×0.70', d:'순수 페널티. 카이팅 가스아웃에 취약.'},
-    {n:'민첩', id:'FLEET', s:'이속 ×1.12 · HP ×0.90', d:'속도 ↔ 체력 교환.'},
+    {n:'민첩', id:'FLEET', s:'이동 속도 ×1.12 · HP ×0.90', d:'속도 ↔ 체력 교환.'},
     {n:'불굴', id:'STAND', s:'포이즈 ×1.30', d:'경직 저항. 잘 안 무너짐.'},
-    {n:'봉쇄자', id:'STONEWALL', s:'가드 시 받피 ×0.5', d:'가드 한정 경감(일반 받피와 별개).'},
+    {n:'봉쇄자', id:'STONEWALL', s:'가드 시 받는 피해 ×0.5', d:'가드 한정 경감(일반 받는 피해와 별개).'},
     {n:'유리턱', id:'GLASSJAW', s:'포이즈 ×0.60', d:'기절 잘 걸림.'},
     {n:'거인', id:'GIANT', s:'HP ×1.25 · 사거리 ×1.25 · 크기 ×1.30', d:'비례 리치 우위. 선타 유리.'},
-    {n:'좀비', id:'ZOMBIE', s:'이속 ×0.85 + HP≤30% 디버프 면역', d:'위기에 강한 고유 행동.'},
+    {n:'좀비', id:'ZOMBIE', s:'이동 속도 ×0.85 + HP≤30% 디버프 면역', d:'위기에 강한 고유 행동.'},
     {n:'숨고르기', id:'CATCHBREATH', s:'스태미나≥80% 시 모든 공격 확정 크리', d:'고스태미나 폭딜 고유 행동.'},
-    {n:'초상비', id:'LIGHTFOOT', s:'대시 ST소모 ×0.5 + 대시 후 1s 이속↑', d:'회피·기동 고유 행동.'},
+    {n:'초상비', id:'LIGHTFOOT', s:'대시 ST소모 ×0.5 + 대시 후 1s 이동 속도↑', d:'회피·기동 고유 행동.'},
     {n:'선취점', id:'FIRSTBLOOD', s:'첫 클린히트 ×1.25 + 흡수 쉴드 50/8s', d:'선제 이득 고유 행동.'},
     {n:'처형자', id:'EXECUTIONER', s:'상대 HP≤30% 데미지 ×1.5', d:'빈사의 적을 확실히 끝낸다(마무리형).'},
     {n:'일격필살', id:'ASSASSIN', s:'클린히트 4% 확률 ×2.4', d:'드물게 터지는 치명적 한 방 — 이변 제조기.'},
@@ -2564,7 +2574,10 @@ function renderCodex(){
 }
 
 // ── 메뉴 ──
-$('mCont').onclick = ()=>{ $('menu').style.display='none'; maybeAutoStory(); maybeCoach(); };
+$('mCont').onclick = ()=>{ $('menu').style.display='none';
+  if (st) go(st.MyFighters && st.MyFighters.length ? 'league' : 'market');
+  maybeAutoStory(); maybeCoach(); };
+$('mQuit').onclick = async ()=>{ $('mQuit').textContent='안녕히…'; try{ await api('/api/quit',{}); }catch(_){} };
 $('mNew').onclick = async ()=>{
   st = await api('/api/newcareer',{skip: $('mSkip')&&$('mSkip').checked});
   await refresh();

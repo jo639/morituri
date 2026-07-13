@@ -35,7 +35,7 @@
   .winner{ font-size:11px; margin-top:4px; min-height:14px; }
   /* 캔버스 */
   #stage{ position:relative; }
-  /* 경기장 인트로 대사(#5) — 각 검투사 줌인 시 하단 자막 */
+  /* 경기장 인트로 대사(#5) — 각 모리튜리 줌인 시 하단 자막 */
   #introCap{ position:absolute; left:0; right:0; bottom:7%; text-align:center; pointer-events:none;
     opacity:0; transition:opacity .45s ease; z-index:5; }
   #introCap .ic-name{ font-family:var(--font-display); font-weight:900; font-size:clamp(16px,2.6vw,26px);
@@ -228,7 +228,7 @@ function postMatchEnded(){
   if (matchEndPosted) return; matchEndPosted = true;
   if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
 }
-// 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (감독의 "멈춰!")
+// 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (라니스타의 "멈춰!")
 window.addEventListener('message', e=>{
   if (!e.data) return;
   if (e.data.cmd === 'pauseGetTime'){
@@ -241,6 +241,7 @@ window.addEventListener('message', e=>{
     audioResume();
   } else if (e.data.cmd === 'focusLoser'){  // #11 전사·성격변화 — 쓰러진 패자를 천천히 줌인하고 정지(부모가 3초 후 결과로)
     focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
+    if (frames && duration > 0){ t = duration; lastSfxT = duration; }   // 조기 정산이어도 마지막 장면(쓰러진 패자)으로
     setPlaying(false);
   } else if (e.data.cmd === 'reloadSeek'){  // 실시간 전술 변경: 재시뮬된 viewer.json을 깜빡임 없이 이어서 재생
     const keep = t;                          // 현재 재생 시각 유지(전환점 이전 프레임은 결정론적으로 동일 → 매끄럽게 이어짐)
@@ -309,7 +310,7 @@ let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 �
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
 let focusIdx = null;   // #11 전사·성격변화 시 쓰러진 패자(0=A/1=B) 줌인 연출 · #5 경기장 인트로 줌인도 재사용
-let introMode = false, introTimers = [];   // #5 경기 직전 대사 — 각 검투사 줌인+자막 시퀀스
+let introMode = false, introTimers = [];   // #5 경기 직전 대사 — 각 모리튜리 줌인+자막 시퀀스
 
 // ── 로드 ──
 function load(json){
@@ -372,7 +373,7 @@ function load(json){
     }
   }
 }
-// #5 경기장 인트로 — 각 검투사를 차례로 줌인하며 대사 자막을 띄운 뒤 전투 시작
+// #5 경기장 인트로 — 각 모리튜리를 차례로 줌인하며 대사 자막을 띄운 뒤 전투 시작
 function runIntro(A, B){
   const cap = document.getElementById('introCap');
   introMode = true; setPlaying(false); t = 0; focusIdx = null; camX = null;   // 시작 프레임·카메라 리셋
@@ -802,7 +803,7 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
   }
   ctx.restore(); return true;
 }
-// 채워진 작은 검투사: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+// 채워진 작은 모리튜리: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
 function shade(hex, f){ // 색 밝기 조정 (f<1 어둡게)
   const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
   return `rgb(${r*f|0},${g*f|0},${b*f|0})`;
@@ -932,6 +933,9 @@ function render(){
     const tgt = (focusIdx!==null||viewMode==='zoom') ? proj(mx,my) : {x:CX,y:CY};
     const zTgt = focusIdx!==null ? (introMode?2.3:2.9) : viewMode==='zoom' ? 1.9 : 1.0;   // 인트로는 조금 넉넉히
     const lerp = focusIdx!==null ? 0.06 : 0.12;   // 줌인은 더 천천히
+    // ▼ 줌인 프레이밍 노브: 발밑(바닥점)이 아니라 전신이 담기게 타겟을 위로. 값=발이 화면 중앙에서 내려갈 px.
+    const FocusLiftPx = introMode ? 100 : 55;
+    if (focusIdx!==null) tgt.y -= FocusLiftPx/zTgt;   // 스크린px → 월드px 환산(줌 배율로 나눔)
     if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
     camZoom += (zTgt-camZoom)*lerp;
     camX += (tgt.x-camX)*lerp; camY += (tgt.y-camY)*lerp;
@@ -1051,7 +1055,7 @@ function render(){
     ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
-    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '📣 감독 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
+    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '📣 라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
       : (TAGKR[d.tag]||('🧠 '+d.tag)); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
@@ -1105,12 +1109,12 @@ function render(){
     ctx.fillStyle='#f0e6d6'; ctx.fillRect(cx-1, my-2, 2, mh+4);   // 중앙선
     ctx.textAlign='center'; ctx.font='9px "Pretendard Variable",system-ui'; ctx.fillStyle=getCSS('--dim');
     ctx.fillText('⚑ 관중게이지', cx, my-5);
-    // 관중 페이오프 가시화: 데드존(±15) 위에서 유리한 쪽 실제 버프(피해 최대 +12%·이속 +8%)를 수치로.
+    // 관중 페이오프 가시화: 데드존(±15) 위에서 유리한 쪽 실제 버프(피해 최대 +12%·이동 속도 +8%)를 수치로.
     const a=Math.abs(crowd), norm=a<=15?0:Math.min(1,(a-15)/(100-15));
     if (norm>0){
       const favName = crowd>=0 ? doc.Meta.A.Name : doc.Meta.B.Name;
       ctx.font='bold 10px "Pretendard Variable",system-ui'; ctx.fillStyle=getCSS(crowd>=0?'--a':'--b');
-      ctx.fillText(`${favName} 유리 — 피해 +${Math.round(norm*12)}% · 이속 +${Math.round(norm*8)}%`, cx, my+mh+11);
+      ctx.fillText(`${favName} 유리 — 피해 +${Math.round(norm*12)}% · 이동 속도 +${Math.round(norm*8)}%`, cx, my+mh+11);
     }
   }
 

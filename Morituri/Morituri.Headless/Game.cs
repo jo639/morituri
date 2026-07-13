@@ -8,12 +8,12 @@ using Morituri.Sim.Match;
 namespace Morituri.Headless;
 
 /// <summary>
-/// 감독(루두스) 모드 게임 상태 기계 (배포[12] W2 — 매니지먼트).
-/// 관전자 → 감독: 내 루두스 선수단(영입·전술 선택·성장·시설)과 AI 소속 6명이 한 리그에서 싸운다.
+/// 라니스타(루두스) 모드 게임 상태 기계 (배포[12] W2 — 매니지먼트).
+/// 관전자 → 라니스타: 내 루두스 선수단(영입·전술 선택·성장·시설)과 AI 소속 6명이 한 리그에서 싸운다.
 ///  - 모든 선수는 고유 천부/잠재력(StatGen)·특성(TraitGen)·전술 3종 풀을 부여받는다. Sim 무변경(전부 기존 조립).
-///  - 내 선수: 매 경기 전 전술 택1(감독 수싸움). AI: 상대 맞춤 휴리스틱 + 시드 노이즈로 자기 풀에서 선택.
+///  - 내 선수: 매 경기 전 전술 택1(라니스타 수싸움). AI: 상대 맞춤 휴리스틱 + 시드 노이즈로 자기 풀에서 선택.
 ///  - 경제(데나리우스): 경기별 출전료(양 선수 인기=hype)·승리/서사 보너스 / 뽑기·시설·시즌말 급여.
-///  - 성장: 경기 자동 소량 + 3경기당 훈련 포인트(감독 분배). 상한 = 잠재력 버짓 — 노화(30+ 랜덤)로 상한 자체가 감소.
+///  - 성장: 경기 자동 소량 + 3경기당 훈련 포인트(라니스타 분배). 상한 = 잠재력 버짓 — 노화(30+ 랜덤)로 상한 자체가 감소.
 ///  - 영속: world.json v2 — 매 변이 후 저장, 미드시즌 완전 재개(모든 난수는 저장된 카운터에서 파생 = 결정론).
 /// </summary>
 public sealed partial class Game
@@ -47,7 +47,7 @@ public sealed partial class Game
     {
         public required string Id, Name, WeaponId, PersonalityId;   // 고정 정체성
         public required string[] TacticPool;                        // 전술 3종 (유동의 폭)
-        public required string TacticId;                            // 현재 선택 (내 선수=감독, AI=경기마다 자동)
+        public required string TacticId;                            // 현재 선택 (내 선수=라니스타, AI=경기마다 자동)
         public FighterStats Stats;                                  // 성장하는 현재 스탯
         public TalentGrade Talent; public PotentialGrade Potential;
         public float TalentBudget, PotentialBudget;                 // 상한(노화로 감소)
@@ -60,8 +60,8 @@ public sealed partial class Game
         public int CW, CL, CD, CKoW; public float Fame, Popularity;
         public int W, L, D, Streak;
         public int Fatigue, InjuryMatches;                          // 피로도 0(쌩쌩)~100(탈진,메타)·부상 잔여 경기(스탯 영향)
-        public int BestStreak, Executions;                          // 검투사 기록(#2): 최다 연승·통산 처형 (은퇴 후에도 보존)
-        public float TotalMatchTime, TotalDamage, TotalDamageTaken; // 검투사 기록(#2): 통산 경기시간·가한 피해·받은 피해
+        public int BestStreak, Executions;                          // 모리튜리 기록(#2): 최다 연승·통산 처형 (은퇴 후에도 보존)
+        public float TotalMatchTime, TotalDamage, TotalDamageTaken; // 모리튜리 기록(#2): 통산 경기시간·가한 피해·받은 피해
         public int TotalBlocks, TotalDodges;                        // 기록실: 통산 방어 성공·회피 성공
         public readonly List<string> PermInjuries = new();          // 영구 부상(#6): arm/ribs/eye/leg — 부위별 코어 스탯 영구 감소
         public int SeasonBrutals;                                   // 이번 시즌 격전(KO패·빈사) 횟수 — 극적 운명 게이트
@@ -88,7 +88,7 @@ public sealed partial class Game
         Dictionary<string, int>? EmoHistory = null,   // 감정 이력(성격 드리프트 입력)
         string[]? Skills = null,                      // T12 패시브 스킬
         int GrudgeCount = 0,                          // 통산 원한 횟수(감정→관계 전환)
-        int BestStreak = 0, int Executions = 0, float TotalMatchTime = 0f, float TotalDamage = 0f,  // 검투사 기록(#2)
+        int BestStreak = 0, int Executions = 0, float TotalMatchTime = 0f, float TotalDamage = 0f,  // 모리튜리 기록(#2)
         float TotalDamageTaken = 0f, int TotalBlocks = 0, int TotalDodges = 0,   // 기록실: 받은 피해·방어·회피
 
         string[]? PermInjuries = null);               // 영구 부상(#6)
@@ -181,7 +181,7 @@ public sealed partial class Game
         float OddsAKo = 2f, float OddsADec = 2f, float OddsBKo = 2f, float OddsBDec = 2f,   // 승자×방식 조합 배당
         string? AId = null, string? BId = null,   // AI 경기 양측 선수 id(도박장 상세 열람용)
         string? MyQuote = null, string? OppQuote = null,   // 전투 직전 대사(#4) — 내 선수·상대
-        bool IsMirror = false, string? OppId = null, string[]? OppPool = null, string? OppTactic = null);   // 내전(#6): 양측 다 내 검투사 → 이중 조종
+        bool IsMirror = false, string? OppId = null, string[]? OppPool = null, string? OppTactic = null);   // 내전(#6): 양측 다 내 모리튜리 → 이중 조종
     private sealed record LudusDoc(float Rep, int Tier, string TierName, string? NextTierName, float NextTierRep, float IncomeMult);
     private sealed record AchDoc(string Id, string Name, string Desc, bool Unlocked);
     private sealed record CupMatchDoc(string Stage, string A, string B, string? Winner);
@@ -195,7 +195,7 @@ public sealed partial class Game
         int W, int L, int D, int CW, int CL, int CD, int CKoW, int Titles, float Fame, float Popularity,
         RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus,
         string? EmoBio = null,   // 커리어 감정 이력 요약(심리 기질 — W10a)
-        int BestStreak = 0, int Executions = 0, float AvgTime = 0f, float AvgDamage = 0f,   // 검투사 기록(#2)
+        int BestStreak = 0, int Executions = 0, float AvgTime = 0f, float AvgDamage = 0f,   // 모리튜리 기록(#2)
         PermInjuryInfo[]? PermInjuries = null);   // 영구 부상(#6) — 부위명 + 스탯 저하
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
@@ -276,7 +276,7 @@ public sealed partial class Game
     /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
     private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
     private sealed record HallRec(string Name, string Weapon, float Fame, string Career, int Age, int RetiredSeason, bool IsPlayer,
-        int BestStreak = 0, int Executions = 0, int CKoW = 0, int Games = 0, float AvgTime = 0f, float AvgDmg = 0f);   // 검투사 기록(#2) 보존
+        int BestStreak = 0, int Executions = 0, int CKoW = 0, int Games = 0, float AvgTime = 0f, float AvgDmg = 0f);   // 모리튜리 기록(#2) 보존
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -320,7 +320,7 @@ public sealed partial class Game
     private bool _lastFixBad;        // 직전 승부조작 결말이 나쁜 것(발각·보복)인가 — 색 구분
     private float _patronage;   // 후원자 관계도(−100 압박 ~ +100 총애) — #7. 선택으로 변동, 시즌말 정산
     private void Patron(float d) => _patronage = Math.Clamp(_patronage + d, -100f, 100f);
-    private string? _pendingProposalOpp;                     // 빅매치 제안(감독 개입) — 출전 선택 대기 상대 id
+    private string? _pendingProposalOpp;                     // 빅매치 제안(라니스타 개입) — 출전 선택 대기 상대 id
     private bool _proposalExec;                              // 제안이 원수의 처형전 도전장인가
     private readonly List<string> _lastFates = new();        // 직전 경기의 극적 운명(결과 화면 표시용)
     private readonly List<string> _lastInjuries = new();      // 직전 경기 신규 부상자(결과 카드 표시)
@@ -339,12 +339,12 @@ public sealed partial class Game
     // 업적: 보상 차등(골드·영광·명성). 종류·보상 다양화(#5).
     private static readonly (string Id, string Name, string Desc, float Gold, float Glory, float Rep)[] AchievementDefs =
     {
-        ("first_win",    "첫 승리",       "내 검투사의 첫 승",           50f,  2f,  10f),
+        ("first_win",    "첫 승리",       "내 모리튜리의 첫 승",           50f,  2f,  10f),
         ("first_title",  "리그 제패",     "리그 시즌 우승",              200f, 10f, 30f),
         ("first_cup",    "챔피언십 정복", "챔피언십 컵 우승",            300f, 14f, 40f),
         ("caesar",       "카이사르 발굴", "카이사르 천부 영입",          0f,   12f, 20f),
-        ("legend",       "살아있는 전설", "내 검투사 명성 100 돌파",     0f,   16f, 30f),
-        ("streak10",     "무패의 투사",   "내 검투사 10연승",            150f, 8f,  20f),
+        ("legend",       "살아있는 전설", "내 모리튜리 명성 100 돌파",     0f,   16f, 30f),
+        ("streak10",     "무패의 투사",   "내 모리튜리 10연승",            150f, 8f,  20f),
         ("empire",       "제국의 정점",   "루두스 최고 등급 달성",       0f,   20f, 0f),
         ("dynasty",      "왕조",          "리그 3연패",                  500f, 25f, 50f),
         // 신규(#5)
@@ -352,11 +352,11 @@ public sealed partial class Game
         ("gambler",      "행운의 도박사",  "베팅 누적 10회 적중",        300f, 6f,  10f),
         ("giant_killer", "거인 사냥꾼",   "명성 2배 이상 상대 격파(이변)", 100f, 10f, 20f),
         ("kingmaker",    "명장의 산실",   "교관·스승·스카우터 배출",     0f,   12f, 25f),
-        ("perfect",      "무결점 시즌",   "시즌 전승(내 검투사 전원)",   400f, 20f, 40f),
+        ("perfect",      "무결점 시즌",   "시즌 전승(내 모리튜리 전원)",   400f, 20f, 40f),
         ("tycoon",       "대부호",        "금고 2000 데나리우스 돌파",   0f,   10f, 15f),
-        ("veteran",      "백전노장",      "내 검투사 통산 50승",         200f, 12f, 25f),
+        ("veteran",      "백전노장",      "내 모리튜리 통산 50승",         200f, 12f, 25f),
         // 엔드게임(C3): 명시적 최종 목표 — 끝이 보여야 완주 동기가 생긴다
-        ("immortal_ludus", "불멸의 루두스", "명전 5인 배출 · 컵 3회 우승 · 카이사르 발굴 · 최고 등급 — 모든 것을 이룬 자", 1000f, 50f, 100f),
+        ("immortal_ludus", "불멸의 루두스", "명예의 전당 5인 배출 · 컵 3회 우승 · 카이사르 발굴 · 최고 등급 — 모든 것을 이룬 자", 1000f, 50f, 100f),
     };
     private int _betHits;   // 베팅 누적 적중(gambler 업적)
 
@@ -425,7 +425,7 @@ public sealed partial class Game
     private string PersOf(string id) => ById(id).PersonalityId;
     private int TitlesOf(Gladiator g) => _champions.Count(c => c.Name == g.Name);
 
-    /// <summary>명전 등재용 레코드 — 은퇴/전사 시 검투사 기록(#2, 연승·처형·평균)을 박제해 은퇴 후에도 보존.</summary>
+    /// <summary>명전 등재용 레코드 — 은퇴/전사 시 모리튜리 기록(#2, 연승·처형·평균)을 박제해 은퇴 후에도 보존.</summary>
     private HallRec MakeHall(Gladiator g, string career, int season)
     {
         int n = g.CW + g.CL + g.CD;
@@ -435,7 +435,7 @@ public sealed partial class Game
 
     private static uint HashId(string s) { uint h = 2166136261u; foreach (char c in s) { h ^= c; h *= 16777619u; } return h; }
 
-    /// <summary>별명(#7) — 캐릭터성이 서린 특별한 경우에만 부여(업적·기질이 만든 별명). 평범한 검투사는 별명 없음(null). 단순 성격+무기 조합은 부여하지 않는다.</summary>
+    /// <summary>별명(#7) — 캐릭터성이 서린 특별한 경우에만 부여(업적·기질이 만든 별명). 평범한 모리튜리는 별명 없음(null). 단순 성격+무기 조합은 부여하지 않는다.</summary>
     private string? Nickname(Gladiator g)
     {
         int games = g.CW + g.CL + g.CD;
@@ -480,7 +480,7 @@ public sealed partial class Game
     private static string[] PersonaQuotes(string pid) => pid switch
     {
         "PER_SHOWMAN"   => new[] { "관중이여, 오늘 최고의 쇼를 보여주마!", "피와 환호 — 그것이 나의 무대다!", "눈을 떼지 마라. 순식간에 끝날 테니!" },
-        "PER_HONORABLE" => new[] { "정정당당한 승부를 바라오.", "검투사의 명예를 걸고 싸우겠소.", "그대의 무운을 빈다 — 모래 위에서 만나지." },
+        "PER_HONORABLE" => new[] { "정정당당한 승부를 바라오.", "모리튜리의 명예를 걸고 싸우겠소.", "그대의 무운을 빈다 — 모래 위에서 만나지." },
         "PER_CRUEL"     => new[] { "오늘 반드시 죽이겠다.", "네 비명이 벌써 들리는군.", "천천히… 아주 천천히 끝내주마." },
         "PER_CALM"      => new[] { "그는 내 상대가 아니다.", "감정은 필요 없다. 오직 검뿐.", "끝은 이미 정해져 있다." },
         "PER_RECKLESS"  => new[] { "다 덤벼! 상관없다!", "몸이 근질거린다!", "생각 따윈 필요 없어 — 부딪칠 뿐!" },
@@ -528,7 +528,7 @@ public sealed partial class Game
         return null;
     }
 
-    // ── 기록실(#2): 리그 전체 검투사의 통산 지표 — 클라가 내림차순 막대그래프로 렌더 ──
+    // ── 기록실(#2): 리그 전체 모리튜리의 통산 지표 — 클라가 내림차순 막대그래프로 렌더 ──
     private sealed record RecordRow(string Name, string Ludus, bool Mine, int BestStreak, int Executions,
         float DamageDealt, float DamageTaken, int Blocks, int Dodges, float Fame, float Popularity,
         int KoWins, int Wins, float AvgTime, int Titles);
@@ -638,7 +638,7 @@ public sealed partial class Game
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 
-    // ── 시즌 중 텍스트 이벤트(2b) — 감독의 선택. 효과는 전부 기존 메커니즘(재화·명성·인기·훈련·감정·스탯). ──
+    // ── 시즌 중 텍스트 이벤트(2b) — 라니스타의 선택. 효과는 전부 기존 메커니즘(재화·명성·인기·훈련·감정·스탯). ──
     private sealed record TextEventDoc(string Id, string Icon, string Title, string Body, string[] Choices, string Kind = "dialogue", string? From = null);
     private sealed record ProposalPickDoc(string Id, string Name, string Weapon, string Personality, int Fatigue, bool Injured);
     private sealed record ProposalDoc(string OppName, string OppWeapon, string OppPersonality, int OppAge, float OppFame,
@@ -714,7 +714,7 @@ public sealed partial class Game
     private List<EvtTemplate> EvtTemplates() => new()
     {
         new EvtTemplate { Id = "training", Icon = "🏋", Title = "혹독한 훈련", NeedsFighter = true,
-            Body = n => $"{n}이(가) 땀에 젖은 채 훈련장에 남아 감독을 노려본다.\n💬 {n}: \"더 강해질 수 있습니다. 몸이 부서지더라도 — 허락해 주십시오.\"",
+            Body = n => $"{n}이(가) 땀에 젖은 채 훈련장에 남아 라니스타을 노려본다.\n💬 {n}: \"더 강해질 수 있습니다. 몸이 부서지더라도 — 허락해 주십시오.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("강행군 (훈련 포인트 +2, 인기 −5)", g => { g!.TrainingPoints += 2; g.Popularity = MathF.Max(0, g.Popularity - 5); return $"{g.Name} 훈련 포인트 +2, 인기 −5"; }),
                 ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
@@ -766,7 +766,7 @@ public sealed partial class Game
                 ("검약한다 (골드 보존)", _ => "정중히 향만 올렸다.") } },
 
         new EvtTemplate { Id = "crowd", Icon = "🎭", Title = "군중의 갈망", NeedsFighter = true,
-            Body = n => $"관중석에서 {n}의 이름을 연호하는 함성이 터진다.\n💬 흥행주: \"군중이 피와 볼거리를 원하네! 자네 검투사, 쇼를 보여줄 수 있겠나?\"",
+            Body = n => $"관중석에서 {n}의 이름을 연호하는 함성이 터진다.\n💬 흥행주: \"군중이 피와 볼거리를 원하네! 자네 모리튜리, 쇼를 보여줄 수 있겠나?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("응한다 (인기 +12, 다음 경기 흥분)", g => { g!.Popularity += 12f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +12, 다음 경기 '동기부여'"; }),
                 ("침착하게 (명성 +8)", g => { g!.Fame += 8f; return $"{g.Name} 명성 +8"; }) } },
@@ -775,7 +775,7 @@ public sealed partial class Game
             Body = n => {
                 var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
                 var foe = self != null ? PickGrudgeTarget(self) : null;
-                string fn = foe?.Name ?? "한 검투사";
+                string fn = foe?.Name ?? "한 모리튜리";
                 return $"광장에서 {fn}이(가) {n}을(를) 향해 침을 뱉으며 비웃는다.\n💬 {fn}: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("맞받아친다 (인기 +6, 라이벌에게 원한을 새긴다)", g => { g!.Popularity += 6f;
@@ -785,7 +785,7 @@ public sealed partial class Game
                 ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
 
         new EvtTemplate { Id = "mentor", Icon = "📜", Title = "노장의 지도", NeedsFighter = true,
-            Body = n => $"한쪽 눈에 흉터가 있는 노검투사가 {n}을 지켜보다 입을 연다.\n💬 노장: \"자네, 재능은 있군. 허나 다듬지 않은 검은 무디지. 며칠만 내게 맡겨보게 — 공짜는 아니네만.\"",
+            Body = n => $"한쪽 눈에 흉터가 있는 늙은 모리튜리가 {n}을 지켜보다 입을 연다.\n💬 노장: \"자네, 재능은 있군. 허나 다듬지 않은 검은 무디지. 며칠만 내게 맡겨보게 — 공짜는 아니네만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("수련한다 (골드 −40 · 부족분은 빚)", g => { var pay = SpendOrDebt(40f); var r = NudgeStat(g!, "Rct", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("사양한다", g => "정중히 사양했다.") } },
@@ -795,8 +795,8 @@ public sealed partial class Game
                 string ln = b.Name ?? "경쟁 검투소";
                 var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
                 var foe = self != null ? PickGrudgeTarget(self, b.Id) : null;
-                string fn = foe?.Name ?? "간판 검투사";
-                return $"{ln}의 인장이 찍힌 서신이 도착했다 — {fn}의 이름으로 온 도발이다.\n💬 {fn}: \"{n} 따위를 검투사라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {fn}, {ln}\""; },
+                string fn = foe?.Name ?? "간판 모리튜리";
+                return $"{ln}의 인장이 찍힌 서신이 도착했다 — {fn}의 이름으로 온 도발이다.\n💬 {fn}: \"{n} 따위를 모리튜리라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {fn}, {ln}\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("공개 답신으로 맞받아친다 (인기 +8, 그 검투소에 원한)", g => { g!.Popularity += 8f;
                     var bl = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
@@ -963,7 +963,7 @@ public sealed partial class Game
         "데키우스","갈루스","플라비우스","루키우스","퀸투스","세르비우스","아피우스","호라티우스",
     };
 
-    // 라이벌 루두스 — AI 검투사가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
+    // 라이벌 루두스 — AI 모리튜리가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
     private const string PlayerLudusId = "PLAYER";
     private string PlayerLudusName => "★ " + _ludusName;   // 라니스타 명명 반영
     // 6종 풀 — worldSeed가 3곳을 선발(커리어마다 다른 경쟁 구도).
@@ -1195,7 +1195,7 @@ public sealed partial class Game
 
         RollEdict();   // 황제의 특명(시즌 계약)
 
-        // 빅매치 제안(감독 개입): 원수의 처형전 도전장(우선) 또는 명망 도전자와의 전시 카드.
+        // 빅매치 제안(라니스타 개입): 원수의 처형전 도전장(우선) 또는 명망 도전자와의 전시 카드.
         _pendingProposalOpp = null; _proposalExec = false;
         if (!_playerless && _cast.Count(g => g.IsPlayer) >= 2)
         {
@@ -1221,7 +1221,7 @@ public sealed partial class Game
         // 승부조작 미이행(가담 선수가 시즌 내 더 안 싸움): 뒷돈 주인이 배신으로 간주 — 협박 채무·명성 압박
         if (_fixFighterId != null)
         {
-            var fixName = _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name ?? "그 검투사";
+            var fixName = _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name ?? "그 모리튜리";
             _ludusRep = MathF.Max(0f, _ludusRep - 25f); DebtTxn("검은 인장의 협박 채무", _fixReward);
             _story.Add((_rounds + 1, "fix", $"🎲 미이행 — {fixName}이(가) 끝내 경기를 던지지 않았다. 뒷돈의 주인이 배신으로 여긴다 (명성 −25·협박 채무 +{_fixReward:F0})"));
             _fixFighterId = null; _fixReward = 0f;
@@ -1304,7 +1304,7 @@ public sealed partial class Game
         // 불멸의 루두스(엔드게임 그랜드슬램): 명전 5인 배출 + 컵 3회 + 카이사르 + 최고 등급
         if (_hall.Count(h => h.IsPlayer) >= 5 && _myCupTitles >= 3
             && _achievements.Contains("caesar") && _achievements.Contains("empire")) Unlock("immortal_ludus");
-        // 무결점 시즌: 내 검투사 전원이 정규 시즌 무패(최소 1경기 이상)
+        // 무결점 시즌: 내 모리튜리 전원이 정규 시즌 무패(최소 1경기 이상)
         var myFighters = _cast.Where(g => g.IsPlayer).ToList();
         if (myFighters.Count > 0 && myFighters.All(g => g.L == 0 && g.W + g.D > 0)) Unlock("perfect");
 
@@ -1324,7 +1324,7 @@ public sealed partial class Game
         CheckStoryFinale();  // [13] 종막 판정 — 승격 or 시즌 3 소프트 종료 → 라니스타가 되는 의식
 
         // AI 세대교체: 노화 6시즌 경과(36~42세) 또는 상한 바닥 → 은퇴(명예의 전당) → 신인 AI 데뷔 (리그 영속성).
-        // 내 선수는 은퇴 없음 — 방출은 감독 권한(약해진 채 데리고 있을 자유).
+        // 내 선수는 은퇴 없음 — 방출은 라니스타 권한(약해진 채 데리고 있을 자유).
         var retirements = new List<string>();
         var rookieRng = new SimRandom(_worldSeed ^ 0xA1A1_A1A1UL + (ulong)_seasonNo * 97UL);
         // 신인 파동(변칙성): 시즌마다 원석 품질이 출렁인다 — 풍년(20%)=천부 2롤, 평년=1롤
@@ -1505,7 +1505,7 @@ public sealed partial class Game
         var buyer = ActiveRivalLudi.First(r => r.Name == buyerName);
         _gold += offer;
         g.IsPlayer = false; g.LudusId = buyer.Id; g.TrainingPoints = 0;
-        _story.Add((0, "transfer", $"💰 이적 — {g.Name}, {buyerName}(으)로 (이적료 +{offer}). 잘 가라, 검투사여"));
+        _story.Add((0, "transfer", $"💰 이적 — {g.Name}, {buyerName}(으)로 (이적료 +{offer}). 잘 가라, 모리튜리여"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
@@ -1732,7 +1732,7 @@ public sealed partial class Game
         File.WriteAllText("melee.json", JsonSerializer.Serialize(doc, JsonOpts));
     }
 
-    /// <summary>거리 시비 타겟 후보(라이벌 검투사 목록).</summary>
+    /// <summary>거리 시비 타겟 후보(라이벌 모리튜리 목록).</summary>
     public string StreetTargetsJson()
     {
         var list = _cast.Where(x => !x.IsPlayer)
@@ -1896,7 +1896,7 @@ public sealed partial class Game
         int best = 0; for (int i = 1; i < 6; i++) if (v[i] > v[best]) best = i; return best;
     }
     private static float AxisValue(FighterStats s, int a) => a switch { 0 => s.Atk, 1 => s.Def, 2 => s.HpMax / 10f, 3 => s.Spd, 4 => s.Aspd, _ => s.Rct };
-    private static string AxisName(int a) => a switch { 0 => "공격", 1 => "방어", 2 => "체력", 3 => "이동", 4 => "공속", _ => "반응" };
+    private static string AxisName(int a) => a switch { 0 => "공격", 1 => "방어", 2 => "체력", 3 => "이동", 4 => "공격 속도", _ => "반응" };
 
     // ── 제국 특전(영광 소모 영구 업그레이드) — 루두스 제국 등반의 뼈대. 전부 메타 효과. ──
     private static readonly (string Id, string Name, string Desc, int Max, int[] Costs)[] PerkDefs =
@@ -1931,7 +1931,7 @@ public sealed partial class Game
 
     // ── 진행 ──
 
-    /// <summary>다음 경기 1판. 프리시즌이면 시즌 개막만(경기 안 침 — 감독이 1경기부터 전술을 고를 수 있게).
+    /// <summary>다음 경기 1판. 프리시즌이면 시즌 개막만(경기 안 침 — 라니스타이 1경기부터 전술을 고를 수 있게).
     /// tacticId = 내 선수의 이번 경기 전술(선택). prep = 경기 전 방침(C1: forge/rest/show — 시뮬 무영향, 메타만).</summary>
     public MatchSummary PlayNext(string? tacticId = null, string? prep = null)
     {
@@ -1951,14 +1951,14 @@ public sealed partial class Game
         var s = _schedule[_cursor++];
         var A = ById(s.A); var B = ById(s.B);
 
-        // 전술 결정: 내 선수 = 감독 선택(이번 요청 or 기존 유지) / AI = 상대 맞춤 휴리스틱 + 시드 노이즈
+        // 전술 결정: 내 선수 = 라니스타 선택(이번 요청 or 기존 유지) / AI = 상대 맞춤 휴리스틱 + 시드 노이즈
         var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);
         if (A.IsPlayer) { if (tacticId != null && A.TacticPool.Contains(tacticId)) A.TacticId = tacticId; }
         else A.TacticId = SelectTacticAi(A, B, tacRng);
         if (B.IsPlayer) { if (tacticId != null && !A.IsPlayer && B.TacticPool.Contains(tacticId)) B.TacticId = tacticId; }
         else B.TacticId = SelectTacticAi(B, A, tacRng);
 
-        // 경기 전 방침(C1): 감독의 컨디셔닝 결정 — 시뮬 def 무접촉(잠정·정산 동일성 보존), 성장·피로·수입·흥행만
+        // 경기 전 방침(C1): 라니스타의 컨디셔닝 결정 — 시뮬 def 무접촉(잠정·정산 동일성 보존), 성장·피로·수입·흥행만
         _prepKind = _prepId = null;
         var mine0 = A.IsPlayer ? A : B.IsPlayer ? B : null;
         if (prep is "forge" or "rest" or "show" && mine0 != null)
@@ -2053,7 +2053,7 @@ public sealed partial class Game
 
     /// <summary>
     /// 다음 경기가 없으면 다음 페이즈를 편성: 정규 소진 → 이벤트 빅매치 → 챔피언십 컵(4강→결승).
-    /// 각 단계는 감독이 전술을 고를 수 있게 한 페이즈씩 채운다. 시즌 종료 판정 = 컵까지 끝(_cupStage==3).
+    /// 각 단계는 라니스타이 전술을 고를 수 있게 한 페이즈씩 채운다. 시즌 종료 판정 = 컵까지 끝(_cupStage==3).
     /// </summary>
     private void EnsureSchedule()
     {
@@ -2129,21 +2129,21 @@ public sealed partial class Game
             EnsureSchedule();
             if (_cursor >= _schedule.Count) break;
             var s = _schedule[_cursor];
-            if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) break; // 내 경기 발견 — 멈춰서 감독에게
+            if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) break; // 내 경기 발견 — 멈춰서 라니스타에게
             var m = PlayNext(); played++;
             if (m.SeasonCompleted) { seasonDone = true; break; }
         }
         return JsonSerializer.Serialize(new { played, seasonDone }, JsonOpts);
     }
 
-    // ── 라이브 매치(감독 실시간 개입) — 관전 먼저, 정산은 나중. 커서는 정산 시에만 전진(앱 종료 = 미개시로 복원, 세이브 안전) ──
+    // ── 라이브 매치(라니스타 실시간 개입) — 관전 먼저, 정산은 나중. 커서는 정산 시에만 전진(앱 종료 = 미개시로 복원, 세이브 안전) ──
     private sealed class LiveMatch
     {
         public required string MyId; public required string[] MyPool;
         public required string InitialTactic;   // 개막 전술 — 같은 전술 재선택 판정용
         public required List<TacticSwitch> Switches;
         public string? Prep;                    // 경기 전 방침(C1) — 정산 시 적용(시뮬 무영향)
-        // 내전(#6): 두 번째 조종 대상(양측 다 내 검투사일 때만)
+        // 내전(#6): 두 번째 조종 대상(양측 다 내 모리튜리일 때만)
         public string? MyId2; public string[]? MyPool2; public string? InitialTactic2; public List<TacticSwitch>? Switches2;
     }
     private LiveMatch? _live;                                       // 진행 중 라이브 매치(메모리 전용 — 영속 안 함)
@@ -2159,7 +2159,7 @@ public sealed partial class Game
         var A = ById(s.A); var B = ById(s.B);
         var mine = A.IsPlayer ? A : B.IsPlayer ? B : null;
         if (mine == null) return Err("내 경기가 아니다");
-        bool mirror = A.IsPlayer && B.IsPlayer;   // 내전(#6): 양측 다 내 검투사 = 이중 조종
+        bool mirror = A.IsPlayer && B.IsPlayer;   // 내전(#6): 양측 다 내 모리튜리 = 이중 조종
 
         // PlayNext와 동일한 전술 결정(같은 rng 시드 → 정산 때 재현됨). 클라이언트는 TAC_ 접두사 없이 보낸다 → 정규화
         string? Norm(string? t) => t is { Length: > 0 } ? (t.StartsWith("TAC_") ? t : "TAC_" + t) : null;
@@ -2246,7 +2246,7 @@ public sealed partial class Game
         return JsonSerializer.Serialize(PlayNext(null, prep), JsonOpts);
     }
 
-    /// <summary>시즌 자동완주(편의): 내 경기 포함 남은 전 경기를 현재 전술로 진행. 이벤트 발생 시 멈춰서 감독에게 결정 위임.</summary>
+    /// <summary>시즌 자동완주(편의): 내 경기 포함 남은 전 경기를 현재 전술로 진행. 이벤트 발생 시 멈춰서 라니스타에게 결정 위임.</summary>
     public string AutoFinishJson()
     {
         if (!SeasonActive) return Err("시즌 진행 중이 아니다");
@@ -2367,7 +2367,7 @@ public sealed partial class Game
         _lastHype = MathF.Round(((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f)
                     * UnrestHypeMult);   // 경기 관심도(#5) — [13] 불안한 시대일수록 군중은 목마르다(최대 +15%)
         var (defA, defB) = BuildDefs(A, B, format);
-        if (_liveSwitches is { } li)   // 감독 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
+        if (_liveSwitches is { } li)   // 라니스타 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
         {
             if (A.Id == li.FighterId) defA = defA with { TacticSwitches = li.Switches };
             else if (B.Id == li.FighterId) defB = defB with { TacticSwitches = li.Switches };
@@ -2557,12 +2557,12 @@ public sealed partial class Game
             bool loserBrutal = ko || loseStats.MinHpPct <= 0.15f;
             void Death()   // 사망 처리 공통: 명전 등재·대진 정리·공석 승계
             {
-                win.Executions++;   // 검투사 기록(#2): 통산 처형 — 이 승자가 상대를 저승으로 보냈다
+                win.Executions++;   // 모리튜리 기록(#2): 통산 처형 — 이 승자가 상대를 저승으로 보냈다
                 _cast.Remove(lose); _ledger.RemoveFighter(lose.Id);
                 for (int i = _schedule.Count - 1; i >= _cursor; i--)   // 남은 대진에서 제거
                     if (_schedule[i].A == lose.Id || _schedule[i].B == lose.Id) _schedule.RemoveAt(i);
                 _hall.Add(MakeHall(lose, $"{lose.CW}-{lose.CL}-{lose.CD} ⚰전사", _seasonNo));
-                Fate(round, "death", $"⚰ {lose.Name}({lose.Age}세) — 모래 위에서 숨을 거두다. 검투사로 죽다");
+                Fate(round, "death", $"⚰ {lose.Name}({lose.Age}세) — 모래 위에서 숨을 거두다. 모리튜리로 죽다");
                 if (!lose.IsPlayer)
                 {
                     var rk = SpawnRookieCore(fRng, lose.LudusId, lose.Division, 1);
@@ -2750,7 +2750,7 @@ public sealed partial class Game
         if (++g.MatchCounter < TrainEveryMatches) return 0;
         g.MatchCounter = 0;
         int pts = g.IsPlayer ? _trainingLv : 1;
-        if (g.IsPlayer) { g.TrainingPoints += pts; return pts; }      // 감독이 분배
+        if (g.IsPlayer) { g.TrainingPoints += pts; return pts; }      // 라니스타이 분배
         for (int i = 0; i < pts; i++) Grow(g, rng);                   // AI 자동 (같은 리듬, 형평)
         return 0;
     }
@@ -2911,7 +2911,7 @@ public sealed partial class Game
         if (r.Winner == 0) { a.CW++; b.CL++; if (r.Reason == "KO") a.CKoW++; if (standing) { a.W++; b.L++; a.Streak = a.Streak >= 0 ? a.Streak + 1 : 1; b.Streak = b.Streak <= 0 ? b.Streak - 1 : -1; } }
         else if (r.Winner == 1) { b.CW++; a.CL++; if (r.Reason == "KO") b.CKoW++; if (standing) { b.W++; a.L++; b.Streak = b.Streak >= 0 ? b.Streak + 1 : 1; a.Streak = a.Streak <= 0 ? a.Streak - 1 : -1; } }
         else { a.CD++; b.CD++; if (standing) { a.D++; b.D++; a.Streak = 0; b.Streak = 0; } }
-        // 검투사 기록(#2): 최다 연승·통산 경기시간·피해량 누적 (은퇴 후에도 GladRec/HallRec로 보존)
+        // 모리튜리 기록(#2): 최다 연승·통산 경기시간·피해량 누적 (은퇴 후에도 GladRec/HallRec로 보존)
         a.BestStreak = Math.Max(a.BestStreak, a.Streak); b.BestStreak = Math.Max(b.BestStreak, b.Streak);
         a.TotalMatchTime += r.DurationSec; b.TotalMatchTime += r.DurationSec;
         a.TotalDamage += r.StatsA.DamageDealt; b.TotalDamage += r.StatsB.DamageDealt;
@@ -2920,7 +2920,7 @@ public sealed partial class Game
         a.TotalDodges += r.StatsA.Dodges; b.TotalDodges += r.StatsB.Dodges;
     }
 
-    // ── 감독 액션 API ──
+    // ── 라니스타 액션 API ──
 
     /// <summary>뽑기: 재화(또는 무료권) 소모 → 후보 3명(마스킹). 기존 후보는 소멸(포기).</summary>
     public string GachaJson()
@@ -2976,7 +2976,7 @@ public sealed partial class Game
             string n = RecruitNames[(int)(rng.NextFloat01() * RecruitNames.Length)];
             if (!used.Contains(n)) return n;
         }
-        return $"검투사{used.Count + 1}";
+        return $"모리튜리{used.Count + 1}";
     }
 
     /// <summary>영입: 후보 택1 → 전체 공개 + 로스터 편입 (시즌 중이면 다음 시즌부터 출전).</summary>
@@ -3115,8 +3115,8 @@ public sealed partial class Game
         return StateJson();
     }
 
-    /// <summary>개명(라니스타 명명권): kind=ludus → 내 루두스 / kind=fighter+id → 내 검투사.
-    /// 검투사 개명 시 과거 기록(챔피언·명전·컵)의 이름도 승계(업적이 이름을 따라간다).</summary>
+    /// <summary>개명(라니스타 명명권): kind=ludus → 내 루두스 / kind=fighter+id → 내 모리튜리.
+    /// 모리튜리 개명 시 과거 기록(챔피언·명전·컵)의 이름도 승계(업적이 이름을 따라간다).</summary>
     public string RenameJson(string kind, string id, string name)
     {
         name = (name ?? "").Trim();
@@ -3173,7 +3173,7 @@ public sealed partial class Game
         }
         if (w is null) return false;
         if (w.SchemaVer != SchemaVer)
-        { Console.WriteLine($"  ⚠ world.json 스키마 v{w.SchemaVer} ≠ v{SchemaVer} (감독 모드 개편) — 새 세계로 시작."); return false; }
+        { Console.WriteLine($"  ⚠ world.json 스키마 v{w.SchemaVer} ≠ v{SchemaVer} (라니스타 모드 개편) — 새 세계로 시작."); return false; }
 
         static WorldV2? TryRead(string path)
         {
@@ -3567,7 +3567,7 @@ public sealed partial class Game
     private string? BuildLegacyNote()
     {
         var parts = new List<string>();
-        for (int a = 0; a < 6; a++) if (_axisCapBonus[a] > 0f) parts.Add($"{AxisName(a)}상한 +{_axisCapBonus[a]:F0}");
+        for (int a = 0; a < 6; a++) if (_axisCapBonus[a] > 0f) parts.Add($"{AxisName(a)} 상한 +{_axisCapBonus[a]:F0}");
         if (_scoutLevel > 0) parts.Add($"스카우터 Lv{_scoutLevel}");
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
