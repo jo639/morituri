@@ -227,6 +227,9 @@ function revealWinner(){
 function postMatchEnded(){
   if (matchEndPosted) return; matchEndPosted = true;
   if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
+  // #5 리플레이 극적 종료 줌인 — viewer.json에 지정된 패자를 자동 줌인하고 유지(라이브는 −1, 부모 focusLoser가 처리)
+  if (doc && doc.Meta && typeof doc.Meta.EndFocusIdx === 'number' && doc.Meta.EndFocusIdx >= 0)
+    focusIdx = doc.Meta.EndFocusIdx;
 }
 // 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (라니스타의 "멈춰!")
 window.addEventListener('message', e=>{

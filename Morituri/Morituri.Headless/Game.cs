@@ -2506,11 +2506,21 @@ public sealed partial class Game
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
         ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
-            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB),
+            ReplayQuote(e.DefA, e.Seed), ReplayQuote(e.DefB, e.Seed + 1), ReplayEndFocus(res));
         return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
     }
 
     /// <summary>경기 재관전: 로그의 스냅샷+시드로 결정론 재시뮬 → viewer.json. idx<0 = 최근 경기.</summary>
+    /// <summary>리플레이 인트로 대사(#5) — 라이브 PreMatchQuote와 달리 관계·감정 정보가 없으니 성격 기반 결정론 대사.</summary>
+    private static string ReplayQuote(FighterDef d, ulong seed)
+    {
+        var pool = PersonaQuotes(d.PersonalityId);
+        return pool[(int)(new SimRandom(seed ^ (ulong)d.Name.GetHashCode()).NextUInt64() % (ulong)pool.Length)];
+    }
+    /// <summary>KO 결착이면 종료 시 쓰러진 패자(패자 인덱스)를 줌인 — 리플레이 극적 연출. 무승부/판정은 −1.</summary>
+    private static int ReplayEndFocus(MatchResult res) => res.Reason == "KO" && res.Winner >= 0 ? 1 - res.Winner : -1;
+
     public string WatchJson(int idx)
     {
         var e = idx < 0 ? _matchLog.LastOrDefault() : _matchLog.FirstOrDefault(x => x.Idx == idx);
@@ -2518,7 +2528,8 @@ public sealed partial class Game
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
         ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
-            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB),
+            ReplayQuote(e.DefA, e.Seed), ReplayQuote(e.DefB, e.Seed + 1), ReplayEndFocus(res));
         return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
     }
 
@@ -2547,7 +2558,8 @@ public sealed partial class Game
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
         ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
-            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB));
+            EndowOf(e.AId, e.DefA), EndowOf(e.BId, e.DefB),
+            ReplayQuote(e.DefA, e.Seed), ReplayQuote(e.DefB, e.Seed + 1), ReplayEndFocus(res));
         return JsonSerializer.Serialize(new { ok = true, a = e.AName, b = e.BName, round = e.Round, isEvent = e.IsEvent }, JsonOpts);
     }
 

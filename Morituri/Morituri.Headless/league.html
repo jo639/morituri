@@ -83,6 +83,7 @@
   <div id="content" hidden>
     <div id="divTabs" style="display:flex;gap:8px;margin:4px 0 10px"></div>
     <div id="champ"></div>
+    <div id="phaseFlow" style="margin:12px 0 4px"></div>
 
     <h2>📅 시즌 달력 <span class="sub" id="calSub"></span></h2>
     <div class="legend" id="kindLegend" style="margin-bottom:8px">
@@ -246,6 +247,29 @@ function renderCalendar(divOf){
   }).join('');
 }
 
+// 시즌 진행 단계 흐름 — 정규 라운드로빈 → 이벤트 빅매치 → 챔피언십 컵 → (동률 시 결정전). 현재 단계 강조.
+function renderPhaseFlow(d){
+  const cal = d.Calendar||[], el = document.getElementById('phaseFlow'); if (!el) return;
+  const of = kinds => cal.filter(c=>kinds.includes(c.Kind||'regular'));
+  const phase = (label, icon, list, color)=>{
+    if (!list.length) return '';
+    const done = list.filter(c=>c.Winner).length, isNow = list.some(c=>c.IsNext);
+    return `<div style="flex:1;min-width:130px;padding:8px 12px;border-radius:8px;border:1px solid ${isNow?color:'var(--line-soft)'};
+      background:${isNow?'rgba(201,168,76,.10)':'var(--panel)'};border-left:4px solid ${color}">
+      <div style="font-weight:700;font-size:12.5px;color:${isNow?'var(--gold)':'var(--ink)'}">${icon} ${label}${isNow?' ◀ 진행 중':''}</div>
+      <div class="sub" style="margin-top:2px">${done}/${list.length}경기 ${done===list.length?'✓ 종료':''}</div></div>`;
+  };
+  const parts = [
+    phase('정규 라운드로빈','⚔', of(['regular']), '#8a7a5a'),
+    phase('이벤트 빅매치','🎪', of(['event','proposal']), '#c9a84c'),
+    phase('우승 결정전','⚖', of(['tiebreak']), '#e0a24c'),
+    phase('챔피언십 컵','🏆', of(['cup_sf','cup_final']), '#c94fc9'),
+    phase('황제의 초청전','🏟', of(['gauntlet']), '#5b9be0'),
+  ].filter(Boolean);
+  el.innerHTML = parts.length ? `<div class="sub" style="margin-bottom:4px">시즌 진행 단계 — 각 경기의 의미</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">${parts.join('<div style="display:flex;align-items:center;color:var(--gold-deep)">➜</div>')}</div>` : '';
+}
+
 // 🏆 챔피언십 컵 토너먼트 표 — 4강 2경기 → 결승 → 챔피언 (달력 항목에서 파생)
 function renderCupBracket(d){
   const cal = d.Calendar||[];
@@ -272,6 +296,7 @@ function load(d){
 
   curDoc = d;
   renderDivision();   // 순위·명성·경기결과·달력을 선택된 부로 렌더(달력은 renderDivision이 호출)
+  renderPhaseFlow(d);    // 시즌 진행 단계 흐름 — 각 경기의 의미(정규→이벤트→컵)
   renderCupBracket(d);   // 🏆 컵 토너먼트 표 — 종류 가시화
 
   // 이벤트 매치

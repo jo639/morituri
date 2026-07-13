@@ -19,7 +19,8 @@ public sealed record ViewerFighter(string Name, string Weapon, string Tactic, st
     ViewerEndowment? Endowment = null, string[]? Traits = null, float SizeScale = 1f);
 
 public sealed record ViewerMeta(float ArenaRadius, ViewerFighter A, ViewerFighter B,
-    string? QuoteA = null, string? QuoteB = null);   // 경기 직전 대사(#5) — 경기장 인트로 줌인 연출용
+    string? QuoteA = null, string? QuoteB = null,   // 경기 직전 대사(#5) — 경기장 인트로 줌인 연출용
+    int EndFocusIdx = -1);   // 경기 종료 시 줌인할 대상(0=A/1=B, -1=없음) — 리플레이 극적 연출(#5)
 
 /// <summary>
 /// 뷰어 봉투 = 정적 메타 + 연속 프레임(위치/HP/자세) + 이산 이벤트(판단·타격 아이콘) + 결과.
@@ -74,10 +75,10 @@ public static class ViewerExport
     public static void WriteDoc(FighterDef a, FighterDef b, ulong seed, MatchResult result,
         IReadOnlyList<ReplayFrame> frames, IReadOnlyList<SimEvent> events, string outPath,
         ViewerEndowment? endowA = null, ViewerEndowment? endowB = null,
-        string? quoteA = null, string? quoteB = null)
+        string? quoteA = null, string? quoteB = null, int endFocusIdx = -1)
     {
         var doc = new ViewerDoc(MatchSerializer.SchemaVersion, seed,
-            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, endowA), Describe(b, endowB), quoteA, quoteB),
+            new ViewerMeta(BalanceConstants.Default.ArenaRadius, Describe(a, endowA), Describe(b, endowB), quoteA, quoteB, endFocusIdx),
             frames, events, result);
         var opts = MatchSerializer.CreateEventAwareOptions(writeIndented: false);
         opts.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
