@@ -133,7 +133,8 @@ public sealed partial class Game
         string? TiebreakWinner = null,   // ⚖ 우승 결정전 승자(시즌 한정)
         string[]? MasterTraitPool = null, string[]? MasterTacticPool = null,   // 스승 전수 후보 풀
         int BanquetSeason = 0,   // 후원자 연회(시즌 1회) 마지막 시즌
-        int CampSeason = 0, int SparCupSeason = 0);   // 프리시즌 전지훈련·연습 대회(각 1회)
+        int CampSeason = 0, int SparCupSeason = 0,   // 프리시즌 전지훈련·연습 대회(각 1회)
+        List<PressIssue>? PressArchive = null);   // 콜로세움 월보 영속 아카이브(#1)
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -447,14 +448,25 @@ public sealed partial class Game
     private string? Nickname(Gladiator g)
     {
         int games = g.CW + g.CL + g.CD;
-        if (g.Executions >= 4) return "학살자";                                              // 처형을 즐긴 자
-        if (g.WeaponId == "WPN_SHIELD" && g.Stats.Def >= 95f && games >= 12) return "철벽";   // 뚫리지 않는 방패
+        // ── 캐릭터성이 서린 별명 — 조건이 강할수록 위(우선). 무기·성격·기록·신규 계측 스탯을 폭넓게 활용 ──
         if (games >= 35 && g.Fame >= 90f) return "콜로세움의 망령";                            // 오래 살아남은 전설
+        if (g.Executions >= 6) return "학살자";                                               // 처형을 즐긴 자
         if (g.PersonalityId == "PER_CRUEL" && g.CKoW >= 8) return "피의 폭풍";                 // 잔혹 × 다수 KO
+        if (g.BestStreak >= 12) return "무패의 질주";                                          // 대연승 기록
+        if (g.WeaponId == "WPN_SHIELD" && g.Stats.Def >= 95f && games >= 12) return "난공불락"; // 뚫리지 않는 방패
         if (g.WeaponId == "WPN_AXE" && g.CKoW >= 6) return "붉은 늑대";                        // 도끼 × KO 사냥꾼
+        if (g.WeaponId == "WPN_DUALBLADES" && g.Stats.Aspd >= 90f && g.CW >= 10) return "두 개의 달"; // 쌍검 속공
+        if (g.WeaponId == "WPN_GREATSWORD" && g.TotalDamage >= 12000f) return "일격의 거인";    // 대검 파괴력
+        if (g.WeaponId == "WPN_HAMMER" && g.Executions >= 3) return "대지를 부수는 자";          // 망치 처형
+        if (g.WeaponId == "WPN_WHIP" && games >= 15 && g.TotalDodges >= games * 8) return "모래뱀"; // 채찍 회피
         if (g.WeaponId == "WPN_SPEAR" && g.Popularity >= 60f) return "황금 창";                // 군중을 홀린 창잡이
+        if (g.WeaponId == "WPN_SWORD" && g.CW >= 20 && g.CL * 3 <= g.CW) return "검성";         // 검 × 압도적 승률
         if (g.PersonalityId == "PER_SHOWMAN" && g.Popularity >= 70f) return "콜로세움의 총아"; // 최고 인기 쇼맨
-        if (g.BestStreak >= 10) return "무패의 질주";                                          // 대연승 기록
+        if (g.PersonalityId == "PER_COWARD" && games >= 25 && g.CKoW == 0) return "불사조";     // 겁쟁이 × 오래 생존(무처형)
+        if (g.PersonalityId == "PER_BOLD" && g.BestStreak >= 6 && g.CL >= 5) return "역전의 명수"; // 대담 × 부침
+        if (games >= 20 && g.TotalDamageTaken > 0 && g.TotalDamageTaken <= games * 55) return "그림자"; // 안 맞는 자
+        if (games >= 18 && g.TotalBlocks >= games * 12) return "성벽";                          // 막아내는 자
+        if (g.Age <= 22 && g.Fame >= 55f) return "신동";                                       // 어린 나이의 명성
         return null;   // 별명 없음 — 별명은 아무나 얻는 게 아니다
     }
 
@@ -471,10 +483,18 @@ public sealed partial class Game
         if (g.CKoW >= 4 && g.CKoW * 2 >= Math.Max(1, g.CW)) e.Add("💀 처형자");
         if (g.Fame >= 120f) e.Add("🌟 전설");
         if (g.Popularity >= 60f) e.Add("🎭 군중의 연인");
-        if (g.Age >= 34 || games >= 40) e.Add("⚔ 백전노장");
-        if (games == 0) e.Add("🌱 신예");
+        if (g.GrudgeCount >= 3) e.Add("⚔ 원한의 화신");                    // 다수와 척진 자
+        if (g.CD >= 5 && g.CD * 2 >= Math.Max(1, games)) e.Add("⚖ 판정의 달인"); // 판정으로 사는 자
+        if (g.Age >= 34 || games >= 40) e.Add("🎖 백전노장");
+        if (games >= 1 && games <= 4) e.Add("🌱 신예");                    // 데뷔 직후 — 첫 경기 이후 지급(#4)
         return e.Take(4).ToArray();   // 별명 1 + 획득 이명 최대 3
     }
+
+    private static string WpnKo(string wid) => wid switch
+    {
+        "WPN_SWORD" => "검", "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검",
+        "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SHIELD" => "방패", _ => wid.Replace("WPN_", ""),
+    };
 
     /// <summary>성격 한글명 — 성격 변화 표기(이전 → 새) 등에 사용.</summary>
     private static string PerKo(string id) => id switch
@@ -1346,6 +1366,10 @@ public sealed partial class Game
 
         SwapDivisions();   // 승강(성적 기반) — 다음 시즌 배치 확정. 챔피언은 1부 1위라 강등 불가
 
+        // 콜로세움 월보 박제(#1) — 시즌이 넘어가면 이번 시즌 호(號)들을 아카이브에 영속(로그 초기화 전에)
+        _pressArchive.InsertRange(0, BuildSeasonIssues(_seasonNo));
+        if (_pressArchive.Count > 40) _pressArchive.RemoveRange(40, _pressArchive.Count - 40);
+
         TickUnrest();        // [13] 살아있는 세계 — 반란 지수 시즌 틱(사이클, 결정론)
         PromoteLegends();    // [13] 명전 → 전설 승격(시즌 1명)
         CheckStoryFinale();  // [13] 종막 판정 — 승격 or 시즌 3 소프트 종료 → 라니스타가 되는 의식
@@ -1852,11 +1876,13 @@ public sealed partial class Game
     }
 
     /// <summary>은퇴(세대·혈통): 프리시즌에 내 선수를 명예롭게 보낸다 → 명예의 전당(★).
-    /// 세 진로(교관·스승·스카우터)는 각각 자격 기준을 넘어야 하며, 미달 시 단순 은퇴(명전 등록 없음).</summary>
+    /// 세 진로(교관·스승·스카우터)는 각각 자격 기준을 넘어야 명예의 전당에 오른다.
+    /// 단순 은퇴는 폐지 — 자격 미달이면 방출(ReleaseJson)이나 해방(ManumitJson)으로 떠나보낸다.</summary>
     public string RetireJson(string fighterId, string path = "")
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);   // #3 시즌 중에도 가능
         if (g == null) return Err("내 선수 아님");
+        if (path is not ("instructor" or "master" or "scout")) return Err("은퇴 진로를 선택하라 (교관·스승·스카우터). 그 외엔 방출·해방으로");
         // 자격 검증(진로 지정 시)
         if (path == "instructor" && g.Fame < InstructorFameMin) return Err($"교관 자격 미달 — 명성 {InstructorFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
         if (path == "master" && g.Fame < MasterFameMin) return Err($"스승 자격 미달 — 명성 {MasterFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
@@ -1894,9 +1920,6 @@ public sealed partial class Game
             case "scout":
                 _scoutLevel++;
                 _story.Add((0, "retire", $"🔭 {g.Name} 은퇴 → 스카우터 (Lv{_scoutLevel}) — 영입 안목 향상·후보 정보 공개"));
-                break;
-            default:
-                _story.Add((0, "retire", $"👋 {g.Name} 조용히 검을 내려놓다 (자격 미달 — 명예의 전당 미등재)"));
                 break;
         }
         SaveWorld();
@@ -2674,8 +2697,12 @@ public sealed partial class Game
         if (_gold >= 2000f) Unlock("tycoon");   // 대부호
         incomeNote = string.Join(" · ", new[] { noteA, noteB }.Where(n => n.Length > 0));
 
+        // 신예 데뷔(#1·#4) — 이 경기가 첫 경기인 모리튜리를 신문에 올린다(기록 반영 전 판정)
+        bool aDebut = A.CW + A.CL + A.CD == 0, bDebut = B.CW + B.CL + B.CD == 0;
         // 순위/커리어 + 관계 + 감정 (경기 인덱스 파생 스트림 = 미드시즌 재개 결정론)
         Record(A, B, res, standing: !isEvent);
+        if (aDebut) _story.Add((round, "debut", $"🌱 데뷔 — {A.Name}({LudusNameOf(A.LudusId)}), 처음으로 모래를 밟다 ({WpnKo(A.WeaponId)} · {PerKo(A.PersonalityId)})"));
+        if (bDebut) _story.Add((round, "debut", $"🌱 데뷔 — {B.Name}({LudusNameOf(B.LudusId)}), 처음으로 모래를 밟다 ({WpnKo(B.WeaponId)} · {PerKo(B.PersonalityId)})"));
         // 황제의 특명 진행: 지목 상대 격파(beat)는 여기서, 연승/N승은 CheckEdict에서
         if (_edict is { Type: "beat" } && !_edictDone && win != null && win.IsPlayer && lose?.Id == _edict.TargetId)
             MarkEdictDone();
@@ -3443,6 +3470,7 @@ public sealed partial class Game
         _debtLog.Clear(); if (w.DebtLog != null) _debtLog.AddRange(w.DebtLog);
         _tbWinnerId = w.TiebreakWinner; _banquetSeason = w.BanquetSeason;
         _campSeason = w.CampSeason; _sparCupSeason = w.SparCupSeason;
+        _pressArchive.Clear(); if (w.PressArchive != null) _pressArchive.AddRange(w.PressArchive);
         _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
         _legends.Clear();
         if (w.Legends != null) _legends.AddRange(w.Legends);
@@ -3526,7 +3554,8 @@ public sealed partial class Game
             _fixChoice, null,   // GhostClues: 더 이상 기록 안 함(Keepsakes로 대체)
             _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1,
             _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null,
-            _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, _campSeason, _sparCupSeason), JsonOpts));
+            _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, _campSeason, _sparCupSeason,
+            _pressArchive.Count > 0 ? _pressArchive.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -3638,8 +3667,38 @@ public sealed partial class Game
 
     private void WriteSeasonJson() => File.WriteAllText("season.json", JsonSerializer.Serialize(BuildSeasonDoc(), JsonOpts));
 
-    private sealed record NewsIssue(int Round, string Headline, string[] Articles,
-        string Month = "", string? Flavor = null, string? Ad = null);   // 월간 발행 — 로마력 월호·바깥 소식·광고
+    private sealed record NewsArt(string Header, string Body);   // 기사: 굵은 머릿글(기존 가시성 텍스트) + 본문 산문
+    private sealed record PressIssue(int Season, int Month, string MonthName, int Auc,
+        string Headline, string HeadBody, List<NewsArt> Articles, string Flavor, string Ad);   // 월보 한 호(영속)
+    private readonly List<PressIssue> _pressArchive = new();   // 지난 시즌 월보 영속(시즌 넘어가도 안 사라짐)
+
+    /// <summary>머릿글(사실)에 붙일 신문 어체 본문 — 종류별 산문 풀(시드 변주). 읽을거리이자 세계의 어조.</summary>
+    private static string ArticleBody(string kind, SimRandom rng)
+    {
+        string[] p = kind switch
+        {
+            "death" => new[] { "모래가 또 한 사람을 삼켰다. 관중은 잠시 숨을 죽였다가, 이내 다음 피를 재촉했다.", "그의 이름은 머잖아 잊히겠으나, 오늘 밤 선술집에서만은 오래 회자되리라." },
+            "promote" => new[] { "1부의 문이 열렸다. 더 큰 무대, 더 굶주린 군중이 그를 기다린다.", "승격은 축배가 아니라 각오다 — 위로 오를수록 칼끝은 날카로워진다." },
+            "relegate" => new[] { "2부의 먼지 속으로 내려간다. 재기를 노리는 자에게 강등은 끝이 아니라 서약이다.", "어제의 함성이 오늘의 침묵이 되었다. 군중은 원래 잔인한 법이다." },
+            "cup" => new[] { "챔피언십 컵이 새 주인을 맞았다. 월계관은 무겁고, 지키기란 더 무겁다.", "결승의 모래는 유난히 붉었다. 콜로세움은 오래 이 이름을 새길 것이다." },
+            "season" => new[] { "한 시즌이 저물었다. 승자는 대리석에, 패자는 기억 속에 이름을 남긴다.", "모래가 식어 간다. 겨우내 라니스타들은 다음 봄의 칼을 벼린다." },
+            "upset" => new[] { "배당판이 뒤집혔다. 도박꾼들의 곡소리와 환호가 한데 뒤엉켰다.", "모래는 명성을 읽지 못한다 — 오늘 그것이 다시 증명되었다." },
+            "comeback" => new[] { "사선을 넘어 돌아왔다. 관중은 자리에서 일어섰고, 함성은 경기장 벽을 넘었다.", "패배의 문턱에서 승리를 낚아챈 밤 — 이것이 콜로세움이다." },
+            "revenge" => new[] { "묵은 빚이 피로 청산됐다. 원한은 모래 위에서 가장 정직하게 갚아진다.", "두 사람은 다시 만날 것이다. 원한이란 좀처럼 한 번으로 끝나지 않는다." },
+            "persona" => new[] { "그날 이후 그는 달라졌다고들 한다. 모래는 검뿐 아니라 사람도 벼린다.", "상처는 몸에만 남지 않는다 — 마음에 새겨진 것이 더 오래간다." },
+            "debut" => new[] { "새 얼굴이 처음으로 모래를 밟았다. 신예의 첫 함성은 늘 서툴고, 그래서 애틋하다.", "오늘의 신예가 내일의 전설이 될지는 오직 모래만이 안다." },
+            "recruit" => new[] { "노예 시장이 분주하다. 원석 하나가 챔피언이 되는 데엔 안목과 운이 함께 필요하다." },
+            "sparring" or "camp" => new[] { "프리시즌의 땀이 여름의 피를 준비한다. 기록엔 남지 않아도 몸은 기억한다." },
+            "unrest" => new[] { "거리의 공기가 달라지고 있다. 흉흉한 시절일수록 콜로세움의 함성은 더 사나워진다." },
+            "legend" => new[] { "한 이름이 전설의 반열에 올랐다. 세대가 지나도 모래는 그를 척도로 삼을 것이다." },
+            "injury" or "perm_injury" => new[] { "의원(醫院) 앞에 또 한 사람이 실려 갔다. 영광의 값은 언제나 몸으로 치른다." },
+            "patron" => new[] { "후원자의 그림자가 길다. 모래 위의 승부만큼이나 관람석의 정치도 치열하다." },
+            "retire" => new[] { "한 시대가 검을 내려놓았다. 관중은 박수를, 젊은 검투사는 빈자리를 물려받는다." },
+            "match" => new[] { "군중은 만족했다. 오늘의 승자는 내일 또 시험대에 오를 것이다.", "심판의 손이 하늘을 가리켰다. 모래는 다시 평평해졌다.", "한 합 한 합이 도박이었다. 이긴 자는 웃었고, 진 자는 배웠다." },
+            _ => new[] { "모래는 오늘도 정직했다 — 그 위의 인간들이 문제일 뿐." },
+        };
+        return p[(int)(rng.NextUInt64() % (ulong)p.Length)];
+    }
 
     // 경기장 바깥 소식(세계관 공기) — 반란 지수 국면별 풀, 시드 결정론
     private static readonly string[][] StreetNews =
@@ -3666,52 +3725,62 @@ public sealed partial class Game
         "【광고】 리비아의 세탁소 — 핏물 전문. 문의는 목욕탕 뒷골목.",
     };
 
-    /// <summary>콜로세움 월보(#11 개편) — 로마력 월간 발행. 서사 이벤트를 월별로 묶어 헤드라인+기사로 편집하고,
-    /// 경기장 바깥 소식(반란 지수 국면)과 광고 한 줄로 세계의 공기를 싣는다. 순수 파생(연출).</summary>
-    public string NewsJson()
+    private static int NewsPri(string k) => k switch   // 1면 헤드라인 우선순위 — 극적일수록 크게
     {
-        static int Pri(string k) => k switch   // 1면 헤드라인 우선순위 — 극적일수록 크게
-        {
-            "death" => 10, "perm_injury" => 9, "promote" => 9, "relegate" => 9, "cup" => 8, "season" => 8,
-            "upset" => 7, "comeback" => 6, "revenge" => 5, "greatest" => 4, "persona" => 3,
-            "unrest" => 3, "legend" => 3, "injury" => 2, "grudge" => 1, _ => 0,
-        };
-        static string Clean(string t)   // "R3 ★ …" 라운드 접두 제거 → 신문 문장
-        {
-            int sp = t.IndexOf(' ');
-            if (sp > 1 && t[0] == 'R' && int.TryParse(t.AsSpan(1, sp - 1), out _)) return t[(sp + 1)..];
-            return t;
-        }
-        // 라운드 → 로마력 월(시즌 8개월에 비례 배분) — 발행 주기를 세계의 시간감각에 맞춘다.
-        // 시즌 진행 위치 기준: 경기가 있는 달은 반드시 발행(조용한 달도 경기 결과·바깥소식으로 지면을 채운다).
+        "death" => 10, "perm_injury" => 9, "promote" => 9, "relegate" => 9, "cup" => 8, "season" => 8,
+        "upset" => 7, "comeback" => 6, "revenge" => 5, "greatest" => 4, "persona" => 3, "debut" => 3,
+        "unrest" => 3, "legend" => 3, "retire" => 3, "injury" => 2, "patron" => 1, "grudge" => 1, _ => 0,
+    };
+    private static string NewsClean(string t)   // "R3 ★ …" 라운드 접두 제거 → 신문 문장
+    {
+        int sp = t.IndexOf(' ');
+        if (sp > 1 && t[0] == 'R' && int.TryParse(t.AsSpan(1, sp - 1), out _)) return t[(sp + 1)..];
+        return t;
+    }
+
+    /// <summary>이번 시즌 월보 호(號)들을 서사 로그·경기 로그에서 편집. 각 기사 = 머릿글(사실) + 산문 본문.
+    /// 시즌이 넘어가면 FinalizeSeason이 이 결과를 _pressArchive에 박제해 영속 보관한다.</summary>
+    private List<PressIssue> BuildSeasonIssues(int season)
+    {
+        int matchesTotal = Math.Max(1, _schedule.Count);
         int maxRound = Math.Max(1, _schedule.Count > 0 ? _schedule.Max(s => s.Round) : _rounds);
         int MonthOf(int round) => Math.Min(RomanMonths.Length - 1, (round - 1) * RomanMonths.Length / Math.Max(1, maxRound));
-        // 경기 진척도(커서) 기반 월 산정 — 라운드 번호가 성기어도 달이 흐른다
-        int matchesTotal = Math.Max(1, _schedule.Count);
         int MonthOfIdx(int idx) => Math.Min(RomanMonths.Length - 1, idx * RomanMonths.Length / matchesTotal);
-        var stories = _story.Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix")).ToList();   // 베팅·승부조작은 사적 로그
+        var stories = _story.Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix")).ToList();
         var monthsSet = stories.Select(s => MonthOf(s.Round))
-            .Concat(_matchLog.Select((m, i) => MonthOfIdx(i)))
-            .Distinct().OrderByDescending(x => x).Take(8).ToList();
-        var issues = monthsSet.Select(mo =>
+            .Concat(_matchLog.Select((m, i) => MonthOfIdx(i))).Distinct().OrderBy(x => x).ToList();
+        int auc = 680 + Math.Max(1, season);
+        return monthsSet.Select(mo =>
         {
-            var ordered = stories.Where(s => MonthOf(s.Round) == mo).OrderByDescending(s => Pri(s.Kind)).ToList();
+            var rng = new SimRandom(SeasonSeed ^ 0x2E75_1E77UL + (ulong)(season * 13 + mo) * 97UL);
+            var ordered = stories.Where(s => MonthOf(s.Round) == mo).OrderByDescending(s => NewsPri(s.Kind)).ToList();
             var results = _matchLog.Select((m, i) => (m, i)).Where(x => MonthOfIdx(x.i) == mo && x.m.Winner != "무승부")
-                .Select(x => $"⚔ {x.m.Winner}, {(x.m.Winner == x.m.AName ? x.m.BName : x.m.AName)}을(를) 꺾다 — {(x.m.Reason == "KO" ? "함성이 벽을 넘었다" : "심판의 손이 승자를 가리켰다")}")
-                .ToList();
-            string headline = ordered.Count > 0 ? Clean(ordered[0].Text)
-                : results.Count > 0 ? results[^1].Replace("⚔ ", "")
-                : "조용한 한 달 — 모래만 뜨거웠다";
-            var arts = ordered.Skip(1).Select(s => Clean(s.Text)).Take(4)
-                .Concat(Enumerable.Reverse(results).Skip(ordered.Count > 0 ? 0 : 1).Take(3)).Take(6).ToArray();
-            var rng = new SimRandom(SeasonSeed ^ 0x2E75_1E77UL + (ulong)mo * 97UL);
+                .Select(x => new NewsArt($"⚔ {x.m.Winner}, {(x.m.Winner == x.m.AName ? x.m.BName : x.m.AName)}을(를) 꺾다"
+                    + (x.m.Reason == "KO" ? " (KO)" : " (판정)"), ArticleBody("match", rng))).ToList();
+            string headline, headBody;
+            var arts = new List<NewsArt>();
+            if (ordered.Count > 0)
+            {
+                headline = NewsClean(ordered[0].Text); headBody = ArticleBody(ordered[0].Kind, rng);
+                arts.AddRange(ordered.Skip(1).Take(5).Select(s => new NewsArt(NewsClean(s.Text), ArticleBody(s.Kind, rng))));
+            }
+            else if (results.Count > 0) { headline = results[^1].Header.Replace("⚔ ", ""); headBody = results[^1].Body; results.RemoveAt(results.Count - 1); }
+            else { headline = "조용한 한 달 — 모래만 뜨거웠다"; headBody = "큰 사건 없는 한 달이었다. 라니스타들은 다음 흥행을 셈했고, 검투사들은 상처를 다스렸다."; }
+            arts.AddRange(results.AsEnumerable().Reverse().Take(4));   // 경기 결과 읽을거리
             var pool = StreetNews[Math.Min(StreetNews.Length - 1, UnrestStageIdx)];
-            return new NewsIssue(mo + 1, headline, arts,
-                Month: RomanMonths[mo],
-                Flavor: pool[(int)(rng.NextUInt64() % (ulong)pool.Length)],
-                Ad: RomanAds[(int)(rng.NextUInt64() % (ulong)RomanAds.Length)]);
+            return new PressIssue(season, mo + 1, RomanMonths[mo], auc, headline, headBody, arts.Take(6).ToList(),
+                pool[(int)(rng.NextUInt64() % (ulong)pool.Length)], RomanAds[(int)(rng.NextUInt64() % (ulong)RomanAds.Length)]);
         }).ToList();
-        return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), auc = 680 + Math.Max(1, _seasonNo), issues }, JsonOpts);
+    }
+
+    /// <summary>콜로세움 월보(#1 개편) — 로마력 월간 발행, 시즌 넘어가도 아카이브로 영속. 실제 신문 어체·머릿글+본문.
+    /// 이번 시즌 진행분 + 지난 시즌 아카이브를 함께 낸다(최신 시즌 먼저).</summary>
+    public string NewsJson()
+    {
+        var cur = BuildSeasonIssues(Math.Max(1, _seasonNo));
+        var all = cur.Concat(_pressArchive)                                   // 현행 + 영속 아카이브
+            .OrderByDescending(i => i.Season).ThenByDescending(i => i.Month).Take(40).ToList();
+        return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), auc = 680 + Math.Max(1, _seasonNo), issues = all }, JsonOpts);
     }
 
     public string StateJson()

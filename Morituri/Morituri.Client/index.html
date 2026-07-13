@@ -941,18 +941,33 @@ async function renderNews(){
   if (!r || r.error || !r.issues || !r.issues.length){
     body.innerHTML = '<div class="note">아직 발행된 소식이 없다 — 경기가 치러지면 신문이 나온다.</div>'; return;
   }
-  body.innerHTML = r.issues.map(is=>`
-    <article style="background:linear-gradient(180deg,#efe6cf,#e4d6b2);color:#241c10;border:1px solid #b9a06a;border-radius:8px;padding:15px 18px;box-shadow:0 4px 14px rgba(0,0,0,.32)">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px double #6b5427;padding-bottom:5px;margin-bottom:2px">
-        <b style="font-family:var(--font-display);letter-spacing:.14em;font-size:17px;color:#4a3a18">ACTA COLOSSEI · 콜로세움 월보</b>
-        <span style="font-size:11px;color:#6b5b38">AUC ${r.auc||''} · ${is.Month||''}월호 · 시즌 ${r.season}</span>
-      </div>
-      <div style="font-size:10px;color:#8a6f3c;border-bottom:1px solid #b9a06a;padding-bottom:4px;margin-bottom:9px;letter-spacing:.06em">원로원과 로마 인민의 허가 아래 발행 · 한 부 2아스</div>
-      <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:22px;margin:2px 0 9px;color:#2a1d0c;line-height:1.32">${is.Headline}</h3>
-      ${(is.Articles&&is.Articles.length)?`<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${is.Articles.map(a=>`<li style="font-size:13px;color:#3a2c15;line-height:1.4">${a}</li>`).join('')}</ul>`:'<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 모래는 조용했다.</div>'}
-      ${is.Flavor?`<div style="margin-top:10px;padding-top:7px;border-top:1px solid #b9a06a;font-size:12.5px;color:#4a3a20;line-height:1.5"><b style="font-size:11px;letter-spacing:.08em;color:#6b5427">경기장 밖에서</b><br>${is.Flavor}</div>`:''}
-      ${is.Ad?`<div style="margin-top:8px;font-size:11px;color:#7a5f30;font-style:italic;text-align:center;border:1px dashed #b9a06a;border-radius:4px;padding:4px 8px">${is.Ad}</div>`:''}
-    </article>`).join('');
+  // 시즌별로 묶어 표제(신문철) 아래 각 월호를 신문 형식으로 — 최신 시즌 먼저
+  const bySeason = {};
+  r.issues.forEach(is=>{ (bySeason[is.Season]=bySeason[is.Season]||[]).push(is); });
+  const seasons = Object.keys(bySeason).map(Number).sort((a,b)=>b-a);
+  const art = a => typeof a==='string' ? {Header:a, Body:''} : a;
+  body.innerHTML = seasons.map(sn=>{
+    const issues = bySeason[sn].sort((a,b)=>b.Month-a.Month);
+    const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px"><h3 style="color:var(--gold);margin:0">📜 시즌 ${sn} 신문철 <span class="note" style="font-weight:400">AUC ${issues[0].Auc||680+sn} · ${issues.length}호</span></h3></div>`;
+    return head + issues.map(is=>`
+      <article style="background:linear-gradient(180deg,#efe6cf,#e4d6b2);color:#241c10;border:1px solid #b9a06a;border-radius:8px;padding:16px 20px;box-shadow:0 4px 14px rgba(0,0,0,.32);margin-bottom:12px">
+        <div style="text-align:center;border-bottom:3px double #6b5427;padding-bottom:4px;margin-bottom:2px">
+          <div style="font-family:var(--font-display);letter-spacing:.22em;font-size:19px;font-weight:900;color:#3a2c12">ACTA COLOSSEI</div>
+          <div style="font-size:10px;color:#6b5b38;letter-spacing:.1em">콜로세움 월보 · 원로원과 로마 인민의 허가 아래</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a6f3c;border-bottom:1px solid #b9a06a;padding-bottom:5px;margin-bottom:10px;letter-spacing:.05em">
+          <span>제 ${is.Season}시즌 · ${is.MonthName||''}월호</span><span>AUC ${is.Auc||''}</span><span>한 부 2아스(As)</span></div>
+        <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:23px;margin:2px 0 4px;color:#2a1d0c;line-height:1.3;text-align:center;border-bottom:1px solid #cbb98d;padding-bottom:6px">${is.Headline}</h3>
+        ${is.HeadBody?`<p style="font-size:14px;color:#33240f;line-height:1.65;margin:8px 0 12px;text-indent:1em">${is.HeadBody}</p>`:''}
+        <div style="columns:2;column-gap:22px;column-rule:1px solid #cbb98d">
+          ${(is.Articles&&is.Articles.length)? is.Articles.map(art).map(a=>
+            `<div style="break-inside:avoid;margin-bottom:11px"><b style="font-family:'Noto Serif KR',serif;font-size:13.5px;color:#241c10;line-height:1.35;display:block;margin-bottom:2px">${a.Header}</b>${a.Body?`<span style="font-size:12px;color:#4a3a20;line-height:1.5">${a.Body}</span>`:''}</div>`).join('')
+            : '<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 모래는 조용했다.</div>'}
+        </div>
+        ${is.Flavor?`<div style="margin-top:6px;padding-top:8px;border-top:2px solid #6b5427;font-size:12.5px;color:#4a3a20;line-height:1.55"><b style="font-size:10px;letter-spacing:.1em;color:#6b5427;display:block;margin-bottom:2px">◆ 경기장 밖에서</b>${is.Flavor}</div>`:''}
+        ${is.Ad?`<div style="margin-top:9px;font-size:11px;color:#7a5f30;font-style:italic;text-align:center;border:1px dashed #b9a06a;border-radius:4px;padding:5px 8px">${is.Ad}</div>`:''}
+      </article>`).join('');
+  }).join('');
 }
 
 // ── 빚 상세 (검은 인장의 장부) — 출처·셈법·신용·대출 한도 + 대출/상환 ──
@@ -1973,9 +1988,7 @@ function renderLudus(){
         <button onclick="pickStreetTarget('${f.Id}','${f.Name}')" class="act street" style="flex:1" title="상대를 골라 거리 시비 — 인기↑·상대 감정 유발(원한), 부상 위험 (시즌 중에도 가능)">🍺 거리 시비</button>
         <button onclick="gangbrawl('${f.Id}','${f.Name}')" class="act brawl" style="flex:1" title="패싸움 — 아군과 함께 라이벌 무리에 맞선다(연속 듀얼·관계 개입), 인기·부상 위험">🥊 패싸움</button>
         ${st.MasterPending?`<button onclick="bestow('${f.Id}')" class="act bestow" style="flex:1" title="스승 ${st.MasterPending}의 특성·전술을 이 선수에게 전수(추가)">📜 전수받기</button>`:''}
-        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" class="act retire" style="flex:1" title="명예로운 퇴장 — 진로 선택(교관·스승·스카우터), 자격 시 명예의 전당. 리그를 떠난다">🏛 은퇴</button>
-        <button onclick="manumit('${f.Id}','${f.Name}',${f.Fame})" class="act glory" style="flex:1" title="큰돈을 들여 자유(목검 루디스)를 사준다 — 명예의 전당 등재 + 루두스 명성 +12 ✨+4 (몸값 = 150+명성×1.5)">🕊 해방</button>
-        <button onclick="release('${f.Id}','${f.Name}')" class="act release" style="flex:1" title="비정한 계약 해지 — 라이벌 검투소가 주워가 리그에 남고, 원한을 새긴다 (루두스 명성 −5)">👋 방출</button></div></div>`;
+        <button onclick="retire('${f.Id}','${f.Name}',${f.Fame},${f.CKoW||0})" class="act retire" style="flex:1" title="이 모리튜리를 떠나보낸다 — 은퇴(교관·스승·스카우터)·해방·방출 중 선택">🏛 떠나보내기</button></div></div>`;
   }).join('') : '<div class="note">선수가 없다 — 영입 탭에서 뽑기로 시작하라.</div>';
 
   const facs=[['training','훈련장',st.TrainingLv,3,'3경기당 훈련 포인트 '+st.TrainingLv+'pt',[200,500]],
@@ -2210,16 +2223,20 @@ window.gangbrawl = async (myId, myName)=>{
 };
 window.retire = (id,name,fame,ckow)=>{
   ckow = ckow||0;
-  $('retTitle').textContent = `🏛 ${name} 은퇴 (명성 ${Math.round(fame)} · 통산 KO ${ckow})`;
-  const opt = (path,icon,title,crit,eff,ok)=>
-    `<button class="tacbtn" ${ok?`onclick="doRetire('${id}','${path}')"`:'disabled'} style="text-align:left;${ok?'':'opacity:.45'}">
-      <b>${icon} ${title}</b> ${ok?'<span class="d" style="color:var(--grn)">자격 충족</span>':`<span class="d" style="color:var(--b)">자격 미달</span>`}
+  const manuCost = Math.round(150 + fame*1.5);
+  $('retTitle').textContent = `🏛 ${name}을(를) 떠나보내기 (명성 ${Math.round(fame)} · 통산 KO ${ckow})`;
+  const opt = (act,icon,title,crit,eff,ok,color)=>
+    `<button class="tacbtn" ${ok?`onclick="${act}"`:'disabled'} style="text-align:left;${ok?'':'opacity:.45'}${color?';border-left:3px solid '+color:''}">
+      <b>${icon} ${title}</b> ${ok?'':`<span class="d" style="color:var(--b)">자격 미달</span>`}
       <div class="d">${eff}</div><div class="d" style="font-size:11px">조건: ${crit}</div></button>`;
   $('retOpts').innerHTML =
-    opt('instructor','🎓','교관',`명성 40+`,'생전 최고 능력치 축의 상한을 루두스 전체에 +6~16 (누적)', fame>=40) +
-    opt('master','📜','스승',`명성 60+`,'특성·전술을 한 선수에게 1회 전수(추가) + 영입 유산. 이후 명예의 전당 의미만', fame>=60) +
-    opt('scout','🔭','스카우터',`통산 KO 12+ 또는 명성 30+`,'영입 안목 향상 + 후보 정보 1개 공개 (누적)', ckow>=12||fame>=30) +
-    opt('','👋','단순 은퇴',`언제나`,'조용히 떠난다 — 명예의 전당에 오르지 못한다', true);
+    `<div class="note" style="margin:2px 0 4px;color:var(--gold)">◆ 명예로운 은퇴 — 리그를 떠나 루두스에 유산을 남긴다</div>`
+    + opt(`doRetire('${id}','instructor')`,'🎓','교관 은퇴',`명성 40+`,'생전 최고 능력치 축의 상한을 루두스 전체에 +6~16 (누적) · 명예의 전당', fame>=40) +
+      opt(`doRetire('${id}','master')`,'📜','스승 은퇴',`명성 60+`,'특성·전술을 한 선수에게 1회 전수(선택) + 영입 유산 · 명예의 전당', fame>=60) +
+      opt(`doRetire('${id}','scout')`,'🔭','스카우터 은퇴',`통산 KO 12+ 또는 명성 30+`,'영입 안목 향상 + 후보 정보 1개 공개 (누적) · 명예의 전당', ckow>=12||fame>=30)
+    + `<div class="note" style="margin:8px 0 4px;color:var(--dim)">◆ 그 밖의 이별</div>`
+    + opt(`manumit('${id}','${name.replace(/'/g,"\\'")}',${fame})`,'🕊','해방 (자유민)',`💰${manuCost}`,`목검(루디스)을 주어 자유민으로 — 명예의 전당 등재 · 루두스 명성 +12 ✨+4`, st.Gold>=manuCost, 'var(--gold)') +
+      opt(`release('${id}','${name.replace(/'/g,"\\'")}')`,'👋','방출 (계약 해지)',`언제나`,'라이벌 검투소가 주워가 리그에 남는다 — 그는 잊지 않는다 (원한 · 루두스 명성 −5)', true, 'var(--b)');
   $('retireModal').classList.add('on');
 };
 window.doRetire = async (id,path)=>{
@@ -2286,12 +2303,14 @@ window.manumit = async (id,name,fame)=>{
   if (!confirm(`${name}에게 자유를 사줄까? (몸값 💰${cost})\n목검(루디스)을 받고 자유민으로 떠난다 — 명예의 전당 등재 · 루두스 명성 +12 ✨+4.`)) return;
   const r = await api('/api/manumit',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('retireModal').classList.remove('on');
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 window.release = async (id,name)=>{
   if (!confirm(`${name}을(를) 방출할까?\n방출은 은퇴와 다르다 — 라이벌 검투소가 주워가 리그에 남고, 그는 이 루두스를 잊지 않는다 (루두스 명성 −5).`)) return;
   const r = await api('/api/release',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
+  $('retireModal').classList.remove('on');
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 window.build = async (fac)=>{
