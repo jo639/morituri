@@ -93,7 +93,7 @@ public sealed partial class Game
 
         string[]? PermInjuries = null);               // 영구 부상(#6)
     private sealed record SchedRec(int Round, string A, string B, bool IsEvent, float Score, string Kind = "regular",
-        string Format = "normal");   // 특수 형식: execution(처형전) / same:WPN_x(무기 지정전)
+        string Format = "normal");   // 특수 형식: execution(처형전)
     private sealed record WorldV2(int SchemaVer, int ConstantsVer, ulong WorldSeed, float Gold,
         int GachaCount, int FreeGachas, int TrainingLv, int MedicalLv, int QuartersLv, int SeasonsPlayed,
         bool SeasonActive, int SeasonNo, int MatchIdx, int Cursor, bool EventsAppended,
@@ -542,14 +542,13 @@ public sealed partial class Game
         return pool[(int)(new SimRandom(seed).NextFloat01() * pool.Length) % pool.Length];
     }
 
-    /// <summary>타이틀전 다양성(#5) — 컵/처형/무기지정/복수전/라이벌전/신인전/노장전/빅매치를 관계·경력으로 분류. 없으면 null(평범한 경기).</summary>
+    /// <summary>타이틀전 다양성(#5) — 컵/처형/복수전/라이벌전/신인전/노장전/빅매치를 관계·경력으로 분류. 없으면 null(평범한 경기).</summary>
     private string? BoutTitle(Gladiator A, Gladiator B, SchedRec s)
     {
         if (s.Kind == "cup_final") return "👑 챔피언십 컵 결승";
         if (s.Kind == "cup_sf") return "🏆 챔피언십 컵 4강";
         if (s.Kind == "tiebreak") return "⚖ 우승 결정전 — 동률의 저울, 단판 승부";
         if (s.Format == "execution") return "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)";
-        if (s.Format.StartsWith("same:")) return $"⚔ 무기 지정전 — 양측 {s.Format[5..].Replace("WPN_", "")}";
         var ab = _ledger.Get(A.Id, B.Id); var ba = _ledger.Get(B.Id, A.Id);
         var ra = ab.Classify(A.PersonalityId); var rb = ba.Classify(B.PersonalityId);
         if (ra == RelationType.Nemesis || rb == RelationType.Nemesis) return "⚔ 복수전 — 원한의 재대결";
@@ -1805,7 +1804,7 @@ public sealed partial class Game
     /// <summary>친선/난투 등 리그 외 전투를 viewer.json으로 내보낸다(#2 — 실제 경기화면). 시드 결정론, 무기록.</summary>
     private MatchResult RunExhibition(Gladiator a, Gladiator b, ulong seed)
     {
-        var (dA, dB) = BuildDefs(a, b, "normal");
+        var (dA, dB) = BuildDefs(a, b);
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(dA, dB, seed, events, frames);
         ViewerExport.WriteDoc(dA, dB, seed, res, frames, events, "viewer.json",
@@ -2450,16 +2449,13 @@ public sealed partial class Game
             }
         }
 
-        // 정규 소진 → 이벤트 빅매치 (일부는 특수 형식: ☠처형전 / ⚔무기 지정전 — 시드 결정론)
+        // 정규 소진 → 이벤트 빅매치 (일부는 특수 형식: ☠처형전 — 시드 결정론)
         if (!_eventsAppended)
         {
             var fmtRng = new SimRandom(SeasonSeed ^ 0xF0_47_11UL);
-            var wpns = WeaponTable.All.Select(w => w.Id).ToArray();
             foreach (var (a, b, score) in TopEventCards(Math.Max(2, _cast.Count / 2)))
             {
-                string fmt = fmtRng.Roll(0.30f) ? "execution"
-                           : fmtRng.Roll(0.25f) ? "same:" + wpns[(int)(fmtRng.NextUInt64() % (ulong)wpns.Length)]
-                           : "normal";
+                string fmt = fmtRng.Roll(0.30f) ? "execution" : "normal";   // ☠처형전(30%) — 나머지는 일반전
                 _schedule.Add(new SchedRec(_rounds + 1, a, b, true, score, "event", fmt));
             }
             _eventsAppended = true;
@@ -2582,7 +2578,7 @@ public sealed partial class Game
     {
         var s = _schedule[_cursor];
         var A = ById(s.A); var B = ById(s.B);
-        var (defA, defB) = BuildDefs(A, B, s.Format);   // 정산(Play)과 동일 조립 — 형식 오버라이드 포함
+        var (defA, defB) = BuildDefs(A, B);   // 정산(Play)과 동일 조립
         if (_live!.Switches.Count > 0)
         {
             var sw = _live.Switches.OrderBy(x => x.Time).ToArray();
@@ -2769,7 +2765,7 @@ public sealed partial class Game
         _lastFixNote = null; _lastFixBad = false;
         _lastHype = MathF.Round(((A.Popularity + B.Popularity) * (exec ? 2f : isEvent ? 1.5f : 1f) + (A.Fame + B.Fame) * 0.1f)
                     * UnrestHypeMult);   // 경기 관심도(#5) — [13] 불안한 시대일수록 군중은 목마르다(최대 +15%)
-        var (defA, defB) = BuildDefs(A, B, format);
+        var (defA, defB) = BuildDefs(A, B);
         if (_liveSwitches is { } li)   // 라니스타 실시간 개입(라이브 정산): 관전 중 예약한 전술 전환을 결정 def에 주입
         {
             if (A.Id == li.FighterId) defA = defA with { TacticSwitches = li.Switches };
@@ -3176,18 +3172,13 @@ public sealed partial class Game
         return cards.OrderByDescending(c => c.Score).Take(count).ToList();
     }
 
-    /// <summary>경기 def 조립(잠정 시뮬·정산 공용 — 동일성 필수). 무기 지정전(same:WPN_x)은 양측 무기 오버라이드.</summary>
-    private (FighterDef defA, FighterDef defB) BuildDefs(Gladiator A, Gladiator B, string format)
+    /// <summary>경기 def 조립(잠정 시뮬·정산 공용 — 동일성 필수).</summary>
+    private (FighterDef defA, FighterDef defB) BuildDefs(Gladiator A, Gladiator B)
     {
         var relA = _ledger.Get(A.Id, B.Id).Classify(A.PersonalityId);
         var relB = _ledger.Get(B.Id, A.Id).Classify(B.PersonalityId);
         var defA = ToDef(A, relA, Intensity(A.Id, B.Id));
         var defB = ToDef(B, relB, Intensity(B.Id, A.Id));
-        if (format.StartsWith("same:"))
-        {
-            string w = format[5..];
-            defA = defA with { WeaponId = w }; defB = defB with { WeaponId = w };
-        }
         return (defA, defB);
     }
 
@@ -3219,7 +3210,7 @@ public sealed partial class Game
         for (int i = 0; i < _cast.Count; i++)
             for (int j = i + 1; j < _cast.Count; j++)
             {
-                var (dA, dB) = BuildDefs(_cast[i], _cast[j], "normal");
+                var (dA, dB) = BuildDefs(_cast[i], _cast[j]);
                 int wins = 0, decided = 0;
                 for (ulong s = 1; s <= (ulong)simsPerPair; s++)
                 {
@@ -3239,7 +3230,7 @@ public sealed partial class Game
         {
             float mae = pairs.Average(p =>
             {
-                var (dA, dB) = BuildDefs(p.A, p.B, "normal");
+                var (dA, dB) = BuildDefs(p.A, p.B);
                 return MathF.Abs(SimProb(dA, dB, 0xBE77_0000UL, k) - p.actual);
             }) * 100f;
             Console.WriteLine($"    시뮬 {k}판 추정: {mae:F1}");
@@ -3281,7 +3272,7 @@ public sealed partial class Game
         var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);   // PlayNext와 동일 소비 순서
         string tA = A.IsPlayer ? A.TacticId : SelectTacticAi(A, B, tacRng);
         string tB = B.IsPlayer ? B.TacticId : SelectTacticAi(B, A, tacRng);
-        var (dA, dB) = BuildDefs(A, B, s.Format);
+        var (dA, dB) = BuildDefs(A, B);
         dA = dA with { TacticsId = tA }; dB = dB with { TacticsId = tB };
         const int K = 25;   // 조합(승자×방식) 해상도를 위해 표본 확대
         ulong seed = SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL;

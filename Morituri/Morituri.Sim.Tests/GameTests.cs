@@ -488,6 +488,14 @@ public class GameTests
         Assert.That(covered, Is.True, "시드×시즌 순회 중 승부조작 이벤트가 최소 한 번은 떠 상태머신을 검증");
     }
 
+    // 성격 → 해당 성격 전용 스킬(Game.LearnSkillJson 성격 게이트와 일치)
+    private static string SkillForPersonality(string per) => per switch
+    {
+        "CALM" => "SKL_READ", "RECKLESS" => "SKL_RUSH", "ARROGANT" => "SKL_LEISURE",
+        "HONORABLE" => "SKL_AEGIS", "COWARD" => "SKL_SURVIVE", "CRUEL" => "SKL_VIGOR",
+        "BOLD" => "SKL_NERVE", "WARY" => "SKL_ECONOMY", "SHOWMAN" => "SKL_FLAIR", _ => "SKL_ANGLE",
+    };
+
     [Test]
     public void Game_LearnSkill_GatesAndEquips()
     {
@@ -497,12 +505,7 @@ public class GameTests
         var my = Parse(g.StateJson()).GetProperty("MyFighters")[0];
         string id = my.GetProperty("Id").GetString()!;
         string per = my.GetProperty("Personality").GetString()!;
-        string skill = per switch
-        {
-            "CALM" => "SKL_READ", "RECKLESS" => "SKL_RUSH", "ARROGANT" => "SKL_LEISURE",
-            "HONORABLE" => "SKL_AEGIS", "COWARD" => "SKL_SURVIVE", "CRUEL" => "SKL_VIGOR",
-            "BOLD" => "SKL_NERVE", "WARY" => "SKL_ECONOMY", "SHOWMAN" => "SKL_FLAIR", _ => "SKL_ANGLE",
-        };
+        string skill = SkillForPersonality(per);
         string wrong = skill == "SKL_READ" ? "SKL_RUSH" : "SKL_READ";
         Assert.That(Parse(g.LearnSkillJson(id, wrong)).GetProperty("error").GetString()!.Contains("성격"), Is.True, "성격 게이트");
         Assert.That(Parse(g.LearnSkillJson(id, skill)).GetProperty("error").GetString()!.Contains("훈련 포인트"), Is.True, "포인트 게이트");
@@ -518,11 +521,14 @@ public class GameTests
             ready = fs[0].GetProperty("TrainingPoints").GetInt32() >= 3;
         }
         Assert.That(ready, Is.True, "훈련 포인트 3 적립");
-        var ok = Parse(g.LearnSkillJson(id, skill));
+        // 성격은 시즌 중 변할 수 있으므로(T10 Phase4 성격 변화) 습득 시점의 현재 성격에 맞춰 스킬을 다시 고른다
+        string curPer = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Personality").GetString()!;
+        string learn = SkillForPersonality(curPer);
+        var ok = Parse(g.LearnSkillJson(id, learn));
         Assert.That(ok.TryGetProperty("error", out _), Is.False, "습득 성공");
         var skills = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Skills");
-        Assert.That(skills.EnumerateArray().Any(s => s.GetString() == skill), Is.True, "스킬 장착·영속 문서 노출");
-        Assert.That(Parse(g.LearnSkillJson(id, skill)).TryGetProperty("error", out _), Is.True, "중복 습득 거부");
+        Assert.That(skills.EnumerateArray().Any(s => s.GetString() == learn), Is.True, "스킬 장착·영속 문서 노출");
+        Assert.That(Parse(g.LearnSkillJson(id, learn)).TryGetProperty("error", out _), Is.True, "중복 습득 거부");
     }
 
     [Test]

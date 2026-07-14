@@ -90,7 +90,6 @@
       <span><i style="background:var(--dim)"></i>정규 라운드로빈</span>
       <span><i style="background:#c9a84c"></i>🎪 이벤트 빅매치</span>
       <span><i style="background:#e0685f"></i>☠ 처형전</span>
-      <span><i style="background:#9b6fd1"></i>⚔ 무기 지정전</span>
       <span><i style="background:#c94fc9"></i>🏆 챔피언십 컵</span>
       <span><i style="background:#e0a24c"></i>⚖ 우승 결정전</span>
       <span><i style="background:#5b9be0"></i>🏟 황제의 초청전</span>
@@ -208,13 +207,13 @@ function renderCalendar(divOf){
   if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">이 리그 일정 없음</div>'; return; }
   const months = [...new Set(cal.map(c=>c.Month))];
   const kindIcon = c => c.Kind==='cup_final'?'👑':c.Kind==='cup_sf'?'🏆':c.Kind==='tiebreak'?'⚖':c.Kind==='gauntlet'?'🏟':c.Kind==='proposal'?'🎤':
-    c.Format==='execution'?'☠':(c.Format||'').startsWith('same:')?'⚔':c.Kind==='event'?'🎪':'';
+    c.Format==='execution'?'☠':c.Kind==='event'?'🎪':'';
   // 경기 종류 색(범례와 동일) — 셀 안 항목의 왼쪽 스트립으로 종류를 한눈에
   const kindColor = c => c.Kind==='cup_final'||c.Kind==='cup_sf'?'#c94fc9':c.Kind==='tiebreak'?'#e0a24c':c.Kind==='gauntlet'?'#5b9be0':
-    c.Kind==='proposal'?'#6fbf8f':c.Format==='execution'?'#e0685f':(c.Format||'').startsWith('same:')?'#9b6fd1':c.Kind==='event'?'#c9a84c':'transparent';
+    c.Kind==='proposal'?'#6fbf8f':c.Format==='execution'?'#e0685f':c.Kind==='event'?'#c9a84c':'transparent';
   const kindName = c => c.Kind==='cup_final'?'챔피언십 컵 결승':c.Kind==='cup_sf'?'챔피언십 컵 4강':c.Kind==='tiebreak'?'우승 결정전':
     c.Kind==='gauntlet'?'황제의 초청전':c.Kind==='proposal'?'도전·흥행전':c.Format==='execution'?'처형전':
-    (c.Format||'').startsWith('same:')?'무기 지정전':c.Kind==='event'?'이벤트 빅매치':'정규 라운드로빈';
+    c.Kind==='event'?'이벤트 빅매치':'정규 라운드로빈';
   const inShell = window.parent !== window;
   const DAYS = 30, COLS = 6;
   document.getElementById('calendar').innerHTML = months.map(m=>{
