@@ -1530,10 +1530,13 @@ window.doSettle = async ()=>{
     if (m.error){ stopLive(); alert(m.error); go('league'); return; }
     await refresh();
     pendingSeason = !!m.SeasonCompleted;
-    // #11 전사·성격변화가 난 경기는 쓰러진 패자를 천천히 줌인해 3초간 보여준 뒤 결과로
-    const dramatic = (m.Fates||[]).some(f => f.includes('⚰') || f.includes('🎭'));
-    if (dramatic && m.Winner && m.Winner!=='무승부'){
-      const loserIdx = (m.Winner===m.A) ? 1 : 0;
+    const loserIdx = (m.Winner===m.A) ? 1 : 0;
+    if (m.Exec){   // ☠ 처형전 엄지 판정 — 경기결과 창이 아니라 경기장 안에서(패자 줌인 + 흔들리는 엄지 → 판정)
+      try{ $('liveF').contentWindow.postMessage({cmd:'execVerdict', idx:loserIdx, spared:m.Exec.Spared, deathPct:m.Exec.DeathPct, loser:m.Exec.Loser, factors:m.Exec.Factors}, '*'); }catch(_){}
+      m._execShown = true;   // 결과창의 엄지 극장은 생략(경기장에서 이미 진행)
+      await new Promise(r=>setTimeout(r, 4600));
+    } else if ((m.Fates||[]).some(f => f.includes('⚰') || f.includes('🎭')) && m.Winner && m.Winner!=='무승부'){
+      // #11 전사·성격변화(처형전 외) — 쓰러진 패자를 천천히 줌인해 보여준 뒤 결과로
       try{ $('liveF').contentWindow.postMessage({cmd:'focusLoser', idx:loserIdx}, '*'); }catch(_){}
       await new Promise(r=>setTimeout(r, 3200));
     }
@@ -1571,8 +1574,13 @@ function showResult(m){
   `).join('<hr style="border-color:#4a3a26">') || '<div class="rrow d">내 선수 정보 없음</div>');
   if (m.FixNote)   // 승부조작 결말 — 던졌는가로 갈린다
     $('resBody').innerHTML += `<hr style="border-color:#4a3a26"><div class="rrow" style="font-weight:700;color:${m.FixBad?'var(--b)':'var(--grn)'}">${m.FixNote}</div>`;
-  if (m.Fates && m.Fates.length)   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
-    $('resBody').innerHTML += `<hr class="hairline">` + execTheater(m) + sealedFates(fatesFor(m));
+  if (m.Fates && m.Fates.length){   // 극적 운명(실시간) — 엄지 판정 + 봉인 두루마리(DDD)
+    // 처형전 판정을 경기장에서 이미 진행했으면 결과창엔 한 줄 요약만(극장 생략)
+    const execPart = m._execShown && m.Exec
+      ? `<div class="rrow" style="font-weight:700;color:${m.Exec.Spared?'var(--grn)':'var(--b)'}">${m.Exec.Spared?'👍 황제의 자비':'👎 처형'} — ${m.Exec.Loser} <span class="d">(사망 확률 ${m.Exec.DeathPct}% · ${m.Exec.Factors})</span></div>`
+      : execTheater(m);
+    $('resBody').innerHTML += `<hr class="hairline">` + execPart + sealedFates(fatesFor(m));
+  }
   $('resBody').innerHTML += catoLine(m.Cato);
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');

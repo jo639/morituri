@@ -43,6 +43,20 @@
   #introCap .ic-quote{ font-family:'Noto Serif KR',serif; font-style:italic; font-size:clamp(14px,2vw,20px);
     color:#f2e9d2; margin-top:6px; text-shadow:0 2px 8px rgba(0,0,0,.95); word-break:keep-all;
     max-width:80%; margin-left:auto; margin-right:auto; }
+  /* 처형전 엄지 판정 — 경기장 안에서 진행(경기결과 창 아님) */
+  #execCap{ position:absolute; left:0; right:0; top:26%; text-align:center; pointer-events:none; opacity:0;
+    transition:opacity .4s ease; z-index:7; }
+  #execCap.on{ opacity:1; }
+  #execCap .ex-pre{ font-family:'Noto Serif KR',serif; color:#f2e9d2; font-size:clamp(14px,2vw,20px);
+    text-shadow:0 2px 12px #000; word-break:keep-all; }
+  #execCap .ex-thumb{ font-size:clamp(44px,9vw,86px); line-height:1.1; margin:6px 0;
+    filter:drop-shadow(0 4px 10px rgba(0,0,0,.85)); }
+  #execCap .ex-thumb.rocking{ display:inline-block; animation:thumbRock .7s ease-in-out infinite; }
+  @keyframes thumbRock{ 0%,100%{transform:rotate(-15deg)} 50%{transform:rotate(15deg)} }
+  #execCap .ex-verdict{ font-family:var(--font-display); font-weight:900; font-size:clamp(17px,2.8vw,28px);
+    letter-spacing:.05em; text-shadow:0 2px 14px #000; word-break:keep-all; }
+  #execCap .ex-verdict.spare{ color:#7ec97e; } #execCap .ex-verdict.kill{ color:#e0685f; }
+  #execCap .ex-note{ font-size:12px; color:#cbb98d; margin-top:5px; text-shadow:0 1px 6px #000; }
   canvas{ width:100%; height:auto; background:#141009; border-radius:var(--r2); display:block;
           border:1px solid var(--line-soft); box-shadow:var(--sh2); }
   #drop{ position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
@@ -95,6 +109,7 @@
   <div id="stage">
     <canvas id="cv" width="940" height="440"></canvas>
     <div id="introCap"></div>
+    <div id="execCap"></div>
     <label id="drop">
       <b>viewer.json 을 여기로 끌어다 놓으세요</b>
       <span>또는 클릭해서 파일 선택 · 생성: <code>dotnet run -- viewer arrogant 7</code></span>
@@ -242,6 +257,11 @@ window.addEventListener('message', e=>{
     if (AC){ try{ AC.suspend(); }catch(_){} }
   } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
     audioResume();
+  } else if (e.data.cmd === 'execVerdict'){  // ☠ 처형전 엄지 판정 — 경기장 안에서 진행(쓰러진 패자 줌인 + 흔들리는 엄지 → 판정)
+    focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
+    if (frames && duration > 0){ t = duration; lastSfxT = duration; }
+    setPlaying(false);
+    runExecVerdict(e.data);
   } else if (e.data.cmd === 'focusLoser'){  // #11 전사·성격변화 — 쓰러진 패자를 천천히 줌인하고 정지(부모가 3초 후 결과로)
     focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
     if (frames && duration > 0){ t = duration; lastSfxT = duration; }   // 조기 정산이어도 마지막 장면(쓰러진 패자)으로
@@ -394,9 +414,27 @@ function runIntro(A, B){
 function endIntro(silent){
   introTimers.forEach(clearTimeout); introTimers = [];
   const cap = document.getElementById('introCap'); if (cap) cap.style.opacity = '0';
+  const ec = document.getElementById('execCap'); if (ec) ec.classList.remove('on');   // 처형 판정 오버레이도 초기화
   const wasIntro = introMode;
   introMode = false; focusIdx = null;
   if (wasIntro && !silent && t < duration) setPlaying(true);   // 인트로 후 전투 시작
+}
+// ☠ 처형전 엄지 판정 — 경기장 안: 쓰러진 패자를 줌인한 채 흔들리는 엄지 → 상/하 판정 → 사망/자비
+let _execTimer = null;
+function runExecVerdict(data){
+  const cap = document.getElementById('execCap'); if (!cap) return;
+  if (_execTimer) clearTimeout(_execTimer);
+  cap.classList.add('on');
+  cap.innerHTML = `<div class="ex-pre">☠ 황제가 일어선다 — 군중이 숨을 죽인다…</div>
+    <div class="ex-thumb rocking">👍</div>`;
+  try{ sfx('taunt'); setTimeout(()=>sfx('taunt'),700); setTimeout(()=>sfx('taunt'),1400); }catch(_){}   // 긴장의 북소리
+  _execTimer = setTimeout(()=>{
+    const sp = !!data.spared, who = data.loser || '패자';
+    cap.innerHTML = `<div class="ex-thumb">${sp?'👍':'👎'}</div>
+      <div class="ex-verdict ${sp?'spare':'kill'}">${sp?`황제의 자비 — ${who}, 오늘은 산다`:`${who}의 시간이 끝났다`}</div>
+      <div class="ex-note">사망 확률 ${data.deathPct||0}% · ${data.factors||''}</div>`;
+    try{ sfx(sp?'crowd':'ko'); }catch(_){}
+  }, 2400);
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
   TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
