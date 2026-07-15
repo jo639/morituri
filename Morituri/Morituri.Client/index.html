@@ -177,6 +177,26 @@
             opacity:0; animation:rvFlip .45s ease forwards; }
   .rv-step{ opacity:0; animation:rvPop .5s ease forwards; }
   .rv-jackpot{ animation:rvPop .5s ease forwards, rvGlow 1.2s ease forwards; }
+  /* 카드깡 — 뽑기에서 카드를 바로 고른다(낙인) */
+  .rv-pick{ position:relative; cursor:pointer; transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+  .rv-pick.rv-dealt{ animation:none; opacity:1; }
+  .rv-pick:hover{ transform:translateY(-7px) scale(1.035); border-color:var(--gold);
+                  box-shadow:0 12px 30px rgba(210,171,85,.32); }
+  .rv-pickhint{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; color:var(--gold);
+                letter-spacing:.02em; opacity:.45; transition:opacity .16s ease; }
+  .rv-pick:hover .rv-pickhint{ opacity:1; }
+  @keyframes rvFade{ to{ opacity:.26; transform:scale(.9) translateY(6px); filter:grayscale(.75); } }
+  .rv-faded{ animation:rvFade .5s ease forwards!important; pointer-events:none; }
+  @keyframes rvChosen{ 0%{transform:scale(1)} 55%{transform:scale(1.13) translateY(-9px)} 100%{transform:scale(1.07) translateY(-5px)} }
+  .rv-chosen{ animation:rvChosen .55s cubic-bezier(.2,.9,.3,1.2) forwards!important;
+              border-color:var(--gold)!important; box-shadow:0 14px 36px rgba(210,171,85,.4)!important; z-index:2; }
+  @keyframes sealStamp{ 0%{transform:translate(-50%,-50%) scale(2.6) rotate(-24deg);opacity:0}
+    50%{opacity:1} 66%{transform:translate(-50%,-50%) scale(.9) rotate(-10deg)}
+    100%{transform:translate(-50%,-50%) scale(1.05) rotate(-12deg);opacity:.95} }
+  .rv-seal{ position:absolute; top:46%; left:50%; font-size:42px; pointer-events:none;
+            transform:translate(-50%,-50%) scale(2.6) rotate(-24deg); opacity:0;
+            filter:drop-shadow(0 0 12px rgba(220,96,40,.85));
+            animation:sealStamp .5s cubic-bezier(.2,.7,.3,1) forwards; }
   /* 메뉴 — 타이틀 씬 */
   #menu{ position:fixed; inset:0; z-index:50;
          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
@@ -703,6 +723,7 @@ function sfxScroll(){ tone(180,.28,'sawtooth',.05,0,130); }                     
 function sfxDoom(){ tone(150,.7,'sawtooth',.12,0,-70); tone(74,.9,'sine',.14,.12,-24); }                 // 죽음·불길
 function sfxCoins(){ for(let i=0;i<8;i++) tone(1100+((i*467)%800),.05,'square',.05,i*.05); }             // 동전
 function sfxDrum(){ tone(88,.16,'sine',.24,0,-45); }                                                     // 심장 북소리
+function sfxStamp(){ tone(150,.16,'sine',.24,0,-42); tone(92,.22,'sawtooth',.11,.02,-18); }              // 낙인 — 카드 선택 확정
 let st=null;
 
 // ── 선수 상세(서사) 창 ──
@@ -2441,25 +2462,56 @@ async function doGacha(premium){
 // ── 리빌 연출(DDD): 천부 등급 색·서열 ──
 const TAL={'노예':{c:'#8a8f98',r:0},'투사':{c:'#c8bfae',r:1},'챔피언':{c:'#5b9be0',r:2},
            '집정관':{c:'#a06ae0',r:3},'불멸자':{c:'#c9a84c',r:4},'카이사르':{c:'#ffd75e',r:5}};
-// 뽑기: 후보 3장이 순차 플립으로 등장 (정보는 기존 마스킹 그대로)
+// 뽑기: 후보 3장이 순차 플립으로 등장 — 카드를 바로 클릭해 낙인(선택)한다 (정보는 기존 마스킹 그대로)
 function openGachaReveal(){
   const cands = st.Candidates||[];
   if (!cands.length) return;
-  $('rvBox').innerHTML = `<h3 style="color:var(--gold);text-align:center;margin:0 0 4px">🎲 노예 시장</h3>
-    <div class="note" style="text-align:center">세 명이 사슬에 묶여 끌려 나온다 — 그릇은 아무도 모른다</div>
+  const box = $('rvBox');
+  box.dataset.picking = '';
+  box.innerHTML = `<h3 style="color:var(--gold);text-align:center;margin:0 0 4px">🎲 노예 시장</h3>
+    <div class="note" style="text-align:center">셋이 사슬에 끌려 나온다 — 그릇은 아무도 모른다. <b style="color:var(--gold)">하나만</b> 낙인 찍을 수 있다.</div>
     <div style="display:flex;gap:10px;margin:12px 0;align-items:stretch">${cands.map((c,i)=>`
-      <div class="rv-card" style="flex:1;animation-delay:${.25+i*.55}s">
+      <div class="rv-card rv-pick" data-idx="${c.Idx}" style="flex:1;animation-delay:${.25+i*.55}s" onclick="pickCand(${c.Idx})">
         <b style="font-size:15px">${c.Name}</b> <span class="note">${c.Age}세</span>
         <div class="bd">${w(c.Weapon)} · ${p(c.Personality)}</div>
         <div class="note">전술 일부: <b style="color:#9bc4ec">${t(c.RevealedTactic)}</b></div>
         ${(c.Hints||[]).map(h=>`<div class="note" style="color:#a8d8b0">🔭 ${h}</div>`).join('')}
         <div class="note" style="margin-top:5px">천부 ??? · 잠재 ??? · 특성 ???</div>
+        <div class="rv-pickhint">📜 이 자를 산다</div>
       </div>`).join('')}</div>
-    <div class="rv-step" style="animation-delay:${.25+cands.length*.55+.15}s">
-      <button class="tacbtn" style="text-align:center" onclick="$('rvModal').classList.remove('on')">후보를 살핀다 →</button></div>`;
+    <div class="note" style="text-align:center;opacity:.55;font-size:11px;cursor:pointer" onclick="$('rvModal').classList.remove('on')">…천천히 저울질한다 (시장으로) ×</div>`;
+  // 딜인 애니메이션이 끝나면 카드를 자유롭게 만들어 호버 반응 복원
+  box.querySelectorAll('.rv-pick').forEach(el=> el.addEventListener('animationend', e=>{
+    if (e.animationName==='rvFlip') el.classList.add('rv-dealt');
+  }));
   $('rvModal').classList.add('on');
   cands.forEach((_,i)=> setTimeout(sfxFlip, 250+i*550));
 }
+// 카드 선택 = 낙인 → 곧바로 계약 리빌로 이어진다
+window.pickCand = async (idx)=>{
+  const box = $('rvBox');
+  if (box.dataset.picking) return;   // 중복 클릭 방지
+  box.dataset.picking = '1';
+  const cards = [...box.querySelectorAll('.rv-pick')];
+  const chosen = cards.find(el=>+el.dataset.idx===idx);
+  cards.forEach(el=>{ if(el!==chosen) el.classList.add('rv-faded'); });
+  if (chosen){
+    chosen.classList.add('rv-chosen');
+    const seal = document.createElement('div'); seal.className='rv-seal'; seal.textContent='🔥'; chosen.appendChild(seal);
+  }
+  sfxStamp();
+  const cand = (st.Candidates||[]).find(c=>c.Idx===idx);
+  const [r] = await Promise.all([ api('/api/recruit',{idx}), new Promise(res=>setTimeout(res,560)) ]);
+  if (r.error){ box.dataset.picking=''; $('rvModal').classList.remove('on'); $('marketErr').textContent=r.error; renderMarket(); return; }
+  st=r; renderMarket(); refreshTop();
+  const f = cand && (st.MyFighters||[]).find(x=>x.Name===cand.Name);
+  box.style.transition='opacity .16s ease'; box.style.opacity='0';   // 스탬프 → 리빌 부드러운 전환
+  setTimeout(()=>{
+    box.dataset.picking=''; box.style.opacity='1';
+    if (f) openRecruitReveal(f, st.RecruitReveal);
+    else { $('rvModal').classList.remove('on'); go('ludus'); }
+  }, 170);
+};
 // 영입: 천부 등급 단계식 리빌(특성→잠재→천부) + 놓친 원석 니어미스
 function openRecruitReveal(f, missed){
   const tal = TAL[f.Talent]||{c:'var(--gold)',r:1};
