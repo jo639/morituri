@@ -113,6 +113,25 @@ public class GameTests
     }
 
     [Test]
+    public void Game_News_NoDuplicateIssuesAfterSeasonEnds()
+    {
+        // 프리시즌(시즌 종료 후): 방금 끝난 시즌이 아카이브에 박제됨 → 현행분과 겹쳐 각 월이 두 번 뜨면 안 된다.
+        TempDir("news");
+        var g = new Game(1, 71, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        RunFullSeason(g);                 // 시즌 완주 → SeasonActive=false(프리시즌)
+        Assert.That(g.SeasonActive, Is.False, "시즌 종료(프리시즌)");
+
+        var issues = Parse(g.NewsJson()).GetProperty("issues");
+        var seen = new HashSet<(int, int)>();
+        foreach (var iss in issues.EnumerateArray())
+        {
+            var key = (iss.GetProperty("Season").GetInt32(), iss.GetProperty("Month").GetInt32());
+            Assert.That(seen.Add(key), Is.True, $"월보 중복 발행 (시즌 {key.Item1} · {key.Item2}월)");
+        }
+    }
+
+    [Test]
     public void Game_Cup_ChampionCrownedEachSeason()
     {
         TempDir("cup");
@@ -223,21 +242,19 @@ public class GameTests
         Assert.That(Parse(g.RetireJson(id, "scout")).TryGetProperty("error", out _), Is.True, "스카우터 자격 미달 거부");
         Assert.That(Parse(g.RetireJson(id, "instructor")).TryGetProperty("error", out _), Is.True, "교관 자격 미달 거부");
 
-        // 단순 은퇴(진로 없음): 로스터 제거 + 명전 미등재(#11)
-        var st = Parse(g.RetireJson(id));
-        Assert.That(st.TryGetProperty("error", out _), Is.False);
-        Assert.That(st.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0));
+        // 진로 없는 단순 은퇴는 폐지 — 방출(ReleaseJson)·해방(ManumitJson)으로 안내(에러 반환)
+        Assert.That(Parse(g.RetireJson(id)).TryGetProperty("error", out _), Is.True, "진로 없는 은퇴는 거부");
+
+        // 자격 충족(명성 40+) → 교관 진로 은퇴 성공 + 명전 등재(#11)
+        DoctorWorld(j => { foreach (var f in j["Gladiators"]!.AsArray()) if ((bool)f!["IsPlayer"]!) f["Fame"] = 50f; });
+        var g2 = new Game(1, 43, fresh: false, interactive: false, playerless: false);
+        string id2 = Parse(g2.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
+        var st = Parse(g2.RetireJson(id2, "instructor"));
+        Assert.That(st.TryGetProperty("error", out _), Is.False, "자격 충족 진로 은퇴 허용");
+        Assert.That(st.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0), "진로 은퇴로 로스터 제거");
         var hallEl = st.GetProperty("Season").GetProperty("Hall");
         int hallN = hallEl.ValueKind == JsonValueKind.Array ? hallEl.GetArrayLength() : 0;   // 비면 null 직렬화
-        Assert.That(hallN, Is.EqualTo(0), "단순 은퇴는 명전 미등재");
-
-        // 시즌 중에도 은퇴 가능(#3) + 잔여 일정 정리
-        g.GachaJson(); g.RecruitJson(0);
-        g.PlayNext();
-        string id2 = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
-        var mid = Parse(g.RetireJson(id2));
-        Assert.That(mid.TryGetProperty("error", out _), Is.False, "시즌 중 은퇴 허용");
-        Assert.That(mid.GetProperty("MyFighters").GetArrayLength(), Is.EqualTo(0), "시즌 중 은퇴로 로스터 제거");
+        Assert.That(hallN, Is.EqualTo(1), "진로 은퇴자는 명전 등재(#11)");
     }
 
     [Test]
@@ -934,8 +951,8 @@ public class GameTests
         var g1 = new Game(1, 91, fresh: false, interactive: false, playerless: false);
         Assert.That(PlayUntilStory(g1, "story_e1"), Is.True, "명문 루두스(4단계) → E1 총애의 초대");
         g1.ChooseEventJson(0);                      // 단서 획득
-        Assert.That(Parse(g1.StateJson()).GetProperty("Campaign").GetProperty("Clues").GetArrayLength(),
-            Is.GreaterThan(0), "E1 단서가 유품함에");
+        Assert.That(Parse(g1.StateJson()).GetProperty("Keepsakes").EnumerateArray()
+            .Any(k => k.GetProperty("Body").GetString()!.Contains("콜로세움 꼭대기")), Is.True, "E1 단서가 유품함에");
         // E2 게이트 미충족(총애 정체) — 아직 안 뜬다
         Assert.That(PlayUntilStory(g1, "story_e2", 40), Is.False, "특명 완수 전엔 E2가 안 뜬다");
 
@@ -955,8 +972,8 @@ public class GameTests
         g3.ChooseEventJson(1);                      // 침묵을 판다(+250)
         Assert.That(Parse(g3.StateJson()).GetProperty("Gold").GetSingle(), Is.GreaterThan(gold0 + 200f), "침묵의 값 지급");
         // 진실 단서 + 아크 종결(재발화 없음)
-        var clues = Parse(g3.StateJson()).GetProperty("Campaign").GetProperty("Clues");
-        Assert.That(clues.EnumerateArray().Any(c => c.GetString()!.Contains("진실")), Is.True, "가이우스의 진실이 유품함에");
+        var clues = Parse(g3.StateJson()).GetProperty("Keepsakes");
+        Assert.That(clues.EnumerateArray().Any(c => c.GetProperty("Title").GetString()!.Contains("진실")), Is.True, "가이우스의 진실이 유품함에");
         Assert.That(PlayUntilStory(g3, "story_e3", 40), Is.False, "E3는 한 번뿐");
     }
 }

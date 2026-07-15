@@ -4123,7 +4123,8 @@ public sealed partial class Game
     /// 이번 시즌 진행분 + 지난 시즌 아카이브를 함께 낸다(최신 시즌 먼저).</summary>
     public string NewsJson()
     {
-        var cur = BuildSeasonIssues(Math.Max(1, _seasonNo));
+        // 진행 중인 시즌만 현행분으로 편집 — 시즌이 끝나면(프리시즌) 이미 아카이브에 박제돼 있어 겹치면 중복 발행이 된다.
+        var cur = SeasonActive ? BuildSeasonIssues(Math.Max(1, _seasonNo)) : new List<PressIssue>();
         var all = cur.Concat(_pressArchive)                                   // 현행 + 영속 아카이브
             .OrderByDescending(i => i.Season).ThenByDescending(i => i.Month).Take(40).ToList();
         return JsonSerializer.Serialize(new { ok = true, season = Math.Max(1, _seasonNo), auc = 680 + Math.Max(1, _seasonNo), issues = all }, JsonOpts);
