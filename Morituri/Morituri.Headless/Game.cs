@@ -296,7 +296,7 @@ public sealed partial class Game
     private readonly List<Gladiator> _candidates = new();     // 대기 뽑기 후보 (전체 데이터 — JSON엔 마스킹)
     private readonly List<RevealDoc> _lastReveal = new();     // 직전 영입에서 공개된 미선택 후보(#8, 메모리 전용)
     private readonly RelationLedger _ledger = new();
-    private readonly int _rounds;
+    private int _rounds;   // 정규 라운드 수 — 라운드로빈 편성 시 부 인원으로 확정(개막·로드 시 재계산)
     private readonly bool _interactive;      // 클라이언트(파일 갱신) vs CLI
     private readonly bool _playerless;       // CLI 밸런싱: 루두스 없는 순수 AI 리그
 
@@ -1260,35 +1260,25 @@ public sealed partial class Game
         }
     }
 
-    /// <summary>파이트 카드 매치메이커 — 부 내에서 매 라운드 라이벌·랭킹근접·흥행 가중으로 대진 편성.
-    /// 전원 라운드로빈 대신 큐레이션된 소수 카드(라이벌은 자주, 지루한 매치업은 덜). 결정론(시즌시드 파생).</summary>
-    private void BuildDivisionCards(int div)
+    /// <summary>정규전 편성 — 부 내 전원 라운드로빈(서클 메서드): 모두가 모두와 딱 한 번, 공정한 순위·승강의 명분.
+    /// 라이벌 재대결·흥행 서사는 이벤트 빅매치·처형전 도전장·예고가 짊어진다. 결정론(시즌시드 파생).</summary>
+    private void BuildDivisionRoundRobin(int div, List<SchedRec> cards)
     {
         var pool = _cast.Where(g => g.Division == div).ToList();
         if (pool.Count < 2) return;
-        int rounds = Math.Clamp(pool.Count, 3, 6);
-        var rankOf = pool.OrderByDescending(g => g.Fame).ThenBy(g => g.Id)
-                         .Select((g, i) => (g.Id, i)).ToDictionary(x => x.Id, x => x.i);
-        for (int r = 1; r <= rounds; r++)
+        var rng = new SimRandom(SeasonSeed ^ (0xCA5D_0000UL + (ulong)div));
+        var arr = pool.OrderBy(_ => rng.NextUInt64()).Select(g => (string?)g.Id).ToList();   // 시즌별 결정론 셔플
+        if (arr.Count % 2 == 1) arr.Add(null);   // 홀수 인원 → 라운드마다 한 명 부전(휴식)
+        int n = arr.Count;
+        for (int r = 1; r < n; r++)
         {
-            var rng = new SimRandom(SeasonSeed ^ (0xCA5D_0000UL + (ulong)(div * 100 + r)));
-            var avail = pool.OrderBy(_ => rng.NextUInt64()).ToList();   // 라운드별 결정론 셔플
-            while (avail.Count >= 2)
+            for (int i = 0; i < n / 2; i++)
             {
-                var a = avail[0]; avail.RemoveAt(0);
-                Gladiator best = avail[0]; float bestScore = float.MinValue;
-                foreach (var b in avail)
-                {
-                    float sc = 1f
-                        + _ledger.RivalryWeight(a.Id, b.Id, PersOf) * 2f          // 라이벌 우선
-                        + (a.Popularity + b.Popularity) / 40f                     // 흥행
-                        - MathF.Abs(rankOf[a.Id] - rankOf[b.Id]) * 0.3f           // 랭킹 근접
-                        + (rng.NextUInt64() % 100) / 200f;                        // 노이즈
-                    if (sc > bestScore) { bestScore = sc; best = b; }
-                }
-                avail.Remove(best);
-                _schedule.Add(new SchedRec(r, a.Id, best.Id, false, 0f));
+                string? a = arr[i], b = arr[n - 1 - i];
+                if (a == null || b == null) continue;
+                cards.Add(new SchedRec(r, a, b, false, 0f));
             }
+            arr.Insert(1, arr[^1]); arr.RemoveAt(arr.Count - 1);   // 서클 회전(0번 고정)
         }
     }
 
@@ -1328,9 +1318,12 @@ public sealed partial class Game
 
         if (_seasonNo > 1) ApplyLudusDynamics();   // [18] 살아있는 검투소 — 시즌 동향을 명성에 반영·신문에 실음
 
-        // 파이트 카드: 부별로 라이벌·랭킹근접·흥행 가중 카드 편성(전원 라운드로빈 대신 큐레이션)
-        BuildDivisionCards(1);
-        BuildDivisionCards(2);
+        // 정규전: 부 내 전원 라운드로빈 — 두 부를 라운드 순으로 통합 정렬(달력·페이즈 흐름 일치)
+        var cards = new List<SchedRec>();
+        BuildDivisionRoundRobin(1, cards);
+        BuildDivisionRoundRobin(2, cards);
+        _schedule.AddRange(cards.OrderBy(c => c.Round));
+        _rounds = _schedule.Count > 0 ? _schedule.Max(s => s.Round) : 1;
         int d1 = _cast.Count(g => g.Division == 1);
         _story.Add((0, "season", $"🏛 시즌 {_seasonNo} 개막 — {DivName(1)} {d1}인 · {DivName(2)} {_cast.Count - d1}인"));
 
@@ -2478,7 +2471,8 @@ public sealed partial class Game
         }
         if (_cupStage == 1)   // 4강 둘 다 끝 → 결승 편성
         {
-            var sfWinners = _matchLog.Where(m => m.Round == _rounds + 2).TakeLast(2)
+            // 시드 기반 탐지 — 라운드 번호 매칭은 편성 체계가 바뀌면 깨진다(4강 = 가장 최근의 시드 간 대결 2건)
+            var sfWinners = _matchLog.Where(m => _cupSeeds.Contains(m.AId) && _cupSeeds.Contains(m.BId)).TakeLast(2)
                 .Select(m => m.Winner == m.AName ? m.AId : m.BId).ToList();
             if (sfWinners.Count == 2)
                 _schedule.Add(new SchedRec(_rounds + 3, sfWinners[0], sfWinners[1], false, 0f, "cup_final"));
@@ -3602,6 +3596,8 @@ public sealed partial class Game
         SeasonActive = w.SeasonActive; _seasonNo = w.SeasonNo; _matchIdx = w.MatchIdx;
         _cursor = w.Cursor; _eventsAppended = w.EventsAppended;
         _schedule.Clear(); if (w.Schedule != null) _schedule.AddRange(w.Schedule);
+        // 정규 라운드 수 복원 — 스케줄이 진실의 원천(라운드로빈은 부 인원에 따라 달라진다)
+        _rounds = Math.Max(1, _schedule.Where(s => s.Kind == "regular").Select(s => s.Round).DefaultIfEmpty(_rounds).Max());
         _story.Clear(); if (w.Story != null) _story.AddRange(w.Story.Select(s => (s.Round, s.Kind, s.Text)));
         _eventDocs.Clear(); if (w.Events != null) _eventDocs.AddRange(w.Events);
         _cast.Clear(); _cast.AddRange(w.Gladiators.Select(FromRec));
