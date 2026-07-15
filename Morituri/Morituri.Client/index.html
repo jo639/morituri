@@ -375,7 +375,8 @@
     <div class="pad" style="padding-bottom:0"><div id="incomeBar" class="notice"></div>
     <div id="betBar" class="notice glory"></div>
     <div id="fixBar" class="notice danger"></div>
-    <div id="storyBar" class="notice" style="border-color:var(--gold-deep);color:#dcc99a"></div></div>
+    <div id="storyBar" class="notice" style="border-color:var(--gold-deep);color:#dcc99a"></div>
+    <div id="teaseBar" class="notice" style="border-color:#8a5a7a;color:#e0c2d4"></div></div>
     <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
   </div>
 
@@ -830,7 +831,7 @@ async function refresh(){
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
   // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
   $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
-  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderUnrest();
+  renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderTeaseBar(); renderUnrest();
   maybeAutoStory(); maybeCoach(); maybeTour();   // 캠페인 대사·코치마크·안내 투어(신규 1회)
   return st;
 }
@@ -840,6 +841,14 @@ function renderStoryBar(){
   const c = st.Campaign;
   if (c && c.Hint){ sb.style.display='block'; sb.innerHTML = c.Hint.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
   else sb.style.display='none';
+}
+// 📯 예고 배너 — 다음 '내 경기'의 기대감 한 줄(서버 생성 스토리 중 최신 예고)
+function renderTeaseBar(){
+  const tb=$('teaseBar'); if(!tb) return;
+  const list=(st.Season&&st.Season.Story)||[];
+  let t=null; for(let i=list.length-1;i>=0;i--) if(list[i].Kind==='tease'){ t=list[i]; break; }
+  if (t && st.SeasonActive && st.HasMyMatchAhead){ tb.style.display='block'; tb.textContent=t.Text; }
+  else tb.style.display='none';
 }
 // ── [13] 반란 지수: 상단바 칩 — 소문 이상일 때만 (살아있는 세계) ──
 function renderUnrest(){

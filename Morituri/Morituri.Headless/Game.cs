@@ -1371,6 +1371,46 @@ public sealed partial class Game
             else if (pRng.Roll(0.6f))
                 _pendingProposalOpp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault()?.Id;
         }
+
+        TeaseNext(0);   // 📯 개막 예고 — 첫 상대 공개
+    }
+
+    /// <summary>📯 예고 시스템 — 다음 '내 경기'를 관계·경력·대진 종류로 분류해 기대감 한 줄을 스토리에 쏜다.
+    /// 내 경기 정산 직후·개막 시 1회씩 — 이번 경기의 보상보다 다음 경기의 기대가 플레이를 끈다. 메커니즘 무영향(연출 전용).</summary>
+    private void TeaseNext(int round)
+    {
+        if (_playerless) return;
+        SchedRec? next = null;
+        for (int i = _cursor; i < _schedule.Count; i++)
+        {
+            var c = _schedule[i];
+            if (ById(c.A).IsPlayer || ById(c.B).IsPlayer) { next = c; break; }
+        }
+        if (next == null) return;
+        var A = ById(next.A); var B = ById(next.B);
+        if (A.IsPlayer && B.IsPlayer)
+        { _story.Add((round, "tease", $"📯 예고 — 한 지붕 아래의 검이 서로를 겨눈다: {A.Name} vs {B.Name} (내전)")); return; }
+        var mine = A.IsPlayer ? A : B; var opp = A.IsPlayer ? B : A;
+        var rel = _ledger.Get(mine.Id, opp.Id);
+        var type = rel.Classify(mine.PersonalityId);
+        string wpn = opp.WeaponId.Replace("WPN_", "") switch
+        {
+            "SWORD" => "검", "SPEAR" => "창", "AXE" => "도끼", "GREATSWORD" => "대검",
+            "DUALBLADES" => "쌍검", "HAMMER" => "망치", "WHIP" => "채찍", "SHIELD" => "방패", _ => "무기",
+        };
+        string text =
+            next.Kind == "fest_final" ? $"📯 예고 — 축제의 왕관이 한 경기 앞: {mine.Name}, 결승에서 {opp.Name}과(와) 맞선다" :
+            next.Kind.StartsWith("fest_") ? $"📯 예고 — 사투르날리아의 모래 위, {mine.Name}이(가) 루두스의 명예를 걸고 {opp.Name}을(를) 만난다" :
+            next.Kind == "cup_final" ? $"📯 예고 — 챔피언십 컵 결승! {opp.Name}만 넘으면 왕관이다" :
+            next.Kind == "cup_sf" ? $"📯 예고 — 컵 4강 대진 공개: {opp.Name}. 관중석이 벌써 뜨겁다" :
+            next.Format == "execution" ? $"☠ 예고 — 처형전이 잡혔다. {opp.Name}… 패자는 모래를 떠나지 못할 수도 있다" :
+            type == RelationType.Nemesis ? $"☠ 예고 — 원수 {opp.Name}이(가) 기다린다. 관중이 피의 재대결을 외친다" :
+            type == RelationType.Rival ? $"🔥 예고 — 라이벌 {opp.Name}과(와)의 재대결이 공개됐다. 도시가 술렁인다" :
+            rel.Losses > rel.Wins ? $"⚔ 예고 — 다음 상대는 {opp.Name} (상대전적 {rel.Wins}승 {rel.Losses}패). 갚아야 할 빚이 있다" :
+            opp.CW + opp.CL + opp.CD == 0 ? $"🌱 예고 — 신예 {opp.Name}이(가) {mine.Name}에게 공개 도전장을 보냈다" :
+            opp.Fame >= 40f ? $"👑 예고 — {wpn}의 명수 {opp.Name}과(와)의 빅카드. 황제의 사자가 경기장을 찾는다는 소문이 돈다" :
+            $"📯 예고 — 다음 상대 공개: {wpn}을(를) 쓰는 {opp.Name} ({LudusNameOf(opp.LudusId)})";
+        _story.Add((round, "tease", text));
     }
 
     private void FinalizeSeason()
@@ -2444,6 +2484,7 @@ public sealed partial class Game
         EnsureSchedule();   // 다음 페이즈 편성(예: 4강 후 결승) — 종료 판정 전에
         bool last = _cursor >= _schedule.Count && _cupStage == 3;
         if (!last) MaybeSpawnEvent(A.IsPlayer ? A : B.IsPlayer ? B : null);   // 내 경기 후 서사 이벤트(2b)
+        if (!last && (A.IsPlayer || B.IsPlayer)) TeaseNext(s.Round);   // 📯 예고 — 내 경기 직후, 다음 경기의 기대감
         string? cato = CatoComment(A, B, res.Winner, res.Reason, A.IsPlayer || B.IsPlayer);   // [13] 저장 전(참조 카운터 영속)
         if (last) FinalizeSeason();
         else SaveWorld();
@@ -4020,7 +4061,7 @@ public sealed partial class Game
         int maxRound = Math.Max(1, _schedule.Count > 0 ? _schedule.Max(s => s.Round) : _rounds);
         int MonthOf(int round) => Math.Min(RomanMonths.Length - 1, (round - 1) * RomanMonths.Length / Math.Max(1, maxRound));
         int MonthOfIdx(int idx) => Math.Min(RomanMonths.Length - 1, idx * RomanMonths.Length / matchesTotal);
-        var stories = _story.Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix")).ToList();
+        var stories = _story.Where(s => s.Round > 0 && s.Kind is not ("bet" or "fix" or "tease")).ToList();   // 예고는 일회성 — 회고지엔 안 싣는다
         var monthsSet = stories.Select(s => MonthOf(s.Round))
             .Concat(_matchLog.Select((m, i) => MonthOfIdx(i))).Distinct().OrderBy(x => x).ToList();
         int auc = 680 + Math.Max(1, season);
