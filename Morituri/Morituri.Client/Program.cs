@@ -55,6 +55,7 @@ internal static class Program
             "/api/hostshow" when method == "POST" => game.HostShowJson(),
             "/api/camp" when method == "POST" => game.TrainingCampJson(StrOf(body ?? "", "kind")),
             "/api/presecup" when method == "POST" => game.PreseasonCupJson(StrOf(body ?? "", "id")),
+            "/api/festivalrep" when method == "POST" => game.FestivalRepJson(StrOf(body ?? "", "id")),
             "/api/prescout" when method == "POST" => game.PreScoutJson(),
             "/api/prenegotiate" when method == "POST" => game.PreNegotiateJson(),
             "/api/banquet" when method == "POST" => game.BanquetJson(),

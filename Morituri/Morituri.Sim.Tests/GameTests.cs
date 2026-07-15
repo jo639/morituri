@@ -670,6 +670,14 @@ public class GameTests
         // 업적(첫 승 등)으로 영광이 쌓일 때까지 여러 시즌
         for (int s = 0; s < 4; s++) RunFullSeason(g);
         var st = Parse(g.StateJson());
+        // 극적 운명(사망 등)으로 로스터가 빌 수 있다 — 재영입 후 시즌을 더 돌려 시드 무관하게 지속
+        int rguard = 0;
+        while (st.GetProperty("MyFighters").GetArrayLength() == 0 && rguard++ < 6)
+        {
+            g.GachaJson(); g.RecruitJson(0);
+            RunFullSeason(g);
+            st = Parse(g.StateJson());
+        }
         float glory = st.GetProperty("Glory").GetSingle();
         Assert.That(glory, Is.GreaterThan(0f), "위신 업적/타이틀로 영광 획득");
 

@@ -135,7 +135,9 @@ public sealed partial class Game
         int BanquetSeason = 0,   // 후원자 연회(시즌 1회) 마지막 시즌
         int CampSeason = 0, int SparCupSeason = 0,   // (구) 프리시즌 1회 플래그 — 폐지, 호환용
         List<PressIssue>? PressArchive = null,   // 콜로세움 월보 영속 아카이브(#1)
-        int PreWeek = 0);   // [19] 프리시즌 준비 주간 진척
+        int PreWeek = 0,   // [19] 프리시즌 준비 주간 진척
+        int FestStage = 0, List<string>? FestSlots = null,   // 🎭 대항전 단계·진출자
+        string? FestRepId = null, string? FestChampion = null);   // 🎪 내 대표 지명·우승자
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -225,7 +227,9 @@ public sealed partial class Game
         string? FixTarget = null,   // 승부조작 가담 예약 — 이 선수가 다음 경기를 던져야 한다
         CampaignDoc? Campaign = null, UnrestDoc? Unrest = null, List<LegendRec>? Legends = null,   // [13] 캠페인·반란 지수·전설
         DebtDoc? DebtInfo = null, List<KeepsakeRec>? Keepsakes = null,   // 채무 상세·보관함 유품
-        PreseasonDoc? Preseason = null);   // [19] 프리시즌 준비 주간
+        PreseasonDoc? Preseason = null,   // [19] 프리시즌 준비 주간
+        FestivalDoc? Festival = null);   // 🎭 사투르날리아 대항전(미드시즌)
+    private sealed record FestivalDoc(int Stage, string? MyRep, bool Pickable, string? Champion, List<CupMatchDoc>? Bracket);   // 🎭 대항전
     private sealed record GambleDoc(float SeasonNet, int Hits, int Total, List<BetLogRec> Log, int Streak = 0);
     private sealed record DebtTxnDoc(string Reason, float Delta, int Season);
     private sealed record DebtDoc(float Total, List<DebtTxnDoc> Log, float Trust, string TrustLabel, float LoanLimit);
@@ -324,6 +328,11 @@ public sealed partial class Game
     private List<string> _cupSeeds = new();                  // 컵 시드 (top4 id, 컵 시작 시)
     private int _cupStage;                                   // 0=미시작 1=4강편성 2=결승편성 3=종료
     private string? _cupChampion;                            // 최근 컵 우승자 이름
+    // 🎭 사투르날리아 대항전(미드시즌) — 루두스별 대표 1인 토너먼트(순위 무관 축제전, 루두스의 명예)
+    private int _festStage;                                  // 0=미개최 1~3=단계 진행 4=종료/생략
+    private List<string> _festSlots = new();                 // 다음 단계 진출자(시드 순 — 부전승 선기입·승자 순차 기입)
+    private string? _festRepId;                              // 라니스타가 지명한 내 대표(미지정=간판)
+    private string? _festChampion;                           // 대항전 우승자 이름(시즌 한정 표시)
     private string? _pendingEventId, _pendingEventFighter;   // 시즌 중 텍스트 이벤트(2b) — 선택 대기
     private string? _fixFighterId;   // 승부조작: 이 선수가 다음 경기를 던져야 한다(가담 예약)
     private float _fixReward;        // 승부조작 성공 보수
@@ -547,6 +556,9 @@ public sealed partial class Game
     {
         if (s.Kind == "cup_final") return "👑 챔피언십 컵 결승";
         if (s.Kind == "cup_sf") return "🏆 챔피언십 컵 4강";
+        if (s.Kind == "fest_final") return "🎭 사투르날리아 대항전 결승 — 루두스의 명예";
+        if (s.Kind == "fest_sf") return "🎭 사투르날리아 대항전 4강";
+        if (s.Kind == "fest_qf") return "🎭 사투르날리아 대항전 8강";
         if (s.Kind == "tiebreak") return "⚖ 우승 결정전 — 동률의 저울, 단판 승부";
         if (s.Format == "execution") return "☠ 처형전 — 패자는 죽을 수 있다 (보상 ×3)";
         var ab = _ledger.Get(A.Id, B.Id); var ba = _ledger.Get(B.Id, A.Id);
@@ -1300,6 +1312,7 @@ public sealed partial class Game
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0; _tbWinnerId = null;
+        _festStage = 0; _festSlots = new(); _festRepId = null; _festChampion = null;   // 🎭 대항전 리셋(대표는 시즌마다 지명)
         _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
         _preWeek = 0;   // [19] 프리시즌 준비 주간 리셋(개막 시)
         // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
@@ -2373,6 +2386,22 @@ public sealed partial class Game
             var w = res.Winner == 0 ? A : B;
             if (w.IsPlayer) _gold += CupSemiPrize;
         }
+        else if (s.Kind.StartsWith("fest_"))   // 🎭 대항전: 승자 진출(무승부 = 상위 시드 A), 결승 = 왕관
+        {
+            var fw = res.Winner == 1 ? B : A;
+            if (res.Winner < 0) _story.Add((s.Round, "festival", $"🎭 무승부 — 시드 우위의 {fw.Name}이(가) 진출한다"));
+            fw.Popularity += 3f;   // 축제의 함성 — 흥행 메타만(전투 무영향)
+            int slot = _festSlots.FindIndex(x => x.Length == 0);
+            if (slot >= 0) _festSlots[slot] = fw.Id;
+            if (s.Kind == "fest_final")
+            {
+                _festChampion = fw.Name; _festStage = 4;
+                fw.Fame += 8f; fw.Popularity += 7f;
+                _story.Add((s.Round, "festival", $"🎭 사투르날리아 대항전 우승 — {LudusNameOf(fw.LudusId)}의 {fw.Name}, 축제의 왕관을 쓴다!"));
+                if (fw.IsPlayer) { _gold += FestWinPrize; AddRep(RepFestTitle); AddGlory(GloryFest); }
+                else AddRivalRep(fw.LudusId, RepFestTitle);
+            }
+        }
         else if (s.Kind == "gauntlet" && res.Winner >= 0)   // 🏟 초청전: 승당 하사, 전승 시 대관
         {
             var w = res.Winner == 0 ? A : B;
@@ -2438,7 +2467,9 @@ public sealed partial class Game
     /// </summary>
     private void EnsureSchedule()
     {
-        if (!SeasonActive || _cursor < _schedule.Count) return;
+        if (!SeasonActive) return;
+        MaybeScheduleFestival();   // 🎪 미드시즌 대항전 — 정규 전반 소진 시 커서 위치에 삽입(전반 → 축제 → 후반)
+        if (_cursor < _schedule.Count) return;
 
         // 정규 소진 → ⚖ 우승 결정전: 1부 1·2위가 승점·승수 완전 동률이면 단판으로 가린다(최대 2회 — 무승부 재대결 1회).
         // 이벤트·컵은 순위에 무영향이라 정규 직후가 유일한 판정 시점. 승자는 Standings 최우선.
@@ -2510,6 +2541,84 @@ public sealed partial class Game
                 }
             }
         }
+    }
+
+    // ── 🎭 사투르날리아 대항전(미드시즌) — 루두스별 대표 1인 토너먼트. 순위 무관 축제전, 걸린 것은 루두스의 명예 ──
+    private const float FestWinPrize = 80f, RepFestTitle = 15f, GloryFest = 6f;
+    private int FestHalfRound => (_rounds + 1) / 2;   // 정규 전반의 마지막 라운드(축제 삽입 경계)
+
+    /// <summary>정규 전반이 끝나는 경계에서 대항전 단계를 커서 위치에 삽입. 단계 승자들이 모이면 다음 단계.
+    /// 이미 시즌 종반인 세이브(이벤트·컵 진입)는 이번 시즌 생략. 대표: AI=루두스 간판, 플레이어=지명(기본 간판).</summary>
+    private void MaybeScheduleFestival()
+    {
+        if (_festStage >= 4) return;
+        if (_eventsAppended || _cupStage > 0) { _festStage = 4; return; }   // 시즌 종반 승계(구 세이브) — 생략
+        bool boundary = _cursor >= _schedule.Count
+            || (_schedule[_cursor].Kind == "regular" && _schedule[_cursor].Round > FestHalfRound);
+        if (!boundary || _schedule.Skip(_cursor).Any(s => s.Kind.StartsWith("fest_"))) return;
+
+        List<string> alive;
+        if (_festStage == 0)
+        {
+            alive = FestParticipants();
+            if (alive.Count < 2) { _festStage = 4; return; }
+            _story.Add((FestHalfRound, "festival",
+                $"🎭 사투르날리아 대항전 개막 — 루두스의 명예를 걸고: {string.Join("·", alive.Select(id => ById(id).Name))}"));
+        }
+        else
+        {
+            if (_festSlots.Count == 0 || _festSlots.Any(x => x.Length == 0)) { _festStage = 4; return; }   // 이상 상태 방어
+            alive = _festSlots.Where(id => _cast.Any(g => g.Id == id)).ToList();   // 사망·이탈 정리
+            if (alive.Count < 2) { _festStage = 4; return; }
+        }
+        ScheduleFestRound(alive);
+        _festStage = Math.Min(3, _festStage + 1);
+    }
+
+    /// <summary>대표 선발 — 루두스당 1인(살아있는 최고 명성), 플레이어는 지명 존중. 시드 = 명성 내림차순, 최대 8.</summary>
+    private List<string> FestParticipants()
+    {
+        var reps = new List<Gladiator>();
+        var mine = _cast.Where(g => g.IsPlayer).ToList();
+        if (mine.Count > 0)
+            reps.Add(mine.FirstOrDefault(g => g.Id == _festRepId) ?? mine.OrderByDescending(g => g.Fame).First());
+        foreach (var r in ActiveRivalLudi)
+        {
+            var top = _cast.Where(g => !g.IsPlayer && g.LudusId == r.Id).OrderByDescending(g => g.Fame).FirstOrDefault();
+            if (top != null) reps.Add(top);
+        }
+        return reps.OrderByDescending(g => g.Fame).ThenBy(g => g.Id).Take(8).Select(g => g.Id).ToList();
+    }
+
+    /// <summary>한 단계 편성: 표준 브래킷(1vN·2vN−1…), 모자란 자리는 상위 시드 부전승. 커서 위치에 삽입(후반 앞).</summary>
+    private void ScheduleFestRound(List<string> alive)
+    {
+        int size = alive.Count <= 2 ? 2 : alive.Count <= 4 ? 4 : 8;
+        string kind = size == 8 ? "fest_qf" : size == 4 ? "fest_sf" : "fest_final";
+        _festSlots = Enumerable.Repeat("", size / 2).ToList();
+        int ins = _cursor;
+        for (int i = 0; i < size / 2; i++)
+        {
+            string a = alive[i];
+            string? b = size - 1 - i < alive.Count ? alive[size - 1 - i] : null;
+            if (b == null) _festSlots[i] = a;   // 부전승 — 상위 시드가 조용히 다음 단계로
+            else _schedule.Insert(ins++, new SchedRec(FestHalfRound, a, b, false, 0f, kind));
+        }
+        // 삽입으로 뒤 인덱스가 밀림 — 스케줄 인덱스를 참조하는 상태 보정
+        int shifted = ins - _cursor;
+        if (shifted > 0 && _betCursor >= _cursor) _betCursor += shifted;
+        if (_oddsCursor >= _cursor) _oddsCursor = -1;   // 커서 경기 배당 캐시 무효화
+    }
+
+    /// <summary>🎭 대항전 대표 지명 — 대항전 시작 전(프리시즌·정규 전반)에만 가능.</summary>
+    public string FestivalRepJson(string fighterId)
+    {
+        if (_festStage != 0) return Err("대항전이 이미 시작됐다");
+        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
+        if (g == null) return Err("내 선수 아님");
+        _festRepId = g.Id;
+        SaveWorld(); if (_interactive) WriteSeasonJson();
+        return JsonSerializer.Serialize(new { ok = true, rep = g.Name }, JsonOpts);
     }
 
     /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
@@ -3653,6 +3762,7 @@ public sealed partial class Game
         _seasonBetNet = w.SeasonBetNet; _gauntletStage = w.GauntletStage; _gauntletWins = w.GauntletWins;
         _achievements.Clear(); if (w.Achievements != null) foreach (var a in w.Achievements) _achievements.Add(a);
         _cupSeeds = w.CupSeeds ?? new(); _cupStage = w.CupStage; _cupChampion = w.CupChampion;
+        _festStage = w.FestStage; _festSlots = w.FestSlots ?? new(); _festRepId = w.FestRepId; _festChampion = w.FestChampion;
         _pendingEventId = w.PendingEventId; _pendingEventFighter = w.PendingEventFighter;
         _rivalRep.Clear();
         if (w.RivalReps != null) foreach (var lr in w.RivalReps) _rivalRep[lr.Id] = lr.Rep;
@@ -3718,7 +3828,8 @@ public sealed partial class Game
             _unrest, _legends.Count > 0 ? _legends.ToList() : null, _legendRefs, _favorAtE1,
             _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null,
             _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, 0, 0,
-            _pressArchive.Count > 0 ? _pressArchive.ToList() : null, _preWeek), JsonOpts));
+            _pressArchive.Count > 0 ? _pressArchive.ToList() : null, _preWeek,
+            _festStage, _festSlots.Count > 0 ? _festSlots.ToList() : null, _festRepId, _festChampion), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
@@ -4076,7 +4187,28 @@ public sealed partial class Game
             FixTarget: _fixFighterId != null ? _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name : null,
             Campaign: BuildCampaignDoc(), Unrest: BuildUnrestDoc(),
             Legends: _legends.Count > 0 ? _legends.ToList() : null,
-            DebtInfo: BuildDebtDoc(), Keepsakes: BuildKeepsakes(), Preseason: BuildPreseasonDoc()), JsonOpts);
+            DebtInfo: BuildDebtDoc(), Keepsakes: BuildKeepsakes(), Preseason: BuildPreseasonDoc(),
+            Festival: BuildFestivalDoc()), JsonOpts);
+    }
+
+    /// <summary>🎭 대항전 문서 — 내 대표(지명 또는 간판 기본값)·진행 브래킷·우승자.</summary>
+    private FestivalDoc? BuildFestivalDoc()
+    {
+        if (_playerless) return null;
+        string Nm(string id) => _cast.FirstOrDefault(g => g.Id == id)?.Name ?? id;
+        var mine = _cast.Where(g => g.IsPlayer).ToList();
+        string? myRep = mine.Count == 0 ? null
+            : (mine.FirstOrDefault(g => g.Id == _festRepId) ?? mine.OrderByDescending(g => g.Fame).First()).Name;
+        List<CupMatchDoc>? bracket = null;
+        if (_festStage >= 1)
+            bracket = _schedule.Where(s => s.Kind.StartsWith("fest_")).Select(s =>
+            {
+                // 같은 쌍이 정규(같은 라운드 번호)에서도 만났을 수 있어 최신 로그 우선(대항전은 나중에 치러진다)
+                var log = _matchLog.LastOrDefault(m => m.AId == s.A && m.BId == s.B && m.Round == s.Round);
+                return new CupMatchDoc(s.Kind == "fest_final" ? "결승" : s.Kind == "fest_sf" ? "4강" : "8강",
+                    Nm(s.A), Nm(s.B), log != null && log.Winner != "무승부" ? log.Winner : null);
+            }).ToList();
+        return new FestivalDoc(_festStage, myRep, _festStage == 0 && mine.Count > 0, _festChampion, bracket);
     }
     private string? BuildLegacyNote()
     {
