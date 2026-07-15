@@ -1003,7 +1003,7 @@ public sealed partial class Game
 
     // ── 캐스트/후보 생성 ──
 
-    // 12인 풀 — worldSeed가 6인을 선발(커리어마다 다른 캐스트 = 변칙성)
+    // 24인 풀 — worldSeed가 12인을 선발(커리어마다 다른 캐스트 = 변칙성)
     private static readonly (string Id, string Name, string Wpn, string Per, string Sig)[] AiCastDef =
     {
         ("GLA_MAXIMUS", "막시무스",   "WPN_SWORD",      "PER_BOLD",        "TAC_PRESSURE"),
@@ -1018,6 +1018,18 @@ public sealed partial class Game
         ("GLA_CASTUS",  "카스투스",   "WPN_SWORD",      "PER_OPPORTUNIST", "TAC_HUNTER"),
         ("GLA_NEMETES", "네메테스",   "WPN_WHIP",       "PER_CRUEL",       "TAC_EVADER"),
         ("GLA_SALVIUS", "살비우스",   "WPN_SPEAR",      "PER_WARY",        "TAC_DECISION"),
+        ("GLA_VARRO",   "바로",       "WPN_SWORD",      "PER_HONORABLE",   "TAC_DECISION"),
+        ("GLA_ASHUR",   "아슈르",     "WPN_DUALBLADES", "PER_OPPORTUNIST", "TAC_GAMBLER"),
+        ("GLA_THEO",    "테오콜레스", "WPN_GREATSWORD", "PER_ARROGANT",    "TAC_PRESSURE"),
+        ("GLA_SEGOVAX", "세고박스",   "WPN_SPEAR",      "PER_WARY",        "TAC_COUNTER"),
+        ("GLA_SAXA",    "삭사",       "WPN_DUALBLADES", "PER_RECKLESS",    "TAC_BRAWLER"),
+        ("GLA_MIRA",    "미라",       "WPN_WHIP",       "PER_SHOWMAN",     "TAC_ZONER"),
+        ("GLA_POLLUX",  "폴룩스",     "WPN_HAMMER",     "PER_CALM",        "TAC_DEFENDER"),
+        ("GLA_CASTOR",  "카스토르",   "WPN_SHIELD",     "PER_WARY",        "TAC_DEFENDER"),
+        ("GLA_PRISCUS", "프리스쿠스", "WPN_SWORD",      "PER_HONORABLE",   "TAC_HUNTER"),
+        ("GLA_VERUS",   "베루스",     "WPN_AXE",        "PER_BOLD",        "TAC_BRAWLER"),
+        ("GLA_FLAMMA",  "플람마",     "WPN_SHIELD",     "PER_SHOWMAN",     "TAC_PRESSURE"),
+        ("GLA_ATTILIUS","아틸리우스", "WPN_SPEAR",      "PER_CALM",        "TAC_EVADER"),
     };
 
     private static readonly string[] RecruitNames =
@@ -1030,7 +1042,7 @@ public sealed partial class Game
     // 라이벌 루두스 — AI 모리튜리가 소속된 경쟁 검투소(명성 순위표). 플레이어는 "PLAYER".
     private const string PlayerLudusId = "PLAYER";
     private string PlayerLudusName => "★ " + _ludusName;   // 라니스타 명명 반영
-    // 6종 풀 — worldSeed가 3곳을 선발(커리어마다 다른 경쟁 구도).
+    // 6종 전부 활성(새 세계) — 7개 루두스 구도(대항전 8강의 뼈대). 구 세이브는 3곳 그대로 이어간다.
     // 개성(W10b): gold=재력(이적 큰손·내 스타를 노린다) / youth=육성(놓친 원석을 주워간다) / blood=잔혹(처형전·도발 서신)
     private static readonly (string Id, string Name, string Persona, string Motto)[] RivalLudiPool =
     {
@@ -1125,14 +1137,14 @@ public sealed partial class Game
     private void CreateAiCast()
     {
         var rng = new SimRandom(_worldSeed ^ 0xCA57_CA57UL);
-        var picks = AiCastDef.OrderBy(_ => rng.NextUInt64()).Take(6).ToList();          // 12인 풀 → 6인
-        var ludi = RivalLudiPool.OrderBy(_ => rng.NextUInt64()).Take(3).ToList();       // 6종 풀 → 3곳
+        var picks = AiCastDef.OrderBy(_ => rng.NextUInt64()).Take(12).ToList();         // 24인 풀 → 12인
+        var ludi = RivalLudiPool.OrderBy(_ => rng.NextUInt64()).ToList();               // 6곳 전부 활성(대항전 구도)
         int i = 0;
         foreach (var (id, name, wpn, per, sig) in picks)
         {
             var g = RollGladiator(rng, id, name, wpn, per, sigTactic: sig, isPlayer: false,
                                   ageMin: 20, ageMax: 28);
-            g.LudusId = ludi[i / 2 % ludi.Count].Id;   // 2명씩 3개 라이벌 루두스로 편성
+            g.LudusId = ludi[i / 2 % ludi.Count].Id;   // 2명씩 6개 라이벌 루두스로 편성
             _cast.Add(g);
             i++;
         }
@@ -3401,7 +3413,7 @@ public sealed partial class Game
             var rivalsAll = ActiveRivalLudi.ToList();
             var youthLudi = rivalsAll.Where(r => r.Persona == "youth").ToList();
             float joinP = youthLudi.Count > 0 ? 0.55f : 0.40f;
-            if (!_playerless && _cast.Count(x => !x.IsPlayer) < 9 && rRng.Roll(joinP))
+            if (!_playerless && _cast.Count(x => !x.IsPlayer) < 15 && rRng.Roll(joinP))   // AI 12인 기준 +3 여유
             {
                 var rivals = youthLudi.Count > 0 && rRng.Roll(0.6f) ? youthLudi : rivalsAll;
                 var rl = rivals.Count > 0 ? rivals[(int)(rRng.NextUInt64() % (ulong)rivals.Count)] : default;

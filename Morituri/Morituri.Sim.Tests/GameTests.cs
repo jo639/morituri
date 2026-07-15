@@ -517,7 +517,14 @@ public class GameTests
             g.PlayNext();
             var st = Parse(g.StateJson());
             var fs = st.GetProperty("MyFighters");
-            if (fs.GetArrayLength() == 0) Assert.That(false, Is.True, "선수 사망 — 시드 변경 필요");
+            if (fs.GetArrayLength() == 0)   // 극적 운명(사망 등)으로 로스터가 비면 재영입 — 테스트 목적은 스킬 게이트라 시드 무관하게 지속
+            {
+                g.GachaJson(); g.RecruitJson(0);
+                fs = Parse(g.StateJson()).GetProperty("MyFighters");
+                if (fs.GetArrayLength() == 0) continue;   // 금화 부족 — 경기 진행하며 재시도
+                id = fs[0].GetProperty("Id").GetString()!;
+                continue;
+            }
             ready = fs[0].GetProperty("TrainingPoints").GetInt32() >= 3;
         }
         Assert.That(ready, Is.True, "훈련 포인트 3 적립");
@@ -575,9 +582,9 @@ public class GameTests
             }
         }
         Assert.That(fateKinds.Count, Is.GreaterThan(1), $"40시즌 동안 극적 운명 다종 발생 (발생: {string.Join(",", fateKinds)})");
-        // 사망·교체에도 리그는 6명 유지(공석 승계)
+        // 사망·교체에도 리그는 12명 유지(공석 승계)
         var fs = Parse(g.StateJson()).GetProperty("Season").GetProperty("Fighters");
-        Assert.That(fs.GetArrayLength(), Is.EqualTo(6), "사망·방출·은퇴에도 리그 인원 유지");
+        Assert.That(fs.GetArrayLength(), Is.EqualTo(12), "사망·방출·은퇴에도 리그 인원 유지");
     }
 
     [Test]
@@ -593,12 +600,12 @@ public class GameTests
         var f2 = Parse(g2.StateJson()).GetProperty("Season").GetProperty("Fighters")
             .EnumerateArray().Select(f => f.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
 
-        Assert.That(f1.Count, Is.EqualTo(6)); Assert.That(f2.Count, Is.EqualTo(6));
-        Assert.That(string.Join(",", f1), Is.Not.EqualTo(string.Join(",", f2)), "worldSeed마다 다른 캐스트(12인 풀 선발)");
+        Assert.That(f1.Count, Is.EqualTo(12)); Assert.That(f2.Count, Is.EqualTo(12));
+        Assert.That(string.Join(",", f1), Is.Not.EqualTo(string.Join(",", f2)), "worldSeed마다 다른 캐스트(24인 풀 선발)");
 
+        // 루두스는 이제 6종 전부 활성(대항전 구도) — 세계마다 캐스트 소속만 달라진다
         var l1 = Parse(g1.StateJson()).GetProperty("LudusTable").EnumerateArray().Select(x => x.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
-        var l2 = Parse(g2.StateJson()).GetProperty("LudusTable").EnumerateArray().Select(x => x.GetProperty("Name").GetString()).OrderBy(x => x).ToList();
-        Assert.That(string.Join(",", l1), Is.Not.EqualTo(string.Join(",", l2)), "worldSeed마다 다른 라이벌 루두스(6종 풀 선발)");
+        Assert.That(l1.Count, Is.EqualTo(6), "라이벌 루두스 6곳 전부 활성");
     }
 
     [Test]
@@ -710,7 +717,7 @@ public class GameTests
         var g = new Game(1, 7, fresh: true, interactive: false, playerless: true);
         for (int s = 0; s < 3; s++) RunFullSeason(g);
         var lt = Parse(g.StateJson()).GetProperty("LudusTable");
-        Assert.That(lt.GetArrayLength(), Is.EqualTo(3), "playerless = 라이벌 루두스 3개");
+        Assert.That(lt.GetArrayLength(), Is.EqualTo(6), "playerless = 라이벌 루두스 6곳 전부 활성");
         float prev = float.MaxValue; bool anyRep = false;
         foreach (var l in lt.EnumerateArray())
         {
@@ -793,13 +800,13 @@ public class GameTests
     [Test]
     public void Game_ManySeasons_AgingRotation_KeepsLeagueAlive()
     {
-        // 25시즌 연속 — 노쇠 AI(노화+6시즌 = 36~42세)는 은퇴(명전)하고 신인이 와 리그는 6명 유지.
+        // 25시즌 연속 — 노쇠 AI(노화+6시즌 = 36~42세)는 은퇴(명전)하고 신인이 와 리그는 12명 유지.
         TempDir("aging");
         var g = new Game(1, 11, fresh: true, interactive: false, playerless: true);
         for (int s = 0; s < 25; s++) RunFullSeason(g);
 
         var season = Parse(g.StateJson()).GetProperty("Season");
-        Assert.That(season.GetProperty("Fighters").GetArrayLength(), Is.EqualTo(6), "세대교체로 리그 6명 유지");
+        Assert.That(season.GetProperty("Fighters").GetArrayLength(), Is.EqualTo(12), "세대교체로 리그 12명 유지");
         Assert.That(season.GetProperty("Champions").GetArrayLength(), Is.EqualTo(25), "역대 챔피언 25명 기록");
         Assert.That(season.GetProperty("Hall").GetArrayLength(), Is.GreaterThan(0), "은퇴자(명예의 전당) 발생");
     }
