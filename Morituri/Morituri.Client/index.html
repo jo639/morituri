@@ -388,6 +388,7 @@
       <button onclick="banquet()" class="act glory" style="width:auto;padding:7px 16px" title="연회를 열어 후원자의 마음을 산다 — 후원 관계 +12 (시즌 1회, 💰100)">🍷 후원자 연회 (💰100)</button>
     </div>
     <div id="preseasonBoard" style="display:none;margin:2px 0 10px"></div>
+    <div class="fac" id="goalBoard" style="margin:2px 0 10px" title="🎯 목표 보드 — 흩어진 야망을 한눈에"></div>
     <div class="grid" id="myGrid"></div>
     <h2>시설</h2>
     <div class="fac" id="facRow"></div>
@@ -500,6 +501,8 @@
   <h3 id="ssTitle" style="font-size:22px; color:var(--gold)">—</h3>
   <div class="vsline" id="ssChamp"></div>
   <div class="vsline" id="ssCup"></div>
+  <div class="vsline" id="ssFest"></div>
+  <div id="ssAwards"></div>
   <div id="ssAch"></div>
   <table style="width:100%; border-collapse:collapse; font-size:13px; margin:6px 0" id="ssTable"></table>
   <div id="ssPromo"></div>
@@ -1295,6 +1298,12 @@ function showSeason(){
   $('ssTitle').textContent = `🏛 시즌 ${s.SeasonNo} 종료`;
   $('ssChamp').textContent = `👑 챔피언: ${s.Champion}` + (s.ChampionIsMine ? ' — 내 루두스의 영광!' : '');
   $('ssCup').textContent = s.CupChampion ? `🏆 컵 우승: ${s.CupChampion}` + (s.CupChampionMine ? ' — 내 루두스!' : '') : '';
+  $('ssFest').textContent = s.FestChampion ? `🎭 대항전 우승: ${s.FestChampion}` + (s.FestChampionMine ? ' — 내 루두스!' : '') : '';
+  // 🏛 시상식 — MVP·최다 KO·신인왕·인기왕 (서버 산출)
+  $('ssAwards').innerHTML = (s.Awards&&s.Awards.length)
+    ? `<div style="margin:6px 0;padding:8px 10px;border:1px solid var(--gold-deep);border-radius:8px;background:rgba(201,168,76,.06)">
+        <div class="note" style="color:var(--gold);margin-bottom:3px">🏛 시즌 시상식</div>
+        ${s.Awards.map(a=>`<div style="font-size:12.5px;margin:2px 0">${a}</div>`).join('')}</div>` : '';
   $('ssAch').innerHTML = (s.NewAchievements&&s.NewAchievements.length)
     ? `<div class="rrow" style="color:var(--gold)"><span>🎖 새 업적</span><b>${s.NewAchievements.join(' · ')}</b></div>` : '';
   $('ssTable').innerHTML = s.Standings.map(r=>
@@ -2078,6 +2087,36 @@ function renderLudus(){
 
   $('achGrid').innerHTML = (st.Achievements||[]).map(a=>
     `<div class="chip" title="${a.Desc}" style="padding:6px 10px;${a.Unlocked?'background:rgba(201,168,76,.2);color:var(--gold);border:1px solid var(--gold)':'opacity:.45'}">${a.Unlocked?'🏅':'🔒'} ${a.Name}</div>`).join('');
+
+  renderGoalBoard();
+}
+
+// 🎯 목표 보드 — 특명·등급·순위·대항전·총애·업적·명전·빚, 흩어진 목표를 한 패널로(전부 기존 데이터)
+function renderGoalBoard(){
+  const el=$('goalBoard'); if(!el) return;
+  const S=st.Season||{}, g=[];
+  if (st.Edict) g.push(['📜','황제의 특명', st.Edict.Desc, st.Edict.Done?'':'실패 시 명성 −', st.Edict.Done]);
+  const L=st.Ludus;
+  if (L) g.push(['🏛','루두스 등급', L.NextTierName?`${L.TierName} → ${L.NextTierName}`:`${L.TierName}`, L.NextTierName?`명성 ${Math.round(L.Rep)}/${Math.round(L.NextTierRep)}`:'정점에 섰다', !L.NextTierName]);
+  const fs=S.Fighters||[], mineF=fs.filter(f=>f.IsPlayer);
+  if (mineF.length && st.SeasonActive){
+    const best=mineF.map(f=>{ const div=fs.filter(x=>x.Division===f.Division).sort((a,b)=>(b.Points-a.Points)||(b.W-a.W)); return {f, rank:div.findIndex(x=>x.Name===f.Name)+1, div:f.Division}; }).sort((a,b)=>(a.div-b.div)||(a.rank-b.rank))[0];
+    const txt = best.div===1 ? (best.rank===1?'1부 선두 — 왕좌를 지켜라':best.rank<=4?`1부 ${best.rank}위 — 컵권 안`:`1부 ${best.rank}위 — 상위 4위가 컵으로 간다`) : `2부 ${best.rank}위 — 상위 2가 콜로세움으로 오른다`;
+    g.push(['⚔','시즌 순위', best.f.Name, txt, best.div===1&&best.rank===1]);
+  }
+  const F=st.Festival;
+  if (F && st.SeasonActive) g.push(['🎭','대항전', F.Champion?`왕관: ${F.Champion}`:(F.Stage>0&&F.Stage<4?'축제 진행 중':F.Stage===0?`우리 대표 ${F.MyRep||'—'}`:'축제 종료'), '', !!F.Champion && (st.MyFighters||[]).some(f=>f.Name===F.Champion)]);
+  const fav=st.Favor||0, nextFav = fav>=10?null: fav>=6?10: fav>=3?6:3;
+  if (fav>0||st.Edict) g.push(['👑','황제의 총애', fav>0?'★'.repeat(Math.min(10,fav)):'아직 무명', nextFav?`다음 하사까지 ${nextFav-fav}`:'정점', fav>=10]);
+  const ach=st.Achievements||[], un=ach.filter(a=>a.Unlocked).length, nextA=ach.find(a=>!a.Unlocked);
+  g.push(['🏅','업적', `${un}/${ach.length}`, nextA?`다음: ${nextA.Name}`:'모든 것을 이뤘다', un===ach.length]);
+  const hall=(S.Hall||[]).filter(h=>h.IsPlayer).length;
+  g.push(['🏛','명예의 전당', `내 전설 ${hall}인`, hall>=5?'불멸의 반열':'5인 배출 = 불멸의 루두스', hall>=5]);
+  if (st.Debt>0) g.push(['🖤','검은 인장의 빚', `${Math.round(st.Debt)}`, '청산하라 — 이자가 뼈를 갉는다', false]);
+  if (st.Redemption) g.push(['🔥','재기의 서약', '투기장 → 콜로세움', '복귀 시 영광 두 배', false]);
+  el.innerHTML = g.map(([ic,t,main,sub,done])=>`<div class="f" style="min-width:148px;flex:1;${done?'border:1px solid rgba(201,168,76,.5)':''}">
+    <div class="note">${ic} ${t}${done?' <span style="color:var(--gold)">✓</span>':''}</div>
+    <b style="font-size:12.5px">${main}</b>${sub?`<div class="note" style="margin-top:2px">${sub}</div>`:''}</div>`).join('');
 }
 // 훈련 교관 코멘트(DDD): 잠재력 잔량을 모호하게 암시 — 매 훈련이 작은 리빌
 const COACH={

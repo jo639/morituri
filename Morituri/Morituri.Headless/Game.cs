@@ -286,7 +286,9 @@ public sealed partial class Game
         List<string>? Retirements = null,
         string? CupChampion = null, bool CupChampionMine = false, List<string>? NewAchievements = null,
         List<string>? FateNotes = null, List<string>? PromoNotes = null, string? EdictNote = null,
-        float BetNet = 0f, int GreatCount = 0, int Favor = 0, int GauntletWins = 0);   // 결산 대통합
+        float BetNet = 0f, int GreatCount = 0, int Favor = 0, int GauntletWins = 0,   // 결산 대통합
+        string? FestChampion = null, bool FestChampionMine = false,   // 🎭 대항전 우승자
+        List<string>? Awards = null);   // 🏛 시상식 — MVP·최다 KO·신인왕·인기왕
 
     /// <summary>세계 역사 — 역대 챔피언·명예의 전당(은퇴자) 영속 기록.</summary>
     private sealed record ChampionRec(int SeasonNo, string Name, string Record, bool IsPlayer);
@@ -1574,9 +1576,38 @@ public sealed partial class Game
                 .Select(s => s.Text).LastOrDefault(),
             BetNet: MathF.Round(_seasonBetNet),
             GreatCount: _story.Count(s => s.Kind == "greatest"),
-            Favor: _favor, GauntletWins: _gauntletWins);
+            Favor: _favor, GauntletWins: _gauntletWins,
+            FestChampion: _festChampion,
+            FestChampionMine: _festChampion != null && _cast.Any(g => g.IsPlayer && g.Name == _festChampion),
+            Awards: BuildSeasonAwards());
 
         SaveWorld();
+    }
+
+    /// <summary>🏛 시즌 시상식 — MVP(승수→KO)·최다 KO·신인왕(데뷔 시즌 최다 승)·인기왕. 매치로그·시즌 스탯에서 산출.</summary>
+    private List<string>? BuildSeasonAwards()
+    {
+        if (_cast.Count == 0 || _matchLog.Count == 0) return null;
+        var awards = new List<string>();
+        var kos = new Dictionary<string, int>();   // 이름 → 시즌 KO승(매치로그)
+        foreach (var m in _matchLog.Where(m => m.Reason == "KO" && m.Winner != "무승부"))
+            kos[m.Winner] = kos.GetValueOrDefault(m.Winner) + 1;
+
+        var mvp = _cast.OrderByDescending(g => g.W).ThenByDescending(g => kos.GetValueOrDefault(g.Name)).First();
+        if (mvp.W > 0) awards.Add($"⚔ 시즌 MVP — {mvp.Name} ({mvp.W}승)");
+        if (kos.Count > 0)
+        {
+            var koKing = kos.OrderByDescending(kv => kv.Value).First();
+            if (koKing.Value >= 2) awards.Add($"💥 최다 KO — {koKing.Key} ({koKing.Value}회)");
+        }
+        // 신인왕: 통산 경기 = 이번 시즌 출장수(매치로그)인 데뷔 시즌 선수 중 최다 승 — MVP와 겹치면 생략
+        int SeasonGames(string name) => _matchLog.Count(m => m.AName == name || m.BName == name);
+        var rookie = _cast.Where(g => g.CW + g.CL + g.CD > 0 && g.CW + g.CL + g.CD == SeasonGames(g.Name))
+                          .OrderByDescending(g => g.W).ThenByDescending(g => kos.GetValueOrDefault(g.Name)).FirstOrDefault();
+        if (rookie != null && rookie.W > 0 && rookie != mvp) awards.Add($"🌱 신인왕 — {rookie.Name} ({rookie.W}승 데뷔)");
+        var star = _cast.OrderByDescending(g => g.Popularity).First();
+        if (star.Popularity >= 10f) awards.Add($"🎪 군중의 연인 — {star.Name} (인기 {star.Popularity:F0})");
+        return awards.Count > 0 ? awards : null;
     }
 
     /// <summary>시즌 중 선수 제거 시 잔여 일정에서 그 선수 경기를 뺀다(#3 — 은퇴/방출 중도 허용).</summary>
