@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI · 리그</title>
 <link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
 <style>
   /* 기본 토큰은 theme.css — 여기엔 관계 그래프 전용 색만 */
   :root{ --nem:#e0685f; --fear:#9b6fd1; --rival:#e0a24c; --envy:#d16fa0; --obs:#c94fc9; --resp:#6fbf8f; --friend:#5b9be0; }
@@ -85,20 +86,20 @@
     <div id="champ"></div>
     <div id="phaseFlow" style="margin:12px 0 4px"></div>
 
-    <h2>📅 시즌 달력 <span class="sub" id="calSub"></span></h2>
+    <h2>{calendar} 시즌 달력 <span class="sub" id="calSub"></span></h2>
     <div class="legend" id="kindLegend" style="margin-bottom:8px">
       <span><i style="background:var(--dim)"></i>정규 라운드로빈</span>
-      <span><i style="background:#c9a84c"></i>🎪 이벤트 빅매치</span>
-      <span><i style="background:#d86a9e"></i>🎭 사투르날리아 대항전</span>
-      <span><i style="background:#e0685f"></i>☠ 처형전</span>
-      <span><i style="background:#c94fc9"></i>🏆 챔피언십 컵</span>
-      <span><i style="background:#e0a24c"></i>⚖ 우승 결정전</span>
-      <span><i style="background:#5b9be0"></i>🏟 황제의 초청전</span>
-      <span><i style="background:#6fbf8f"></i>🎤 도전·흥행전</span>
+      <span><i style="background:#c9a84c"></i>{fest} 이벤트 빅매치</span>
+      <span><i style="background:#d86a9e"></i>{masks} 사투르날리아 대항전</span>
+      <span><i style="background:#e0685f"></i>{skull} 처형전</span>
+      <span><i style="background:#c94fc9"></i>{trophy} 챔피언십 컵</span>
+      <span><i style="background:#e0a24c"></i>{scales} 우승 결정전</span>
+      <span><i style="background:#5b9be0"></i>{arena} 황제의 초청전</span>
+      <span><i style="background:#6fbf8f"></i>{speech} 도전·흥행전</span>
     </div>
     <div id="calendar" style="display:flex;gap:10px;flex-wrap:wrap"></div>
 
-    <h2 id="cupHead" hidden>🏆 챔피언십 컵 대진표</h2>
+    <h2 id="cupHead" hidden>{trophy} 챔피언십 컵 대진표</h2>
     <div id="cupBracket" hidden style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"></div>
 
     <h2>순위 (정규 시즌)</h2>
@@ -110,7 +111,7 @@
         <table id="fame"><thead><tr><th>선수</th><th>명성</th><th>인기</th><th>통산</th></tr></thead><tbody></tbody></table>
       </div>
       <div>
-        <h2>🎪 이벤트 매치 (자동 편성)</h2>
+        <h2>{fest} 이벤트 매치 (자동 편성)</h2>
         <div class="cards" id="events"></div>
       </div>
     </div>
@@ -127,11 +128,11 @@
 
     <div class="grid2" id="historyWrap" hidden>
       <div>
-        <h2>👑 역대 챔피언</h2>
+        <h2>{crown} 역대 챔피언</h2>
         <table id="champs"><thead><tr><th>시즌</th><th>챔피언</th><th>전적</th></tr></thead><tbody></tbody></table>
       </div>
       <div>
-        <h2>🏛 명예의 전당 <span class="sub">(은퇴)</span></h2>
+        <h2>{ludus} 명예의 전당 <span class="sub">(은퇴)</span></h2>
         <table id="hall"><thead><tr><th>이름</th><th>명성</th><th>통산</th><th>은퇴</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
@@ -145,7 +146,7 @@ const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).
 
 // ── 디비전 페이지 전환 (1부 콜로세움 / 2부 투기장) — 순위·리더보드·경기결과를 부별로 ──
 let curDiv = 1, curDoc = null;
-const DIVN = {1:'🏛 1부 콜로세움', 2:'⚔ 2부 투기장'};
+const DIVN = {1:'{ludus} 1부 콜로세움', 2:'{swords} 2부 투기장'};
 function setDiv(d){ curDiv = d; renderDivision(); }
 function renderDivision(){
   const d = curDoc; if (!d) return;
@@ -190,7 +191,7 @@ function renderDivision(){
   document.getElementById('mlHint').textContent = ml.length ? (inShell ? '(클릭 = 관전)' : `(${ml.length}경기)`) : '';
   document.getElementById('matchlog').innerHTML = [...ml].reverse().map(m=>
     `<div class="ml${m.IsPlayerMatch?' mine':''}" onclick="watchIt(${m.Idx})">`+
-    `<span class="rd">${m.IsEvent?'🎪':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
+    `<span class="rd">${m.IsEvent?'{fest}':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
     `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
     || '<div class="empty">아직 경기 없음</div>';
 
@@ -204,11 +205,11 @@ function renderCalendar(divOf){
   divOf = divOf || (()=>{ const m={}; (d.Fighters||[]).forEach(f=>m[f.Name]=f.Division||1); return m; })();
   // 선택된 부의 선수가 하나라도 낀 경기만(교차 카드는 어느 쪽이든 낀 부에 표시)
   const cal = (d.Calendar || []).filter(c=> (divOf[c.A]||1)===curDiv || (divOf[c.B]||1)===curDiv);
-  document.getElementById('calSub').textContent = cal.length ? `${DIVN[curDiv]||curDiv+'부'} · AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · 🟡 내 루두스${d.CurMonth?` · ● 오늘 ${d.CurMonth} ${d.CurDay}일`:''}` : (DIVN[curDiv]||'');
+  document.getElementById('calSub').textContent = cal.length ? `${DIVN[curDiv]||curDiv+'부'} · AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · ● 내 루두스${d.CurMonth?` · ● 오늘 ${d.CurMonth} ${d.CurDay}일`:''}` : (DIVN[curDiv]||'');
   if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">이 리그 일정 없음</div>'; return; }
   const months = [...new Set(cal.map(c=>c.Month))];
-  const kindIcon = c => c.Kind==='cup_final'?'👑':c.Kind==='cup_sf'?'🏆':c.Kind==='tiebreak'?'⚖':c.Kind==='gauntlet'?'🏟':c.Kind==='proposal'?'🎤':
-    (c.Kind||'').startsWith('fest_')?'🎭':c.Format==='execution'?'☠':c.Kind==='event'?'🎪':'';
+  const kindIcon = c => c.Kind==='cup_final'?'{crown}':c.Kind==='cup_sf'?'{trophy}':c.Kind==='tiebreak'?'{scales}':c.Kind==='gauntlet'?'{arena}':c.Kind==='proposal'?'{speech}':
+    (c.Kind||'').startsWith('fest_')?'{masks}':c.Format==='execution'?'{skull}':c.Kind==='event'?'{fest}':'';
   // 경기 종류 색(범례와 동일) — 셀 안 항목의 왼쪽 스트립으로 종류를 한눈에
   const kindColor = c => c.Kind==='cup_final'||c.Kind==='cup_sf'?'#c94fc9':c.Kind==='tiebreak'?'#e0a24c':c.Kind==='gauntlet'?'#5b9be0':
     (c.Kind||'').startsWith('fest_')?'#d86a9e':c.Kind==='proposal'?'#6fbf8f':c.Format==='execution'?'#e0685f':c.Kind==='event'?'#c9a84c':'transparent';
@@ -230,14 +231,14 @@ function renderCalendar(divOf){
       const border = isNext ? '1px solid var(--gold,#c9a84c)' : isToday ? '1px solid var(--gold-deep,#8a6a2a)' : mine ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--line-soft,#3a2d1d)';
       const inner = list.map(c=>{
         const clickable = c.Winner && inShell;
-        const fire = !c.Winner && c.Hype>=70 ? '🔥' : !c.Winner && c.Hype>=35 ? '✨' : '';
-        const hot = c.Hot ? '<span title="연승이 걸린 경기" style="color:#ff9d5d">⚡</span>' : '';
+        const fire = !c.Winner && c.Hype>=70 ? '{flame}' : !c.Winner && c.Hype>=35 ? '{glory}' : '';
+        const hot = c.Hot ? '<span title="연승이 걸린 경기" style="color:#ff9d5d">{bolt}</span>' : '';
         const tIcon = kindIcon(c) || (c.Title ? c.Title.split(' ')[0]+' ' : '');   // 타이틀전 라벨(#5) 아이콘
         const kc = kindColor(c);
         const tip = [kindName(c), c.Title, !c.Winner&&c.Hype?`흥행 기대치 ${c.Hype}`:'', c.Hot?'연승 걸림':'', clickable?'클릭=재관전':''].filter(Boolean).join(' · ');
-        return `<div ${clickable?`onclick="watchIt(${c.Idx})"`:''} style="${clickable?'cursor:pointer;':''}${kc!=='transparent'?`border-left:3px solid ${kc};padding-left:3px;margin:1px 0;border-radius:2px;background:rgba(255,255,255,.02)`:''}" ${tip?`title="${tip}"`:''}>
+        return `<div ${clickable?`onclick="watchIt(${c.Idx})"`:''} style="${clickable?'cursor:pointer;':''}${kc!=='transparent'?`border-left:3px solid ${kc};padding-left:3px;margin:1px 0;border-radius:2px;background:rgba(255,255,255,.02)`:''}" ${tip?`title="${plainTip(tip)}"`:''}>
           <div style="font-size:10px;line-height:1.15;${c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--ink,#e8dcc8)'}">${tIcon}${fire}${hot}${c.A}<br>vs ${c.B}</div>
-          <div style="font-size:9px;color:${c.Winner?'var(--win,#7ec97e)':(c.IsNext?'var(--gold,#c9a84c)':'var(--dim,#8a7a5a)')}">${c.Winner?('🏆'+c.Winner):(c.IsNext?'▶다음':'예정')}</div></div>`;
+          <div style="font-size:9px;color:${c.Winner?'var(--win,#7ec97e)':(c.IsNext?'var(--gold,#c9a84c)':'var(--dim,#8a7a5a)')}">${c.Winner?('{trophy}'+c.Winner):(c.IsNext?'▶다음':'예정')}</div></div>`;
       }).join('');
       cells += `<div style="min-height:52px;padding:3px;border-radius:5px;background:${bg};border:${border};overflow:hidden"${isToday?' title="오늘"':''}>
         <div style="font-size:9px;${isToday?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--dim,#8a7a5a)'}">${day}${isToday?' ● 오늘':''}</div>${inner}</div>`;
@@ -261,18 +262,18 @@ function renderPhaseFlow(d){
       <div class="sub" style="margin-top:2px">${done}/${list.length}경기 ${done===list.length?'✓ 종료':''}</div></div>`;
   };
   const parts = [
-    phase('정규 라운드로빈','⚔', of(['regular']), '#8a7a5a'),
-    phase('사투르날리아 대항전','🎭', of(['fest_qf','fest_sf','fest_final']), '#d86a9e'),
-    phase('이벤트 빅매치','🎪', of(['event','proposal']), '#c9a84c'),
-    phase('우승 결정전','⚖', of(['tiebreak']), '#e0a24c'),
-    phase('챔피언십 컵','🏆', of(['cup_sf','cup_final']), '#c94fc9'),
-    phase('황제의 초청전','🏟', of(['gauntlet']), '#5b9be0'),
+    phase('정규 라운드로빈','{swords}', of(['regular']), '#8a7a5a'),
+    phase('사투르날리아 대항전','{masks}', of(['fest_qf','fest_sf','fest_final']), '#d86a9e'),
+    phase('이벤트 빅매치','{fest}', of(['event','proposal']), '#c9a84c'),
+    phase('우승 결정전','{scales}', of(['tiebreak']), '#e0a24c'),
+    phase('챔피언십 컵','{trophy}', of(['cup_sf','cup_final']), '#c94fc9'),
+    phase('황제의 초청전','{arena}', of(['gauntlet']), '#5b9be0'),
   ].filter(Boolean);
   el.innerHTML = parts.length ? `<div class="sub" style="margin-bottom:4px">시즌 진행 단계 — 각 경기의 의미</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">${parts.join('<div style="display:flex;align-items:center;color:var(--gold-deep)">➜</div>')}</div>` : '';
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">${parts.join('<div style="display:flex;align-items:center;color:var(--gold-deep)">→</div>')}</div>` : '';
 }
 
-// 🏆 챔피언십 컵 토너먼트 표 — 4강 2경기 → 결승 → 챔피언 (달력 항목에서 파생)
+// {trophy} 챔피언십 컵 토너먼트 표 — 4강 2경기 → 결승 → 챔피언 (달력 항목에서 파생)
 function renderCupBracket(d){
   const cal = d.Calendar||[];
   const sfs = cal.filter(c=>c.Kind==='cup_sf');
@@ -280,13 +281,13 @@ function renderCupBracket(d){
   const head=document.getElementById('cupHead'), box=document.getElementById('cupBracket');
   if (!sfs.length){ head.hidden=true; box.hidden=true; return; }
   head.hidden=false; box.hidden=false;
-  const slot=(name,won,champ)=>`<div style="padding:5px 12px;border:1px solid ${won?'var(--gold)':'var(--line-soft)'};border-radius:6px;margin:2px 0;background:${won?'rgba(201,168,76,.14)':'var(--panel)'};font-weight:${won?700:400};color:${won?'var(--gold)':'var(--ink)'};font-size:13px;min-width:120px">${champ?'👑 ':''}${name||'?'}</div>`;
+  const slot=(name,won,champ)=>`<div style="padding:5px 12px;border:1px solid ${won?'var(--gold)':'var(--line-soft)'};border-radius:6px;margin:2px 0;background:${won?'rgba(201,168,76,.14)':'var(--panel)'};font-weight:${won?700:400};color:${won?'var(--gold)':'var(--ink)'};font-size:13px;min-width:120px">${champ?'{crown} ':''}${name||'?'}</div>`;
   const match=(c,label)=> c?`<div><div class="sub" style="margin-bottom:2px">${label}${c.Winner?'':' · 예정'}</div>${slot(c.A,c.Winner===c.A)}${slot(c.B,c.Winner===c.B)}</div>`
                          :`<div><div class="sub" style="margin-bottom:2px">${label} · 미정</div>${slot('4강 승자')}${slot('4강 승자')}</div>`;
   box.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">${match(sfs[0],'4강 ①')}${match(sfs[1],'4강 ②')}</div>
-    <div style="color:var(--gold-deep);font-size:20px">➜</div>
+    <div style="color:var(--gold-deep);font-size:20px">→</div>
     ${match(fin,'결승')}
-    ${fin&&fin.Winner?`<div style="color:var(--gold-deep);font-size:20px">➜</div><div>${slot(fin.Winner,true,true)}<div class="sub" style="text-align:center;margin-top:2px">컵 챔피언</div></div>`:''}`;
+    ${fin&&fin.Winner?`<div style="color:var(--gold-deep);font-size:20px">→</div><div>${slot(fin.Winner,true,true)}<div class="sub" style="text-align:center;margin-top:2px">컵 챔피언</div></div>`:''}`;
 }
 
 function load(d){
@@ -299,7 +300,7 @@ function load(d){
   curDoc = d;
   renderDivision();   // 순위·명성·경기결과·달력을 선택된 부로 렌더(달력은 renderDivision이 호출)
   renderPhaseFlow(d);    // 시즌 진행 단계 흐름 — 각 경기의 의미(정규→이벤트→컵)
-  renderCupBracket(d);   // 🏆 컵 토너먼트 표 — 종류 가시화
+  renderCupBracket(d);   // {trophy} 컵 토너먼트 표 — 종류 가시화
 
   // 이벤트 매치
   const ev = document.getElementById('events');
@@ -320,7 +321,7 @@ function load(d){
   drawGraph(d);
 
   // 서사
-  const icon = {revenge:'⚔ 복수', upset:'★ 이변', comeback:'🔥 대역전'};
+  const icon = {revenge:'{swords} 복수', upset:'★ 이변', comeback:'{flame} 대역전'};
   const s = document.getElementById('story');
   const ordered = [...d.Story].sort((a,b)=>(a.Kind==='revenge'?0:1)-(b.Kind==='revenge'?0:1));
   s.innerHTML = ordered.slice(0,20).map(e=>`<div class="ev ${e.Kind}">${e.Text}</div>`).join('') || '<div class="empty">없음</div>';

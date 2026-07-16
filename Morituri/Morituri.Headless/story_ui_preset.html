@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>MORITURI — 스토리 대화 UI 프리셋 (검수용)</title>
 <link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
 <style>
   body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); overflow:hidden; }
   body::after{ content:''; position:fixed; inset:0; background-image:var(--noise); pointer-events:none; }
@@ -133,8 +134,8 @@
   <button id="btnA" class="on" onclick="setVariant('A')">A안 — 하단 대화창</button>
   <button id="btnB" onclick="setVariant('B')">B안 — 중앙 카드</button>
   <button onclick="restart()">⟲ 처음부터</button>
-  <button onclick="showCoach()">🎯 튜토리얼 코치마크 보기</button>
-  <label><input type="checkbox" id="tw" checked> 타자기 효과</label>
+  <button onclick="showCoach()">{target} 튜토리얼 코치마크 보기</button>
+  <label style="display:flex;align-items:center;gap:6px"><button class="sw on" id="tw"></button> 타자기 효과</label>
   <span style="margin-left:auto;font-size:11px;color:var(--dim)">대사 클릭 또는 [다음 ▶]으로 진행 — 개막/다음 경기 버튼과 완전 분리</span>
 </div>
 
@@ -143,8 +144,8 @@
   <div id="mockbar">
     <span class="logo">MORITVRI</span>
     <span class="nv hl">리그</span><span class="nv">루두스</span><span class="nv" id="navMarket">영입</span><span class="nv">로스터</span><span class="nv">관전</span><span class="nv">신문</span><span class="nv">도감</span>
-    <span style="margin-left:auto;color:var(--dim);font-size:12px">AUC 681 · Ianuarius (프리시즌) · 💰50</span>
-    <span style="background:var(--panel3);border:1px solid var(--line);border-radius:6px;padding:5px 14px;color:var(--dim);font-size:12px">🏛 시즌 1 개막 ▶</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px">AUC 681 · Ianuarius (프리시즌) · {coin}50</span>
+    <span style="background:var(--panel3);border:1px solid var(--line);border-radius:6px;padding:5px 14px;color:var(--dim);font-size:12px">{ludus} 시즌 1 개막 ▶</span>
   </div>
   <div id="mockbody">
     <div class="mockcard"></div><div class="mockcard"></div><div class="mockcard" style="width:60%"></div>

@@ -29,6 +29,7 @@
     <Content Include="..\Morituri.Headless\melee.html" Link="melee.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\theme.css" Link="theme.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\icons.svg" Link="icons.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\ui.js" Link="ui.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

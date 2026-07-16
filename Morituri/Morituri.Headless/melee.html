@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI · 패싸움</title>
 <link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
 <style>
   /* 디자인 토큰(:root)은 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
@@ -27,22 +28,22 @@
   #drop{ padding:40px; text-align:center; color:var(--dim); }
 </style>
 <div id="wrap">
-  <div id="top"><span id="title">🥊 패싸움</span>
+  <div id="top"><span id="title">패싸움</span>
     <div class="team" id="teamA"></div><span style="color:var(--dim)">VS</span><div class="team" id="teamB"></div></div>
   <canvas id="cv" width="900" height="460"></canvas>
   <div id="ctl">
-    <button id="play">⏸ 일시정지</button>
+    <button id="play">{pause} 일시정지</button>
     <input type="range" id="scrub" min="0" max="1000" value="0">
-    <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+    <span class="seg" id="speed"><button data-v="0.5">0.5×</button><button data-v="1" class="cur">1×</button><button data-v="2">2×</button></span>
     <span id="clock">0.0s</span>
   </div>
   <div id="banner"></div>
   <div id="drop" hidden>melee.json 없음</div>
 </div>
 <script>
-const VENUES={ street:{wall:'#2a2c33',f0:'#7c8391',f1:'#4a505c',ring:'rgba(30,34,42,.55)',label:'🍺 뒷골목'},
-  bar:{wall:'#3a281c',f0:'#8a6a44',f1:'#5c4128',ring:'rgba(40,26,14,.5)',label:'🍺 선술집'},
-  arena:{wall:'#5a4129',f0:'#e9cda2',f1:'#c49a6b',ring:'rgba(110,79,49,.4)',label:'🏛 콜로세움'} };
+const VENUES={ street:{wall:'#2a2c33',f0:'#7c8391',f1:'#4a505c',ring:'rgba(30,34,42,.55)',label:'뒷골목'},
+  bar:{wall:'#3a281c',f0:'#8a6a44',f1:'#5c4128',ring:'rgba(40,26,14,.5)',label:'선술집'},
+  arena:{wall:'#5a4129',f0:'#e9cda2',f1:'#c49a6b',ring:'rgba(110,79,49,.4)',label:'콜로세움'} };
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const W=900, H=460, PAD=60;   // 논리 좌표계 — 불변
 const CX=W/2, CY=H*0.56, RX=W/2-PAD, RY=(W/2-PAD)*0.36;
@@ -265,7 +266,7 @@ async function boot(){
   frames=doc.Frames||[]; dur=frames.length?frames[frames.length-1].t:0;
   V=VENUES[doc.Venue]||VENUES.arena;
   R=Math.max(9, Math.ceil(Math.max(...frames.flatMap(f=>f.u.map(u=>Math.max(Math.abs(u.x),Math.abs(u.y)))))+1));
-  document.getElementById('title').textContent = '🥊 패싸움 · '+V.label;
+  document.getElementById('title').textContent = '패싸움 · '+V.label;
   const A=[],B=[]; (doc.Units||[]).forEach(u=>(u.Team===0?A:B).push(u.Name));
   document.getElementById('teamA').innerHTML = A.map(n=>`<span class="chip t0">${n}</span>`).join('');
   document.getElementById('teamB').innerHTML = B.map(n=>`<span class="chip t1">${n}</span>`).join('');
@@ -322,7 +323,7 @@ function draw(){
       ctx.fillStyle=u.h>.3?'#7ec97e':'#e07070'; ctx.fillRect(pp.x-16*sc,topY+11*sc,32*sc*u.h,4*sc);
       ctx.fillStyle='#0c0f14'; ctx.fillRect(pp.x-16*sc,topY+16*sc,32*sc,2.5*sc);
       ctx.fillStyle='#d9b15a'; ctx.fillRect(pp.x-16*sc,topY+16*sc,32*sc*(u.sp||0),2.5*sc);
-      if(u.bl>0){ ctx.font=`${Math.round(9*sc)}px system-ui`; ctx.fillText('🩸'.repeat(u.bl),pp.x,topY-4*sc); }
+      if(u.bl>0){ ctx.save(); ctx.fillStyle='#d0402e'; ctx.font=`${Math.round(9*sc)}px system-ui`; ctx.fillText('●'.repeat(u.bl),pp.x,topY-4*sc); ctx.restore(); }
     }
     ctx.restore();
   }
@@ -346,14 +347,14 @@ function loop(now){
   if(playing){ const prevT=t; t+=dt*speed; playSfxRange(prevT,t); if(t>=dur){ t=dur; playing=false; reveal(); if(sndOn()){ beep(70,0.5,'sawtooth',0.2,-40); noiseHit(0.6,0.16,200,1200); } } }
   document.getElementById('scrub').value=dur?t/dur*1000:0;
   document.getElementById('clock').textContent=t.toFixed(1)+'s';
-  document.getElementById('play').textContent=playing?'⏸ 일시정지':'▶ 재생';
+  document.getElementById('play').textContent=playing?'{pause} 일시정지':'▶ 재생';
   draw();
   requestAnimationFrame(loop);
 }
 function reveal(){ if(revealed||!doc)return; revealed=true;
   const w=doc.Result.WinningTeam;
   const names=(doc.Units||[]).filter(u=>u.Team===w).map(u=>u.Name).join('·');
-  document.getElementById('banner').innerHTML = `<span style="color:${w===0?'#e9cf8f':'#e0a0a0'}">${w===0?'🏆 우리 편 승리':'💢 패배'} — ${names}</span>`;
+  document.getElementById('banner').innerHTML = `<span style="color:${w===0?'#e9cf8f':'#e0a0a0'}">${w===0?'{trophy} 우리 편 승리':'{impact} 패배'} — ${names}</span>`;
   if(window.parent!==window) window.parent.postMessage({matchEnded:true},'*');
 }
 document.getElementById('play').onclick=()=>{ if(t>=dur)t=0,revealed=false,document.getElementById('banner').textContent=''; playing=!playing; };

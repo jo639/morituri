@@ -49,7 +49,7 @@ public sealed partial class Game
         _storyStage = "chronicle";
         _storyBeats.Add("skipped");
         if (_pendingEventId is { } id && id.StartsWith("story_")) { _pendingEventId = null; _pendingEventFighter = null; }
-        _story.Add((0, "story", "🏛 각본 없는 시작 — 모래가 곧 이야기다"));
+        _story.Add((0, "story", "{ludus} 각본 없는 시작 — 모래가 곧 이야기다"));
         SaveWorld();
         return StateJson();
     }
@@ -146,7 +146,7 @@ public sealed partial class Game
         _storyStage = "chronicle";
         _storyBeats.Add("finale");
         _pendingEventId = "story_finale"; _pendingEventFighter = null; _storyCtx = null;   // 종막은 무엇보다 우선
-        _story.Add((_rounds + 1, "story", "🏛 종막 — 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\""));
+        _story.Add((_rounds + 1, "story", "{ludus} 종막 — 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\""));
     }
 
     // ── 스토리 이벤트 템플릿 (화자: 카토/무레나 — 기존 이벤트 카드 파이프 재사용) ──
@@ -169,48 +169,48 @@ public sealed partial class Game
     private List<EvtTemplate> StoryTemplates() => new()
     {
         // ── 서막 S0 「유산」 — 장례 ──
-        new EvtTemplate { Id = "story_s0", Icon = "⚱", Title = "유산", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s0", Icon = "{coffin}", Title = "유산", NeedsFighter = false,
             Body = _ => "비 오는 카푸아의 언덕. 선대 라니스타 가이우스의 장례에 조문객은 늙은 교관 하나뿐이다.\n" +
-                "💬 카토: \"가이우스는 이길 수 없는 경기를 이겼습니다. 그리고 그날 밤 죽었지요. …남은 건 이 무너진 루두스와 빚, 그리고 접니다.\"\n" +
-                "💬 카토: \"유서에 이렇게 적혀 있더군요 — '모래는 정직하다. 그 위의 인간들이 문제일 뿐.'\"",
+                "{speech} 카토: \"가이우스는 이길 수 없는 경기를 이겼습니다. 그리고 그날 밤 죽었지요. …남은 건 이 무너진 루두스와 빚, 그리고 접니다.\"\n" +
+                "{speech} 카토: \"유서에 이렇게 적혀 있더군요 — '모래는 정직하다. 그 위의 인간들이 문제일 뿐.'\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("아버지의 유서를 품에 넣는다", _ => { AddGaiusWill(); return "유서를 품었다 — 보관함에 보관 (그는 무엇을 거절했던 걸까)"; }),
                 ("무덤에 흙을 얹고 돌아선다", _ => { AddGaiusWill(); return "카토: \"…갑시다. 산 사람은 모래를 갈아야지요.\""; }) } },
 
         // ── 서막 S5 「첫 방문자」 — 무레나, 검은 인장 ──
-        new EvtTemplate { Id = "story_s5", Icon = "🕯", Title = "검은 인장의 방문", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s5", Icon = "{candle}", Title = "검은 인장의 방문", NeedsFighter = false,
             Body = _ => "해질녘, 값비싼 토가를 입은 사내가 빚 증서 뭉치를 탁자에 올려놓는다. 인장은 검다.\n" +
-                "💬 무레나: \"가이우스의 후계자시군. 빚은 피를 가리지 않습니다. …허나 갚을 방법은 여러 가지지요.\"\n" +
-                "💬 무레나: \"당신 모리튜리가 적당한 날에 적당히 져 주기만 하면 됩니다. 우린 아무도 죽이지 않아요 — 당신들이 돈 때문에 죽이는 거죠. 우린 그저 결과를 정리할 뿐.\"",
+                "{speech} 무레나: \"가이우스의 후계자시군. 빚은 피를 가리지 않습니다. …허나 갚을 방법은 여러 가지지요.\"\n" +
+                "{speech} 무레나: \"당신 모리튜리가 적당한 날에 적당히 져 주기만 하면 됩니다. 우린 아무도 죽이지 않아요 — 당신들이 돈 때문에 죽이는 거죠. 우린 그저 결과를 정리할 뿐.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +120)", _ => {
                     var f = MyNextFighter(); if (f == null) return "던질 모리튜리가 없다 — 무레나가 코웃음 치며 떠났다";
                     _fixFighterId = f.Id; _fixReward = 120f; _fixChoice = "accept";
                     AddClue("무레나 — \"우리가 없으면 이 경기장은 일주일도 못 갑니다.\"");
-                    return $"🕯 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"현명하시군요. 가이우스보다는.\""; }),
+                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"현명하시군요. 가이우스보다는.\""; }),
                 ("증서를 밀어낸다 (명성 +10)", _ => {
                     AddRep(10f); _fixChoice = "refuse";
                     AddClue("무레나 — \"당신 아버지는 끝까지 거절했습니다. 딱 한 번만 져 주면 됐는데. …그는 이겼고, 뭘 얻었습니까?\"");
                     return "명성 +10 — 무레나: \"당신 아버지랑 똑같군. 그 고집이 어디로 이어졌는지는… 아실 텐데.\""; }) } },
 
         // ── 1막 비트① 「세 가문」 — 개성별 환영 ──
-        new EvtTemplate { Id = "story_house_gold", Icon = "💰", Title = "재력가의 환영", NeedsFighter = false, Kind = "letter",
+        new EvtTemplate { Id = "story_house_gold", Icon = "{coin}", Title = "재력가의 환영", NeedsFighter = false, Kind = "letter",
             Body = _ => $"{CtxLudusName}의 사절이 금박 두루마리를 펼친다.\n" +
-                $"💬 사절: \"주인께서 새 얼굴에게 인사를 전하랍니다 — '당신 별 하나, 값을 매겨 왔습니다. 언제든 파실 마음이 생기면.' 프리시즌의 이적 시장에서 뵙지요.\"",
+                $"{{speech}} 사절: \"주인께서 새 얼굴에게 인사를 전하랍니다 — '당신 별 하나, 값을 매겨 왔습니다. 언제든 파실 마음이 생기면.' 프리시즌의 이적 시장에서 뵙지요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("성의만 받는다 (골드 +60)", _ => { _gold += 60f; return "골드 +60 — \"첫 거래 치곤 나쁘지 않군요.\" (프리시즌 이적 시장이 열려 있다)"; }),
                 ("금화를 돌려보낸다 (명성 +8)", _ => { AddRep(8f); return "명성 +8 — \"돈으로 안 되는 라니스타라… 비싸지겠군.\""; }) } },
 
-        new EvtTemplate { Id = "story_house_youth", Icon = "🌱", Title = "육성가의 환영", NeedsFighter = false,
+        new EvtTemplate { Id = "story_house_youth", Icon = "{sprout}", Title = "육성가의 환영", NeedsFighter = false,
             Body = _ => $"{CtxLudusName}의 노(老)스카우터가 훈련장을 말없이 둘러보다 입을 연다.\n" +
-                $"💬 스카우터: \"원석은 눈이 아니라 인내로 캡니다. 당신이 놓친 원석, 우리가 주워갈 겁니다 — 서로 좋은 경쟁이 되길.\"",
+                $"{{speech}} 스카우터: \"원석은 눈이 아니라 인내로 캡니다. 당신이 놓친 원석, 우리가 주워갈 겁니다 — 서로 좋은 경쟁이 되길.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("경쟁을 받아들인다 (인기 +4)", g => { var f = MyFirst; if (f != null) f.Popularity += 4f; return "군중이 두 양성소의 경쟁을 반긴다 — 인기 +4"; }),
                 ("훈련장에서 정중히 배웅한다 (명성 +5)", _ => { AddRep(5f); return "명성 +5 — \"예의는 아는 친구로군.\""; }) } },
 
-        new EvtTemplate { Id = "story_house_blood", Icon = "🩸", Title = "잔혹가의 도발", NeedsFighter = false, Kind = "letter",
+        new EvtTemplate { Id = "story_house_blood", Icon = "{blood}", Title = "잔혹가의 도발", NeedsFighter = false, Kind = "letter",
             Body = _ => $"{CtxLudusName}의 인장이 찍힌 서신 — 피 냄새가 나는 환영 인사다.\n" +
-                $"💬 서신: \"무너진 루두스의 애송이가 모래를 밟는다지. 네 모리튜리들은 우리 모래 위에선 한 합도 못 버틴다. 얼마나 버티는지 구경이나 하마.\"",
+                $"{{speech}} 서신: \"무너진 루두스의 애송이가 모래를 밟는다지. 네 모리튜리들은 우리 모래 위에선 한 합도 못 버틴다. 얼마나 버티는지 구경이나 하마.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("공개 답신으로 맞받아친다 (인기 +6, 원한)", g => {
                     var f = MyFirst; if (f == null) return "답할 모리튜리가 없다";
@@ -221,12 +221,12 @@ public sealed partial class Game
                 ("침묵한다 (명성 +6)", _ => { AddRep(6f); return "명성 +6 — 카토: \"짖는 개는 물지 않습니다. 무는 개는 조용하지요.\""; }) } },
 
         // ── 1막 비트② 「첫 원한」 — 지목 격파 도전 ──
-        new EvtTemplate { Id = "story_challenge", Icon = "⚔", Title = "지목 격파", NeedsFighter = false,
+        new EvtTemplate { Id = "story_challenge", Icon = "{swords}", Title = "지목 격파", NeedsFighter = false,
             Body = _ => {
                 var t = _storyCtx != null ? _cast.FirstOrDefault(g => g.Id == _storyCtx) : null;
                 t ??= ChallengeTarget();
                 return $"광장에 방이 붙었다 — {(t != null ? $"{LudusNameOf(t.LudusId)}의 {t.Name}" : "경쟁 검투소의 간판")}이(가) 당신의 루두스를 콕 집어 도전을 걸었다.\n" +
-                    $"💬 카토: \"받아들이면 저 녀석은 오늘을 잊지 않을 겁니다. …당신도요. 원한이란 그렇게 시작되지요.\"";
+                    $"{{speech}} 카토: \"받아들이면 저 녀석은 오늘을 잊지 않을 겁니다. …당신도요. 원한이란 그렇게 시작되지요.\"";
             },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("도전을 받는다 (전시 경기 — 출전자는 라니스타이 고른다)", _ => {
@@ -236,13 +236,13 @@ public sealed partial class Game
                     if (t == null || f == null) return "성사되지 못했다 — 상대가 없다";
                     _pendingProposalOpp = t.Id; _proposalExec = false;
                     _ledger.DeepenGrudge(f.Id, t.Id, 18f);
-                    return $"⚔ 도전 성사 — {t.Name}과(와)의 전시 경기. 출전자를 정하라 (관계 원장이 움직이기 시작했다)"; }),
+                    return $"{{swords}} 도전 성사 — {t.Name}과(와)의 전시 경기. 출전자를 정하라 (관계 원장이 움직이기 시작했다)"; }),
                 ("무시한다 (명성 +5)", _ => { AddRep(5f); return "명성 +5 — 방은 비에 젖어 떨어졌다. 하지만 군중은 기억한다"; }) } },
 
         // ── 1막 비트③ 「시대의 소음」 — 반란 지수 점화 ──
-        new EvtTemplate { Id = "story_unrest", Icon = "🔥", Title = "시대의 소음", NeedsFighter = false,
+        new EvtTemplate { Id = "story_unrest", Icon = "{flame}", Title = "시대의 소음", NeedsFighter = false,
             Body = _ => "남쪽 훈련소에서 모리튜리들이 탈주했다는 소문이 시장을 돈다. 노예 값이 뛰고, 관중은 어쩐지 더 피에 굶주렸다.\n" +
-                "💬 카토: \"모리튜리 값이 오릅니다. 군중은 더 목말라하고요. …시대가 흔들리면 모래가 제일 먼저 압니다.\"",
+                "{speech} 카토: \"모리튜리 값이 오릅니다. 군중은 더 목말라하고요. …시대가 흔들리면 모래가 제일 먼저 압니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("루두스 경비를 강화한다 (골드 −40)", _ => { var pay = SpendOrDebt(40f); _unrest = Math.Clamp(_unrest + 6f, 0f, 100f);
                     return $"{pay} — 담장을 올리고 자물쇠를 바꿨다. 소문은 소문으로 남기를"; }),
@@ -250,9 +250,9 @@ public sealed partial class Game
                     return "카토: \"…그러길 바랍니다.\" (거리의 공기가 달라지고 있다)"; }) } },
 
         // ── 1막 비트④ 「진상의 반쪽」 ──
-        new EvtTemplate { Id = "story_clue", Icon = "🕯", Title = "진상의 반쪽", NeedsFighter = false,
+        new EvtTemplate { Id = "story_clue", Icon = "{candle}", Title = "진상의 반쪽", NeedsFighter = false,
             Body = _ => "몰락한 전직 라니스타가 술에 절어 당신의 소매를 붙잡는다. 가이우스의 이름에 그의 눈이 또렷해진다.\n" +
-                "💬 전직 라니스타: \"가이우스가 거부한 그 경기… 돈을 댄 건 무레나가 아니야. 그 위야. 1부를 쥔 손. …1부에 올라가면 알게 될 거요.\"",
+                "{speech} 전직 라니스타: \"가이우스가 거부한 그 경기… 돈을 댄 건 무레나가 아니야. 그 위야. 1부를 쥔 손. …1부에 올라가면 알게 될 거요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("술값을 쥐여주고 더 캐묻는다 (골드 −20)", _ => { var pay = SpendOrDebt(20f);
                     AddClue("전직 라니스타 — \"그 경기의 돈줄은 1부를 쥔 손. 콜로세움 위의 관람석.\"");
@@ -261,7 +261,7 @@ public sealed partial class Game
                     return "돌아서는 등 뒤로 그가 외쳤다 — \"가이우스도 그렇게 웃었지!\""; }) } },
 
         // ── 1막 비트⑤ 「승격 결전 전야」 ──
-        new EvtTemplate { Id = "story_showdown", Icon = "🕯", Title = "결전 전야", NeedsFighter = false,
+        new EvtTemplate { Id = "story_showdown", Icon = "{candle}", Title = "결전 전야", NeedsFighter = false,
             Body = _ => {
                 var f = MyNextFighter();
                 string who = f?.Name ?? "당신의 모리튜리";
@@ -269,21 +269,21 @@ public sealed partial class Game
                             : _fixChoice == "refuse" ? "지난번의 그 고집, 오늘은 접어 두시지요."
                             : "우리가 없으면 이 경기장은 일주일도 못 갑니다.";
                 return $"등불도 없이 무레나가 문가에 서 있다. 검은 인장의 봉랍이 촛농처럼 흘러내린다.\n" +
-                    $"💬 무레나: \"{who}의 다음 경기 — 져 주십시오. 가이우스처럼 굴지 마시고. {tail}\"";
+                    $"{{speech}} 무레나: \"{who}의 다음 경기 — 져 주십시오. 가이우스처럼 굴지 마시고. {tail}\"";
             },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +200)", _ => {
                     var f = MyNextFighter(); if (f == null) return "던질 경기가 없다 — 무레나가 혀를 차며 사라졌다";
                     _fixFighterId = f.Id; _fixReward = 200f;
-                    return $"🕯 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. \"영광은 다음에도 살 수 있습니다.\""; }),
+                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. \"영광은 다음에도 살 수 있습니다.\""; }),
                 ("문을 닫는다 (명성 +15)", _ => { AddRep(15f);
                     return "명성 +15 — 문틈으로 목소리가 스몄다. \"가이우스도 꼭 그렇게 문을 닫았지요.\""; }) } },
 
         // ── 종막 「라니스타가 되는 의식」 ──
-        new EvtTemplate { Id = "story_finale", Icon = "🏛", Title = "모래에게 배우다", NeedsFighter = false,
+        new EvtTemplate { Id = "story_finale", Icon = "{ludus}", Title = "모래에게 배우다", NeedsFighter = false,
             Body = _ => "시즌의 먼지가 가라앉은 훈련장. 카토가 갈퀴를 내려놓고 처음으로 당신을 정면으로 본다.\n" +
-                "💬 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
-                "💬 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"\n" +
+                "{speech} 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
+                "{speech} 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"\n" +
                 "각본은 여기서 끝난다. 콜로세움, 챔피언십 컵, 불멸의 루두스, 세대와 유산 — 그리고 아직 답을 얻지 못한 유품함의 질문들. 모래가 당신을 기억할 뿐.",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("모래를 한 줌 움켜쥔다", _ => "따뜻했다. 오늘 흘린 피의 온기가 아직 남아 있었다 — 이제 전부 당신의 것이다"),
@@ -292,10 +292,10 @@ public sealed partial class Game
         // ═══ 후일담 「황제의 게임」 — 가이우스 미스터리의 나머지 반쪽 (명성 4단계+ 독립 게이트) ═══
 
         // E1 「총애의 초대」 — 명문 루두스가 되자 궁정이 눈을 돌린다
-        new EvtTemplate { Id = "story_e1", Icon = "👁", Title = "총애의 초대", NeedsFighter = false,
+        new EvtTemplate { Id = "story_e1", Icon = "{eye}", Title = "총애의 초대", NeedsFighter = false,
             Body = _ => "특명 두루마리에 낯선 봉랍이 하나 더 붙어 있다. 황제의 것이 아니다.\n" +
-                "💬 카토: \"요즘 궁정에서 당신 이름이 오르내린답니다. …가이우스도 딱 이만큼 올라갔을 때부터 그랬지요.\"\n" +
-                "💬 무레나: \"축하드립니다, 라니스타. 이제 '총애'가 무엇인지 배우실 차례군요. 그건 하사되는 게 아닙니다 — 팔리는 거지요.\"",
+                "{speech} 카토: \"요즘 궁정에서 당신 이름이 오르내린답니다. …가이우스도 딱 이만큼 올라갔을 때부터 그랬지요.\"\n" +
+                "{speech} 무레나: \"축하드립니다, 라니스타. 이제 '총애'가 무엇인지 배우실 차례군요. 그건 하사되는 게 아닙니다 — 팔리는 거지요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"총애를 파는 자가 누구지?\"", _ => {
                     AddClue("무레나 — \"총애는 하사되는 게 아니라 팔리는 것. 파는 손은 콜로세움 꼭대기에 있다.\"");
@@ -305,11 +305,11 @@ public sealed partial class Game
                     return "명성 +5 — 문가에서 그가 말했다. \"가이우스도 처음엔 내쫓았습니다.\" (유품함에 기록)"; }) } },
 
         // E2 「특명 뒤의 손」 — 특명의 진짜 발신인
-        new EvtTemplate { Id = "story_e2", Icon = "🕯", Title = "특명 뒤의 손", NeedsFighter = false,
+        new EvtTemplate { Id = "story_e2", Icon = "{candle}", Title = "특명 뒤의 손", NeedsFighter = false,
             Body = _ => "특명을 완수한 밤, 무레나가 축하주도 없이 찾아왔다. 처음 보는 얼굴을 하고서.\n" +
-                "💬 무레나: \"특명이 어디서 오는지 아십니까? 황제는 서명만 합니다. 문장을 고르는 건 — 총애를 파는 손이지요.\"\n" +
-                "💬 무레나: \"가이우스가 거절한 그 경기. 돈은 검은 인장에서 나오지 않았습니다. 그 손에서 나왔지요. 나는… 심부름꾼이었을 뿐입니다.\"\n" +
-                "💬 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\"",
+                "{speech} 무레나: \"특명이 어디서 오는지 아십니까? 황제는 서명만 합니다. 문장을 고르는 건 — 총애를 파는 손이지요.\"\n" +
+                "{speech} 무레나: \"가이우스가 거절한 그 경기. 돈은 검은 인장에서 나오지 않았습니다. 그 손에서 나왔지요. 나는… 심부름꾼이었을 뿐입니다.\"\n" +
+                "{speech} 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"왜 이제 와서 말하지?\"", _ => {
                     AddClue("무레나 — \"심부름꾼도 늙습니다. 그리고 늙은 심부름꾼은… 빚을 갚고 싶어지지요.\"");
@@ -319,29 +319,29 @@ public sealed partial class Game
                     return "명성 +8 — 무레나는 부정하지 않았다. \"그래서 갚으러 온 겁니다.\""; }) } },
 
         // E3 「콜로세움의 귀빈석」 — 진실, 그리고 라니스타의 선택 (사실은 닫히되 선택의 무게는 남는다)
-        new EvtTemplate { Id = "story_e3", Icon = "🏛", Title = "콜로세움의 귀빈석", NeedsFighter = false,
+        new EvtTemplate { Id = "story_e3", Icon = "{ludus}", Title = "콜로세움의 귀빈석", NeedsFighter = false,
             Body = _ => "콜로세움 최상단, 자줏빛 차양 아래. 이름을 대지 않는 원로원의 손이 당신을 초대했다.\n" +
-                "💬 원로원의 손: \"가이우스는 좋은 라니스타였습니다. 셈이 나빴을 뿐. 경기 하나의 값과 목숨 하나의 값을 저울질하지 못했지요.\"\n" +
-                "💬 원로원의 손: \"독은 빠르고, 조용하고, 정확합니다. 셈이 빠른 사람은 그걸 마실 일이 없지요. — 당신은 셈이 빠르다고 들었습니다.\"\n" +
-                "💬 카토: \"(낮게) …저 자입니다. 이제 당신이 정하십시오. 가이우스의 아들로서가 아니라 — 라니스타로서.\"",
+                "{speech} 원로원의 손: \"가이우스는 좋은 라니스타였습니다. 셈이 나빴을 뿐. 경기 하나의 값과 목숨 하나의 값을 저울질하지 못했지요.\"\n" +
+                "{speech} 원로원의 손: \"독은 빠르고, 조용하고, 정확합니다. 셈이 빠른 사람은 그걸 마실 일이 없지요. — 당신은 셈이 빠르다고 들었습니다.\"\n" +
+                "{speech} 카토: \"(낮게) …저 자입니다. 이제 당신이 정하십시오. 가이우스의 아들로서가 아니라 — 라니스타로서.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("모든 것을 폭로한다 (명성 +40 ✨+10 · 검은 인장의 보복 리스크)", _ => {
+                ("모든 것을 폭로한다 (명성 +40 {glory}+10 · 검은 인장의 보복 리스크)", _ => {
                     AddRep(40f); AddGlory(10f);
                     AddClue("진실 — 가이우스는 독살당했다. 명령한 손은 총애를 파는 원로원, 무레나는 전달자였다.");
                     var rng = new SimRandom(_worldSeed ^ 0xE3E3_0001UL);
                     if (rng.Roll(0.6f) && _gold > 40f)
                     {
                         float loss = MathF.Round(_gold * 0.25f); _gold -= loss;
-                        _story.Add((0, "story", $"🔥 보복 — 그날 밤 루두스 창고에 불이 났다 (골드 −{loss:F0})"));
-                        return $"🏛 폭로 — 원로원이 뒤집혔다. 명성 +40 ✨+10. …그리고 그날 밤, 창고에 불이 났다 (골드 −{loss:F0})";
+                        _story.Add((0, "story", $"{{flame}} 보복 — 그날 밤 루두스 창고에 불이 났다 (골드 −{loss:F0})"));
+                        return $"{{ludus}} 폭로 — 원로원이 뒤집혔다. 명성 +40 {{glory}}+10. …그리고 그날 밤, 창고에 불이 났다 (골드 −{loss:F0})";
                     }
-                    return "🏛 폭로 — 원로원이 뒤집혔다. 명성 +40 ✨+10. 카토: \"가이우스가 오늘 밤은 편히 자겠군요.\""; }),
+                    return "{ludus} 폭로 — 원로원이 뒤집혔다. 명성 +40 {glory}+10. 카토: \"가이우스가 오늘 밤은 편히 자겠군요.\""; }),
                 ("침묵을 판다 (골드 +250)", _ => { _gold += 250f;
                     AddClue("진실 — 가이우스는 독살당했다. 나는 그 값을 받았다.");
-                    return "💰 입막음의 값 +250 — 카토는 그날 밤 훈련장 갈퀴질을 평소보다 오래 했다"; }),
+                    return "{coin} 입막음의 값 +250 — 카토는 그날 밤 훈련장 갈퀴질을 평소보다 오래 했다"; }),
                 ("그 손을 잡는다 (총애 +2 · 명성 −20)", _ => { _favor += 2; _ludusRep = MathF.Max(0f, _ludusRep - 20f);
                     AddClue("진실 — 가이우스는 독살당했다. 나는 그 손을 잡았다.");
-                    return "👁 총애 +2, 명성 −20 — \"현명하시군요. 가이우스보다.\" 어디서 들어본 말이었다"; }) } },
+                    return "{eye} 총애 +2, 명성 −20 — \"현명하시군요. 가이우스보다.\" 어디서 들어본 말이었다"; }) } },
     };
 
     /// <summary>기존 "발신 — 내용" 형식의 단서를 보관함 문서로 승격(발신처로 타입 추정). 구 AddClue 호출부 전부 재사용.</summary>
@@ -377,11 +377,11 @@ public sealed partial class Game
     {
         if (_playerless || _storyStage == "chronicle") return null;
         if (!_cast.Any(g => g.IsPlayer))
-            return "💬 카토: \"돈이 없습니다. 무기와 기질만 보고 골라야 해요 — 나머지는 모래가 가르칠 겁니다.\" → 영입 탭에서 뽑기로 첫 모리튜리를 들이십시오";
+            return "{speech} 카토: \"돈이 없습니다. 무기와 기질만 보고 골라야 해요 — 나머지는 모래가 가르칠 겁니다.\" → 영입 탭에서 뽑기로 첫 모리튜리를 들이십시오";
         if (!SeasonActive)
-            return "💬 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 훈련을 분배하고 [다음 경기 ▶]로 시즌을 여십시오";
+            return "{speech} 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 훈련을 분배하고 [다음 경기 ▶]로 시즌을 여십시오";
         if (_cast.Where(g => g.IsPlayer).All(g => g.CW + g.CL + g.CD == 0))
-            return "💬 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 ⏸ 일시정지로 전술을 바꿀 수 있습니다(경기당 2회)";
+            return "{speech} 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 {pause} 일시정지로 전술을 바꿀 수 있습니다(경기당 2회)";
         return null;   // 이후는 이벤트가 이야기한다
     }
 
@@ -408,7 +408,7 @@ public sealed partial class Game
 
     private int UnrestStageIdx => _unrest >= 75f ? 3 : _unrest >= 50f ? 2 : _unrest >= 25f ? 1 : 0;
     private static readonly (string Name, string Icon)[] UnrestStages =
-        { ("평온", "🕊"), ("소문", "🌫"), ("폭동", "🔥"), ("검문", "🛡") };
+        { ("평온", "{dove}"), ("소문", "{speech}"), ("폭동", "{flame}"), ("검문", "{shield}") };
     /// <summary>경기 수입 배수 — 시국 불안 = 세금·검문(최대 −10%).</summary>
     private float UnrestIncomeMult => 1f - _unrest / 100f * 0.10f;
     /// <summary>흥행 배수 — 불안한 시대일수록 군중은 피에 목마르다(최대 +15%).</summary>
@@ -436,7 +436,7 @@ public sealed partial class Game
         {
             float tax = MathF.Round(_gold * 0.05f);
             _gold -= tax;
-            _story.Add((_rounds + 1, "unrest", $"🛡 검문 강화 — 총독부가 흥행세를 걷어갔다 (골드 −{tax:F0})"));
+            _story.Add((_rounds + 1, "unrest", $"{{shield}} 검문 강화 — 총독부가 흥행세를 걷어갔다 (골드 −{tax:F0})"));
         }
     }
 
@@ -489,7 +489,7 @@ public sealed partial class Game
                   : cand.IsPlayer ? "루두스의 별" : "옛 시대의 왕";
         _legends.Add(new LegendRec(cand.Name, ep, cand.Weapon, "", cand.Career + $" · KO {cand.CKoW}",
             cand.IsPlayer ? "이 루두스에서 검을 놓았다" : "모래가 그 이름을 기억한다", 680 + cand.RetiredSeason, "hof"));
-        _story.Add((_rounds + 1, "legend", $"🏛 전설이 되다 — {cand.Name} 「{ep}」, 이제 세대가 그를 척도로 삼는다"));
+        _story.Add((_rounds + 1, "legend", $"{{ludus}} 전설이 되다 — {cand.Name} 「{ep}」, 이제 세대가 그를 척도로 삼는다"));
     }
 
     // ── 카토 코멘터리 (상시 어시스턴트 — 매 경기 한 줄 평) ──

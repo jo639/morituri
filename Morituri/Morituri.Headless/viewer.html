@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MORITURI · 검투장</title>
 <link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
 <style>
   /* 디자인 토큰(:root)은 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
@@ -120,15 +121,9 @@
   <div id="ctrl">
     <button id="play">▶ 재생</button>
     <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
-    <select id="speed">
-      <option value="0.25">0.25×</option>
-      <option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option>
-      <option value="2">2×</option>
-      <option value="4">4×</option>
-    </select>
-    <button id="viewmode" title="기본 ↔ 줌 추적">🎥 기본</button>
-    <button id="hl" title="임팩트 구간(타격·넉다운·KO)만 점프 재생 — 3분 경기를 ~30초에">⏩ 하이라이트</button>
+    <span class="seg" id="speed"><button data-v="0.25">0.25×</button><button data-v="0.5">0.5×</button><button data-v="1" class="cur">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></span>
+    <button id="viewmode" title="기본 ↔ 줌 추적">기본 화면</button>
+    <button id="hl" title="임팩트 구간(타격·넉다운·KO)만 점프 재생 — 3분 경기를 ~30초에">{ff} 하이라이트</button>
     <span id="clock">0.0 / 0.0s</span>
   </div>
   <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지.</div>
@@ -154,10 +149,10 @@ const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], duration = 0;
 // 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
 const VENUES = {
-  arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'🏛 콜로세움' },
-  spar:  { wall:'#3d4a33', f0:'#c9d3a8', f1:'#94a56f', ring:'rgba(70,90,50,0.4)',  label:'🤺 수련장' },
-  street:{ wall:'#2a2c33', f0:'#7c8391', f1:'#4a505c', ring:'rgba(30,34,42,0.55)', label:'🍺 뒷골목' },
-  bar:   { wall:'#3a281c', f0:'#8a6a44', f1:'#5c4128', ring:'rgba(40,26,14,0.5)',  label:'🍺 선술집' },
+  arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'콜로세움' },
+  spar:  { wall:'#3d4a33', f0:'#c9d3a8', f1:'#94a56f', ring:'rgba(70,90,50,0.4)',  label:'수련장' },
+  street:{ wall:'#2a2c33', f0:'#7c8391', f1:'#4a505c', ring:'rgba(30,34,42,0.55)', label:'뒷골목' },
+  bar:   { wall:'#3a281c', f0:'#8a6a44', f1:'#5c4128', ring:'rgba(40,26,14,0.5)',  label:'선술집' },
 };
 const VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUES.arena;
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
@@ -225,11 +220,11 @@ buildArenaBg();
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 // 성격 지시(Decision) 태그 → 가독 라벨. 관중게이지 버프와 별개인 '행동 지시'임을 명확히.
-const TAGKR = { SHOWTIME:'🎭 쇼타임·화려한 강공', TAUNT:'🤡 도발', ENRAGED:'😡 격노', RAGED:'😡 도발에 격노',
-  RECKLESS:'⚡ 폭주', FEAR:'😨 위축', FLINCH:'😰 주춤', CRUEL:'🔪 잔혹', EXPLOIT:'🎯 허점 공략', HONOR:'🙏 경의',
-  BOLD:'🔥 결단', COOL:'❄ 냉정', WARY:'🛡 신중',
-  REL_NEMESIS:'⚔ 원수', REL_FEAR:'😨 공포', REL_ENVY:'😤 질투', REL_OBSESSION:'🌀 집착',
-  REL_RIVAL:'🔥 라이벌', REL_RESPECT:'🤝 존경', REL_FRIEND:'🫂 친구' };
+const TAGKR = { SHOWTIME:'쇼타임 · 화려한 강공', TAUNT:'도발', ENRAGED:'격노', RAGED:'도발에 격노',
+  RECKLESS:'폭주', FEAR:'위축', FLINCH:'주춤', CRUEL:'잔혹', EXPLOIT:'허점 공략', HONOR:'경의',
+  BOLD:'결단', COOL:'냉정', WARY:'신중',
+  REL_NEMESIS:'원수', REL_FEAR:'공포', REL_ENVY:'질투', REL_OBSESSION:'집착',
+  REL_RIVAL:'라이벌', REL_RESPECT:'존경', REL_FRIEND:'친구' };
 // 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
 const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
 let winTextA = '', winTextB = '', winnerRevealed = false, matchEndPosted = false;
@@ -257,7 +252,7 @@ window.addEventListener('message', e=>{
     if (AC){ try{ AC.suspend(); }catch(_){} }
   } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
     audioResume();
-  } else if (e.data.cmd === 'execVerdict'){  // ☠ 처형전 엄지 판정 — 경기장 안에서 진행(쓰러진 패자 줌인 + 흔들리는 엄지 → 판정)
+  } else if (e.data.cmd === 'execVerdict'){  // 처형전 엄지 판정 — 경기장 안에서 진행(쓰러진 패자 줌인 + 흔들리는 엄지 → 판정)
     focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
     if (frames && duration > 0){ t = duration; lastSfxT = duration; }
     setPlaying(false);
@@ -362,8 +357,8 @@ function load(json){
   const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
       : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
   // 승자 스포일러 방지: 기본은 재생 완료 시 공개(설정 mor_settings.spoiler=true면 즉시 표시)
-  winTextA = r.Winner === 0 ? '🏆 ' + wtext : (r.Winner < 0 ? wtext : '');
-  winTextB = r.Winner === 1 ? '🏆 ' + wtext : '';
+  winTextA = r.Winner === 0 ? wtext : (r.Winner < 0 ? wtext : '');
+  winTextB = r.Winner === 1 ? wtext : '';
   winnerRevealed = false; matchEndPosted = false;
   document.getElementById('winA').textContent = '';
   document.getElementById('winB').textContent = '';
@@ -419,18 +414,18 @@ function endIntro(silent){
   introMode = false; focusIdx = null;
   if (wasIntro && !silent && t < duration) setPlaying(true);   // 인트로 후 전투 시작
 }
-// ☠ 처형전 엄지 판정 — 경기장 안: 쓰러진 패자를 줌인한 채 흔들리는 엄지 → 상/하 판정 → 사망/자비
+// 처형전 엄지 판정 — 경기장 안: 쓰러진 패자를 줌인한 채 흔들리는 엄지 → 상/하 판정 → 사망/자비
 let _execTimer = null;
 function runExecVerdict(data){
   const cap = document.getElementById('execCap'); if (!cap) return;
   if (_execTimer) clearTimeout(_execTimer);
   cap.classList.add('on');
-  cap.innerHTML = `<div class="ex-pre">☠ 황제가 일어선다 — 군중이 숨을 죽인다…</div>
-    <div class="ex-thumb rocking">👍</div>`;
+  cap.innerHTML = `<div class="ex-pre">황제가 일어선다 — 군중이 숨을 죽인다…</div>
+    <div class="ex-thumb rocking">{thumb}</div>`;
   try{ sfx('taunt'); setTimeout(()=>sfx('taunt'),700); setTimeout(()=>sfx('taunt'),1400); }catch(_){}   // 긴장의 북소리
   _execTimer = setTimeout(()=>{
     const sp = !!data.spared, who = data.loser || '패자';
-    cap.innerHTML = `<div class="ex-thumb">${sp?'👍':'👎'}</div>
+    cap.innerHTML = `<div class="ex-thumb">${sp?'{thumb}':'{thumbdown}'}</div>
       <div class="ex-verdict ${sp?'spare':'kill'}">${sp?`황제의 자비 — ${who}, 오늘은 산다`:`${who}의 시간이 끝났다`}</div>
       <div class="ex-note">사망 확률 ${data.deathPct||0}% · ${data.factors||''}</div>`;
     try{ sfx(sp?'crowd':'ko'); }catch(_){}
@@ -460,13 +455,13 @@ function fillEndow(id, e){
 // 이벤트 → 시간창 팝업 (스크럽해도 상태 무관하게 t로부터 재계산)
 function buildPopups(){
   popups = []; decisions = [];
-  const flavor = e => e.IsArmored ? ['🪨',' #9aa3af'] : e.IsGuarded ? ['🛡','#6fa8dc']
-        : e.IsCounter ? ['⚡','#ffd24a'] : e.IsCrit ? ['💢','#ff5d5d'] : ['','#ffffff'];
+  const flavor = e => e.IsArmored ? ['묵직',' #9aa3af'] : e.IsGuarded ? ['가드','#6fa8dc']
+        : e.IsCounter ? ['카운터','#ffd24a'] : e.IsCrit ? ['치명','#ff5d5d'] : ['','#ffffff'];
   for (const e of doc.Events){
     switch(e.type){
       case 'HitLanded':{ const [ic,col]=flavor(e);
         popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34,
-          text:`${ic}-${Math.round(e.Damage)}`, col}); break; }
+          text:`${ic?ic+' ':''}-${Math.round(e.Damage)}`, col}); break; }
       case 'PoiseBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'자세붕괴', col:'#cbd2dc'}); break;
       case 'GuardBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'가드파괴!', col:'#6fa8dc'}); break;
       case 'KnockedDown':  popups.push({t:e.Time, who:e.FighterId, life:1.2, rise:26, text:'다운!', col:'#ff8a4a'}); break;
@@ -477,7 +472,7 @@ function buildPopups(){
   }
 }
 
-// ── ⏩ 하이라이트 모드: 임팩트 구간만 이어 재생 (조용한 대치는 점프) ──
+// ── 하이라이트 모드: 임팩트 구간만 이어 재생 (조용한 대치는 점프) ──
 let hlMode = SET.highlight === true, hlWins = [];
 function buildHlWindows(){
   const raw = impacts.map(im=>[Math.max(0,im.t-1.0), im.t+0.9]);
@@ -522,7 +517,7 @@ function buildImpacts(){
       impacts.push({ t:e.Time, who:1-doc.Result.Winner, mag:18, kind:'ko', col:'#ffffff', stop:0.22 });
     }
   }
-  buildHlWindows();   // ⏩ 하이라이트 구간 재계산
+  buildHlWindows();   // 하이라이트 구간 재계산
   setHl(hlMode);      // 버튼 상태 반영(설정 기본값 포함)
   // 혈흔 데칼 사전계산: 가드 안 된 묵직한 타격 → 피격자 위치의 바닥 얼룩 (impacts 파생 = 스크럽 안전)
   stains = [];
@@ -1096,8 +1091,8 @@ function render(){
     ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
-    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '📣 라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
-      : (TAGKR[d.tag]||('🧠 '+d.tag)); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
+    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
+      : (TAGKR[d.tag]||d.tag); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 
@@ -1149,7 +1144,7 @@ function render(){
     else        { ctx.fillStyle=getCSS('--b'); ctx.fillRect(cx+half*frac, my, -half*frac, mh); }
     ctx.fillStyle='#f0e6d6'; ctx.fillRect(cx-1, my-2, 2, mh+4);   // 중앙선
     ctx.textAlign='center'; ctx.font='9px "Pretendard Variable",system-ui'; ctx.fillStyle=getCSS('--dim');
-    ctx.fillText('⚑ 관중게이지', cx, my-5);
+    ctx.fillText('관중게이지', cx, my-5);
     // 관중 페이오프 가시화: 데드존(±15) 위에서 유리한 쪽 실제 버프(피해 최대 +12%·이동 속도 +8%)를 수치로.
     const a=Math.abs(crowd), norm=a<=15?0:Math.min(1,(a-15)/(100-15));
     if (norm>0){
@@ -1185,7 +1180,7 @@ function tick(now){
       for (const im of impacts){ if (im.stop>0 && im.t>t && im.t<=t+adv){ adv=im.t-t; hitstopUntil=now+im.stop; break; } }
       const prevT = t;
       t += adv;
-      // ⏩ 하이라이트: 임팩트 구간 밖이면 다음 구간으로 점프 (사이의 대치는 생략)
+      // 하이라이트: 임팩트 구간 밖이면 다음 구간으로 점프 (사이의 대치는 생략)
       if (hlMode && hlWins.length){
         const jumped = hlSkip(t);
         if (jumped > t + 0.01){ t = jumped; lastSfxT = t; }   // 점프 구간의 밀린 sfx 폭주 방지
@@ -1212,7 +1207,7 @@ function tick(now){
 }
 let lastLiveReport = 0;
 function setPlaying(p){ playing = p && t < duration;
-  document.getElementById('play').textContent = playing ? '⏸ 일시정지' : '▶ 재생';
+  document.getElementById('play').textContent = playing ? '{pause} 일시정지' : '▶ 재생';
   if (playing && t>=duration) t=0; }
 
 // ── 입력 ──
@@ -1223,9 +1218,9 @@ document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration
 document.getElementById('speed').onchange = e=>{ speed = parseFloat(e.target.value); };
 // 설정: 기본 배속 적용 (index.html 설정 모달 → localStorage)
 if (SET.speed){ speed = parseFloat(SET.speed) || 1;
-  const sel = document.getElementById('speed'); if ([...sel.options].some(o=>o.value==String(SET.speed))) sel.value = String(SET.speed); }
+  const sel = document.getElementById('speed'); if ([...sel.querySelectorAll('button')].some(o=>o.dataset.v==String(SET.speed))) sel.value = String(SET.speed); }
 document.getElementById('viewmode').onclick = e=>{ viewMode = viewMode==='basic' ? 'zoom' : 'basic';
-  e.target.textContent = viewMode==='zoom' ? '🔍 줌 추적' : '🎥 기본'; };
+  e.target.textContent = viewMode==='zoom' ? '줌 추적' : '기본 화면'; };
 const fileEl = document.getElementById('file');
 document.getElementById('drop').onclick = ()=> fileEl.click();
 fileEl.onchange = e=>{ const f=e.target.files[0]; if(f) f.text().then(load); };
