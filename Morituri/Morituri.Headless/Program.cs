@@ -31,6 +31,12 @@ if (args.Length > 0 && args[0] == "oddsprobe")
     return;
 }
 
+if (args.Length > 0 && args[0] == "designlint")
+{
+    Environment.Exit(DesignLint.Run(args));
+    return;
+}
+
 if (args.Length > 0 && args[0] == "health")
 {
     HealthCheck.Run(
