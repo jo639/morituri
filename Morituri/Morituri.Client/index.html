@@ -1707,6 +1707,7 @@ function fitStage(){
   const st = $('stage');
   st.style.width = bw+'px'; st.style.height = bh+'px';
   st.style.zoom = Math.min(window.innerWidth/bw, window.innerHeight/bh);
+  if (typeof replaceOverlays === 'function') replaceOverlays();   // 열린 코치마크·투어 제자리 유지
 }
 window.addEventListener('resize', fitStage);
 new ResizeObserver(fitStage).observe(document.documentElement);   // resize 이벤트가 없는 환경 대비
@@ -2185,8 +2186,22 @@ window.ltClose = ()=>{
   if (st && st.PendingProposal) showProposal();
   maybeCoach();
 };
+// 무대 좌표 변환 — 오버레이(코치마크·투어)는 #stage 안 absolute라 무대 좌표계를 쓴다.
+// getBoundingClientRect()는 zoom이 반영된 뷰포트 좌표라 그대로 먹이면 어긋난다.
+function stageRect(el){
+  const s = $('stage'), sr = s.getBoundingClientRect();
+  const z = parseFloat(getComputedStyle(s).zoom) || 1;
+  const r = el.getBoundingClientRect();
+  return { top:(r.top-sr.top)/z, left:(r.left-sr.left)/z, width:r.width/z, height:r.height/z,
+           bottom:(r.bottom-sr.top)/z, right:(r.right-sr.left)/z, stageW:sr.width/z, stageH:sr.height/z };
+}
+// 무대가 다시 맞춰지면(창 크기·배율 변경) 열려 있는 오버레이도 제자리를 다시 잡는다
+function replaceOverlays(){
+  if ($('coach').classList.contains('on') && _coachTarget) placeCoach(_coachTarget);
+  if ($('tour').classList.contains('on')) tourGo(_tourI);
+}
 // ═══ [13] 튜토리얼 코치마크: 카토의 조언이 실제 UI를 가리킨다 (힌트 변경 시 1회) ═══
-let _coachSeen = null;
+let _coachSeen = null, _coachTarget = null;
 function maybeCoach(){
   const hint = st && st.Campaign && st.Campaign.Hint;
   if (!hint){ hideCoach(); _coachSeen=null; return; }
@@ -2194,18 +2209,20 @@ function maybeCoach(){
   if ($('dlg').classList.contains('on') || $('menu').style.display !== 'none') return;   // 대화·메뉴 먼저
   const target = hint.includes('영입 탭') ? document.querySelector('nav button[data-s="market"]') : $('next');
   if (!target) return;
-  _coachSeen = hint;
+  _coachSeen = hint; _coachTarget = target;
   const [q, dir] = hint.split('→');
   $('coachTxt').innerHTML = escHtml(q.replace(/^\{speech\}\s*카토:\s*/,'').trim()) + (dir?`<br><b>→ ${escHtml(dir.trim())}</b>`:'');
   $('coachPort').innerHTML = `<span style="width:56px;height:56px;display:inline-block;flex-shrink:0;border-radius:8px;overflow:hidden;border:1px solid var(--gold-deep)"><img src="story_cato.png" style="width:56px;height:56px;object-fit:cover;object-position:top" onerror="this.parentElement.innerHTML=dlgSilhouette('cato')"></span>`;
-  const r = target.getBoundingClientRect();
-  const spot=$('coachSpot');
-  spot.style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
-  const bl = Math.max(8, Math.min(window.innerWidth-376, r.left + r.width/2 - 180));
+  placeCoach(target);
+  $('coach').classList.add('on');
+}
+function placeCoach(target){
+  const r = stageRect(target);
+  $('coachSpot').style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
+  const bl = Math.max(8, Math.min(r.stageW-376, r.left + r.width/2 - 180));
   $('coachBub').style.top = (r.bottom+16)+'px';
   $('coachBub').style.left = bl+'px';
   $('coachArrow').style.left = Math.max(12, Math.min(332, r.left + r.width/2 - bl - 8))+'px';
-  $('coach').classList.add('on');
 }
 window.hideCoach = ()=> $('coach').classList.remove('on');
 // ═══ 안내 투어 — 카토가 골드·리그·각 탭을 순회하며 짚어준다 (코치마크 위주 튜토리얼) ═══
@@ -2238,14 +2255,14 @@ window.tourGo = (i)=>{
   const el = document.querySelector(s.sel);
   if (!el){ tourGo(i+1); return; }
   try{ el.scrollIntoView({block:'nearest'}); }catch(_){}
-  const r = el.getBoundingClientRect();
+  const r = stageRect(el);
   $('tourIcon').textContent = s.ic;
   $('tourTxt').innerHTML = s.txt;
   $('tourProg').textContent = `${i+1} / ${_tourList.length}`;
   $('tourPrev').style.visibility = i===0?'hidden':'';
   $('tourNext').textContent = i===_tourList.length-1?'시작하자':'다음 →';
   $('tourSpot').style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
-  const bw=340, bl = Math.max(8, Math.min(window.innerWidth-bw-8, r.left + r.width/2 - bw/2));
+  const bw=340, bl = Math.max(8, Math.min(r.stageW-bw-8, r.left + r.width/2 - bw/2));
   $('tourBub').style.top = (r.bottom+16)+'px'; $('tourBub').style.left = bl+'px';
   $('tourArrow').style.cssText = `top:-8px;transform:rotate(45deg);left:${Math.max(12, Math.min(bw-24, r.left + r.width/2 - bl - 8))}px`;
 };
