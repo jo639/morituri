@@ -106,6 +106,9 @@
   @keyframes busybar{ from{ transform:translateX(-100%); } to{ transform:translateX(100%); } }
   button:disabled{ opacity:.45; cursor:not-allowed; }
   #screens [onclick]:not(button):hover{ outline:1px solid rgba(210,171,85,.4); outline-offset:-1px; }
+  /* G7: 클릭 가능한 카드·행은 버튼처럼 — 커서·키보드 포커스 어포던스 일관 (ui.js가 role/tabindex 부여) */
+  #screens [onclick]:not(button){ cursor:pointer; }
+  #screens [onclick]:not(button):focus-visible{ outline:2px solid var(--gold); outline-offset:-1px; }
   /* 리그(네이티브) 표 */
   .lgtbl{ width:100%; border-collapse:collapse; font-size:13px; }
   .lgtbl th,.lgtbl td{ text-align:left; padding:5px 8px; border-bottom:1px solid var(--line-soft); }
@@ -480,6 +483,7 @@
     <div id="ldDash" class="ldview" style="flex:1;min-height:0;display:flex;gap:16px;margin-top:8px">
       <div style="flex:1.1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:auto">
         <div id="repBox"></div>
+        <div id="ludusBrief"></div>
         <div id="preseasonBoard" style="display:none"></div>
       </div>
       <div style="flex:1;min-width:0;overflow:auto">
@@ -2541,6 +2545,28 @@ function renderLudus(){
     `<div class="chip" title="${a.Desc}" style="padding:6px 10px;${a.Unlocked?'background:rgba(201,168,76,.2);color:var(--gold);border:1px solid var(--gold)':'opacity:.45'}">${a.Unlocked?'{laurel}':'{lock}'} ${a.Name}</div>`).join('');
 
   renderGoalBoard();
+  renderLudusBrief();
+}
+// 지휘실 한눈 요약 — 선수단·다음 경기·재정, 기존 st 데이터만(커맨드센터 밀도)
+function renderLudusBrief(){
+  const el=$('ludusBrief'); if(!el||!st) return;
+  const fs=st.MyFighters||[];
+  const avgFame = fs.length ? Math.round(fs.reduce((s,f)=>s+(f.Fame||0),0)/fs.length) : 0;
+  const injured = fs.filter(f=>f.Injured||(f.PermInjuries&&f.PermInjuries.length)).length;
+  const tired = fs.filter(f=>(f.Fatigue||0)>=60).length;
+  const nm=st.NextMatch;
+  const cell=(label,val,sub)=>`<div style="flex:1 1 88px;background:var(--panel2);border-radius:9px;padding:8px 11px">
+    <div class="note">${label}</div><div style="font-size:17px;font-weight:700;color:var(--gold)">${val}</div>${sub?`<div class="note" style="font-size:10px">${sub}</div>`:''}</div>`;
+  const nextLine = nm ? `<div style="margin-top:10px;padding:9px 12px;background:var(--panel2);border-left:3px solid ${nm.IsPlayerMatch?'var(--gold)':'var(--line)'};border-radius:8px">
+      <div class="note">다음 경기${nm.IsEvent?' · 이벤트':''}</div>
+      <div style="font-weight:700;margin-top:2px;${nm.IsPlayerMatch?'color:var(--gold)':''}">${nm.AName} <span class="note">vs</span> ${nm.BName}</div></div>` : '';
+  el.innerHTML = `<h4 style="color:var(--gold);margin:2px 0 8px;font-size:12px;letter-spacing:.05em">{ludus} 지휘실 요약</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${cell('선수단', `${fs.length}<span style="font-size:12px;color:var(--dim)">/${st.RosterCap}</span>`, injured?`부상 ${injured}`:tired?`피로 ${tired}`:'전원 양호')}
+      ${cell('평균 명성', avgFame)}
+      ${cell('보유 골드', Math.round(st.Gold), st.Debt>0?`빚 ${Math.round(st.Debt)}`:'')}
+      ${st.Glory>0?cell('영광', st.Glory):''}
+    </div>${nextLine}`;
 }
 
 // {target} 목표 보드 — 특명·등급·순위·대항전·총애·업적·명전·빚, 흩어진 목표를 한 패널로(전부 기존 데이터)

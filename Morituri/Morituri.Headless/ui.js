@@ -115,6 +115,7 @@
 
   function scan(root){
     initControls(root);
+    if (root.nodeType === 1) markInteractive(root);
     if (root.nodeType === 3){ if (root.parentNode && !SKIP.test(root.parentNode.tagName)) processTextNode(root); return; }
     if (root.nodeType !== 1 || SKIP.test(root.tagName)) return;
     var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: function(n){
@@ -172,6 +173,32 @@
     clickTone();
     spark(e.clientX, e.clientY);
   }, true);
+
+  // G7: 버튼이 아닌 클릭 타겟(카드·행)에 키보드 접근성 부여 — role/tabindex + Enter/Space 클릭.
+  // 중첩된 [onclick]은 가장 바깥만 포커스 대상(카드 안 버튼이 이중 tabstop 되지 않게).
+  function mark1(el){
+    if (el.__kb || el.tagName === 'BUTTON' || el.hasAttribute('disabled')) return;
+    if (el.querySelector('[onclick]')) return;                 // 바깥 컨테이너면 건너뜀(안쪽 실제 타겟만)
+    if (!el.closest || !el.closest('#screens')) return;        // 화면 안 클릭 타겟만
+    el.__kb = true;
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
+  }
+  function markInteractive(root){
+    if (root.nodeType !== 1) return;
+    if (root.matches && root.matches('[onclick]:not(button)')) mark1(root);
+    if (!root.querySelectorAll) return;
+    var list = root.querySelectorAll('[onclick]:not(button)');
+    for (var i = 0; i < list.length; i++) mark1(list[i]);
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = document.activeElement;
+    if (!el || el.tagName === 'BUTTON' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+    if (!el.matches || !el.matches('[onclick]')) return;
+    e.preventDefault();
+    el.click();
+  });
 
   // 템플릿 리터럴에서 직접 아이콘 마크업이 필요할 때: `${IC('coin')}`
   window.IC = function(name){ return '<svg class="ic" aria-hidden="true"><use href="icons.svg#' + name + '"/></svg>'; };
