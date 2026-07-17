@@ -140,6 +140,39 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
+  // ── R3: 공용 클릭 반응 레이어 — 누르면 0.1초 안에 반드시 반응한다(소리+금빛 점멸) ──
+  var _cac = null;
+  function clickTone(){
+    if (typeof window.sndOn === 'function' && !window.sndOn()) return;
+    try{
+      _cac = _cac || new (window.AudioContext||window.webkitAudioContext)();
+      var t=_cac.currentTime, o=_cac.createOscillator(), g=_cac.createGain();
+      o.type='triangle'; o.frequency.setValueAtTime(1400,t);
+      o.frequency.exponentialRampToValueAtTime(700,t+.045);
+      g.gain.setValueAtTime(.05,t); g.gain.exponentialRampToValueAtTime(.001,t+.05);
+      o.connect(g).connect(_cac.destination); o.start(t); o.stop(t+.07);
+    }catch(e){}
+  }
+  function spark(x,y){
+    var host = document.getElementById('stage') || document.body;
+    var r = host.getBoundingClientRect();
+    var z = parseFloat(getComputedStyle(host).zoom) || 1;
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute;z-index:97;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;'+
+      'border:2px solid var(--gold,#c9a84c);opacity:.75;pointer-events:none;'+
+      'left:'+((x-r.x)/z)+'px;top:'+((y-r.y)/z)+'px;'+
+      'transition:transform .38s cubic-bezier(.2,.7,.3,1), opacity .38s ease-out;';
+    host.appendChild(d);
+    requestAnimationFrame(function(){ d.style.transform='scale(3.4)'; d.style.opacity='0'; });
+    setTimeout(function(){ d.remove(); }, 460);
+  }
+  document.addEventListener('pointerdown', function(e){
+    var b = e.target.closest && e.target.closest('button, [onclick]');
+    if (!b || b.disabled) return;
+    clickTone();
+    spark(e.clientX, e.clientY);
+  }, true);
+
   // 템플릿 리터럴에서 직접 아이콘 마크업이 필요할 때: `${IC('coin')}`
   window.IC = function(name){ return '<svg class="ic" aria-hidden="true"><use href="icons.svg#' + name + '"/></svg>'; };
 

@@ -81,6 +81,15 @@
   h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
   .note{ color:var(--dim); font-size:12px; }
   .err{ color:var(--b); font-size:12px; min-height:16px; }
+  /* R3: 반응성 — 진행 중(busy)엔 상단 금빛 진행선 + 이중 클릭 차단, 클릭 타겟 어포던스 */
+  #stage.busy{ cursor:progress; }
+  #stage.busy button{ pointer-events:none; }
+  #stage.busy::after{ content:''; position:absolute; top:0; left:0; right:0; height:2px; z-index:200; pointer-events:none;
+    background:linear-gradient(90deg,transparent,var(--gold),transparent);
+    animation:busybar .9s linear infinite; }
+  @keyframes busybar{ from{ transform:translateX(-100%); } to{ transform:translateX(100%); } }
+  button:disabled{ opacity:.45; cursor:not-allowed; }
+  #screens [onclick]:not(button):hover{ outline:1px solid rgba(210,171,85,.4); outline-offset:-1px; }
   /* 리그(네이티브) 표 */
   .lgtbl{ width:100%; border-collapse:collapse; font-size:13px; }
   .lgtbl th,.lgtbl td{ text-align:left; padding:5px 8px; border-bottom:1px solid var(--line-soft); }
@@ -1061,9 +1070,16 @@ window.loadSlot = async (n)=>{
   renderSlots();   // ◈ 활성 표시 갱신 — 메뉴는 유지
 };
 
+let _busyN = 0;   // R3: POST 진행 중엔 무대 상단 진행선 + 이중 클릭 차단
 async function api(path, body){
-  const r = await fetch(path, body!==undefined ? {method:'POST', body:JSON.stringify(body||{})} : {cache:'no-store'});
-  return normDeep(await r.json());   // 구세이브 이모지 → {토큰} 정규화 (단일 관문, ui.js)
+  const isPost = body!==undefined;
+  if (isPost && ++_busyN===1) $('stage')?.classList.add('busy');
+  try{
+    const r = await fetch(path, isPost ? {method:'POST', body:JSON.stringify(body||{})} : {cache:'no-store'});
+    return normDeep(await r.json());   // 구세이브 이모지 → {토큰} 정규화 (단일 관문, ui.js)
+  } finally {
+    if (isPost && --_busyN<=0){ _busyN=0; $('stage')?.classList.remove('busy'); }
+  }
 }
 
 async function refresh(){
@@ -1177,6 +1193,7 @@ function toast(msg){
   d.className = 'mor-toast';
   d.style.cssText = `position:absolute;right:18px;bottom:${18+n*58}px;z-index:99;background:var(--panel);border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.5);animation:rvPop .5s ease`;
   d.innerHTML = msg; ($('stage')||document.body).appendChild(d);
+  tone(640,.09,'triangle',.045); tone(960,.07,'triangle',.03,.06);   // R3: 전갈 도착음(은은하게)
   setTimeout(()=>{ d.style.transition='opacity .6s'; d.style.opacity='0'; setTimeout(()=>d.remove(),650); }, 4200);
 }
 // ── 인월드 확인 — 브라우저 확인창 대체. hold=true면 길게 눌러 확정(비가역 행동은 실수로 못 누르게) ──
@@ -1193,7 +1210,7 @@ function askConfirm({title='확인', body='', label='실행', hold=false}={}){
     $('cfModal').classList.add('on');
   });
 }
-function cfDone(v){ $('cfModal').classList.remove('on'); const r=_cfResolve; _cfResolve=null; if (r) r(v); }
+function cfDone(v){ $('cfModal').classList.remove('on'); if (v) sfxStamp(); const r=_cfResolve; _cfResolve=null; if (r) r(v); }
 {
   const y = $('cfYes');
   $('cfNo').onclick = ()=>cfDone(false);

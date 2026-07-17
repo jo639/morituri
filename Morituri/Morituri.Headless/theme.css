@@ -131,6 +131,12 @@ body.fresco{
 /* ── 아이콘 ── */
 .ic{ width:1em; height:1em; vertical-align:-.125em; flex:0 0 auto; }
 
+/* R3: 모션 토큰 — 모든 새 전환은 이 세 박자와 두 곡선만 쓴다 */
+:root{
+  --dur-fast:.1s; --dur-mid:.22s; --dur-slow:.4s;
+  --ease-out:cubic-bezier(.2,.7,.3,1); --ease-snap:cubic-bezier(.6,.05,.3,1);
+}
+
 /* R1: 커스텀 폼 컨트롤 — 브라우저 기본 select/checkbox 대체 (ui.js가 .value/.checked API를 붙인다) */
 .seg{ display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; vertical-align:middle; }
 .seg button{ background:transparent; border:0; border-right:1px solid var(--line); color:var(--dim);
