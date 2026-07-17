@@ -9,9 +9,19 @@
 <style>
   /* 디자인 토큰(:root)·폰트·공용 컴포넌트는 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 var(--font-body);
-        display:flex; flex-direction:column; }
+  html,body{ height:100%; overflow:hidden; }
+  body{ margin:0; color:var(--ink); font:14px/1.5 var(--font-body);
+        display:flex; align-items:center; justify-content:center;
+        background:#0b0805 radial-gradient(ellipse at 50% 40%, #17110a 0%, #0b0805 70%); }
+  /* ── 고정 무대(R2): 게임은 페이지가 아니라 화면 — 기준 1280×800, 창 크기엔 zoom 스케일 ── */
+  #stage{ width:1280px; height:800px; flex:0 0 auto; display:flex; flex-direction:column;
+          position:relative; overflow:hidden;
+          background: /* 프레스코 바닥(theme.css body.fresco와 동일 레이어) — 무대 안쪽만 */
+            var(--noise),
+            radial-gradient(ellipse at 50% 0%, rgba(210,171,85,.05), transparent 55%),
+            radial-gradient(ellipse at 50% 115%, #0d0905 0%, transparent 60%),
+            var(--bg);
+          box-shadow:0 0 0 1px rgba(210,171,85,.14), 0 0 80px rgba(0,0,0,.75); }
   button{ font:inherit; cursor:pointer; }
   /* ── 상단 바 ── */
   #top{ display:flex; align-items:center; gap:12px; padding:0 16px; height:54px; flex:0 0 auto;
@@ -40,7 +50,7 @@
   #screens{ flex:1 1 auto; position:relative; min-height:0; }
   .screen{ position:absolute; inset:0; display:none; overflow:auto; }
   .screen.on{ display:block; animation:fadeIn .18s ease; }
-  .screen > .pad{ padding:18px 20px 24px; max-width:min(1240px,94vw); margin:0 auto; }
+  .screen > .pad{ padding:18px 20px 24px; max-width:1240px; margin:0 auto; }
   iframe{ width:100%; height:100%; border:0; background:var(--bg); }
   /* ── 라이브 경기(전용 게임플레이 화면) ── */
   #livesc{ overflow:hidden; }
@@ -71,6 +81,12 @@
   h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
   .note{ color:var(--dim); font-size:12px; }
   .err{ color:var(--b); font-size:12px; min-height:16px; }
+  /* 리그(네이티브) 표 */
+  .lgtbl{ width:100%; border-collapse:collapse; font-size:13px; }
+  .lgtbl th,.lgtbl td{ text-align:left; padding:5px 8px; border-bottom:1px solid var(--line-soft); }
+  .lgtbl th{ color:var(--dim); font-weight:600; font-size:11px; letter-spacing:.04em; }
+  .lgtbl td{ font-variant-numeric:tabular-nums; }
+  .lgtbl tr:hover td{ background:rgba(210,171,85,.05); }
   /* 리그탭 배너 3종 — 수입(골드)·베팅(마젠타)·승부조작(적) */
   .notice{ display:none; margin:8px 0; padding:8px 14px; background:var(--panel2); border-left:3px solid var(--gold);
            border-radius:var(--r1); font-size:13px; box-shadow:var(--sh1); }
@@ -145,7 +161,7 @@
   .cand .recruit:hover, .fc .recruit:hover{ filter:brightness(1.15); }
   .fc .recruit:disabled{ opacity:.4; }
   /* 전술 모달 */
-  .modal{ position:fixed; inset:0; background:rgba(10,6,2,.65); display:none; align-items:center; justify-content:center; z-index:60;
+  .modal{ position:absolute; inset:0; background:rgba(10,6,2,.65); display:none; align-items:center; justify-content:center; z-index:60;
           backdrop-filter:blur(2px); }
   .modal.on{ display:flex; animation:fadeIn .15s ease; }
   .mbox{ background:linear-gradient(180deg,rgba(210,171,85,.05),transparent 32%), var(--panel);
@@ -169,7 +185,7 @@
   @keyframes rvGlow{ 0%{box-shadow:0 0 0 transparent} 35%{box-shadow:0 0 70px var(--glowc,rgba(210,171,85,.95))} 100%{box-shadow:0 0 16px var(--glowc,rgba(210,171,85,.5))} }
   /* 잭팟 비네트 — 불멸자·카이사르 리빌 순간 화면 가장자리가 등급색으로 맥동 */
   @keyframes vignettePulse{ 0%{opacity:0} 22%{opacity:.55} 100%{opacity:0} }
-  .rv-vignette{ position:fixed; inset:0; z-index:70; pointer-events:none; opacity:0;
+  .rv-vignette{ position:absolute; inset:0; z-index:70; pointer-events:none; opacity:0;
                 background:radial-gradient(ellipse at center, transparent 42%, var(--glowc,#d2ab55) 135%);
                 animation:vignettePulse 1.4s ease forwards; }
   @keyframes rvShake{ 0%,100%{transform:translate(0,0)} 20%{transform:translate(-3px,2px)} 40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,-2px)} 80%{transform:translate(2px,2px)} }
@@ -199,7 +215,7 @@
             filter:drop-shadow(0 0 12px rgba(220,96,40,.85));
             animation:sealStamp .5s cubic-bezier(.2,.7,.3,1) forwards; }
   /* 메뉴 — 타이틀 씬 */
-  #menu{ position:fixed; inset:0; z-index:50;
+  #menu{ position:absolute; inset:0; z-index:50;
          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
          background:
            var(--noise),
@@ -221,7 +237,7 @@
   #menu .info{ color:var(--dim); font-size:12px; margin-top:22px; }
   #mSlots button{ width:auto; letter-spacing:0; font-weight:400; }
 /* ── [13] 스토리 대화 UI (A안 하단 대화창 — 캠페인 전용, 검수 확정 2026-07-11) ── */
-#dlg{ position:fixed; inset:0; z-index:60; display:none }
+#dlg{ position:absolute; inset:0; z-index:60; display:none }
 #dlg.on{ display:block }
 #dlg .dveil{ position:absolute; inset:0; background:rgba(10,6,2,.78); backdrop-filter:blur(3px); animation:dlgVeil .5s ease }
 @keyframes dlgVeil{ from{opacity:0} to{opacity:1} }
@@ -271,7 +287,7 @@
 .dlg-choice:hover{ border-color:var(--gold); color:var(--gold); background:var(--panel3); transform:translateX(4px) }
 .dlg-unlock{ margin:6px 0 4px; text-align:center; font-weight:800; color:var(--gold); animation:dlgVeil 1.2s ease }
 /* ── 서신 개봉 UI — 화면 중앙 봉인 편지(초상 없음, 발신·내용 명확) ── */
-#letter{ position:fixed; inset:0; z-index:61; display:none }
+#letter{ position:absolute; inset:0; z-index:61; display:none }
 #letter.on{ display:flex; align-items:center; justify-content:center }
 #letter .lveil{ position:absolute; inset:0; background:rgba(10,6,2,.82); backdrop-filter:blur(3px); animation:dlgVeil .5s ease }
 .lt-card{ position:relative; z-index:1; width:min(560px,92vw) }
@@ -302,7 +318,7 @@
   padding:11px 16px; font-size:15px; cursor:pointer; transition:all .15s ease; font-weight:600 }
 .lt-choice:hover{ border-color:#8a1f1f; background:#efe2c4; transform:translateX(3px) }
 /* ── [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) ── */
-#coach{ position:fixed; inset:0; z-index:58; display:none }
+#coach{ position:absolute; inset:0; z-index:58; display:none }
 #coach.on{ display:block }
 #coach .spot{ position:absolute; border-radius:8px;
   box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.6);
@@ -320,7 +336,7 @@
 #coach .okbtn{ background:var(--panel3); border:1px solid var(--gold); color:var(--gold); font-weight:800;
   border-radius:var(--r1); padding:7px 22px; cursor:pointer; font-size:14px; float:right; margin-top:10px }
 /* ── 안내 투어: 시스템을 순회하는 코치마크(골드·리그·각 탭 설명) ── */
-#tour{ position:fixed; inset:0; z-index:62; display:none }
+#tour{ position:absolute; inset:0; z-index:62; display:none }
 #tour.on{ display:block }
 #tour .spot{ position:absolute; border-radius:8px; transition:top .3s ease,left .3s ease,width .3s ease,height .3s ease; pointer-events:none;
   box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.72); animation:coachPulse 1.4s ease infinite }
@@ -341,7 +357,8 @@
 #tour .tbtn.skip{ margin-right:auto; border:none; color:var(--dim); padding:7px 4px }
 </style>
 </head>
-<body class="fresco">
+<body>
+<div id="stage"><!-- 고정 무대: 기준 1280×800 컴포지션 — 창 크기엔 리플로우가 아니라 스케일(zoom)로 대응 (R2) -->
 <div id="top">
   <span id="logo"><svg class="ic lg"><use href="icons.svg#swords"/></svg>MORITURI</span>
   <nav>
@@ -373,35 +390,83 @@
 
 <div id="screens">
   <div class="screen on" id="league">
-    <div class="pad" style="padding-bottom:0"><div id="incomeBar" class="notice"></div>
-    <div id="betBar" class="notice glory"></div>
-    <div id="fixBar" class="notice danger"></div>
-    <div id="storyBar" class="notice" style="border-color:var(--gold-deep);color:#dcc99a"></div>
-    <div id="teaseBar" class="notice" style="border-color:#8a5a7a;color:#e0c2d4"></div></div>
-    <iframe id="leagueF" src="league.html" style="height:calc(100% - 0px)"></iframe>
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;padding-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex:0 0 auto">
+        <span class="seg" id="lgTabs"><button data-v="sched" class="cur">일정</button><button data-v="table">순위</button><button data-v="hist">기록</button></span>
+        <span class="note" id="lgSub"></span>
+      </div>
+      <div style="flex:0 0 auto"><div id="incomeBar" class="notice"></div>
+        <div id="betBar" class="notice glory"></div>
+        <div id="fixBar" class="notice danger"></div>
+        <div id="storyBar" class="notice" style="border-color:var(--gold-deep);color:#dcc99a"></div>
+        <div id="teaseBar" class="notice" style="border-color:#8a5a7a;color:#e0c2d4"></div></div>
+      <!-- 일정: 주인공 = 이번 달 달력. 왼쪽 = 다음 경기 카드 + 시즌 단계 -->
+      <div id="lgSched" class="lgview" style="flex:1;min-height:0;display:flex;gap:14px;margin-top:10px">
+        <div style="flex:0 0 340px;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:hidden" id="lgLeft"></div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+            <span class="seg" id="lgMonthTabs"></span><span class="note" id="lgCalSub"></span></div>
+          <div id="lgMonth" style="flex:1;min-height:0;margin-top:8px"></div>
+        </div>
+      </div>
+      <!-- 순위: 부별 순위표 + 명성 리더보드/컵 대진 -->
+      <div id="lgTable" class="lgview" hidden style="flex:1;min-height:0;display:flex;flex-direction:column;margin-top:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto"><span class="seg" id="lgDivTabs"></span><div id="lgChamp" style="flex:1;min-width:0"></div></div>
+        <div style="flex:1;min-height:0;display:flex;gap:16px;margin-top:10px">
+          <div style="flex:1.2;min-width:0;overflow:auto" id="lgStandings"></div>
+          <div style="flex:1;min-width:0;overflow:auto" id="lgSide"></div>
+        </div>
+      </div>
+      <!-- 기록: 경기 결과·시즌 서사 + 관계 그래프·역사 -->
+      <div id="lgHist" class="lgview" hidden style="flex:1;min-height:0;display:flex;gap:16px;margin-top:10px">
+        <div style="flex:1.1;min-width:0;display:flex;flex-direction:column;gap:8px">
+          <h2 style="margin:0">경기 결과 <span class="note" id="lgMlHint"></span></h2>
+          <div id="lgMatchlog" style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:3px"></div>
+          <h2 style="margin:6px 0 0">시즌 서사</h2>
+          <div id="lgStory" style="flex:0 0 150px;overflow:auto;display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;overflow:auto" id="lgHistSide"></div>
+      </div>
+    </div>
   </div>
 
-  <div class="screen" id="ludus"><div class="pad">
-    <div id="repBox"></div>
-    <h2>내 루두스 <span class="note" id="ludusNote"></span></h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px" id="ludusActs">
-      <button onclick="hostShow()" class="act glory" style="width:auto;padding:7px 16px" title="골드를 태워 특별 흥행전을 연다 — 리그 최고 명성의 상대를 초청, 출전자는 라니스타가 정한다. 수익은 흥행으로 (골드 120)">{fest} 흥행 개최 ({coin}120)</button>
-      <button onclick="banquet()" class="act glory" style="width:auto;padding:7px 16px" title="연회를 열어 후원자의 마음을 산다 — 후원 관계 +12 (시즌 1회, 골드 100)">{wine} 후원자 연회 ({coin}100)</button>
+  <!-- 루두스 = 지휘실(R2): 서브탭 — 지휘실(요약·목표) / 모리튜리(선수단 관리) / 시설·특전 / 시즌(컵·대항전) -->
+  <div class="screen" id="ludus"><div class="pad" style="height:100%;display:flex;flex-direction:column;padding-bottom:12px">
+    <div style="display:flex;align-items:center;gap:12px;flex:0 0 auto">
+      <span class="seg" id="ldTabs"><button data-v="dash" class="cur">지휘실</button><button data-v="men">모리튜리</button><button data-v="fac">시설·특전</button><button data-v="season">시즌</button></span>
+      <span class="note" id="ludusNote"></span>
+      <div style="margin-left:auto;display:flex;gap:8px" id="ludusActs">
+        <button onclick="hostShow()" class="act glory" style="width:auto;padding:6px 14px" title="골드를 태워 특별 흥행전을 연다 — 리그 최고 명성의 상대를 초청, 출전자는 라니스타가 정한다. 수익은 흥행으로 (골드 120)">{fest} 흥행 개최 ({coin}120)</button>
+        <button onclick="banquet()" class="act glory" style="width:auto;padding:6px 14px" title="연회를 열어 후원자의 마음을 산다 — 후원 관계 +12 (시즌 1회, 골드 100)">{wine} 후원자 연회 ({coin}100)</button>
+      </div>
     </div>
-    <div id="preseasonBoard" style="display:none;margin:2px 0 10px"></div>
-    <div class="fac" id="goalBoard" style="margin:2px 0 10px" title="목표 보드 — 흩어진 야망을 한눈에"></div>
-    <div class="grid" id="myGrid"></div>
-    <h2>시설</h2>
-    <div class="fac" id="facRow"></div>
-    <h2>{ludus} 제국 특전 <span class="note">({glory}영광 소모 — 영구 업그레이드)</span></h2>
-    <div class="fac" id="perkRow"></div>
-    <h2>{trophy} 챔피언십 컵 <span class="note">(정규시즌 후 상위 4인 토너먼트)</span></h2>
-    <div id="cupBox"></div>
-    <h2>{masks} 사투르날리아 대항전 <span class="note">(미드시즌 축제 — 루두스 대표 1인 토너먼트)</span></h2>
-    <div id="festBox"></div>
-    <h2>{laurel} 업적</h2>
-    <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-    <div class="err" id="ludusErr"></div>
+    <div class="err" id="ludusErr" style="flex:0 0 auto"></div>
+    <div id="ldDash" class="ldview" style="flex:1;min-height:0;display:flex;gap:16px;margin-top:8px">
+      <div style="flex:1.1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:auto">
+        <div id="repBox"></div>
+        <div id="preseasonBoard" style="display:none"></div>
+      </div>
+      <div style="flex:1;min-width:0;overflow:auto">
+        <div class="fac" id="goalBoard" title="목표 보드 — 흩어진 야망을 한눈에"></div>
+      </div>
+    </div>
+    <div id="ldMen" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
+      <div class="grid" id="myGrid"></div>
+    </div>
+    <div id="ldFac" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
+      <h2 style="margin-top:0">시설</h2>
+      <div class="fac" id="facRow"></div>
+      <h2>{ludus} 제국 특전 <span class="note">({glory}영광 소모 — 영구 업그레이드)</span></h2>
+      <div class="fac" id="perkRow"></div>
+      <h2>{laurel} 업적</h2>
+      <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+    <div id="ldSeason" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
+      <h2 style="margin-top:0">{trophy} 챔피언십 컵 <span class="note">(정규시즌 후 상위 4인 토너먼트)</span></h2>
+      <div id="cupBox"></div>
+      <h2>{masks} 사투르날리아 대항전 <span class="note">(미드시즌 축제 — 루두스 대표 1인 토너먼트)</span></h2>
+      <div id="festBox"></div>
+    </div>
   </div></div>
 
   <div class="screen" id="market"><div class="pad">
@@ -416,14 +481,19 @@
     <div id="transferBox"><div class="note">시즌 중엔 닫혀 있다.</div></div>
   </div></div>
 
-  <div class="screen" id="roster"><div class="pad">
-    <h2>{ludus} 루두스 순위 <span class="note">(라이벌 검투소 경쟁 — 명성)</span></h2>
-    <div id="ludusTable"></div>
-    <h2>리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
-    <div class="grid" id="rosterGrid"></div>
-    <h2>{ludus} 기록실 <span class="note">(통산 기록)</span></h2>
-    <div id="records" style="display:flex;gap:10px;flex-wrap:wrap"></div>
-    <div id="legends"></div>
+  <!-- 로스터(R2): 주인공 = 리그 로스터 명부. 왼쪽 레일 = 루두스 순위·통산 기록·전설 -->
+  <div class="screen" id="roster"><div class="pad" style="height:100%;display:flex;gap:16px;padding-bottom:12px">
+    <div style="flex:0 0 340px;min-width:0;display:flex;flex-direction:column;gap:6px;overflow:auto">
+      <h2 style="margin:0">{ludus} 루두스 순위 <span class="note">(명성 경쟁)</span></h2>
+      <div id="ludusTable"></div>
+      <h2 style="margin:10px 0 0">{ludus} 기록실 <span class="note">(통산 기록)</span></h2>
+      <div id="records" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <div id="legends"></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <h2 style="margin:0 0 8px">리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
+      <div class="grid" id="rosterGrid" style="flex:1;min-height:0;overflow:auto;align-content:start"></div>
+    </div>
   </div></div>
 
   <div class="screen" id="livesc">
@@ -455,13 +525,18 @@
     <div id="newsBody" style="display:flex;flex-direction:column;gap:14px;margin-top:10px"></div>
   </div></div>
 
-  <div class="screen" id="gamble"><div class="pad">
-    <h2>{dice} 콜로세움 도박장 <span class="note">AI 경기에 베팅 — 내 루두스 경기엔 걸 수 없다(승부조작 금지)</span></h2>
-    <div id="gambleStat" style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap"></div>
-    <div id="debtPanel" style="margin:12px 0"></div>
-    <div id="gambleNext" style="margin:10px 0"></div>
-    <h3>{scroll} 베팅 이력</h3>
-    <div id="gambleLog" style="display:flex;flex-direction:column;gap:3px;max-height:340px;overflow:auto"></div>
+  <!-- 도박장(R2): 주인공 = 다음 판 베팅. 오른쪽 레일 = 장부(빚)·이력 -->
+  <div class="screen" id="gamble"><div class="pad" style="height:100%;display:flex;flex-direction:column;padding-bottom:12px">
+    <h2 style="margin-top:0">{dice} 콜로세움 도박장 <span class="note">AI 경기에 베팅 — 내 루두스 경기엔 걸 수 없다(승부조작 금지)</span></h2>
+    <div id="gambleStat" style="display:flex;gap:16px;margin:6px 0;flex-wrap:wrap;flex:0 0 auto"></div>
+    <div style="flex:1;min-height:0;display:flex;gap:16px;margin-top:4px">
+      <div style="flex:1.3;min-width:0;overflow:auto"><div id="gambleNext"></div></div>
+      <div style="flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:6px">
+        <div id="debtPanel"></div>
+        <h3 style="margin:6px 0 2px">{scroll} 베팅 이력</h3>
+        <div id="gambleLog" style="display:flex;flex-direction:column;gap:3px"></div>
+      </div>
+    </div>
   </div></div>
 
   <div class="screen" id="codex"><div class="pad">
@@ -680,6 +755,7 @@
   <button id="mQuit" style="margin-top:8px;opacity:.75">게임 종료</button>
   <div class="info" id="mInfo">—</div>
 </div>
+</div><!-- /stage -->
 
 <script>
 const WPN={SWORD:'검',SPEAR:'창',AXE:'도끼',GREATSWORD:'대검',DUALBLADES:'쌍검',HAMMER:'망치',WHIP:'채찍',SHIELD:'방패'};
@@ -771,6 +847,165 @@ async function openProfile(id){
   $('profModal').classList.add('on');
 }
 
+// ══ 리그(네이티브 3분할: 일정·순위·기록) — league.html iframe 대체. 주인공 하나: 일정=이번 달, 순위=순위표, 기록=경기 서사 (R2) ══
+let _lgDoc=null, _lgDiv=0, _lgMonth=null;   // _lgDiv 0=전체
+const LG_DIVN = {1:'1부 콜로세움', 2:'2부 투기장'};
+const lgKindIcon = c => c.Kind==='cup_final'?'{crown} ':c.Kind==='cup_sf'?'{trophy} ':c.Kind==='tiebreak'?'{scales} ':c.Kind==='gauntlet'?'{arena} ':c.Kind==='proposal'?'{speech} ':
+  (c.Kind||'').startsWith('fest_')?'{masks} ':c.Format==='execution'?'{skull} ':c.Kind==='event'?'{fest} ':'';
+const lgKindColor = c => c.Kind==='cup_final'||c.Kind==='cup_sf'?'#c94fc9':c.Kind==='tiebreak'?'#e0a24c':c.Kind==='gauntlet'?'#5b9be0':
+  (c.Kind||'').startsWith('fest_')?'#d86a9e':c.Kind==='proposal'?'#6fbf8f':c.Format==='execution'?'#e0685f':c.Kind==='event'?'#c9a84c':'transparent';
+const lgKindName = c => c.Kind==='cup_final'?'챔피언십 컵 결승':c.Kind==='cup_sf'?'챔피언십 컵 4강':c.Kind==='tiebreak'?'우승 결정전':
+  c.Kind==='fest_final'?'사투르날리아 대항전 결승':c.Kind==='fest_sf'?'사투르날리아 대항전 4강':c.Kind==='fest_qf'?'사투르날리아 대항전 8강':
+  c.Kind==='gauntlet'?'황제의 초청전':c.Kind==='proposal'?'도전·흥행전':c.Format==='execution'?'처형전':
+  c.Kind==='event'?'이벤트 빅매치':'정규 라운드로빈';
+async function renderLeague(){
+  try{ _lgDoc = normDeep(await (await fetch('season.json',{cache:'no-store'})).json()); }
+  catch(_){ _lgDoc = null; }
+  lgPaint();
+}
+function lgPaint(){
+  const v = $('lgTabs').value || 'sched';
+  $('lgSched').hidden = v!=='sched'; $('lgTable').hidden = v!=='table'; $('lgHist').hidden = v!=='hist';
+  const d = _lgDoc;
+  $('lgSub').textContent = d ? `시즌 ${d.SeasonNo} · ${d.Completed===false&&d.TotalMatches?`${d.Matches}/${d.TotalMatches}경기 진행중`:`${d.Matches}경기`}` : '시즌 자료 없음';
+  if (!d) return;
+  if (v==='sched') lgSched(d); else if (v==='table') lgTable(d); else lgHist(d);
+}
+function lgDivOf(d){ const m={}; (d.Fighters||[]).forEach(f=>m[f.Name]=f.Division||1); return m; }
+// ── 일정: 왼쪽 = 다음 경기·시즌 단계 / 오른쪽 = 이번 달 그리드(주인공) ──
+function lgSched(d){
+  const divOf = lgDivOf(d);
+  const cal = (d.Calendar||[]).filter(c=> !_lgDiv || (divOf[c.A]||1)===_lgDiv || (divOf[c.B]||1)===_lgDiv);
+  // 왼쪽: 다음 경기 카드 + 부 필터 + 시즌 단계
+  const nm = st && st.NextMatch;
+  const nmCard = nm ? `<div class="fac" style="padding:12px 14px">
+      <div class="note" style="letter-spacing:.08em">다음 경기${nm.IsEvent?' · 이벤트':''}</div>
+      <div style="font-family:var(--font-display);font-size:19px;font-weight:800;color:${nm.IsPlayerMatch?'var(--gold)':'var(--ink)'};margin:4px 0">${nm.AName} <span style="color:var(--dim);font-size:13px">vs</span> ${nm.BName}</div>
+      <div class="note">${nm.IsPlayerMatch?'내 루두스의 모래다':'AI 경기 — 도박장에 걸 수 있다'}${nm.Hype>=70?' · {flame} 흥행 대어':nm.Hype>=35?' · {glory} 기대작':''}</div>
+      <button class="btn primary" style="margin-top:8px;width:100%" onclick="$('next').click()">${nm.IsPlayerMatch?'모래로 나선다':'경기를 치른다'} ▶</button></div>` : '';
+  const divSeg = `<span class="seg" style="align-self:flex-start"><button data-v="0" ${_lgDiv===0?'class="cur"':''} onclick="_lgDiv=0;lgPaint()">전체</button><button data-v="1" ${_lgDiv===1?'class="cur"':''} onclick="_lgDiv=1;lgPaint()">1부</button><button data-v="2" ${_lgDiv===2?'class="cur"':''} onclick="_lgDiv=2;lgPaint()">2부</button></span>`;
+  const all = d.Calendar||[];
+  const phase = (label, icon, list, color)=>{
+    if (!list.length) return '';
+    const done = list.filter(c=>c.Winner).length, isNow = list.some(c=>c.IsNext);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;border:1px solid ${isNow?color:'var(--line-soft)'};border-left:4px solid ${color};background:${isNow?'rgba(201,168,76,.10)':'var(--panel)'}">
+      <span style="font-weight:700;font-size:12px;color:${isNow?'var(--gold)':'var(--ink)'}">${icon} ${label}</span>
+      <span class="note" style="margin-left:auto">${done}/${list.length}${isNow?' ◀':''}</span></div>`;
+  };
+  const of = kinds => all.filter(c=>kinds.includes(c.Kind||'regular'));
+  const flow = [
+    phase('정규 라운드로빈','{swords}', of(['regular']), '#8a7a5a'),
+    phase('사투르날리아 대항전','{masks}', of(['fest_qf','fest_sf','fest_final']), '#d86a9e'),
+    phase('이벤트 빅매치','{fest}', of(['event','proposal']), '#c9a84c'),
+    phase('우승 결정전','{scales}', of(['tiebreak']), '#e0a24c'),
+    phase('챔피언십 컵','{trophy}', of(['cup_sf','cup_final']), '#c94fc9'),
+    phase('황제의 초청전','{arena}', of(['gauntlet']), '#5b9be0'),
+  ].filter(Boolean).join('');
+  $('lgLeft').innerHTML = nmCard + divSeg +
+    `<div class="note" style="margin-top:2px;letter-spacing:.08em">시즌 진행 단계</div><div style="display:flex;flex-direction:column;gap:5px">${flow}</div>`;
+  // 오른쪽: 월 선택 + 이번 달 그리드
+  const months = [...new Set((d.Calendar||[]).map(c=>c.Month))];
+  if (!_lgMonth || !months.includes(_lgMonth)) _lgMonth = d.CurMonth && months.includes(d.CurMonth) ? d.CurMonth : (months.find(m=>(d.Calendar||[]).some(c=>c.Month===m&&!c.Winner)) || months[months.length-1]);
+  $('lgMonthTabs').innerHTML = months.map(m=>`<button data-v="${m}" ${m===_lgMonth?'class="cur"':''} onclick="_lgMonth='${m}';lgPaint()">${m}</button>`).join('');
+  const es = cal.filter(c=>c.Month===_lgMonth);
+  $('lgCalSub').textContent = `${es.filter(c=>c.Winner).length}/${es.length}경기` + (d.CurMonth===_lgMonth&&d.CurDay?` · 오늘 ${d.CurDay}일`:'');
+  const byDay = {}; es.forEach(c=>{ (byDay[c.Day]=byDay[c.Day]||[]).push(c); });
+  let cells='';
+  for (let day=1; day<=30; day++){
+    const list = byDay[day]||[];
+    const mine = list.some(c=>c.IsPlayerMatch), isNext = list.some(c=>c.IsNext);
+    const isToday = d.CurMonth===_lgMonth && d.CurDay===day;
+    const bg = mine ? 'rgba(201,168,76,.14)' : isToday ? 'rgba(201,168,76,.08)' : list.length ? 'var(--panel)' : 'rgba(0,0,0,.12)';
+    const border = isNext ? '1px solid var(--gold)' : isToday ? '1px solid var(--gold-deep)' : mine ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--line-soft)';
+    const inner = list.map(c=>{
+      const clickable = !!c.Winner;
+      const kc = lgKindColor(c);
+      const tip = [lgKindName(c), c.Title, !c.Winner&&c.Hype?`흥행 기대치 ${c.Hype}`:'', c.Hot?'연승 걸림':'', clickable?'클릭=재관전':''].filter(Boolean).join(' · ');
+      return `<div ${clickable?`onclick="openWatch(${c.Idx})"`:''} title="${plainTip(tip)}" style="${clickable?'cursor:pointer;':''}border-left:3px solid ${kc==='transparent'?'var(--line-soft)':kc};padding:1px 0 1px 4px;margin:2px 0;border-radius:2px;background:rgba(255,255,255,.02)">
+        <div style="font-size:10.5px;line-height:1.2;${c.IsPlayerMatch?'color:var(--gold);font-weight:700':''}">${lgKindIcon(c)}${c.Hot?'{bolt}':''}${c.A} vs ${c.B}</div>
+        <div style="font-size:9.5px;color:${c.Winner?'var(--grn,#7ec97e)':(c.IsNext?'var(--gold)':'var(--dim)')}">${c.Winner?('{trophy} '+c.Winner):(c.IsNext?'▶ 다음':'예정')}</div></div>`;
+    }).join('');
+    cells += `<div style="min-height:96px;padding:4px;border-radius:6px;background:${bg};border:${border};overflow:hidden">
+      <div style="font-size:10px;${isToday?'color:var(--gold);font-weight:700':'color:var(--dim)'}">${day}${isToday?' ●':''}</div>${inner}</div>`;
+  }
+  $('lgMonth').innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:minmax(96px,1fr);gap:5px;height:100%">${cells}</div>`;
+}
+// ── 순위: 부별 순위표(주인공) + 명성 리더보드·컵 대진 ──
+function lgTable(d){
+  const all = d.Fighters||[], divOf = lgDivOf(d);
+  const divs = [...new Set(all.map(f=>f.Division||1))].sort();
+  let cur = _lgDiv && divs.includes(_lgDiv) ? _lgDiv : divs[0];
+  $('lgDivTabs').innerHTML = divs.length>1 ? divs.map(v=>`<button data-v="${v}" ${v===cur?'class="cur"':''} onclick="_lgDiv=${v};lgPaint()">${LG_DIVN[v]||v+'부'}</button>`).join('') : '';
+  const fs = all.filter(f=>(f.Division||1)===cur);
+  const inProgress = d.Completed === false;
+  const sorted = [...fs].sort((a,b)=> b.Points-a.Points || b.W-a.W);
+  const lead = sorted[0];
+  $('lgChamp').innerHTML = lead ? `<div style="display:flex;align-items:center;gap:10px;padding:4px 14px">
+    <svg class="ic" style="width:22px;height:22px;color:var(--gold)"><use href="icons.svg#${inProgress?'laurel':'crown'}"/></svg>
+    <span style="font-family:var(--font-display);font-size:17px;font-weight:800;color:var(--gold)">${lead.Name}</span>
+    <span class="note">${LG_DIVN[cur]||''} ${inProgress?'현재 선두':'챔피언'} · ${lead.W}승 ${lead.L}패 · 승점 ${lead.Points}</span></div>` : '';
+  $('lgStandings').innerHTML = `<table class="lgtbl"><thead><tr><th>#</th><th>선수</th><th>빌드</th><th>승-패-무</th><th>승점</th><th>연속</th></tr></thead><tbody>`+
+    sorted.map((f,i)=>{
+      const stk = f.Streak>0?`<span style="color:var(--grn,#7ec97e)">${f.Streak}연승</span>`: f.Streak<0?`<span style="color:#c98f8f">${-f.Streak}연패</span>`:'-';
+      return `<tr><td style="color:var(--gold);font-weight:700">${i+1}</td><td style="font-weight:700">${f.Name}${i===0?' {crown}':''}</td>
+        <td class="note">${f.Weapon}·${f.Tactic}·${f.Personality}</td>
+        <td><span style="color:var(--grn,#7ec97e)">${f.W}</span>-<span style="color:#c98f8f">${f.L}</span>-${f.D}</td><td>${f.Points}</td><td>${stk}</td></tr>`;
+    }).join('')+`</tbody></table>`;
+  const fm = [...fs].sort((a,b)=>b.Fame-a.Fame), maxF = Math.max(1,...fm.map(f=>f.Fame));
+  let side = `<h2 style="margin:0 0 6px">명성 리더보드</h2><table class="lgtbl"><tbody>`+
+    fm.map(f=>`<tr><td style="font-weight:700">${f.Name}</td>
+      <td style="width:40%"><div style="background:rgba(0,0,0,.4);border-radius:4px;height:8px;overflow:hidden;border:1px solid var(--line-soft)"><i style="display:block;height:100%;width:${100*f.Fame/maxF}%;background:linear-gradient(90deg,var(--gold-deep),var(--gold))"></i></div></td>
+      <td class="note">${f.Fame} · 인기 ${f.Popularity}</td></tr>`).join('')+`</tbody></table>`;
+  // 컵 대진 (있으면)
+  const sfs=(d.Calendar||[]).filter(c=>c.Kind==='cup_sf'), fin=(d.Calendar||[]).find(c=>c.Kind==='cup_final');
+  if (sfs.length){
+    const slot=(name,won,champ)=>`<div style="padding:4px 10px;border:1px solid ${won?'var(--gold)':'var(--line-soft)'};border-radius:6px;margin:2px 0;background:${won?'rgba(201,168,76,.14)':'var(--panel)'};font-weight:${won?700:400};color:${won?'var(--gold)':'var(--ink)'};font-size:12.5px">${champ?'{crown} ':''}${name||'?'}</div>`;
+    const match=(c,label)=> c?`<div><div class="note">${label}${c.Winner?'':' · 예정'}</div>${slot(c.A,c.Winner===c.A)}${slot(c.B,c.Winner===c.B)}</div>`
+                           :`<div><div class="note">${label} · 미정</div>${slot('4강 승자')}${slot('4강 승자')}</div>`;
+    side += `<h2 style="margin:14px 0 6px">{trophy} 챔피언십 컵</h2><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:8px">${match(sfs[0],'4강 ①')}${match(sfs[1],'4강 ②')}</div>
+      <div style="color:var(--gold-deep)">→</div>${match(fin,'결승')}
+      ${fin&&fin.Winner?`<div style="color:var(--gold-deep)">→</div><div>${slot(fin.Winner,true,true)}<div class="note" style="text-align:center">컵 챔피언</div></div>`:''}</div>`;
+  }
+  $('lgSide').innerHTML = side;
+}
+// ── 기록: 경기 결과·시즌 서사 + 관계 그래프·역사 ──
+function lgHist(d){
+  const ml = d.MatchLog||[];
+  $('lgMlHint').textContent = ml.length ? `(${ml.length}경기 · 클릭 = 재관전)` : '';
+  $('lgMatchlog').innerHTML = [...ml].reverse().map(m=>
+    `<div onclick="openWatch(${m.Idx})" style="display:flex;gap:10px;align-items:baseline;padding:4px 10px;border-radius:6px;background:var(--panel);font-size:13px;cursor:pointer;${m.IsPlayerMatch?'border-left:3px solid var(--gold)':'border-left:3px solid transparent'}">
+      <span class="note" style="min-width:40px">${m.IsEvent?'{fest}':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>
+      <span style="margin-left:auto;color:var(--gold);font-weight:600">${m.Winner}</span><span class="note">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
+    || '<div class="note">아직 경기 없음</div>';
+  const ordered = [...(d.Story||[])].sort((a,b)=>(a.Kind==='revenge'?0:1)-(b.Kind==='revenge'?0:1));
+  $('lgStory').innerHTML = ordered.slice(0,20).map(e=>`<div style="padding:4px 10px;border-radius:6px;background:var(--panel);font-size:12.5px;border-left:3px solid ${e.Kind==='revenge'?'#e0685f':e.Kind==='upset'?'#e0a24c':'var(--gold)'}">${e.Text}</div>`).join('') || '<div class="note">없음</div>';
+  // 관계 그래프 + 역사
+  const RELC = {'원수':'#e0685f','공포':'#9b6fd1','라이벌':'#e0a24c','질투':'#d16fa0','집착':'#c94fc9'};
+  const names=(d.Fighters||[]).map(f=>f.Name), N=names.length||1, cx=310, cy=310, R=228, pos={};
+  names.forEach((nm,i)=>{ const a=-Math.PI/2 + i*2*Math.PI/N; pos[nm]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
+  const edges=(d.Relations||[]).filter(r=>RELC[r.Type] && Math.abs(r.Affinity)>=35).sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,20);
+  let svg='<defs>';
+  for(const t in RELC) svg += `<marker id="lgar_${t}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${RELC[t]}"/></marker>`;
+  svg+='</defs>';
+  for(const e of edges){
+    const p=pos[e.Self], q=pos[e.Opp]; if(!p||!q) continue;
+    const dx=q.x-p.x, dy=q.y-p.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
+    const mx=(p.x+q.x)/2+nx*24, my=(p.y+q.y)/2+ny*24, w=1+Math.min(3,Math.abs(e.Affinity)/40);
+    const sx=p.x+dx/len*26, sy=p.y+dy/len*26, ex=q.x-dx/len*26, ey=q.y-dy/len*26;
+    svg += `<path d="M${sx} ${sy}Q${mx} ${my} ${ex} ${ey}" fill="none" stroke="${RELC[e.Type]}" stroke-width="${w}" opacity="0.75" marker-end="url(#lgar_${e.Type})"/>`;
+  }
+  for(const nm of names){ const p=pos[nm];
+    svg += `<g><circle cx="${p.x}" cy="${p.y}" r="24" fill="var(--panel2)" stroke="var(--gold-deep)" stroke-width="1.5"/><text x="${p.x}" y="${p.y+4}" fill="var(--ink)" font-size="13" font-weight="700" text-anchor="middle">${nm.slice(0,4)}</text></g>`;
+  }
+  const legend = Object.keys(RELC).map(t=>`<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:14px;height:3px;border-radius:2px;background:${RELC[t]};display:inline-block"></i>${t}</span>`).join(' ');
+  const champs=d.Champions||[], hall=d.Hall||[];
+  $('lgHistSide').innerHTML = `<h2 style="margin:0">관계 그래프 <span class="note">(누적)</span></h2>
+    <div class="note" style="display:flex;gap:10px;flex-wrap:wrap">${legend}</div>
+    <svg viewBox="0 0 620 620" style="width:100%;max-height:430px;background:radial-gradient(circle at 50% 46%, #2a2016, #17110a);border-radius:10px;border:1px solid var(--line-soft)">${svg}</svg>`+
+    (champs.length?`<h2 style="margin:8px 0 4px">{crown} 역대 챔피언</h2><table class="lgtbl"><tbody>${[...champs].reverse().slice(0,6).map(c=>`<tr style="${c.IsPlayer?'color:var(--gold);font-weight:700':''}"><td>S${c.SeasonNo}</td><td>${c.Name}${c.IsPlayer?' ★':''}</td><td class="note">${c.Record}</td></tr>`).join('')}</tbody></table>`:'');
+}
+
 function go(s){
   if (liveActive && s!=='livesc') return;   // 경기 진행 중엔 탭 이동 차단(정산 후에만 나갈 수 있다)
   // 관전(리플레이)에서 다른 화면으로 나갈 때 뷰어를 정지 — iframe이 숨겨진 채 계속 재생·소리 나던 버그
@@ -781,7 +1016,7 @@ function go(s){
   $('top').style.display = (s==='livesc') ? 'none' : '';   // 라이브=전용 게임플레이 화면(상단탭 숨김)
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
-  if (s==='league') $('leagueF').src='league.html?t='+Date.now();
+  if (s==='league') renderLeague();
   if (s==='ludus') renderLudus();
   if (s==='market') renderMarket();
   if (s==='roster') renderRoster();
@@ -794,6 +1029,14 @@ function go(s){
   if (s==='patron') renderPatron();
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
+$('lgTabs').onchange = lgPaint;   // 리그 서브탭(일정·순위·기록)
+// 루두스 서브탭(지휘실·모리튜리·시설·시즌)
+function ldPaint(){
+  const v = $('ldTabs').value || 'dash';
+  $('ldDash').hidden = v!=='dash'; $('ldMen').hidden = v!=='men';
+  $('ldFac').hidden = v!=='fac'; $('ldSeason').hidden = v!=='season';
+}
+$('ldTabs').onchange = ldPaint;
 $('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
 // ── 세이브 슬롯 3개 ──
 async function renderSlots(){
@@ -814,7 +1057,7 @@ window.loadSlot = async (n)=>{
   // 슬롯 전환은 세이브 스냅샷 교체일 뿐 — 이명·칭호 등 '새로 얻은' 알림이 다시 뜨지 않게 기준선 리셋
   _epiSeen = null; _kpSeen = null;
   await refresh();
-  $('leagueF').src='league.html?t='+Date.now();
+  renderLeague();
   renderSlots();   // ◈ 활성 표시 갱신 — 메뉴는 유지
 };
 
@@ -932,8 +1175,8 @@ function toast(msg){
   const n = document.querySelectorAll('.mor-toast').length;
   const d = document.createElement('div');
   d.className = 'mor-toast';
-  d.style.cssText = `position:fixed;right:18px;bottom:${18+n*58}px;z-index:99;background:var(--panel);border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.5);animation:rvPop .5s ease`;
-  d.innerHTML = msg; document.body.appendChild(d);
+  d.style.cssText = `position:absolute;right:18px;bottom:${18+n*58}px;z-index:99;background:var(--panel);border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.5);animation:rvPop .5s ease`;
+  d.innerHTML = msg; ($('stage')||document.body).appendChild(d);
   setTimeout(()=>{ d.style.transition='opacity .6s'; d.style.opacity='0'; setTimeout(()=>d.remove(),650); }, 4200);
 }
 // ── 인월드 확인 — 브라우저 확인창 대체. hold=true면 길게 눌러 확정(비가역 행동은 실수로 못 누르게) ──
@@ -1384,8 +1627,19 @@ function applyScreenMode(){
   $('cfgFsOff').classList.toggle('cur', !_fsMode);
 }
 window.setScreenMode = (on)=>{ _fsMode = on; applyScreenMode(); saveCfg(); };
-// UI 배율: 표시 %는 새 기준(100% = Photino 110%). 기존 110%를 100%로 재보정.
-function applyZoom(){ bridge('zoom:'+Math.round((parseInt($('cfgZoom').value)||100)*1.1)); }
+// ── 고정 무대 fit(R2): 기준 1280×800 컴포지션을 창에 맞춰 zoom 스케일 — 리플로우 없음 ──
+// UI 배율은 이제 무대의 가상 해상도를 조절한다(125% = 기준 1024×640 → 모든 것이 1.25배 크게).
+const STAGE_W = 1280, STAGE_H = 800;
+function fitStage(){
+  const scale = (parseInt($('cfgZoom').value)||100)/100;
+  const bw = STAGE_W/scale, bh = STAGE_H/scale;
+  const st = $('stage');
+  st.style.width = bw+'px'; st.style.height = bh+'px';
+  st.style.zoom = Math.min(window.innerWidth/bw, window.innerHeight/bh);
+}
+window.addEventListener('resize', fitStage);
+new ResizeObserver(fitStage).observe(document.documentElement);   // resize 이벤트가 없는 환경 대비
+function applyZoom(){ bridge('zoom:110'); fitStage(); }   // 네이티브 줌은 110 고정(기존 보정치) — 배율은 무대가 담당
 $('cfgZoom').onchange = ()=>{ saveCfg(); applyZoom(); };
 // ── 자동 저장 · 수동 저장 · 종료 (Photino 백엔드 API) ──
 $('cfgAuto').onchange = async ()=>{ saveCfg(); await api('/api/autosave',{on:$('cfgAuto').checked}); };
@@ -2940,7 +3194,7 @@ $('mQuit').onclick = async ()=>{ $('mQuit').textContent='안녕히…'; try{ awa
 $('mNew').onclick = async ()=>{
   st = await api('/api/newcareer',{skip: $('mSkip')&&$('mSkip').checked});
   await refresh();
-  $('leagueF').src='league.html?t='+Date.now();
+  _lgDoc=null; _lgMonth=null;   // 새 세계 — 리그 캐시 리셋
   $('menu').style.display='none';
   go('market');   // 새 커리어 = 영입부터
   maybeAutoStory(); maybeCoach();   // [13] 서막 S0 자동 개막
