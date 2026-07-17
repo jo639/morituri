@@ -9,15 +9,20 @@
 <style>
   /* 디자인 토큰(:root)은 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 var(--font-body); }
-  #wrap{ max-width:min(1100px,96vw); margin:0 auto; padding:10px; }
-  #top{ display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
+        font:14px/1.4 var(--font-body); display:flex; flex-direction:column; }
+  #wrap{ max-width:min(1100px,96vw); width:100%; margin:0 auto; padding:10px;
+         flex:1; min-height:0; display:flex; flex-direction:column; }
+  /* 무대 상자: 남은 세로 공간을 캔버스가 비율 유지로 채운다(스크롤 없는 고정 화면) */
+  #stagebox{ flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #top{ flex:0 0 auto; display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
   #title{ font-family:var(--font-display); font-weight:700; letter-spacing:.06em; color:var(--gold); }
   .team{ display:flex; gap:6px; flex-wrap:wrap; font-size:12px; }
   .chip{ padding:1px 7px; border-radius:5px; }
   .t0{ background:rgba(201,168,76,.18); color:#e9cf8f; border:1px solid rgba(201,168,76,.4); }
   .t1{ background:rgba(176,62,62,.18); color:#e0a0a0; border:1px solid rgba(176,62,62,.4); }
-  canvas{ width:100%; height:auto; background:#141009; border-radius:var(--r2); display:block;
+  canvas{ width:100%; height:100%; background:#141009; border-radius:var(--r2); display:block;
           border:1px solid var(--line-soft); box-shadow:var(--sh2); }
   #ctl{ display:flex; align-items:center; gap:8px; margin-top:8px; }
   button,select{ background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:var(--r1);
@@ -30,7 +35,7 @@
 <div id="wrap">
   <div id="top"><span id="title">패싸움</span>
     <div class="team" id="teamA"></div><span style="color:var(--dim)">VS</span><div class="team" id="teamB"></div></div>
-  <canvas id="cv" width="900" height="460"></canvas>
+  <div id="stagebox"><canvas id="cv" width="900" height="460"></canvas></div>
   <div id="ctl">
     <button id="play">{pause} 일시정지</button>
     <input type="range" id="scrub" min="0" max="1000" value="0">
@@ -56,8 +61,26 @@ function fitCanvas(){
   if(cv.width!==pw||cv.height!==phh){ cv.width=pw; cv.height=phh; }
   const s=pw/W; ctx.setTransform(s,0,0,s,0,0);
 }
-fitCanvas();
-if(window.ResizeObserver) new ResizeObserver(fitCanvas).observe(cv);
+// 무대 상자에 캔버스를 비율 유지로 앉힌다(contain) — 스크롤 없는 고정 화면
+function fitStageBox(){
+  const box=document.getElementById('stagebox'); if(!box) return;
+  const s=Math.min(box.clientWidth/W, box.clientHeight/H); if(!(s>0)) return;
+  cv.style.width=Math.floor(W*s)+'px'; cv.style.height=Math.floor(H*s)+'px';
+  fitCanvas();
+}
+fitStageBox(); fitCanvas();
+if(window.ResizeObserver){
+  new ResizeObserver(fitCanvas).observe(cv);
+  const box=document.getElementById('stagebox');
+  if(box) new ResizeObserver(fitStageBox).observe(box);
+}
+// 벨트+멜빵: 이 웹뷰는 ResizeObserver 콜백을 흘린다 — 상자 치수 변화를 주기 점검(무변화면 no-op)
+let _boxKey='';
+setInterval(()=>{
+  const b=document.getElementById('stagebox'); if(!b) return;
+  const k=b.clientWidth+'x'+b.clientHeight;
+  if(k!==_boxKey){ _boxKey=k; fitStageBox(); }
+}, 400);
 // ── 합성 SFX 서브셋(viewer 이식): 타격·KO — mor_settings.sound=false로 끔 ──
 const SET=(()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings'))||{}; }catch(e){ return {}; } })();
 let AC=null;

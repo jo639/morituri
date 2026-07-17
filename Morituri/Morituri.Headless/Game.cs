@@ -3614,13 +3614,19 @@ public sealed partial class Game
         if (SeasonActive && _cupStage == 0)
         {
             var jRng = new SimRandom(_worldSeed ^ 0x11D0_CAFEUL + (ulong)_gachaCount * 13UL);
-            var rounds = _schedule.Skip(_cursor).Where(s => s.Kind == "regular").Select(s => s.Round).Distinct().OrderBy(r => r).ToList();
             var peers = _cast.Where(x => x.Division == g.Division && x.Id != g.Id).ToList();
-            foreach (var r in rounds)
+            int n = _schedule.Skip(_cursor).Where(s => s.Kind == "regular").Select(s => s.Round).Distinct().Count();
+            int span = _schedule.Count - _cursor;
+            // 남은 일정에 고르게 흩뿌린다 — 끝에 붙이면 신입의 데뷔가 시즌 막바지로 밀린다.
+            // 라운드 번호로 자리를 찾지 않는다: 구버전이 꼬리에 몰아둔 합류전이 같은 번호를 달고 있어 또 끝으로 간다.
+            for (int k = 0; k < n && peers.Count > 0; k++)
             {
-                if (peers.Count == 0) break;
                 var p = peers[(int)(jRng.NextUInt64() % (ulong)peers.Count)];
-                _schedule.Add(new SchedRec(r, g.Id, p.Id, false, 0f));
+                int at = Math.Min(_schedule.Count, _cursor + 1 + (int)((k + 0.5) * span / n) + k);   // +k = 앞서 삽입된 만큼 밀림
+                int round = _schedule[Math.Min(at, _schedule.Count - 1)].Round;                      // 이웃과 같은 라운드로 표기
+                _schedule.Insert(at, new SchedRec(round, g.Id, p.Id, false, 0f));
+                if (_betCursor >= at) _betCursor++;             // 삽입으로 밀린 베팅 대상 보정
+                if (_oddsCursor >= at) _oddsCursor = -1;        // 배당 캐시 무효화
                 joined++;
             }
         }

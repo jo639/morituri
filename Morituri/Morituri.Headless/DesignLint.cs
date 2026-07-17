@@ -39,7 +39,12 @@ public static class DesignLint
         ("native-select", new Regex(@"<select[\s>]", RegexOptions.IgnoreCase)),
         ("native-check",  new Regex(@"type\s*=\s*""(checkbox|radio)""", RegexOptions.IgnoreCase)),
         ("hyperlink",     new Regex(@"<a\s[^>]*href\s*=\s*""http", RegexOptions.IgnoreCase)),
+        // 가로 스크롤 금지(라니스타 규약) — 세로 스크롤용 overflow:auto 축약은 허용(전역 CSS가 가로축을 자른다)
+        ("scroll-x",      new Regex(@"overflow-x\s*:\s*(auto|scroll)", RegexOptions.IgnoreCase)),
     };
+
+    // 게임 셸 전용 규칙 — 무대 좌표계를 쓰는 index.html에만 적용
+    static readonly Regex ViewportUnit = new(@"\d\s*v(h|w)\b", RegexOptions.IgnoreCase);
 
     public static int Run(string[] args)
     {
@@ -61,6 +66,7 @@ public static class DesignLint
         foreach (var (path, html) in targets)
         {
             if (!File.Exists(path)) continue;
+            bool isShell = path.EndsWith($"Morituri.Client{Path.DirectorySeparatorChar}index.html");
             string[] lines = File.ReadAllLines(path);
             var hits = new List<string>();
             var emojiCount = new Dictionary<string, int>();
@@ -85,9 +91,16 @@ public static class DesignLint
                     }
                 }
                 if (html)
+                {
                     foreach (var (rule, rx) in HtmlRules)
                         foreach (Match m in rx.Matches(line))
                         { hits.Add($"  L{i + 1} [{rule}] {Snippet(line, m.Index)}"); total++; }
+                    // 무대(#stage)가 좌표계 주인인 게임 셸에서만 — 뷰포트 단위는 무대 배율과 어긋난다(모달 잘림 사고).
+                    // viewer/melee 등은 제 뷰포트를 통째로 쓰는 독립 페이지라 vh/vw가 정당하다.
+                    if (isShell)
+                        foreach (Match m in ViewportUnit.Matches(line))
+                        { hits.Add($"  L{i + 1} [viewport-unit] {Snippet(line, m.Index)}"); total++; }
+                }
             }
             if (emojiCount.Count > 0 || hits.Count > 0)
             {

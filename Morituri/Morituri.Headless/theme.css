@@ -131,6 +131,9 @@ body.fresco{
 /* ── 아이콘 ── */
 .ic{ width:1em; height:1em; vertical-align:-.125em; flex:0 0 auto; }
 
+/* 가로 스크롤 전면 금지(라니스타 규약) — 게임 어디에도 가로 스크롤바는 없다 */
+html, body{ overflow-x:hidden; }
+
 /* R3: 모션 토큰 — 모든 새 전환은 이 세 박자와 두 곡선만 쓴다 */
 :root{
   --dur-fast:.1s; --dur-mid:.22s; --dur-slow:.4s;
