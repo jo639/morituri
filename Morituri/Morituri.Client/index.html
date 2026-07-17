@@ -1267,14 +1267,13 @@ function showMoment({kicker='', title='', sub='', tone='glory'}={}){
   clearMoment(); resetMomentInline();
   const m=$('moment');
   m.className='on'+(tone==='death'?' death':'');
-  m.style.opacity='0'; void m.offsetWidth; m.style.transition='opacity .4s ease'; m.style.opacity='1';   // 가시성 인라인 구동
+  m.style.opacity='1';   // 백드롭은 즉시 표시(트랜지션 의존 금지 — 일부 웹뷰가 트랜지션을 시작점에 얼린다)
   $('momentArt').innerHTML='';
   $('momentKicker').textContent = kicker;
   const T=$('momentTitle');
   T.textContent = title;
   T.style.color = tone==='death' ? 'var(--blood-bright,#d05a4a)' : 'var(--gold)';
-  T.style.opacity='0'; T.style.transform='translateY(14px)'; void T.offsetWidth;
-  T.style.transition='opacity .7s var(--ease-out) .15s, transform .7s var(--ease-out) .15s'; T.style.opacity='1'; T.style.transform='none';
+  T.style.opacity='1'; T.style.transition='none';   // 즉시 표시(트랜지션 얼림 회피)
   $('momentSub').innerHTML = sub;
   if (tone==='death') sfxDoom(); else sfxJackpot();
 }
@@ -1283,7 +1282,7 @@ function showFuneral({name='', age='', record='', epithet='', mine=false}={}){
   clearMoment(); resetMomentInline();
   const m=$('moment');
   m.className='on death';
-  m.style.opacity='0'; void m.offsetWidth; m.style.transition='opacity 1s ease'; m.style.opacity='1';   // 어둠이 서서히 내린다
+  m.style.opacity='1';   // 백드롭은 즉시(어둠). 단계 등장은 자식 opacity로 — 트랜지션 의존 금지
   $('momentArt').innerHTML =
     `<svg viewBox="0 0 132 150" aria-hidden="true"><defs>
       <linearGradient id="grv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b6258"/><stop offset="1" stop-color="#3a352f"/></linearGradient></defs>
@@ -1302,12 +1301,11 @@ function showFuneral({name='', age='', record='', epithet='', mine=false}={}){
     + `<div style="margin-top:8px;color:#c7b8a0">모래가 그를 삼켰다. 모리튜리로 죽다.</div>`
     + (mine?`<div style="margin-top:6px;color:#9a8c78;font-size:13px">루두스에 그림자가 드리운다 — 남은 자들이 그의 이름을 기억한다.</div>`:'');
   sfxDoom();
-  // 단계별 등장(인라인 구동): 묘비 떠오름 → 이름 → 비문. CSS 클래스/애니메이션 충돌 없이 결정적으로.
+  // 단계별 등장 — setTimeout 시점 제어 + 각 단계 즉시 opacity(트랜지션·애니메이션 의존 금지:
+  // 일부 웹뷰가 실행 중 애니메이션/트랜지션을 시작점(opacity 0)에 얼려 인라인을 이긴다). 타이밍만으로 단계 드라마.
   const A=$('momentArt'), K=$('momentKicker'), T=$('momentTitle'), S=$('momentSub'), H=$('momentHint');
-  A.style.cssText='margin:0 auto;opacity:0;transform:translateY(24px);transition:opacity 1.1s var(--ease-out),transform 1.1s var(--ease-out)';
-  [K,T,S,H].forEach(el=>{ el.style.opacity='0'; el.style.transition='opacity .85s ease'; });
-  void m.offsetWidth;
-  _momentTimers.push(setTimeout(()=>{ A.style.opacity='1'; A.style.transform='none'; }, 60));
+  [A,K,T,S,H].forEach(el=>{ el.style.opacity='0'; el.style.transition='none'; });
+  _momentTimers.push(setTimeout(()=>{ A.style.opacity='1'; }, 60));
   _momentTimers.push(setTimeout(()=>{ K.style.opacity='1'; }, 800));
   _momentTimers.push(setTimeout(()=>{ T.style.opacity='1'; sfxDrum(); }, 1500));
   _momentTimers.push(setTimeout(()=>{ S.style.opacity='1'; H.style.opacity='1'; }, 2300));
