@@ -638,8 +638,13 @@ public sealed class MatchSim
         // cramped(적 품속)에 끌려든 장거리 무기는 처벌 부스트를 깎아 거리 회복(후퇴/선회)이 이기게 한다.
         // 이러면 창은 1.1m에서 찌르지 않고 자기 스윗스팟(1.5m+)으로 물러난 뒤, 거기서 reachAdvantage 처벌.
         // 단 인내심이 바닥나면(조바심) 페널티를 완화 — 공격 결단이 거리 회복을 이긴다.
-        // 충동은 카이터(사거리 우위)에만 — 근접 무기는 원래 붙어 싸워 영원 대치가 없다(검 거울 baseline 보존).
-        float impulse = f.Weapon.Range >= _c.MinLongRange ? 1f - f.Patience / _c.PatienceMax : 0f;  // 0(인내)~1(소진)
+        // 충동은 카이터(사거리 우위)엔 상시 — 근접 무기는 평소 제외(검 거울 baseline 보존)하되,
+        // 안 A: '쌍방 장기 무교전'(교착)에서는 근접에도 개방 — 수비형 짝(카운터/방어)의 180초 동결 해소.
+        // stall = 마지막 클린히트 이후 경과(min NoHitTimer). 정상 근접전은 유예를 못 넘겨 게이트 0 → 대조군 불변.
+        float stall = MathF.Min(_f[0].NoHitTimer, _f[1].NoHitTimer);
+        float meleeGate = f.Weapon.Range >= _c.MinLongRange ? 1f
+            : Math.Clamp((stall - _c.StalemateGraceSec) / _c.StalemateRampSec, 0f, 1f);
+        float impulse = (1f - f.Patience / _c.PatienceMax) * meleeGate;  // 0(인내)~1(소진)
         if (reachWeaponCramped) { float p = 0.35f + 0.65f * impulse; light *= p; heavy *= p; }
         // 인내심 충동: 바닥날수록 공격↑ + 카이팅(선회/후퇴)↓ → 대치를 끝내고 달려든다(거울전 영원 대치 해소).
         if (impulse > 0f)

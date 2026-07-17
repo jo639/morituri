@@ -116,6 +116,11 @@ public readonly record struct BalanceConstants
     public float PatienceMax           { get; init; }  // 가득 찬 인내심
     public float PatienceDrainBase     { get; init; }  // 초당 감소 기준 ×(0.5+Aggression) — 공격적일수록 빨리 소진(전술/성격/특성 반영)
     public float PatienceImpulseScale  { get; init; }  // 인내심 0일 때 공격 점수 가산 배수
+    // 안 A(수비형 짝 180초 동결 해소): 근접 무기는 평소 교전이 잦아 충동 게이트에서 제외되나,
+    // '쌍방 장기 무교전'(마지막 클린히트 이후 경과 = min NoHitTimer)이 유예를 넘기면 근접에도 충동 개방.
+    // 정상 근접전은 유예를 못 넘겨 무영향 → 검 거울(매트릭스 대조군) 불변.
+    public float StalemateGraceSec     { get; init; }  // 이 시간까지의 무교전은 정상 수싸움 — 충동 억제
+    public float StalemateRampSec      { get; init; }  // 유예 후 이 폭에 걸쳐 근접 충동 0→1 램프
     public float UtilityNoise      { get; init; }  // ε = 0.10 — 이변의 원천 1
     public float AttackGateScale   { get; init; }  // Commit 게이트: 공격 채택 요구 점수 = Commit × 이 값
     public float CancelWindowRatio { get; init; }  // 선딜 중 캔슬 가능 비율 0.7
@@ -240,6 +245,8 @@ public readonly record struct BalanceConstants
         PatienceMax = 100f,
         PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)
+        StalemateGraceSec = 12f,      // 정상 근접전은 12초 무교전에 도달 안 함 → 대조군 보존
+        StalemateRampSec = 8f,        // 12→20초 교착서 근접 충동 0→1 (수비형 짝 ~20초 내 개전)
         UtilityNoise = 0.10f,
         AttackGateScale = 0.9f,   // 1.6은 카운터형이 영원히 공격 못 하는 값이었음 (M2 디버깅으로 발견)
         CancelWindowRatio = 0.7f,
