@@ -23,24 +23,27 @@
             var(--bg);
           box-shadow:0 0 0 1px rgba(210,171,85,.14), 0 0 80px rgba(0,0,0,.75); }
   button{ font:inherit; cursor:pointer; }
-  /* ── 상단 바 ── */
-  #top{ display:flex; align-items:center; gap:12px; padding:0 16px; height:54px; flex:0 0 auto;
-        background:linear-gradient(180deg,#2e2314,#231a0e);
+  /* ── 상단 바(2단): 1단=탐색(로고·탭·설정) / 2단=게임 상태(재화·상태·다음 경기) — 고정폭 안에서 절대 안 짤린다 ── */
+  #top{ flex:0 0 auto; background:linear-gradient(180deg,#2e2314,#231a0e);
         border-bottom:1px solid var(--line);
         box-shadow:0 1px 0 rgba(210,171,85,.10), 0 4px 16px rgba(0,0,0,.35);
         position:relative; z-index:10; }
+  #topNav{ display:flex; align-items:center; gap:10px; padding:0 14px; height:42px;
+           border-bottom:1px solid rgba(210,171,85,.12); }
+  #topGame{ display:flex; align-items:center; gap:10px; padding:0 14px; height:40px; min-width:0; }
+  .tcut{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .tnowrap{ white-space:nowrap; flex:0 0 auto; }
   #logo{ font-family:var(--font-display); font-weight:800; font-size:16px; letter-spacing:.14em;
-         color:var(--gold); cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
-  nav{ display:flex; gap:0; align-self:stretch; }
-  nav button{ background:none; border:none; color:var(--dim); padding:0 12px; position:relative;
-              display:inline-flex; align-items:center; gap:6px; transition:color .15s; }
+         color:var(--gold); cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; flex:0 0 auto; }
+  nav{ display:flex; gap:0; align-self:stretch; min-width:0; }
+  nav button{ background:none; border:none; color:var(--dim); padding:0 10px; position:relative; white-space:nowrap;
+              display:inline-flex; align-items:center; gap:5px; transition:color .15s; font-size:12.5px; }
   nav button:hover{ color:var(--ink); }
   nav button.on{ color:var(--gold); font-weight:700; }
   nav button.on::after{ content:''; position:absolute; left:9px; right:9px; bottom:0; height:2px;
                         background:linear-gradient(90deg,transparent,var(--gold),transparent); }
   nav button .ic{ opacity:.75; }
   .navdot{ width:6px; height:6px; border-radius:50%; background:#ff5d5d; box-shadow:0 0 6px rgba(255,93,93,.8); }
-  #topRight{ margin-left:auto; display:flex; align-items:center; gap:8px; white-space:nowrap; }
   .res{ display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px;
         background:rgba(0,0,0,.28); border:1px solid var(--line-soft); font-weight:700; font-size:12.5px;
         font-variant-numeric:tabular-nums; }
@@ -376,6 +379,7 @@
 <body>
 <div id="stage"><!-- 고정 무대: 기준 1280×800 컴포지션 — 창 크기엔 리플로우가 아니라 스케일(zoom)로 대응 (R2) -->
 <div id="top">
+<div id="topNav">
   <span id="logo"><svg class="ic lg"><use href="icons.svg#swords"/></svg>MORITURI</span>
   <nav>
     <button data-s="league" class="on"><svg class="ic"><use href="icons.svg#arena"/></svg>리그</button>
@@ -390,18 +394,23 @@
     <button data-s="records"><svg class="ic"><use href="icons.svg#trophy"/></svg>기록실</button>
     <button data-s="patron"><svg class="ic"><use href="icons.svg#crown"/></svg>후원자</button>
   </nav>
-  <div id="topRight">
-    <span id="ludus" title="루두스 등급" style="color:var(--gold);font-weight:700;font-size:12px"></span>
-    <span id="unrest" title="" style="font-size:12px;font-weight:700"></span>
-    <span class="res gold" title="골드"><svg class="ic"><use href="icons.svg#coin"/></svg><span id="gold">—</span></span>
-    <span class="res glory" id="gloryWrap" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="display:none"><svg class="ic"><use href="icons.svg#glory"/></svg><span id="glory"></span></span>
-    <span id="status">—</span>
-    <button id="autoBtn" class="btn ghost" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)"><svg class="ic"><use href="icons.svg#ff"/></svg>자동완주</button>
-    <button id="toMineBtn" class="btn ghost" title="내 경기 직전까지 AI 경기를 건너뛴다"><svg class="ic"><use href="icons.svg#play"/></svg>내 경기까지</button>
-    <button id="next" class="btn primary">다음 경기 ▶</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:2px;flex:0 0 auto">
     <button id="helpBtn" class="btn ghost" title="안내 — 카토의 둘러보기(시스템 설명)" style="border:none;padding:6px;font-weight:800;color:var(--gold)" onclick="openTour()">{help}</button>
     <button id="cfgBtn" class="btn ghost" title="설정" style="border:none;padding:6px"><svg class="ic lg"><use href="icons.svg#gear"/></svg></button>
   </div>
+</div>
+<div id="topGame">
+  <span id="ludus" title="루두스 등급" class="tcut" style="color:var(--gold);font-weight:700;font-size:12px;max-width:150px"></span>
+  <span id="unrest" title="" style="font-size:12px;font-weight:700;flex:0 0 auto"></span>
+  <span class="res gold" title="골드" style="flex:0 0 auto"><svg class="ic"><use href="icons.svg#coin"/></svg><span id="gold">—</span></span>
+  <span class="res glory" id="gloryWrap" title="영광 — 업적·타이틀·컵·승격에서만. 잠재력 돌파 등에 사용" style="display:none;flex:0 0 auto"><svg class="ic"><use href="icons.svg#glory"/></svg><span id="glory"></span></span>
+  <span id="status" class="tcut" style="max-width:220px"></span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0">
+    <button id="autoBtn" class="btn ghost tnowrap" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)"><svg class="ic"><use href="icons.svg#ff"/></svg>자동완주</button>
+    <button id="toMineBtn" class="btn ghost tnowrap" title="내 경기 직전까지 AI 경기를 건너뛴다"><svg class="ic"><use href="icons.svg#play"/></svg>내 경기까지</button>
+    <button id="next" class="btn primary tcut" style="max-width:340px">다음 경기 ▶</button>
+  </div>
+</div>
 </div>
 
 <div id="screens">
@@ -426,7 +435,7 @@
         </div>
       </div>
       <!-- 순위: 부별 순위표 + 명성 리더보드/컵 대진 -->
-      <div id="lgTable" class="lgview" hidden style="flex:1;min-height:0;display:flex;flex-direction:column;margin-top:10px">
+      <div id="lgTable" class="lgview" style="display:none;flex:1;min-height:0;flex-direction:column;margin-top:10px">
         <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto"><span class="seg" id="lgDivTabs"></span><div id="lgChamp" style="flex:1;min-width:0"></div></div>
         <div style="flex:1;min-height:0;display:flex;gap:16px;margin-top:10px">
           <div style="flex:1.2;min-width:0;overflow:auto" id="lgStandings"></div>
@@ -434,7 +443,7 @@
         </div>
       </div>
       <!-- 기록: 경기 결과·시즌 서사 + 관계 그래프·역사 -->
-      <div id="lgHist" class="lgview" hidden style="flex:1;min-height:0;display:flex;gap:16px;margin-top:10px">
+      <div id="lgHist" class="lgview" style="display:none;flex:1;min-height:0;gap:16px;margin-top:10px">
         <div style="flex:1.1;min-width:0;display:flex;flex-direction:column;gap:8px">
           <h2 style="margin:0">경기 결과 <span class="note" id="lgMlHint"></span></h2>
           <div id="lgMatchlog" style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:3px"></div>
@@ -497,18 +506,20 @@
     <div id="transferBox"><div class="note">시즌 중엔 닫혀 있다.</div></div>
   </div></div>
 
-  <!-- 로스터(R2): 주인공 = 리그 로스터 명부. 왼쪽 레일 = 루두스 순위·통산 기록·전설 -->
-  <div class="screen" id="roster"><div class="pad" style="height:100%;display:flex;gap:16px;padding-bottom:12px">
-    <div style="flex:0 0 340px;min-width:0;display:flex;flex-direction:column;gap:6px;overflow:auto">
-      <h2 style="margin:0">{ludus} 루두스 순위 <span class="note">(명성 경쟁)</span></h2>
-      <div id="ludusTable"></div>
-      <h2 style="margin:10px 0 0">{ludus} 기록실 <span class="note">(통산 기록)</span></h2>
-      <div id="records" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-      <div id="legends"></div>
-    </div>
-    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
-      <h2 style="margin:0 0 8px">리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
-      <div class="grid" id="rosterGrid" style="flex:1;min-height:0;overflow:auto;align-content:start"></div>
+  <!-- 로스터(R2-fix): 상단 밴드 = 루두스 순위(전폭 테이블) / 주인공 = 리그 명부 / 우측 레일 = 통산 기록·전설 -->
+  <div class="screen" id="roster"><div class="pad" style="height:100%;display:flex;flex-direction:column;gap:6px;padding-bottom:12px">
+    <h2 style="margin:0">{ludus} 루두스 순위 <span class="note">(명성 경쟁 · 행 클릭 = 검투소 명부)</span></h2>
+    <div id="ludusTable" style="flex:0 0 auto"></div>
+    <div style="flex:1;min-height:0;display:flex;gap:16px;margin-top:4px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <h2 style="margin:0 0 8px">리그 로스터 <span class="note">(공개 정보 · 카드 클릭 = 상세)</span></h2>
+        <div class="grid" id="rosterGrid" style="flex:1;min-height:0;overflow:auto;align-content:start"></div>
+      </div>
+      <div style="flex:0 0 300px;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:6px">
+        <h2 style="margin:0">{ludus} 기록실 <span class="note">(통산 기록)</span></h2>
+        <div id="records" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        <div id="legends"></div>
+      </div>
     </div>
   </div></div>
 
@@ -688,8 +699,10 @@
       <button class="tgl" id="cfgFsOn" onclick="setScreenMode(true)">전체화면</button>
       <button class="tgl cur" id="cfgFsOff" onclick="setScreenMode(false)">창모드</button>
     </span></div>
+  <div class="rrow"><span>무대 맞춤</span>
+    <span style="display:inline-flex;align-items:center;gap:8px"><span class="seg" id="cfgFit"><button data-v="adapt" class="cur">비율 적응</button><button data-v="fixed">고정 16:10</button></span> <span class="d">적응=모니터 비율대로 무대 폭 확장 · 고정=레터박스</span></span></div>
   <div class="rrow"><span>UI 배율</span>
-    <span style="display:inline-flex;align-items:center;gap:8px"><span class="seg" id="cfgZoom"><button data-v="80">80</button><button data-v="90">90</button><button data-v="100" class="cur">100</button><button data-v="110">110</button><button data-v="125">125</button><button data-v="150">150</button></span> <span class="d">% · Ctrl+마우스휠과 같은 배율 축</span></span></div>
+    <span style="display:inline-flex;align-items:center;gap:8px"><span class="seg" id="cfgZoom"><button data-v="80">80</button><button data-v="90">90</button><button data-v="100" class="cur">100</button><button data-v="110">110</button><button data-v="125">125</button><button data-v="150">150</button></span> <span class="d">% · 무대의 가상 해상도 조절</span></span></div>
   <div class="rrow"><span>단축키</span><span class="d">ESC = 설정 열기/닫기</span></div>
   <div style="display:flex; gap:8px; margin-top:14px">
     <button class="btn primary" style="flex:1" onclick="doSave()"><svg class="ic"><use href="icons.svg#scroll"/></svg> 저장</button>
@@ -889,7 +902,10 @@ async function renderLeague(){
 }
 function lgPaint(){
   const v = $('lgTabs').value || 'sched';
-  $('lgSched').hidden = v!=='sched'; $('lgTable').hidden = v!=='table'; $('lgHist').hidden = v!=='hist';
+  // hidden 속성은 인라인 display를 못 이긴다 — display 직접 토글
+  $('lgSched').style.display = v==='sched' ? 'flex' : 'none';
+  $('lgTable').style.display = v==='table' ? 'flex' : 'none';
+  $('lgHist').style.display  = v==='hist'  ? 'flex' : 'none';
   const d = _lgDoc;
   $('lgSub').textContent = d ? `시즌 ${d.SeasonNo} · ${d.Completed===false&&d.TotalMatches?`${d.Matches}/${d.TotalMatches}경기 진행중`:`${d.Matches}경기`}` : '시즌 자료 없음';
   if (!d) return;
@@ -1057,8 +1073,10 @@ $('lgTabs').onchange = lgPaint;   // 리그 서브탭(일정·순위·기록)
 // 루두스 서브탭(지휘실·모리튜리·시설·시즌)
 function ldPaint(){
   const v = $('ldTabs').value || 'dash';
-  $('ldDash').hidden = v!=='dash'; $('ldMen').hidden = v!=='men';
-  $('ldFac').hidden = v!=='fac'; $('ldSeason').hidden = v!=='season';
+  $('ldDash').style.display = v==='dash' ? 'flex' : 'none';
+  $('ldMen').style.display = v==='men' ? 'block' : 'none';
+  $('ldFac').style.display = v==='fac' ? 'block' : 'none';
+  $('ldSeason').style.display = v==='season' ? 'block' : 'none';
 }
 $('ldTabs').onchange = ldPaint;
 $('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
@@ -1659,8 +1677,10 @@ $('cfgHl').checked = CFG.highlight === true;
 $('cfgCam').checked = CFG.camzoom !== false;   // 기본 켜짐
 $('cfgAuto').checked = CFG.autosave !== false; // 기본 켜짐
 $('cfgZoom').value = String(CFG.zoom || 100);
+$('cfgFit').value = CFG.stagefit || 'adapt';
+$('cfgFit').onchange = ()=>{ saveCfg(); fitStage(); };
 function saveCfg(){ localStorage.setItem('mor_settings',
-  JSON.stringify({speed: parseFloat($('cfgSpeed').value), spoiler: $('cfgSpoiler').checked, sound: $('cfgSound').checked, highlight: $('cfgHl').checked, camzoom: $('cfgCam').checked, zoom: parseInt($('cfgZoom').value)||100, fullscreen: _fsMode, autosave: $('cfgAuto').checked})); }
+  JSON.stringify({speed: parseFloat($('cfgSpeed').value), spoiler: $('cfgSpoiler').checked, sound: $('cfgSound').checked, highlight: $('cfgHl').checked, camzoom: $('cfgCam').checked, zoom: parseInt($('cfgZoom').value)||100, stagefit: $('cfgFit').value||'adapt', fullscreen: _fsMode, autosave: $('cfgAuto').checked})); }
 $('cfgSpeed').onchange = saveCfg;
 $('cfgSpoiler').onchange = saveCfg;
 $('cfgSound').onchange = saveCfg;
@@ -1677,16 +1697,23 @@ function applyScreenMode(){
 window.setScreenMode = (on)=>{ _fsMode = on; applyScreenMode(); saveCfg(); };
 // ── 고정 무대 fit(R2): 기준 1280×800 컴포지션을 창에 맞춰 zoom 스케일 — 리플로우 없음 ──
 // UI 배율은 이제 무대의 가상 해상도를 조절한다(125% = 기준 1024×640 → 모든 것이 1.25배 크게).
-const STAGE_W = 1280, STAGE_H = 800;
+const STAGE_H = 800;   // 기준 높이 고정 — 폭은 맞춤 방식에 따라 1280(고정) 또는 모니터 비율 적응(1160~1600 클램프)
 function fitStage(){
   const scale = (parseInt($('cfgZoom').value)||100)/100;
-  const bw = STAGE_W/scale, bh = STAGE_H/scale;
+  const mode = ($('cfgFit') && $('cfgFit').value) || 'adapt';
+  const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  const baseW = mode==='fixed' ? 1280 : Math.round(Math.min(1600, Math.max(1160, STAGE_H*aspect)));
+  const bw = baseW/scale, bh = STAGE_H/scale;
   const st = $('stage');
   st.style.width = bw+'px'; st.style.height = bh+'px';
   st.style.zoom = Math.min(window.innerWidth/bw, window.innerHeight/bh);
 }
 window.addEventListener('resize', fitStage);
 new ResizeObserver(fitStage).observe(document.documentElement);   // resize 이벤트가 없는 환경 대비
+// 벨트+멜빵: 일부 웹뷰는 resize 신호가 누락된다 — 창 크기 변화를 주기 점검(무변화면 no-op)
+let _lastFitKey='';
+setInterval(()=>{ const k=innerWidth+'x'+innerHeight;
+  if (k!==_lastFitKey){ _lastFitKey=k; fitStage(); } }, 400);
 function applyZoom(){ bridge('zoom:110'); fitStage(); }   // 네이티브 줌은 110 고정(기존 보정치) — 배율은 무대가 담당
 $('cfgZoom').onchange = ()=>{ saveCfg(); applyZoom(); };
 // ── 자동 저장 · 수동 저장 · 종료 (Photino 백엔드 API) ──
