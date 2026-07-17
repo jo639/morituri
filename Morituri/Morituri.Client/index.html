@@ -81,6 +81,13 @@
   h2{ font-size:13px; color:var(--gold); margin:20px 0 8px; letter-spacing:.5px; border-bottom:1px solid #4a3a26; padding-bottom:4px; }
   .note{ color:var(--dim); font-size:12px; }
   .err{ color:var(--b); font-size:12px; min-height:16px; }
+  /* R4: 모멘트 — 죽음·영광의 전화면 정지 연출 */
+  #moment{ position:absolute; inset:0; z-index:85; display:none; align-items:center; justify-content:center; cursor:pointer;
+    background:radial-gradient(ellipse at 50% 45%, rgba(14,9,4,.88), rgba(6,4,2,.97) 75%); }
+  #moment.on{ display:flex; animation:momentIn var(--dur-slow,.4s) var(--ease-out) both; }
+  @keyframes momentIn{ from{ opacity:0; } to{ opacity:1; } }
+  #moment.on #momentTitle{ animation:momentTitle .9s var(--ease-out) both .15s; }
+  @keyframes momentTitle{ from{ opacity:0; transform:translateY(14px); letter-spacing:.2em; } to{ opacity:1; transform:none; letter-spacing:.06em; } }
   /* R3: 반응성 — 진행 중(busy)엔 상단 금빛 진행선 + 이중 클릭 차단, 클릭 타겟 어포던스 */
   #stage.busy{ cursor:progress; }
   #stage.busy button{ pointer-events:none; }
@@ -633,6 +640,14 @@
     <button class="tacbtn" style="flex:1;text-align:center" onclick="doRename()">확정</button>
     <button class="tacbtn" style="flex:1;text-align:center;opacity:.7" onclick="$('renModal').classList.remove('on')">취소</button>
   </div>
+</div></div>
+
+<!-- R4 모멘트: 최상위 사건(죽음·영광)은 화면 전체가 멈추고 한 문장이 남는다 -->
+<div id="moment"><div style="text-align:center;max-width:760px;padding:0 40px">
+  <div id="momentKicker" style="color:var(--dim);font-size:13px;letter-spacing:.35em;text-transform:uppercase"></div>
+  <div id="momentTitle" style="font-family:var(--font-display);font-size:46px;font-weight:800;letter-spacing:.06em;margin:18px 0 14px;line-height:1.2"></div>
+  <div id="momentSub" style="color:var(--ink);font-size:15px;line-height:1.7"></div>
+  <div style="color:var(--dim);font-size:11px;margin-top:34px;letter-spacing:.2em;animation:livePulse 2s ease-in-out infinite">계속하려면 클릭</div>
 </div></div>
 
 <!-- 인월드 확인 모달 — 브라우저 확인창 대체. 비가역 행동은 길게 눌러 확정 -->
@@ -1211,6 +1226,16 @@ function askConfirm({title='확인', body='', label='실행', hold=false}={}){
   });
 }
 function cfDone(v){ $('cfModal').classList.remove('on'); if (v) sfxStamp(); const r=_cfResolve; _cfResolve=null; if (r) r(v); }
+// ── R4 모멘트: 최상위 사건은 화면을 멈춘다 — 죽음(핏빛)·영광(금빛). 열린 모달 위에 겹치고 클릭으로 걷힌다 ──
+function showMoment({kicker='', title='', sub='', tone='glory'}={}){
+  $('momentKicker').textContent = kicker;
+  $('momentTitle').textContent = title;
+  $('momentTitle').style.color = tone==='death' ? 'var(--blood-bright,#d05a4a)' : 'var(--gold)';
+  $('momentSub').innerHTML = sub;
+  $('moment').classList.add('on');
+  if (tone==='death') sfxDoom(); else sfxJackpot();
+}
+$('moment').onclick = ()=> $('moment').classList.remove('on');
 {
   const y = $('cfYes');
   $('cfNo').onclick = ()=>cfDone(false);
@@ -1617,6 +1642,12 @@ function showSeason(){
   $('ssAging').innerHTML = (s.AgingNotes||[]).map(n=>`<div class="rrow"><span>{hourglass} 노화</span><span class="d">${n}</span></div>`).join('');
   $('ssStory').innerHTML = `<span>이번 시즌 서사</span><span class="d">복수 ${s.Revenge} · 이변 ${s.Upsets} · 대역전 ${s.Comebacks} · 최고 명성 ${s.TopFame}</span>`;
   $('seasonModal').classList.add('on');
+  // R4 모멘트: 내 루두스의 왕관 — 시즌 요약 위에 금빛 정지 연출
+  if (s.ChampionIsMine || s.CupChampionMine || s.FestChampionMine){
+    const name = s.ChampionIsMine ? s.Champion : s.CupChampionMine ? s.CupChampion : s.FestChampion;
+    const what = s.ChampionIsMine ? `시즌 ${s.SeasonNo} 챔피언` : s.CupChampionMine ? '챔피언십 컵 우승' : '사투르날리아 대항전 우승';
+    showMoment({kicker:'월계관이 내려온다', title:name, sub:`${what} — 내 루두스의 영광`, tone:'glory'});
+  }
 }
 
 // ── 설정 (localStorage 'mor_settings' — viewer.html이 배속·스포일러를 읽음) ──
@@ -1931,6 +1962,12 @@ function showResult(m){
   $('resModal').classList.add('on');
   if (isJackpot(m)) sfxJackpot();
   if (m.FixNote) setTimeout(m.FixBad?sfxDoom:sfxCoins, 300);
+  // R4 모멘트: 모래 위의 죽음 — 결과 카드 위에 전화면 정지 연출이 먼저 걷혀야 한다
+  const death = (m.Fates||[]).find(f=>f.includes('{coffin}'));
+  if (death){
+    const parts = plainTip(death).split('—');
+    showMoment({kicker:'콜로세움이 침묵한다', title:parts[0].trim(), sub:parts.slice(1).join('—').trim(), tone:'death'});
+  }
 }
 window.closeResult = ()=>{ $('resModal').classList.remove('on');
   if (pendingSeason){ pendingSeason=false; showSeason(); }
