@@ -50,8 +50,9 @@
   .res.gold{ color:var(--gold); } .res.glory{ color:var(--glory); }
   #status{ color:var(--dim); font-size:12px; }
   /* ── 화면 ── */
-  /* 가로 스크롤 전면 금지(라니스타 규약) — 세로만 허용, 가로는 어떤 컨테이너에서도 잘라낸다 */
-  #stage, #stage *{ overflow-x:hidden !important; }
+  /* 가로 스크롤 금지(라니스타 규약): 세로 스크롤 컨테이너에서만 가로축을 잘라낸다.
+     전역(*)에 걸면 초상 등 의도적으로 삐져나오는 연출까지 클립되므로 스크롤 컨테이너에 한정. */
+  .screen, .pad, [style*="overflow:auto"], [style*="overflow: auto"]{ overflow-x:hidden; }
   #screens{ flex:1 1 auto; position:relative; min-height:0; }
   .screen{ position:absolute; inset:0; display:none; overflow-y:auto; }
   .screen.on{ display:block; animation:fadeIn .18s ease; }
@@ -351,6 +352,11 @@
 @keyframes dlgDrop2{ from{opacity:0; transform:translateY(-8px)} to{opacity:1; transform:translateY(0)} }
 #coach .arrow{ position:absolute; top:-9px; width:16px; height:16px; background:var(--panel2);
   border-left:1px solid var(--gold-deep); border-top:1px solid var(--gold-deep); transform:rotate(45deg) }
+/* 소형 얼굴 아바타 — 전신 초상(1024²)에서 얼굴만 확대해 담는다(정사각 cover는 전신이 작게 들어가 잘린 듯 보임) */
+.avatar{ width:52px; height:52px; border-radius:8px; overflow:hidden; border:1px solid var(--gold-deep);
+  flex-shrink:0; display:inline-block; background:var(--panel2); box-shadow:var(--sh1) }
+.avatar img{ width:170%; height:170%; object-fit:cover; object-position:50% 7%; display:block }
+.avatar svg{ width:100%; height:100% }
 #coach .bname{ font-family:var(--font-display); font-weight:900; font-size:12px; letter-spacing:.1em; color:var(--gold) }
 #coach .btxt{ font-size:14.5px; line-height:1.6; color:var(--ink) }
 #coach .btxt b{ color:var(--gold) }
@@ -619,7 +625,7 @@
   <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('seasonModal').classList.remove('on'); go('league')">다음 시즌으로 →</button>
 </div></div>
 
-<div class="modal" id="profModal"><div class="mbox" style="max-width:560px">
+<div class="modal dismissable" id="profModal"><div class="mbox" style="max-width:560px">
   <div id="profBody"></div>
   <button class="tacbtn" style="text-align:center; margin-top:12px" onclick="$('profModal').classList.remove('on')">닫기</button>
 </div></div>
@@ -682,7 +688,7 @@
   <button class="tacbtn" style="text-align:center;margin-top:10px;opacity:.7" onclick="pickProposal('')">거절한다</button>
 </div></div>
 
-<div class="modal" id="cfgModal"><div class="mbox">
+<div class="modal dismissable" id="cfgModal"><div class="mbox">
   <h3 style="color:var(--gold)">{gear} 설정</h3>
   <div class="rrow" style="margin-top:8px"><span>관전 기본 배속</span>
     <span class="seg" id="cfgSpeed"><button data-v="0.5">0.5×</button><button data-v="1" class="cur">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></span></div>
@@ -744,14 +750,14 @@
 <div id="letter"><div class="lveil"></div><div class="lt-card" id="letterCard"></div></div>
 
 <!-- 보관함 문서 열람 모달 -->
-<div class="modal" id="kpModal"><div class="mbox" style="max-width:560px;background:none;border:none;box-shadow:none;padding:0" id="kpModalBody"></div></div>
+<div class="modal dismissable" id="kpModal"><div class="mbox" style="max-width:560px;background:none;border:none;box-shadow:none;padding:0" id="kpModalBody"></div></div>
 
 <!-- 스승 전수 선택 모달 -->
 <div class="modal" id="bwModal"><div class="mbox" style="max-width:520px">
   <h3 style="color:#d8a0e0">{scroll} 스승의 유산</h3><div id="bwBody"></div></div></div>
 
 <!-- 검투소 상세 명부 모달 -->
-<div class="modal" id="ludusModal"><div class="mbox" style="max-width:600px;max-height:90%;overflow:auto" id="ludusModalBody"></div></div>
+<div class="modal dismissable" id="ludusModal"><div class="mbox" style="max-width:600px;max-height:90%;overflow:auto" id="ludusModalBody"></div></div>
 
 <!-- [13] 튜토리얼 코치마크 (카토의 조언 — 실제 UI 스포트라이트) -->
 <div id="coach">
@@ -1733,8 +1739,10 @@ applyZoom();                 // 기본 100%(=110%) 적용
 applyScreenMode();           // 기본 전체화면
 api('/api/autosave',{on: CFG.autosave !== false}).catch(()=>{});
 $('cfgBtn').onclick = ()=> $('cfgModal').classList.add('on');
-$('cfgModal').onclick = e=>{ if(e.target===$('cfgModal')) $('cfgModal').classList.remove('on'); };
-$('profModal').onclick = e=>{ if(e.target===$('profModal')) $('profModal').classList.remove('on'); };
+// 열람용 모달(.dismissable)은 배경 여백을 눌러도 닫힌다 — 일관성(결정·입력 모달은 제외).
+document.querySelectorAll('.modal.dismissable').forEach(m=>{
+  m.addEventListener('click', e=>{ if(e.target===m) m.classList.remove('on'); });
+});
 
 // 단축키: ESC = 설정 열기/닫기 (그 외 단축키 없음)
 window.addEventListener('keydown', e=>{
@@ -2215,7 +2223,7 @@ function maybeCoach(){
   _coachSeen = hint; _coachTarget = target;
   const [q, dir] = hint.split('→');
   $('coachTxt').innerHTML = escHtml(q.replace(/^\{speech\}\s*카토:\s*/,'').trim()) + (dir?`<br><b>→ ${escHtml(dir.trim())}</b>`:'');
-  $('coachPort').innerHTML = `<span style="width:56px;height:56px;display:inline-block;flex-shrink:0;border-radius:8px;overflow:hidden;border:1px solid var(--gold-deep)"><img src="story_cato.png" style="width:56px;height:56px;object-fit:cover;object-position:top" onerror="this.parentElement.innerHTML=dlgSilhouette('cato')"></span>`;
+  $('coachPort').innerHTML = `<span class="avatar"><img src="story_cato.png" onerror="this.parentElement.innerHTML=dlgSilhouette('cato')"></span>`;
   placeCoach(target);
   $('coach').classList.add('on');
 }
