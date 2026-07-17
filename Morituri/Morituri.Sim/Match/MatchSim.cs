@@ -166,6 +166,12 @@ public sealed class MatchSim
                 rt.RangeBonus += t.RangeAdd;
                 rt.RangeMult *= t.RangeMult;
                 rt.SizeScale *= t.SizeScale;
+                // 액티브 스킬(T12 확장): 장착된 발동형은 런타임에 명세를 실어둔다(첫 하나만 — 슬롯이 2여도 발동형은 하나).
+                if (rt.ActiveSkill == null && SkillTable.Exists(id) && SkillTable.Get(id).Active is { } asp)
+                {
+                    rt.ActiveSkill = asp;
+                    rt.ActiveSkillName = SkillTable.Get(id).Def.Name.Replace("(스킬)", "");
+                }
             }
 
         // 감정(T10): 일시적 심리 상태를 결정 경로에만 주입 (트리거 확률 + Directive 가중치). 데미지 수식 무관.
@@ -270,6 +276,26 @@ public sealed class MatchSim
             ? MathF.Min(_c.PatienceMax, f.Patience + pDrain * 3f * Dt)   // 교전 중 빠르게 회복
             : MathF.Max(0f, f.Patience - pDrain * Dt);                    // 대치 중 감소
 
+        // 액티브 스킬(T12 확장): 조건은 전부 결정적 — 충족 순간 자동 발동(감독 개입 없음), 시한 배율만 부여.
+        if (f.ActiveSkill is { } sp && _now >= f.SkillReadyAt && _now >= f.SkillBuffUntil)
+        {
+            bool fire = sp.Trigger switch
+            {
+                ActiveTrigger.HpBelow      => f.HpPct <= sp.Threshold,
+                ActiveTrigger.StaminaBelow => f.Stamina <= f.StaminaMax * sp.Threshold,
+                ActiveTrigger.AfterDown    => f.State == FighterState.GetUp,
+                _ => false,
+            };
+            if (fire)
+            {
+                f.SkillBuffUntil = _now + sp.Duration;
+                f.SkillReadyAt = _now + sp.Duration + sp.Cooldown;
+                if (sp.StamRestore > 0f) f.Stamina = MathF.Min(f.StaminaMax, f.Stamina + sp.StamRestore);
+                // 가독성: 발동 순간을 Decision으로 방출 — 뷰어가 「스킬 발동」 라벨로 표시(모션 없음, 인지용)
+                Emit(new Decision(_now, f.Index, "SKILL_" + f.ActiveSkillName, "Skill", MathF.Max(2f, sp.Duration)));
+            }
+        }
+
         // 스태미나 (문서[4] 6장)
         float regen = f.State switch
         {
@@ -284,7 +310,8 @@ public sealed class MatchSim
         if (f.Weapon.Range >= _c.KiteCostMinRange && f.State == FighterState.Move
             && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
             regen = -_c.KiteStamCostPerSec;
-        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
+        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult
+                               * (SkillNow(f) is { } sk ? sk.StamRegenMult : 1f);
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
         if (f.IsExhausted) f.ExhaustTimer -= Dt;
@@ -868,7 +895,8 @@ public sealed class MatchSim
             case FighterState.Move:
             {
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
-                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
+                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f)    // 초상비: 대시 직후 이속↑
+                            * (SkillNow(f) is { } skm ? skm.MoveMult : 1f); // 액티브 스킬(발동 중만)
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
                 Vec2 toOpp = PerceivedMovePos(f) - f.Pos;
                 float distO = toOpp.Length;
@@ -1116,6 +1144,9 @@ public sealed class MatchSim
     /// <summary>좀비: HP≤30% 시 디버프(경직·출혈·기절) 면역. 피해 자체는 정상.</summary>
     private static bool DebuffImmune(FighterRuntime f) => f.Has(TraitTable.Zombie) && f.HpPct <= 0.30f;
 
+    /// <summary>액티브 스킬이 발동 중이면 명세를, 아니면 null. 미장착이면 언제나 null(매트릭스 무영향).</summary>
+    private ActiveSpec? SkillNow(FighterRuntime f) => f.ActiveSkill is { } sp && _now < f.SkillBuffUntil ? sp : null;
+
     private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
     {
         // 선취점: 첫 클린 히트(가드 제외) ×1.25 + 본인에 흡수 쉴드 부여(다음 피격 완충).
@@ -1128,6 +1159,9 @@ public sealed class MatchSim
         }
         dmg *= def.DamageTakenMult;   // 받피 특성 (유리몸·질긴가죽·둔감)
         if (guarded) dmg *= def.GuardDamageMult;   // 봉쇄자: 가드 시 추가 감쇠
+        // 액티브 스킬(발동 중만): 가하는/받는 피해 시한 배율
+        if (SkillNow(atk) is { } ska) dmg *= ska.DmgDealtMult;
+        if (SkillNow(def) is { } skd) dmg *= skd.DmgTakenMult;
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
         {

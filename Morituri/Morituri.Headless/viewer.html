@@ -1117,8 +1117,11 @@ function render(){
     ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
+    const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 액티브 스킬 자동 발동 — 모션 없이 라벨로만 인지
     const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
+      : isSkill ? '스킬 발동 — '+d.tag.slice(6)
       : (TAGKR[d.tag]||d.tag); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
+    if (isSkill) ctx.fillStyle='#c9a84c';   // 스킬은 금빛 배지 — 지시·감정과 구분
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 

@@ -69,6 +69,12 @@ public sealed class FighterRuntime
     public float ShieldHp;              // 흡수 쉴드 잔량 (선취점·향후 액티브)
     public float ShieldExpiry;          // 흡수 쉴드 만료
 
+    // 액티브 스킬(T12 확장) — 모리튜리 자동 발동. 장착 없으면 전부 기본값 = 매트릭스 무영향.
+    public Data.ActiveSpec? ActiveSkill;  // 장착된 발동형 스킬(첫 하나만)
+    public string ActiveSkillName = "";   // 뷰어 표시용 이름
+    public float SkillBuffUntil = -1f;    // 발동 효과 만료 시각
+    public float SkillReadyAt;            // 재발동 가능 시각(쿨다운)
+
     public bool Has(string traitId) => Traits.Contains(traitId);
     public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)
 

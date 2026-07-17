@@ -838,9 +838,14 @@ const SKILLS=[
  {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이동 속도 +3%'},
  {id:'SKL_READ2',  n:'전장 분석',  per:'CALM',       tier:2, d:'전장 전체가 느리게 보인다 — 인지지연 −0.08s (집정관+)'},
  {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받는 피해 −35%·이동 속도 −4% (집정관+)'},
+ // 발동형 — 모리튜리가 조건 충족 시 스스로 쓴다(감독 개입 불가). 경기 중 금빛 「스킬 발동」 라벨로 표시
+ {id:'SKL_SECONDWIND',n:'재기의 호흡', per:'BOLD',     tier:1, act:1, d:'궁지에서 숨을 고른다 — HP 35% 이하 시 스태미나 +30·8초간 회복 +50% (경기당 1회)'},
+ {id:'SKL_FRENZY',    n:'핏빛 광란',   per:'CRUEL',    tier:1, act:1, d:'제 피 냄새에 눈이 뒤집힌다 — HP 50% 이하 시 6초간 가하는 피해 +10%·받는 피해 +5% (경기당 1회)'},
+ {id:'SKL_BURST',     n:'질풍',        per:'RECKLESS', tier:1, act:1, d:'쓰러진 몸이 먼저 튀어나간다 — 다운에서 일어날 때 6초간 이속 +10% (재사용 20초)'},
+ {id:'SKL_LASTSTAND', n:'최후의 보루', per:'HONORABLE',tier:2, act:1, d:'무너지기 직전이 가장 단단하다 — HP 30% 이하 시 8초간 받는 피해 −15% (집정관+, 경기당 1회)'},
 ];
 const SKL=id=>SKILLS.find(s=>s.id===id)||{n:id,d:''};
-const sklChip=id=>`<span class="chip" style="background:rgba(91,155,224,.18);color:#9bc4ec;border:1px solid rgba(91,155,224,.4)" title="${SKL(id).d}">{book} ${SKL(id).n}</span>`;
+const sklChip=id=>{ const s=SKL(id); return `<span class="chip" style="background:${s.act?'rgba(201,168,76,.18)':'rgba(91,155,224,.18)'};color:${s.act?'#e0c78a':'#9bc4ec'};border:1px solid ${s.act?'rgba(201,168,76,.45)':'rgba(91,155,224,.4)'}" title="${s.d}">${s.act?'{bolt}':'{book}'} ${s.n}</span>`; };
 
 // ── 합성 효과음(DDD): WebAudio 신스 — 설정 '효과음' 게이트, 에셋 무 ──
 let _ac=null;
@@ -1314,7 +1319,16 @@ function showFuneral({name='', age='', record='', epithet='', mine=false}={}){
   _momentTimers.push(setTimeout(()=>{ T.style.opacity='1'; sfxDrum(); }, 1500));
   _momentTimers.push(setTimeout(()=>{ S.style.opacity='1'; H.style.opacity='1'; }, 2300));
 }
-$('moment').onclick = ()=>{ clearMoment(); const m=$('moment'); m.classList.remove('on'); m.style.cssText=''; };
+// 모멘트 큐 — 한 결산에 사건이 여럿이면(우승+명전 입성) 클릭마다 다음 장이 걷힌다
+let _momentQueue = [];
+function queueMoment(fn){
+  _momentQueue.push(fn);
+  if (!$('moment').classList.contains('on')) _momentQueue.shift()();
+}
+$('moment').onclick = ()=>{
+  clearMoment(); const m=$('moment'); m.classList.remove('on'); m.style.cssText='';
+  if (_momentQueue.length) setTimeout(()=>{ const fn=_momentQueue.shift(); if(fn) fn(); }, 250);
+};
 {
   const y = $('cfYes');
   $('cfNo').onclick = ()=>cfDone(false);
@@ -1700,7 +1714,7 @@ function showSeason(){
   $('ssAwards').innerHTML = (s.Awards&&s.Awards.length)
     ? `<div style="margin:6px 0;padding:8px 10px;border:1px solid var(--gold-deep);border-radius:8px;background:rgba(201,168,76,.06)">
         <div class="note" style="color:var(--gold);margin-bottom:3px">{ludus} 시즌 시상식</div>
-        ${s.Awards.map(a=>`<div style="font-size:12.5px;margin:2px 0">${a}</div>`).join('')}</div>` : '';
+        ${s.Awards.map(a=>`<div class="ssAward" style="opacity:0;font-size:12.5px;margin:2px 0">{laurel} ${a}</div>`).join('')}</div>` : '';
   $('ssAch').innerHTML = (s.NewAchievements&&s.NewAchievements.length)
     ? `<div class="rrow" style="color:var(--gold)"><span>{laurel} 새 업적</span><b>${s.NewAchievements.join(' · ')}</b></div>` : '';
   $('ssTable').innerHTML = s.Standings.map(r=>
@@ -1721,12 +1735,21 @@ function showSeason(){
   $('ssAging').innerHTML = (s.AgingNotes||[]).map(n=>`<div class="rrow"><span>{hourglass} 노화</span><span class="d">${n}</span></div>`).join('');
   $('ssStory').innerHTML = `<span>이번 시즌 서사</span><span class="d">복수 ${s.Revenge} · 이변 ${s.Upsets} · 대역전 ${s.Comebacks} · 최고 명성 ${s.TopFame}</span>`;
   $('seasonModal').classList.add('on');
-  // R4 모멘트: 내 루두스의 왕관 — 시즌 요약 위에 금빛 정지 연출
+  // 시상식 순차 리빌 — 수상 한 줄씩 무게를 갖고 등장(웹뷰 안전: setTimeout opacity 팝)
+  document.querySelectorAll('#ssAwards .ssAward').forEach((el,i,arr)=>
+    setTimeout(()=>{ el.style.opacity='1'; if(i===arr.length-1) sfxReveal(2); else sfxStep(); }, 600+i*450));
+  // R4 모멘트: 내 루두스의 왕관 — 시즌 요약 위에 금빛 정지 연출 (여러 사건이면 클릭마다 다음 장)
   if (s.ChampionIsMine || s.CupChampionMine || s.FestChampionMine){
     const name = s.ChampionIsMine ? s.Champion : s.CupChampionMine ? s.CupChampion : s.FestChampion;
     const what = s.ChampionIsMine ? `시즌 ${s.SeasonNo} 챔피언` : s.CupChampionMine ? '챔피언십 컵 우승' : '사투르날리아 대항전 우승';
-    showMoment({kicker:'월계관이 내려온다', title:name, sub:`${what} — 내 루두스의 영광`, tone:'glory'});
+    queueMoment(()=>showMoment({kicker:'월계관이 내려온다', title:name, sub:`${what} — 내 루두스의 영광`, tone:'glory'}));
   }
+  // 명전 입성 — 이번 시즌 내 선수가 전당에 올랐다(전사자는 이미 장례가 배웅했으니 제외)
+  ((st&&st.Season&&st.Season.Hall)||[])
+    .filter(h=>h.IsPlayer && h.RetiredSeason===s.SeasonNo && !(h.Career||'').includes('{coffin}'))
+    .forEach(h=>queueMoment(()=>showMoment({kicker:'전당의 문이 열린다', title:h.Name,
+      sub:`명예의 전당 입성 — 명성 ${Math.round(h.Fame)} · 통산 ${plainTip(h.Career||'')}`
+        +(h.BestStreak>=3?` · 최다 ${h.BestStreak}연승`:''), tone:'glory'})));
 }
 
 // ── 설정 (localStorage 'mor_settings' — viewer.html이 배속·스포일러를 읽음) ──
@@ -2643,7 +2666,7 @@ window.openSkillModal = (id)=>{
   const rows = avail.length ? avail.map(s=>{
     const has=owned.includes(s.id), locked=s.tier>=2&&rank<3, full=owned.length>=f.SkillSlots&&!has;
     return `<button class="tacbtn" ${has||locked?'disabled style="opacity:.45"':''} onclick="learnSkill('${id}','${s.id}',${full})">
-      <b>${s.tier>=2?'Ⅱ · ':''}${s.n}</b> ${has?'<span class="d">— 보유 중</span>':locked?'<span class="d" style="color:var(--b)">— 집정관 이상의 그릇 필요</span>':full?'<span class="d" style="color:#d8b24a">— 슬롯 가득(교체)</span>':''}
+      <b>${s.tier>=2?'Ⅱ · ':''}${s.n}</b>${s.act?' <span style="color:#e0c78a;font-size:11px">{bolt} 발동형 — 스스로 쓴다</span>':''} ${has?'<span class="d">— 보유 중</span>':locked?'<span class="d" style="color:var(--b)">— 집정관 이상의 그릇 필요</span>':full?'<span class="d" style="color:#d8b24a">— 슬롯 가득(교체)</span>':''}
       <div class="d">${s.d}</div></button>`;
   }).join('') : '<div class="note">이 성격이 익힐 수 있는 스킬이 없다.</div>';
   $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">{book} 스킬 수련 — ${f.Name}</h3>
