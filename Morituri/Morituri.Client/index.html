@@ -840,11 +840,23 @@ const SKILLS=[
  {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이동 속도 +3%'},
  {id:'SKL_READ2',  n:'전장 분석',  per:'CALM',       tier:2, d:'전장 전체가 느리게 보인다 — 인지지연 −0.08s (집정관+)'},
  {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받는 피해 −35%·이동 속도 −4% (집정관+)'},
- // 무기 액티브([7]§4) — AI가 조건·확률로 스스로 발동(관전형 — 감독이 누르지 않는다). 경기 중 금빛 「스킬 발동」 라벨
+ // 무기 액티브([7]§4, 8무기×2) — AI가 조건·확률로 스스로 발동(관전형 — 감독이 누르지 않는다). 경기 중 금빛 「스킬 발동」 라벨
+ {id:'SKL_COMBO',   n:'연격',          wpn:'SWORD',      tier:1, act:1, d:'베기가 베기를 부른다 — 3.5초간 공격 속도 +35%, 상대가 멀어지면 조기 종료 (ST20 · 9s)'},
  {id:'SKL_DUELIST', n:'결투의 격',     wpn:'SWORD',      tier:2, act:1, d:'호각의 상대와 격이 오른다 — 6초간 카운터 창 +0.3 (24s · 집정관+)'},
+ {id:'SKL_LUNGE',   n:'견제 찌르기',   wpn:'SPEAR',      tier:1, act:1, d:'다가오는 걸음을 창끝이 벌한다 — 즉발 찌르기 + 넉백 (ST18 · 8s)'},
+ {id:'SKL_RIPOSTE', n:'철벽 반격',     wpn:'SPEAR',      tier:2, act:1, d:'받아치는 창 — 1.5초 자세, 그동안 최초 피격에 즉시 반격 (22s · 집정관+)'},
  {id:'SKL_SUNDER',  n:'분쇄 일격',     wpn:'AXE',        tier:1, act:1, d:'가드째 부순다 — 다음 강공이 가드를 무조건 파괴 + 출혈 (ST22 · 11s)'},
  {id:'SKL_BERSERK', n:'광전사의 도끼', wpn:'AXE',        tier:2, act:1, d:'제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 최대 +40%·받는 피해 +25% (26s · 집정관+)'},
+ {id:'SKL_CHARGE',  n:'쇄도 베기',     wpn:'GREATSWORD', tier:1, act:1, d:'거리를 지우는 돌진 — 상대에게 짓쳐들어 강공 일격 (ST22 · 10s)'},
  {id:'SKL_UNBROKEN',n:'불퇴의 자세',   wpn:'GREATSWORD', tier:2, act:1, d:'물러서지 않는다 — 5초간 포이즈 무한(스태거 면역) (24s · 집정관+)'},
+ {id:'SKL_FLURRY',  n:'난무',          wpn:'DUALBLADES', tier:1, act:1, d:'허점에 칼비가 쏟아진다 — 경직·스태거 상대에 5연타 (ST28 · 10s)'},
+ {id:'SKL_MIRAGE',  n:'그림자 보',     wpn:'DUALBLADES', tier:2, act:1, d:'그림자만 남기고 사라진다 — 상대 배후로 이동 + 다음 약공 확정 크리 (ST20 · 20s · 집정관+)'},
+ {id:'SKL_SMASH',   n:'대지 강타',     wpn:'HAMMER',     tier:1, act:1, d:'땅째 부수는 일격 — 강공 ×1.3 + 가드관통 50% + 명중 시 스태거 (ST22 · 11s)'},
+ {id:'SKL_EXECUTE', n:'심판의 일격',   wpn:'HAMMER',     tier:2, act:1, d:'빈사의 상대에게 심판이 내린다 — 1.2초 무방비 차지 후 강공 ×2.5, HP 15% 미만 즉사 (28s · 집정관+ · 고결은 거부)'},
+ {id:'SKL_ENTANGLE',n:'휘감기',        wpn:'WHIP',       tier:1, act:1, d:'가죽이 발목을 삼킨다 — 피해 + 멀면 끌어당김·가까우면 1초 이동봉쇄 (ST20 · 12s)'},
+ {id:'SKL_ZONELOCK',n:'공간 지배',     wpn:'WHIP',       tier:2, act:1, d:'이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제 + 카이팅 소모 면제 (26s · 집정관+)'},
+ {id:'SKL_SHIELDBLOCK', n:'방패 막기', wpn:'SHIELD',     tier:1, act:1, d:'정면은 뚫리지 않는다 — 0.8초 완전 차단 + 직후 1초 반격 +30% (GG20 · 8s)'},
+ {id:'SKL_SHIELDBASH',n:'방패 밀치기', wpn:'SHIELD',     tier:2, act:1, d:'방패가 무기가 되는 순간 — 돌진 방패치기: 가드붕괴 + 다운 (ST25 · 20s · 집정관+)'},
 ];
 const SKL=id=>SKILLS.find(s=>s.id===id)||{n:id,d:''};
 const sklChip=id=>{ const s=SKL(id); return `<span class="chip" style="background:${s.act?'rgba(201,168,76,.18)':'rgba(91,155,224,.18)'};color:${s.act?'#e0c78a':'#9bc4ec'};border:1px solid ${s.act?'rgba(201,168,76,.45)':'rgba(91,155,224,.4)'}" title="${s.d}">${s.act?'{bolt}':'{book}'} ${s.n}</span>`; };

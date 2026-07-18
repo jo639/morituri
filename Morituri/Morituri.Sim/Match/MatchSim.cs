@@ -274,6 +274,30 @@ public sealed class MatchSim
             ? MathF.Min(_c.PatienceMax, f.Patience + pDrain * 3f * Dt)   // 교전 중 빠르게 회복
             : MathF.Max(0f, f.Patience - pDrain * Dt);                    // 대치 중 감소
 
+        // 무기 액티브([7]) 프레임 처리: 연격 조기 종료 · 공간 지배 자동 견제 · 심판의 일격 차지 해결
+        if (f.ActiveSkill is { } ask)
+        {
+            var other = _f[1 - f.Index];
+            if (ask.EarlyEndGapM > 0f && _now < f.SkillBuffUntil
+                && Vec2.Dist(f.Pos, other.Pos) > ask.EarlyEndGapM) f.SkillBuffUntil = _now;   // 연격: 멀어지면 종료
+            if (ask.AutoPokeMult > 0f && _now < f.SkillBuffUntil && _now >= f.SkillNextPokeAt
+                && !f.IsAttackSwing && other.Hp > 0f
+                && Vec2.Dist(f.Pos, other.Pos) <= f.EffRange)                                  // 공간 지배: 진입자 자동 견제
+            {
+                f.SkillNextPokeAt = _now + ask.AutoPokeIntervalSec;
+                bool g = other.State == FighterState.Guard;
+                var pctx = new CombatMath.HitContext(false, g, false, false,
+                    1f + CrowdDmgBuff * f.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax), other.IsExhausted);
+                ApplyDamage(f, other, CombatMath.FinalDamage(f.Weapon, _c.MotionMultLight * ask.AutoPokeMult,
+                    f.Def.Stats, other.Def.Stats, pctx, _c), false, false, g);
+            }
+            if (f.SkillExecStrikeAt > 0f && _now >= f.SkillExecStrikeAt)                       // 심판의 일격: 차지 완료
+            {
+                f.SkillExecStrikeAt = -1f; f.SkillBuffUntil = _now;
+                ResolveExecute(f, other, ask);
+            }
+        }
+
         // 스태미나 (문서[4] 6장)
         float regen = f.State switch
         {
@@ -286,7 +310,8 @@ public sealed class MatchSim
         // 카이팅 비용(B): 거리 유지(후퇴/선회)로 빠지면 회복 대신 소모 — 영원히 카이팅 못 한다.
         // 위치 이중안정을 스태미나 소모로 완충. 과금 범위는 KiteCostMinRange(기본 장사거리 전용, 튜닝 스윕 차원).
         if (f.Weapon.Range >= _c.KiteCostMinRange && f.State == FighterState.Move
-            && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
+            && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe
+            && SkillNow(f) is not { KiteExempt: true })   // 공간 지배([7]): 발동 중 카이팅 소모 면제
             regen = -_c.KiteStamCostPerSec;
         if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
@@ -820,7 +845,8 @@ public sealed class MatchSim
         f.IsFeintSwing = isFeint;
         f.SwingResolved = false;
         f.LastSwingGuarded = false;
-        f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c);
+        f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c)
+            / (SkillNow(f) is { AttackSpeedMult: > 1f } cwa ? cwa.AttackSpeedMult : 1f);   // 연격([7]): 공속 +35%
         f.CurrentAction = action;
         if (!isFeint) { f.AttackAttempts++; f.LastAttack = action; }
         ChangeState(f, FighterState.Windup, f.WindupTotalSec);
@@ -871,6 +897,7 @@ public sealed class MatchSim
         {
             case FighterState.Move:
             {
+                if (_now < f.SkillRootedUntil) break;   // 휘감기([7]): 이동봉쇄 — 이동만 묶인다(행동은 가능)
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
                             * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
@@ -1002,7 +1029,8 @@ public sealed class MatchSim
                 // 후딜 = 무기 기본 × 모션 배율 (약공 0.8 안전 / 강공 1.6 처벌 가능 — T02 RecoveryMult)
                 //       × 가드됨 배율 (막힌 공격은 프레임 불리 — 방어자의 턴)
                 float recDur = atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
-                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f);
+                    * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f)
+                    / (SkillNow(atk) is { AttackSpeedMult: > 1f } cra ? cra.AttackSpeedMult : 1f);   // 연격([7]): 공속 +35%
                 ChangeState(atk, FighterState.Recovery, recDur);
                 // [안B] 공격 후 이탈: 카이터(창·채찍)는 후딜 후 일정 시간 후퇴 강제 → '찌르고 빠짐' 리듬.
                 if (atk.Weapon.PostAttackRetreatSec > 0f)
@@ -1027,6 +1055,16 @@ public sealed class MatchSim
         }
         // 다운 추가타 1회 제한 (무한 루프 방지)
         if (ds.State is FighterState.Down && ds.DownHitConsumed) { RegisterWhiff(atk); return; }
+
+        // 방패 막기([7]§4 방패 Ⅰ): 완전 차단 창 — 피해·게이지 칩 전무, 공격자는 막힌 후딜(프레임 불리),
+        // 차단 직후 반격 보너스 창 개시. 도끼 분쇄·망치 관통도 여기선 무효(완전가드 우선 — [7]§2).
+        if (_now < def.SkillFullBlockUntil)
+        {
+            def.Blocks++;
+            atk.LastSwingGuarded = true;
+            def.SkillCounterBoostUntil = _now + (def.ActiveSkill?.CounterBoostSec ?? 0f);
+            return;
+        }
 
         float motionMult = atk.MotionKindNow == MotionKind.Heavy ? _c.MotionMultHeavy : _c.MotionMultLight;
         bool inner = atk.Weapon.Range >= _c.MinLongRange && dist < atk.Weapon.Range * _c.InnerRangeRatio;
@@ -1078,6 +1116,8 @@ public sealed class MatchSim
         bool isCounter = ds.State is FighterState.Windup or FighterState.Recovery;
         bool isCrit = _rng.Roll(CombatMath.CritChancePct(atk.Def.Stats, def.Def.Stats, _c) / 100f);
         if (atk.Has(TraitTable.CatchBreath) && atk.StaminaPct >= 0.80f) isCrit = true; // 숨고르기: ST≥80% 확정 크리
+        if (_now < atk.SkillNextLightCritUntil && atk.MotionKindNow == MotionKind.Light)
+        { isCrit = true; atk.SkillNextLightCritUntil = 0f; }   // 그림자 보([7]): 다음 약공 확정 크리(1회)
         var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum,
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
@@ -1149,10 +1189,14 @@ public sealed class MatchSim
     private bool TrySkillActivate(FighterRuntime f, FighterRuntime opp)
     {
         if (f.ActiveSkill is not { } sp) return false;
+        if (f.SkillExecStrikeAt > 0f) return true;   // 심판의 일격 차지 중 = 무방비 정지(그 틱 행동 소비)
         if (_now < f.SkillReadyAt || _now < f.SkillBuffUntil) return false;                       // ①
         if (f.State is not (FighterState.Idle or FighterState.Move or FighterState.Guard)) return false; // ②
-        if (sp.StCost > 0f && (f.IsExhausted || f.Stamina < sp.StCost)) return false;             // ③
+        if (sp.StCost > 0f && (f.IsExhausted || f.Stamina < sp.StCost)) return false;             // ③ 지침 중 ST 불가
+        if (sp.GgCost > 0f && f.GuardGauge < sp.GgCost) return false;
+        if (sp.VetoExecution && f.Def.PersonalityId == "PER_HONORABLE") return false;             // ④ 거부권([7]§8 고결 '정정당당')
         float gap = (opp.Pos - f.Pos).Length;
+        bool oppHeavyWindup = opp.State == FighterState.Windup && opp.MotionKindNow == MotionKind.Heavy;
         bool cond = sp.Trigger switch                                                             // ⑤+⑥(타당성 겸)
         {
             SkillTrigger.SelfHpBelow     => f.HpPct <= sp.Threshold && gap <= f.EffRange + 2.0f,  // 교전 가능 거리([7] 광전사 타당성)
@@ -1161,6 +1205,22 @@ public sealed class MatchSim
             // 상대 가드 중([7] 분쇄): 상대의 가드는 대개 내 공격 중이라 내 판단 틱과 안 겹친다 —
             // '직전 스윙이 막힘'(LastSwingGuarded)을 가드 유지의 근거로 함께 본다(문서 타당성: 가드/근접 유지 중).
             SkillTrigger.OppGuarding     => (opp.State == FighterState.Guard || f.LastSwingGuarded) && gap <= f.EffRange + 0.4f,
+            // 연격([7]): 게이지<임계 — 단 게이지 회복이 빨라 틱 시점엔 만충이기 일쑤 → '방금 막힘'(=게이지를 지금 깎는 중)을 등가 신호로 병행
+            SkillTrigger.OppGuardGaugeBelow => gap <= f.EffRange + 0.4f
+                                            && (opp.GuardGauge < opp.GuardGaugeMax * sp.Threshold || f.LastSwingGuarded),
+            SkillTrigger.GapBand         => gap >= sp.GapMinM && gap <= sp.GapMaxM,
+            SkillTrigger.OppHeavyWindupOrPress => oppHeavyWindup || gap < sp.Threshold,           // 강공 선딜 인지 or 근접 압박
+            SkillTrigger.OppHeavyWindupOrRecovery => oppHeavyWindup || opp.State == FighterState.Recovery,
+            // 난무([7]): 경직/가드붕괴/스태거 확정창 — 경직 순간은 내 후딜과 겹쳐 틱에 안 걸리므로 진입 후 0.5s 잔향을 인정
+            SkillTrigger.OppVulnerable   => gap <= f.EffRange + 0.4f
+                                            && (opp.State is FighterState.HitStun or FighterState.Stagger
+                                                || _now - opp.LastStunAt <= 0.5f || opp.GuardDisabled),
+            SkillTrigger.InRange         => gap <= f.EffRange + 0.2f,
+            SkillTrigger.OppExecutable   => (opp.HpPct <= sp.Threshold || opp.State is FighterState.Down or FighterState.Stagger)
+                                            && gap <= f.EffRange + 1.0f,
+            SkillTrigger.OppWindupAny    => opp.State == FighterState.Windup && gap <= opp.EffRange + 0.6f,   // 반응형([7] 최우선)
+            SkillTrigger.OppGuardingOrStunned => (opp.State is FighterState.Guard or FighterState.HitStun or FighterState.Stagger || f.LastSwingGuarded)
+                                            && gap <= f.EffRange + 1.5f,
             _ => false,
         };
         if (!cond) return false;
@@ -1170,18 +1230,136 @@ public sealed class MatchSim
         // ── 발동: 코스트 차감 + 효과 적용 + 쿨타임 + 가시화([7]§3 — 조용한 발동 금지) ──
         if (sp.StCost > 0f) f.Stamina = MathF.Max(0f, f.Stamina - sp.StCost);
         if (sp.SelfHpPctCost > 0f) f.Hp = MathF.Max(1f, f.Hp - f.HpMax * sp.SelfHpPctCost);       // HP%라 자기치사 없음
-        f.SkillBuffUntil = _now + sp.Duration;
+        if (sp.GgCost > 0f) f.GuardGauge = MathF.Max(0f, f.GuardGauge - sp.GgCost);
         f.SkillReadyAt = _now + sp.Duration + sp.CooldownSec;
-        f.SkillAtkBonus = sp.AtkPerMissingHpPct > 0f
-            ? MathF.Min(sp.AtkCap, sp.AtkPerMissingHpPct * (1f - f.HpPct) * 100f) : 0f;           // 광전사: 발동 시점 스냅샷
-        if (sp.CounterWindowAdd != 0f)                                                            // 결투의 격: Override 파이프([7]§2 가산·만료 롤백)
-            f.Overrides.Add(new ActiveOverride
-            {
-                Mods = new[] { ParamMod.Add(TParam.CounterWindow, sp.CounterWindowAdd) },
-                ExpiresAt = _now + sp.Duration, ReasonTag = sp.ReasonTag,
-            });
         Emit(new Decision(_now, f.Index, "SKILL_" + sp.ReasonTag, "Skill", MathF.Max(2f, sp.Duration)));
+        switch (sp.Kind)
+        {
+            case ActiveKind.Buff:
+                f.SkillBuffUntil = _now + sp.Duration;
+                f.SkillAtkBonus = sp.AtkPerMissingHpPct > 0f
+                    ? MathF.Min(sp.AtkCap, sp.AtkPerMissingHpPct * (1f - f.HpPct) * 100f) : 0f;   // 광전사: 발동 시점 스냅샷
+                if (sp.AutoPokeMult > 0f) f.SkillNextPokeAt = _now;                               // 공간 지배: 즉시 1타 가능
+                if (sp.CounterWindowAdd != 0f)                                                    // 결투의 격: Override 파이프([7]§2 가산·만료 롤백)
+                    f.Overrides.Add(new ActiveOverride
+                    {
+                        Mods = new[] { ParamMod.Add(TParam.CounterWindow, sp.CounterWindowAdd) },
+                        ExpiresAt = _now + sp.Duration, ReasonTag = sp.ReasonTag,
+                    });
+                break;
+            case ActiveKind.Stance:
+                f.SkillBuffUntil = _now + sp.Duration;
+                if (sp.FullBlock) f.SkillFullBlockUntil = _now + sp.Duration;                     // 방패 막기
+                if (sp.AutoCounter) f.SkillAutoCounterUntil = _now + sp.Duration;                 // 철벽 반격
+                break;
+            case ActiveKind.Strike:
+                DoSkillStrike(f, opp, sp);                                                        // 즉발(모션 없는 1차 구현)
+                break;
+            case ActiveKind.Charge:                                                               // 심판의 일격: 무방비 차지
+                f.SkillExecStrikeAt = _now + sp.ChargeSec;
+                f.SkillBuffUntil = _now + sp.ChargeSec;
+                if (f.State == FighterState.Move) ChangeState(f, FighterState.Idle);              // 정지(무방비)
+                break;
+        }
         return true;
+    }
+
+    /// <summary>[7]§4 즉발 타격류(모션 없는 1차 구현) — 돌진/배후 이동은 위치 세팅, 타격은 ApplyDamage 직행.</summary>
+    private void DoSkillStrike(FighterRuntime f, FighterRuntime opp, ActiveSpec sp)
+    {
+        float maxR = _c.ArenaRadius - 0.5f;
+        if (sp.DashIn)   // 쇄도 베기·방패 밀치기: 상대 앞까지 짓쳐든다(디스크 반경 존중·아레나 클램프)
+        {
+            Vec2 to = opp.Pos - f.Pos; float d = to.Length;
+            float stop = MathF.Max(0.9f, f.EffRange * 0.55f);
+            if (d > stop)
+            {
+                Vec2 np = opp.Pos - to * (stop / MathF.Max(1e-4f, d));
+                if (np.Length > maxR) np *= maxR / np.Length;
+                f.Pos = np;
+            }
+        }
+        if (sp.TeleportBehind)   // 그림자 보: 상대 배후로 — 벽이면 클램프(측면 이탈 효과). 이탈 자체가 회피를 겸한다.
+        {
+            Vec2 dir = f.Pos - opp.Pos; float d = dir.Length;
+            dir = d > 1e-4f ? dir * (1f / d) : new Vec2(1f, 0f);
+            Vec2 np = opp.Pos - dir * 1.8f;
+            if (np.Length > maxR) np *= maxR / np.Length;
+            f.Pos = np;
+            if (sp.NextLightCritSec > 0f) f.SkillNextLightCritUntil = _now + sp.NextLightCritSec;
+            return;   // 타격 없음 — 다음 약공이 본체
+        }
+        float gap = Vec2.Dist(f.Pos, opp.Pos);
+        if (gap > f.EffRange + 0.75f) return;   // 빗나감([7]§3 — 후딜 처벌 연출은 모션 트랙에서)
+        bool immune = HardCcImmune(opp);
+        bool guarding = opp.State == FighterState.Guard;
+        float mm = (sp.StrikeHeavy ? _c.MotionMultHeavy : _c.MotionMultLight) * sp.StrikeDmgMult;
+        for (int h = 0; h < sp.StrikeHits; h++)
+        {
+            bool asGuarded = guarding && sp.GuardPierce <= 0f && !sp.BashBreak;   // 관통·배쉬는 가드 감쇠 없이
+            var ctx = new CombatMath.HitContext(false, asGuarded, false, false,
+                1f + CrowdDmgBuff * f.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax), opp.IsExhausted);
+            float dmg = CombatMath.FinalDamage(f.Weapon, mm, f.Def.Stats, opp.Def.Stats, ctx, _c);
+            if (guarding && sp.GuardPierce > 0f) dmg *= sp.GuardPierce;           // 대지 강타: 가드관통 50%
+            ApplyDamage(f, opp, dmg, false, false, asGuarded);
+            if (opp.Hp <= 0f) return;
+        }
+        if (sp.KnockbackM > 0f && !immune)   // 견제 찌르기: 넉백(하이퍼아머·불퇴면 무효, 피해는 이미 적용)
+        {
+            Vec2 dir = opp.Pos - f.Pos; float d = dir.Length;
+            dir = d > 1e-4f ? dir * (1f / d) : new Vec2(1f, 0f);
+            Vec2 np = opp.Pos + dir * sp.KnockbackM;
+            if (np.Length > maxR) np *= maxR / np.Length;
+            opp.Pos = np;
+        }
+        if (sp.PullM > 0f || sp.RootSec > 0f)   // 휘감기: 멀면 끌어당김 / 가까우면 이동봉쇄(택1, [7]§4)
+        {
+            if (!immune)
+            {
+                if (gap > (sp.GapMinM + sp.GapMaxM) * 0.5f && sp.PullM > 0f)
+                {
+                    Vec2 dir = f.Pos - opp.Pos; float d = dir.Length;
+                    dir = d > 1e-4f ? dir * (1f / d) : new Vec2(1f, 0f);
+                    opp.Pos += dir * sp.PullM;
+                }
+                else if (sp.RootSec > 0f) opp.SkillRootedUntil = _now + sp.RootSec;
+            }
+        }
+        if (sp.StaggerOnHitSec > 0f && !immune && opp.State is not (FighterState.Stagger or FighterState.Down))
+        {
+            Emit(new PoiseBroken(_now, opp.Index));
+            CrowdFill(f, 5f);
+            ChangeState(opp, FighterState.Stagger, sp.StaggerOnHitSec);            // 대지 강타: 명중 시 스태거
+        }
+        if (sp.BashBreak && guarding)   // 방패 밀치기: 가드붕괴 + 다운(하이퍼아머·불퇴면 붕괴만 — [7]§2)
+        {
+            opp.GuardDisabled = true;
+            Emit(new GuardBroken(_now, opp.Index));
+            CrowdFill(f, 8f);
+            if (!immune && sp.DownSec > 0f)
+            {
+                f.Knockdowns++;
+                Emit(new KnockedDown(_now, opp.Index));
+                ChangeState(opp, FighterState.Down, sp.DownSec);
+            }
+        }
+    }
+
+    /// <summary>경직류 CC 면역([7]§2): 하이퍼아머(중량 강공 커밋 중)·불퇴의 자세·좀비(저HP).</summary>
+    private bool HardCcImmune(FighterRuntime f) =>
+        DebuffImmune(f) || SkillNow(f) is { PoiseImmune: true }
+        || (f.Weapon.HyperArmor && f.State is FighterState.Windup or FighterState.Active && f.MotionKindNow == MotionKind.Heavy);
+
+    /// <summary>심판의 일격 해결 — 1.2s 차지 후 타격(차지 중 피격 시 ApplyDamage에서 취소·CD 50%).</summary>
+    private void ResolveExecute(FighterRuntime f, FighterRuntime opp, ActiveSpec sp)
+    {
+        float gap = Vec2.Dist(f.Pos, opp.Pos);
+        if (gap > f.EffRange + 0.9f) return;   // 헛침 — 쿨타임은 정상 적용([7]§3 대처벌)
+        var ctx = new CombatMath.HitContext(false, opp.State == FighterState.Guard, false, false,
+            1f + CrowdDmgBuff * f.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax), opp.IsExhausted);
+        float dmg = CombatMath.FinalDamage(f.Weapon, _c.MotionMultHeavy * sp.ExecuteDmgMult, f.Def.Stats, opp.Def.Stats, ctx, _c);
+        if (opp.HpPct < sp.ExecuteKillPct) dmg = MathF.Max(dmg, opp.Hp + 1f);      // HP<15% 즉사
+        ApplyDamage(f, opp, dmg, true, false, opp.State == FighterState.Guard);
     }
 
     private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
@@ -1199,6 +1377,7 @@ public sealed class MatchSim
         // 무기 액티브([7]§4, 발동 중만): 광전사의 도끼 — 공격력 스냅샷 보너스 / 받피 +25%(설계된 리스크)
         if (SkillNow(atk) is not null && atk.SkillAtkBonus > 0f) dmg *= 1f + atk.SkillAtkBonus;
         if (SkillNow(def) is { } skd) dmg *= skd.DmgTakenMult;
+        if (_now < atk.SkillCounterBoostUntil) dmg *= atk.ActiveSkill?.CounterBoostMult ?? 1f;   // 방패 막기: 차단 직후 반격 +30%
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
         {
@@ -1210,6 +1389,21 @@ public sealed class MatchSim
         def.ConsecHitsTaken++;
         def.NoHitTimer = 0f;
         Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
+        // 심판의 일격 차지 취소([7]§3): 차지 중 피격 → 시전 취소·쿨타임 50%만 적용
+        if (def.SkillExecStrikeAt > 0f)
+        {
+            def.SkillExecStrikeAt = -1f; def.SkillBuffUntil = _now;
+            if (def.ActiveSkill is { } es) def.SkillReadyAt = _now + es.CooldownSec * 0.5f;
+        }
+        // 철벽 반격([7]§4 창 Ⅱ): 자세 중 최초 피격 1회 — 즉시 반격(카운터 판정). 선해제로 상호 재귀 없음.
+        if (_now < def.SkillAutoCounterUntil && def.Hp > 0f && atk.Hp > 0f)
+        {
+            def.SkillAutoCounterUntil = 0f;
+            var rctx = new CombatMath.HitContext(false, false, true, false, 1f + CrowdDmgBuff * def.CrowdMomentum,
+                _rng.Range(_c.VarianceMin, _c.VarianceMax), atk.IsExhausted);
+            ApplyDamage(def, atk, CombatMath.FinalDamage(def.Weapon, _c.MotionMultLight, def.Def.Stats, atk.Def.Stats, rctx, _c),
+                false, true, false);
+        }
         // 관중 적립: 가드칩 약함 / 크리·카운터 강함 / 결정타(KO) 피날레 보너스. (스태거·넉다운·가드붕괴는 호출부에서 추가.)
         CrowdFill(atk, (guarded ? 1f : (crit || counter) ? 6f : 2f) + (def.Hp <= 0f ? 20f : 0f));
         // 출혈: 칼날이 살을 가른 클린 히트만(가드는 막혀 출혈 없음). 도끼 전용(BleedDps>0).
@@ -1256,6 +1450,7 @@ public sealed class MatchSim
     {
         if (f.State == to) { f.StateTimer = timer; return; }
         Emit(new StateChanged(_now, f.Index, f.State, to));
+        if (to is FighterState.HitStun or FighterState.Stagger) f.LastStunAt = _now;   // 난무([7]) 확정창 프록시
         f.State = to;
         f.StateTimer = timer;
         f.StateElapsed = 0f;

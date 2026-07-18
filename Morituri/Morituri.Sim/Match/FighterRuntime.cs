@@ -74,6 +74,14 @@ public sealed class FighterRuntime
     public float SkillBuffUntil = -1f;    // 발동 효과 만료 시각
     public float SkillReadyAt;            // 재발동 가능 시각(쿨다운)
     public float SkillAtkBonus;           // 광전사의 도끼: 발동 시점 스냅샷(+0.8%/부족HP%p, 캡 +40%)
+    public float SkillFullBlockUntil;     // 방패 막기: 완전 차단 창
+    public float SkillCounterBoostUntil;  // 방패 막기: 차단 직후 반격 보너스 창
+    public float SkillAutoCounterUntil;   // 철벽 반격: 자세 창(최초 피격 1회 반격 후 소멸)
+    public float SkillNextLightCritUntil; // 그림자 보: 다음 약공 확정 크리(미사용 시 소멸)
+    public float SkillRootedUntil;        // 휘감기: 이동봉쇄
+    public float SkillNextPokeAt;         // 공간 지배: 다음 자동 견제 가능 시각
+    public float SkillExecStrikeAt = -1f; // 심판의 일격: 차지 완료(타격) 시각 — 차지 중 무방비
+    public float LastStunAt = -99f;       // 마지막 경직(HitStun/Stagger) 진입 시각 — 난무의 '확정 히트 창' 근사
 
     public bool Has(string traitId) => Traits.Contains(traitId);
     public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)
