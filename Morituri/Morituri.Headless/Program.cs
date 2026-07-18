@@ -31,6 +31,12 @@ if (args.Length > 0 && args[0] == "oddsprobe")
     return;
 }
 
+if (args.Length > 0 && args[0] == "skillprobe")
+{
+    SkillProbe.Run(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 60);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "designlint")
 {
     Environment.Exit(DesignLint.Run(args));

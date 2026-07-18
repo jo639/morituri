@@ -83,6 +83,17 @@ public sealed class FighterRuntime
     public float SkillExecStrikeAt = -1f; // 심판의 일격: 차지 완료(타격) 시각 — 차지 중 무방비
     public float LastStunAt = -99f;       // 마지막 경직(HitStun/Stagger) 진입 시각 — 난무의 '확정 히트 창' 근사
 
+    // 성격 패시브([7]§5) — 조건 충족 시 자동 proc. 미장착이면 전부 기본값 = 매트릭스 무영향.
+    public Data.PassiveSpec? Passive;     // 장착된 proc형 패시브(첫 하나만)
+    public float PassiveReadyAt;          // proc 쿨다운
+    public float PassiveBuffUntil = -1f;  // 시한 효과 만료
+    public int   PassiveStacks;           // 투지·관중몰이 스택
+    public float PassiveStackExpiry;      // 스택 만료(투지)
+    public int   FearStacks;              // 공포 군림: 이 선수가 받는 공포 단계
+    public float FearHpMark = 1f;         // 공포 군림: 마지막 공포 부여 시점의 HP 비율
+    public float DodgeRefundPct;          // 생존 본능: 회피 성공 시 스태미나 환급 비율(창 열림 중)
+    public float DodgeIFrameBonus;        // 생존 본능: 회피 무적 연장(창 열림 중)
+
     public bool Has(string traitId) => Traits.Contains(traitId);
     public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)
 

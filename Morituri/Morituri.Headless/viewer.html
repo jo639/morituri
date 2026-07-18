@@ -254,7 +254,12 @@ const TAGKR = { SHOWTIME:'쇼타임 · 화려한 강공', TAUNT:'도발', ENRAGE
 // 무기 액티브([7]§4) reasonTag → 한글 — 발동 가시화(금빛 배지)
 const SKILLKR = { DUELIST:'결투의 격', SUNDER:'분쇄 일격', BERSERK:'광전사의 도끼', UNBROKEN:'불퇴의 자세',
   COMBO:'연격', LUNGE:'견제 찌르기', RIPOSTE:'철벽 반격', CHARGE:'쇄도 베기', FLURRY:'난무', MIRAGE:'그림자 보',
-  SMASH:'대지 강타', EXECUTE:'심판의 일격', ENTANGLE:'휘감기', ZONELOCK:'공간 지배', BULWARK:'방패 막기', SHIELDBASH:'방패 밀치기' };
+  SMASH:'대지 강타', EXECUTE:'심판의 일격', ENTANGLE:'휘감기', ZONELOCK:'공간 지배', BULWARK:'방패 막기', SHIELDBASH:'방패 밀치기',
+  // 성격 패시브([7]§5) proc
+  COMPOSE:'침착', READ:'전장 분석', FERVOR:'투지', LASTSTAND:'최후의 발악', LEISURE:'여유', IMPERIAL:'황제의 위압',
+  FAIRFIGHT:'정정당당', CHIVALRY:'기사도의 보답', SURVIVE:'생존 본능', BACKSTAB:'기회의 일격', CROWD:'관중몰이',
+  SHOWTIME:'쇼타임', EXPLOIT:'약점 포착', VULTURE:'어부지리', BLOODLUST:'피의 갈증', TERROR:'공포 군림',
+  NERVE:'배짱', COMEBACK:'역전의 영웅', GUARDED:'방비', FORESEE:'함정 간파' };
 // 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
 const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
 let winTextA = '', winTextB = '', winnerRevealed = false, matchEndPosted = false;
@@ -1122,10 +1127,13 @@ function render(){
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
     const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동 — 모션 없이 라벨로만 인지
+    const isPasv=d.tag&&d.tag.startsWith('PASV_');    // 성격 패시브([7]§5) proc
     const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
       : isSkill ? '스킬 발동 — '+(SKILLKR[d.tag.slice(6)]||d.tag.slice(6))
+      : isPasv ? (SKILLKR[d.tag.slice(5)]||d.tag.slice(5))
       : (TAGKR[d.tag]||d.tag); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
-    if (isSkill) ctx.fillStyle='#c9a84c';   // 스킬은 금빛 배지 — 지시·감정과 구분
+    if (isSkill) ctx.fillStyle='#c9a84c';   // 액티브 = 금빛 배지 — 지시·감정과 구분
+    else if (isPasv) ctx.fillStyle='#9bc4ec';   // 패시브 = 푸른 배지
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 

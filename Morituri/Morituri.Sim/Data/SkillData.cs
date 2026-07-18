@@ -66,13 +66,65 @@ public sealed record ActiveSpec(
     float ChargeSec = 0f, float ExecuteDmgMult = 0f, float ExecuteKillPct = 0f,
     bool VetoExecution = false);            // 거부권 대상([7]§8 — 고결은 처형류 발동 거부
 
+/// <summary>성격 패시브 proc 조건([7]§5) — 대부분 상황 반응형(상시형은 Always).</summary>
+public enum PassiveTrigger
+{
+    None,
+    Always,             // 상시(정정당당·방비) — TraitDef 정적분 + AggressionAdd 영구 Override
+    OnHitStun,          // 피격 경직 진입 (침착)
+    Periodic,           // 내부 CD 주기 자동 (전장 분석)
+    ConsecHitsTaken,    // 연속 피격 ≥ 임계 (투지)
+    SelfHpBelow,        // 자기 HP ≤ 임계 (최후의 발악)
+    SelfHpAboveWinning, // 자기 HP ≥ 임계 & 우세 (여유)
+    HpDeficit,          // HP 열세 ≥ 임계%p (기사도의 보답)
+    TimeLowAndLosing,   // 잔여 시간 ≤ 임계 & 열세 (역전의 영웅)
+    AfterTaunt,         // 도발 성공 직후 (황제의 위압)
+    OppHeavyWindup,     // 상대 강공 선딜 인지 (생존 본능)
+    OppRecovery,        // 상대 후딜/등 노출 (기회의 일격)
+    OppVulnerable,      // 상대 가드붕괴·지침·스태거 (약점 포착)
+    OppHpBelow,         // 상대 HP ≤ 임계 (어부지리)
+    OnDealHit,          // 가격 순간 (피의 갈증 — 출혈/저HP 상대 조건은 필드로)
+    OppHpStep,          // 상대 HP가 임계 단위로 떨어질 때마다 (공포 군림)
+    AfterHeavySwing,    // 강공·도박 행동 후 (배짱)
+    OnCritOrHeavyOrTaunt, // 크리·강공 마무리·도발 (관중몰이)
+    CrowdStackFull,     // 군중 스택 최대 (쇼타임)
+    OppSkillActivated,  // 상대 액티브 발동 직후 (함정 간파)
+}
+
+/// <summary>
+/// [7]§5 성격 패시브 명세 — <b>조건 충족 시 자동 proc</b>(플레이어 조작 없음).
+/// 효과는 시한 배율·1회 플래그·스택. 상시형(Always)은 TraitDef 정적분과 병행.
+/// </summary>
+public sealed record PassiveSpec(
+    string ReasonTag,
+    PassiveTrigger Trigger, float Threshold = 0f, float Prob = 1f,
+    float ProcCdSec = 0f, float Duration = 0f,
+    float StCost = 0f,
+    // 자기 버프
+    float DmgDealtMult = 1f, float DmgTakenMult = 1f, float MoveMult = 1f,
+    float AtkSpeedMult = 1f, float RecoveryMult = 1f, float IdleRegenMult = 1f,
+    float CounterWindowAdd = 0f, float PerceptMult = 1f, float CritAdd = 0f,
+    float AggressionAdd = 0f,
+    // 스택형(투지·관중몰이)
+    int StackMax = 0, float PerStackDmg = 0f,
+    // 특수 거동
+    bool ClearDebuffs = false,      // 침착: 분노·도발 override 해제
+    bool ForceCrit = false,         // 기회의 일격: 확정 크리
+    float CritDmgMult = 1f,
+    float DodgeIFrameAdd = 0f, float DodgeRefundPct = 0f,   // 생존 본능
+    float LifestealPct = 0f, float LifestealOppHpBelow = 0f, // 피의 갈증
+    float FearAggPerStack = 0f, int FearStackMax = 0,        // 공포 군림(상대에게 누적)
+    bool DashStrike = false,        // 어부지리: 즉발 처형 대시
+    bool VetoExecution = false);    // 정정당당: 처형류 거부권([7]§8)
+
 public sealed record SkillDef(
-    TraitDef Def,               // 효과 본체(패시브) 또는 식별자(액티브 — 배율 전부 1)
+    TraitDef Def,               // 효과 본체(패시브 정적분) 또는 식별자(액티브 — 배율 전부 1)
     string GatePersonality,     // 패시브 = 성격 결합([7]§5). 액티브는 무기 게이트(GateWeapon)라 빈 문자열
     int RankTier,               // Ⅰ=1(전 천부) / Ⅱ=2(집정관 이상 — [6]§1.5 접근권)
     string Desc,
     ActiveSpec? Active = null,  // null=패시브
-    string? GateWeapon = null); // 액티브 = 무기 결합([7]§4 "무기별 액티브 2개")
+    string? GateWeapon = null,  // 액티브 = 무기 결합([7]§4 "무기별 액티브 2개")
+    PassiveSpec? Passive = null); // [7]§5 proc형 패시브 명세
 
 public static class SkillTable
 {
@@ -81,20 +133,95 @@ public static class SkillTable
 
     public static readonly SkillDef[] All =
     {
-        // ── Ⅰ급 (전 천부) — 성격당 1종, 타고난 특성의 절반 이하 강도 ──
-        new(new TraitDef("SKL_READ",    "간파(스킬)",    PerceptDelayAdd: -0.04f),                       "PER_CALM",        1, "상대의 예비동작을 읽는다 — 인지지연 −0.04s"),
-        new(new TraitDef("SKL_RUSH",    "저돌(스킬)",    MoveSpeedMult: 1.06f),                          "PER_RECKLESS",    1, "생각보다 몸이 먼저 — 이동속도 +6%"),
-        new(new TraitDef("SKL_LEISURE", "여유(스킬)",    StamRegenMult: 1.15f),                          "PER_ARROGANT",    1, "서두르지 않는 자의 호흡 — 스태미나 회복 +15%"),
-        new(new TraitDef("SKL_AEGIS",   "수호자(스킬)",  GuardDamageMult: 0.80f),                        "PER_HONORABLE",   1, "정면으로 받아낸다 — 가드 시 받는 피해 −20%"),
-        new(new TraitDef("SKL_SURVIVE", "생존술(스킬)",  DamageTakenMult: 0.96f, DodgeCostMult: 0.85f),  "PER_COWARD",      1, "맞지 않는 것이 이기는 것 — 받피 −4%·회피 소모 −15%"),
-        new(new TraitDef("SKL_VIGOR",   "살육의 활력(스킬)", StaminaMaxMult: 1.10f),                     "PER_CRUEL",       1, "피 냄새가 힘이 된다 — 스태미나 최대 +10%"),
-        new(new TraitDef("SKL_NERVE",   "배짱(스킬)",    PoiseMaxMult: 1.12f),                           "PER_BOLD",        1, "물러서지 않는 심장 — 포이즈 +12%"),
-        new(new TraitDef("SKL_ECONOMY", "절제(스킬)",    DodgeCostMult: 0.70f),                          "PER_WARY",        1, "낭비 없는 몸놀림 — 회피 스태미나 소모 −30%"),
-        new(new TraitDef("SKL_FLAIR",   "무대 장악(스킬)", MoveSpeedMult: 1.04f, RangeAdd: 0.08f),       "PER_SHOWMAN",     1, "관중이 보는 각도를 안다 — 이속 +4%·간격 +0.08"),
-        new(new TraitDef("SKL_ANGLE",   "노림수(스킬)",  PerceptDelayAdd: -0.03f, MoveSpeedMult: 1.03f), "PER_OPPORTUNIST", 1, "허점이 열리는 순간을 기다린다 — 인지 −0.03s·이속 +3%"),
-        // ── Ⅱ급 (집정관 이상) — 더 강하지만 접근권이 좁다 ──
-        new(new TraitDef("SKL_READ2",   "전장 분석(스킬)", PerceptDelayAdd: -0.08f),                     "PER_CALM",        2, "전장 전체가 느리게 보인다 — 인지지연 −0.08s"),
-        new(new TraitDef("SKL_BULWARK", "불괴(스킬)",    GuardDamageMult: 0.65f, MoveSpeedMult: 0.96f),  "PER_HONORABLE",   2, "무너지지 않는 방벽 — 가드 받피 −35%·이속 −4%"),
+        // ── 성격 패시브([7]§5, 10성격 × 2) — 조건 충족 시 자동 proc. 각 성격의 두 번째가 Ⅱ급(집정관+).
+        // 냉철
+        new(new TraitDef("SKL_COMPOSE", "침착(스킬)"), "PER_CALM", 1,
+            "흔들리지 않는다 — 피격 경직 시 35%로 분노·도발 상태를 즉시 떨쳐낸다 (proc CD 6s · 主RCT)",
+            Passive: new PassiveSpec("COMPOSE", PassiveTrigger.OnHitStun, Prob: 0.35f, ProcCdSec: 6f, ClearDebuffs: true)),
+        new(new TraitDef("SKL_READ", "전장 분석(스킬)"), "PER_CALM", 2,
+            "전장 전체가 느리게 보인다 — 8초마다 3초간 인지지연 −50%·카운터 창 +0.2 (集정관+ · 主RCT)",
+            Passive: new PassiveSpec("READ", PassiveTrigger.Periodic, ProcCdSec: 8f, Duration: 3f,
+                PerceptMult: 0.5f, CounterWindowAdd: 0.2f)),
+        // 충동
+        new(new TraitDef("SKL_FERVOR", "투지(스킬)"), "PER_RECKLESS", 1,
+            "맞을수록 뜨거워진다 — 연속 2회 피격 시 4초간 공격력 +15%(최대 2중첩 +30%) (proc CD 5s · 主ATK)",
+            Passive: new PassiveSpec("FERVOR", PassiveTrigger.ConsecHitsTaken, Threshold: 2f, ProcCdSec: 5f,
+                Duration: 4f, StackMax: 2, PerStackDmg: 0.15f)),
+        new(new TraitDef("SKL_LASTSTAND", "최후의 발악(스킬)"), "PER_RECKLESS", 2,
+            "죽기 직전이 가장 빠르다 — HP 25% 이하에서 이속 +40%·공속 +25%, 받는 피해 +25% (集정관+ · 主SPD)",
+            Passive: new PassiveSpec("LASTSTAND", PassiveTrigger.SelfHpBelow, Threshold: 0.25f,
+                MoveMult: 1.40f, AtkSpeedMult: 1.25f, DmgTakenMult: 1.25f)),
+        // 오만
+        new(new TraitDef("SKL_LEISURE", "여유(스킬)"), "PER_ARROGANT", 1,
+            "서두를 이유가 없다 — HP 60% 이상이고 우세할 때 정지 회복 +50% (主—)",
+            Passive: new PassiveSpec("LEISURE", PassiveTrigger.SelfHpAboveWinning, Threshold: 0.60f, IdleRegenMult: 1.5f)),
+        new(new TraitDef("SKL_IMPERIAL", "황제의 위압(스킬)"), "PER_ARROGANT", 2,
+            "조롱이 곧 권위다 — 도발 성공 직후 5초간 크리율 +15%, 상대 분노 2배 (集정관+ · 主ATK)",
+            Passive: new PassiveSpec("IMPERIAL", PassiveTrigger.AfterTaunt, Duration: 5f, CritAdd: 0.15f)),
+        // 고결
+        new(new TraitDef("SKL_FAIRFIGHT", "정정당당(스킬)", GuardDamageMult: 0.75f, PoiseMaxMult: 1.20f), "PER_HONORABLE", 1,
+            "정면으로만 이긴다 — 가드 효율 +25%·포이즈 +20% / 다운·빈사 상대 처형 거부 (主DEF)",
+            Passive: new PassiveSpec("FAIRFIGHT", PassiveTrigger.Always, VetoExecution: true)),
+        new(new TraitDef("SKL_CHIVALRY", "기사도의 보답(스킬)"), "PER_HONORABLE", 2,
+            "불리할수록 곧게 선다 — HP가 15%p 이상 뒤질 때 전 능력 +12% (集정관+)",
+            Passive: new PassiveSpec("CHIVALRY", PassiveTrigger.HpDeficit, Threshold: 0.15f,
+                DmgDealtMult: 1.12f, MoveMult: 1.12f, AtkSpeedMult: 1.12f)),
+        // 겁쟁이
+        new(new TraitDef("SKL_SURVIVE", "생존 본능(스킬)"), "PER_COWARD", 1,
+            "죽음의 냄새를 먼저 맡는다 — 상대 강공 선딜 인지 시 회피 무적 0.45초·성공 시 스태미나 50% 환급 (proc CD 4s·ST15 · 主SPD)",
+            // [7] 초안 ST15 선불 — 창만 열고 회피가 안 나오면 순손해(skillprobe Δ −22.5%p)라 선불 폐지.
+            // 비용은 회피 자체가 이미 치르고, 이 패시브는 '성공 시 환급'만 준다(문서의 이득 부분 유지).
+            Passive: new PassiveSpec("SURVIVE", PassiveTrigger.OppHeavyWindup, ProcCdSec: 4f, Duration: 1.2f,
+                DodgeIFrameAdd: 0.15f, DodgeRefundPct: 0.5f)),
+        new(new TraitDef("SKL_BACKSTAB", "기회의 일격(스킬)"), "PER_COWARD", 2,
+            "등을 노리는 데 부끄러움은 없다 — 상대 후딜에 기습 확정 크리 ×1.6 (CD 14s · 集정관+ · 主ATK)",
+            // [7] 초안 ×2 — skillprobe Δ +25%p(과함). 확정 크리 자체가 이미 강해 배수만 낮춤.
+            Passive: new PassiveSpec("BACKSTAB", PassiveTrigger.OppRecovery, ProcCdSec: 22f, Duration: 1.5f,
+                ForceCrit: true, CritDmgMult: 1.4f)),
+        // 쇼맨
+        new(new TraitDef("SKL_CROWD", "관중몰이(스킬)"), "PER_SHOWMAN", 1,
+            "환호가 힘이 된다 — 크리·강공 마무리·도발마다 군중 1스택(최대 5), 스택당 능력 +3% (proc CD 2s)",
+            Passive: new PassiveSpec("CROWD", PassiveTrigger.OnCritOrHeavyOrTaunt, ProcCdSec: 2f,
+                StackMax: 5, PerStackDmg: 0.03f)),
+        new(new TraitDef("SKL_SHOWTIME", "쇼타임(스킬)"), "PER_SHOWMAN", 2,
+            "무대는 지금부터다 — 군중 5스택을 태워 8초간 전 능력 +20% (CD 30s · 集정관+ · 主ATK)",
+            Passive: new PassiveSpec("SHOWTIME", PassiveTrigger.CrowdStackFull, ProcCdSec: 30f, Duration: 8f,
+                DmgDealtMult: 1.20f, MoveMult: 1.20f, AtkSpeedMult: 1.20f)),
+        // 기회주의자
+        new(new TraitDef("SKL_EXPLOIT", "약점 포착(스킬)"), "PER_OPPORTUNIST", 1,
+            "무너진 곳만 친다 — 가드붕괴·지침·스태거 상대에게 주는 피해 +15% (主ATK)",
+            // [7] 초안은 +30% — 상시조건이 자주 참이라 skillprobe Δ +42.5%p(위험). 절반으로 낮춰 정상권.
+            Passive: new PassiveSpec("EXPLOIT", PassiveTrigger.OppVulnerable, DmgDealtMult: 1.08f)),
+        new(new TraitDef("SKL_VULTURE", "어부지리(스킬)"), "PER_OPPORTUNIST", 2,
+            "빈사의 살점을 채간다 — 상대 HP 20% 이하에서 처형 대시 강공 (ST25 / CD18s · 集정관+ · 主SPD)",
+            Passive: new PassiveSpec("VULTURE", PassiveTrigger.OppHpBelow, Threshold: 0.20f, Prob: 0.7f,
+                ProcCdSec: 18f, StCost: 25f, DashStrike: true)),
+        // 잔혹
+        new(new TraitDef("SKL_BLOODLUST", "피의 갈증(스킬)"), "PER_CRUEL", 1,
+            "피를 마신다 — 출혈 중이거나 HP 30% 이하인 상대를 가격하면 피해의 20% 흡혈 (proc CD 3s · 主ATK)",
+            Passive: new PassiveSpec("BLOODLUST", PassiveTrigger.OnDealHit, ProcCdSec: 3f,
+                LifestealPct: 0.20f, LifestealOppHpBelow: 0.30f)),
+        new(new TraitDef("SKL_TERROR", "공포 군림(스킬)"), "PER_CRUEL", 2,
+            "존재만으로 얼어붙는다 — 상대 HP가 25%씩 깎일 때마다 공포 누적(공격성 −0.15, 최대 3단) (集정관+)",
+            Passive: new PassiveSpec("TERROR", PassiveTrigger.OppHpStep, Threshold: 0.25f,
+                FearAggPerStack: -0.15f, FearStackMax: 3)),
+        // 대담
+        new(new TraitDef("SKL_NERVE", "배짱(스킬)"), "PER_BOLD", 1,
+            "휘두른 뒤가 짧다 — 강공 뒤 후딜 −25% (proc CD 5s)",
+            Passive: new PassiveSpec("NERVE", PassiveTrigger.AfterHeavySwing, ProcCdSec: 5f, Duration: 2f,
+                RecoveryMult: 0.75f)),
+        new(new TraitDef("SKL_COMEBACK", "역전의 영웅(스킬)"), "PER_BOLD", 2,
+            "끝이 보일 때 타오른다 — 잔여 시간 25% 이하에서 뒤지고 있으면 전 능력 +18% (集정관+)",
+            Passive: new PassiveSpec("COMEBACK", PassiveTrigger.TimeLowAndLosing, Threshold: 0.25f,
+                DmgDealtMult: 1.18f, MoveMult: 1.18f, AtkSpeedMult: 1.18f)),
+        // 신중
+        new(new TraitDef("SKL_GUARDED", "방비(스킬)", DodgeCostMult: 0.60f, GuardDamageMult: 0.85f), "PER_WARY", 1,
+            "지지 않는 것이 먼저다 — 가드·회피 소모 −40%·가드 효율 +15% / 공격성 −0.15 (主DEF)",
+            Passive: new PassiveSpec("GUARDED", PassiveTrigger.Always, AggressionAdd: -0.15f)),
+        new(new TraitDef("SKL_FORESEE", "함정 간파(스킬)"), "PER_WARY", 2,
+            "오의를 읽는다 — 상대가 액티브를 쓴 직후 1초간 카운터 창 +0.4·피해 +25% (CD 10s · 集정관+ · 主RCT)",
+            Passive: new PassiveSpec("FORESEE", PassiveTrigger.OppSkillActivated, ProcCdSec: 10f, Duration: 1f,
+                CounterWindowAdd: 0.4f, DmgDealtMult: 1.25f)),
 
         // ── 무기 액티브([7]§4 카탈로그, 8무기 × 2) — 전용 모션 없이 기존 프리미티브로 전량 구현.
         //    코스트/CD/확률/트리 = 문서 수치. 공간 수치는 ×1.5 현행 스케일 환산. 전용 연출은 애니메이션 트랙에서.

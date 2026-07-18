@@ -100,8 +100,8 @@ public sealed class MatchSim
                 { consumed0 = TacticInterrupts(_f[p0]); consumed1 = TacticInterrupts(_f[p1]); }
             // 유틸리티 행동층 = 선수별 지터 박자(평균=DecisionTickSec, 폭만 흔듦). 둘이 겹칠 때만 parity 순서 교대.
             // [7]§1: 장착 액티브는 일반 SelectAction보다 먼저 평가 — 발동 시 그 틱의 일반 행동 생략.
-            if (_tick >= _f[p0].NextDecisionTick) { if (!consumed0 && !TrySkillActivate(_f[p0], _f[p1])) TacticAction(_f[p0]); ScheduleNextDecision(_f[p0]); }
-            if (_tick >= _f[p1].NextDecisionTick) { if (!consumed1 && !TrySkillActivate(_f[p1], _f[p0])) TacticAction(_f[p1]); ScheduleNextDecision(_f[p1]); }
+            if (_tick >= _f[p0].NextDecisionTick) { TickPassives(_f[p0], _f[p1]); if (!consumed0 && !TrySkillActivate(_f[p0], _f[p1])) TacticAction(_f[p0]); ScheduleNextDecision(_f[p0]); }
+            if (_tick >= _f[p1].NextDecisionTick) { TickPassives(_f[p1], _f[p0]); if (!consumed1 && !TrySkillActivate(_f[p1], _f[p0])) TacticAction(_f[p1]); ScheduleNextDecision(_f[p1]); }
             _f[0].PrevPos = _f[0].Pos; _f[1].PrevPos = _f[1].Pos;  // 이동 전 위치 — 충돌 귀속용
             FsmAdvance(_f[p0]); FsmAdvance(_f[p1]);
             ResolveCollision();   // Disc 충돌: 두 점유 공간(2×r) 통과·교환 금지
@@ -170,6 +170,17 @@ public sealed class MatchSim
                 // 무기 액티브([7]§4): 장착된 액티브는 런타임에 명세를 실어둔다([7]§1 — 동시 액티브 1개).
                 if (rt.ActiveSkill == null && SkillTable.Exists(id) && SkillTable.Get(id).Active is { } asp)
                     rt.ActiveSkill = asp;
+                // 성격 패시브([7]§5): proc형 명세. 상시형의 공격성 페널티는 영구 Override로(방비).
+                if (rt.Passive == null && SkillTable.Exists(id) && SkillTable.Get(id).Passive is { } psp)
+                {
+                    rt.Passive = psp;
+                    if (psp.AggressionAdd != 0f)
+                        rt.Overrides.Add(new ActiveOverride
+                        {
+                            Mods = new[] { ParamMod.Add(TParam.Aggression, psp.AggressionAdd) },
+                            ExpiresAt = float.MaxValue, ReasonTag = psp.ReasonTag,
+                        });
+                }
             }
 
         // 감정(T10): 일시적 심리 상태를 결정 경로에만 주입 (트리거 확률 + Directive 가중치). 데미지 수식 무관.
@@ -313,7 +324,8 @@ public sealed class MatchSim
             && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe
             && SkillNow(f) is not { KiteExempt: true })   // 공간 지배([7]): 발동 중 카이팅 소모 면제
             regen = -_c.KiteStamCostPerSec;
-        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
+        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult
+                               * (PassiveNow(f) is { } prg ? prg.IdleRegenMult : 1f);   // 여유([7]§5 오만)
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
         if (f.IsExhausted) f.ExhaustTimer -= Dt;
@@ -497,17 +509,21 @@ public sealed class MatchSim
         //    성격은 WasTaunted 트리거로 이 분노를 증폭(충동)·상쇄(냉철)·반전(겁쟁이 위축)한다 (C).
         var opp = _f[1 - f.Index];
         opp.LastTauntedAt = _now;
+        // 황제의 위압([7]§5 오만): 도발 분노 2배 + 본인 크리율 버프
+        float rageMult = f.Passive is { Trigger: PassiveTrigger.AfterTaunt } ? 2f : 1f;
         opp.Overrides.Add(new ActiveOverride
         {
             Mods = new[]
             {
-                ParamMod.Add(TParam.Aggression, _c.TauntRageAggression),
-                ParamMod.Add(TParam.CommitThreshold, _c.TauntRageCommitAdd),
+                ParamMod.Add(TParam.Aggression, _c.TauntRageAggression * rageMult),
+                ParamMod.Add(TParam.CommitThreshold, _c.TauntRageCommitAdd * rageMult),
             },
             ExpiresAt = _now + _c.TauntRageDurationSec,
             ReasonTag = "RAGED",
         });
         Emit(new Decision(_now, opp.Index, "RAGED", "Strategy", _c.TauntRageDurationSec));
+        if (f.Passive is { Trigger: PassiveTrigger.AfterTaunt } pim) ProcPassive(f, pim, pim.Duration);
+        CrowdStackGain(f);   // 관중몰이: 도발
         return true;
     }
 
@@ -845,8 +861,16 @@ public sealed class MatchSim
         f.IsFeintSwing = isFeint;
         f.SwingResolved = false;
         f.LastSwingGuarded = false;
+        // 배짱([7]§5 대담): 강공을 휘두른 뒤 후딜 단축 / 관중몰이: 강공 마무리 스택
+        if (kind == MotionKind.Heavy && !isFeint)
+        {
+            if (f.Passive is { Trigger: PassiveTrigger.AfterHeavySwing } pnv && _now >= f.PassiveReadyAt)
+                ProcPassive(f, pnv, pnv.Duration);
+            CrowdStackGain(f);
+        }
         f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c)
-            / (SkillNow(f) is { AttackSpeedMult: > 1f } cwa ? cwa.AttackSpeedMult : 1f);   // 연격([7]): 공속 +35%
+            / (SkillNow(f) is { AttackSpeedMult: > 1f } cwa ? cwa.AttackSpeedMult : 1f)    // 연격([7]): 공속 +35%
+            / (PassiveNow(f) is { AtkSpeedMult: > 1f } pwa ? pwa.AtkSpeedMult : 1f); // 최후의 발악·쇼타임 등
         f.CurrentAction = action;
         if (!isFeint) { f.AttackAttempts++; f.LastAttack = action; }
         ChangeState(f, FighterState.Windup, f.WindupTotalSec);
@@ -899,7 +923,8 @@ public sealed class MatchSim
             {
                 if (_now < f.SkillRootedUntil) break;   // 휘감기([7]): 이동봉쇄 — 이동만 묶인다(행동은 가능)
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
-                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
+                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f)    // 초상비: 대시 직후 이속↑
+                            * (PassiveNow(f) is { } pmv ? pmv.MoveMult : 1f);   // 성격 패시브([7]§5)
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
                 Vec2 toOpp = PerceivedMovePos(f) - f.Pos;
                 float distO = toOpp.Length;
@@ -1030,7 +1055,9 @@ public sealed class MatchSim
                 //       × 가드됨 배율 (막힌 공격은 프레임 불리 — 방어자의 턴)
                 float recDur = atk.Weapon.RecoverySec * atk.Motion.RecoveryMult
                     * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f)
-                    / (SkillNow(atk) is { AttackSpeedMult: > 1f } cra ? cra.AttackSpeedMult : 1f);   // 연격([7]): 공속 +35%
+                    / (SkillNow(atk) is { AttackSpeedMult: > 1f } cra ? cra.AttackSpeedMult : 1f)    // 연격([7]): 공속 +35%
+                    * (PassiveNow(atk) is { } pre ? pre.RecoveryMult : 1f)                           // 배짱([7]§5): 후딜 −25%
+                    / (PassiveNow(atk) is { AtkSpeedMult: > 1f } pra ? pra.AtkSpeedMult : 1f);
                 ChangeState(atk, FighterState.Recovery, recDur);
                 // [안B] 공격 후 이탈: 카이터(창·채찍)는 후딜 후 일정 시간 후퇴 강제 → '찌르고 빠짐' 리듬.
                 if (atk.Weapon.PostAttackRetreatSec > 0f)
@@ -1047,9 +1074,13 @@ public sealed class MatchSim
         atk.SwingResolved = true;
 
         // 1) 회피 무적 프레임
-        if (ds.State == FighterState.Dodge && ds.StateElapsed <= _c.DodgeIFrameSec)
+        // 생존 본능([7]§5 겁쟁이): 창이 열려 있으면 무적 연장 + 성공 시 스태미나 환급
+        float iFrame = _c.DodgeIFrameSec + (_now < def.PassiveBuffUntil ? def.DodgeIFrameBonus : 0f);
+        if (ds.State == FighterState.Dodge && ds.StateElapsed <= iFrame)
         {
             def.Dodges++;   // 기록실 계측: 회피 성공 (흐름 무영향)
+            if (_now < def.PassiveBuffUntil && def.DodgeRefundPct > 0f)
+                def.Stamina = MathF.Min(def.StaminaMax, def.Stamina + _c.StamCostDodge * def.DodgeRefundPct);
             RegisterWhiff(atk);
             return;
         }
@@ -1118,6 +1149,11 @@ public sealed class MatchSim
         if (atk.Has(TraitTable.CatchBreath) && atk.StaminaPct >= 0.80f) isCrit = true; // 숨고르기: ST≥80% 확정 크리
         if (_now < atk.SkillNextLightCritUntil && atk.MotionKindNow == MotionKind.Light)
         { isCrit = true; atk.SkillNextLightCritUntil = 0f; }   // 그림자 보([7]): 다음 약공 확정 크리(1회)
+        if (PassiveNow(atk) is { } pcr)                        // 기회의 일격(확정 크리)·황제의 위압(크리율 +15%)
+        {
+            if (pcr.ForceCrit) { isCrit = true; atk.PassiveBuffUntil = _now; }
+            else if (pcr.CritAdd > 0f && !isCrit && _rng.Roll(pcr.CritAdd)) isCrit = true;
+        }
         var hitCtx = new CombatMath.HitContext(isCrit, false, isCounter, inner, 1f + CrowdDmgBuff * atk.CrowdMomentum,
             _rng.Range(_c.VarianceMin, _c.VarianceMax), ds.IsExhausted);
         float damage = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, hitCtx, _c);
@@ -1180,6 +1216,102 @@ public sealed class MatchSim
     /// <summary>액티브 스킬이 발동 중이면 명세를, 아니면 null. 미장착이면 언제나 null(매트릭스 무영향).</summary>
     private ActiveSpec? SkillNow(FighterRuntime f) => f.ActiveSkill is { } sp && _now < f.SkillBuffUntil ? sp : null;
 
+    /// <summary>성격 패시브 효과가 켜져 있으면 명세를, 아니면 null.</summary>
+    private PassiveSpec? PassiveNow(FighterRuntime f) => f.Passive is { } ps && _now < f.PassiveBuffUntil ? ps : null;
+
+    /// <summary>투지·관중몰이 스택 배율(만료 시 0).</summary>
+    private float StackDmgMult(FighterRuntime f)
+    {
+        if (f.Passive is not { StackMax: > 0 } ps || f.PassiveStacks <= 0) return 1f;
+        if (ps.Trigger == PassiveTrigger.ConsecHitsTaken && _now >= f.PassiveStackExpiry) { f.PassiveStacks = 0; return 1f; }
+        return 1f + ps.PerStackDmg * f.PassiveStacks;
+    }
+
+    private void ProcPassive(FighterRuntime f, PassiveSpec ps, float dur)
+    {
+        f.PassiveBuffUntil = _now + MathF.Max(dur, 0.05f);
+        if (ps.ProcCdSec > 0f) f.PassiveReadyAt = _now + ps.ProcCdSec;
+        if (ps.CounterWindowAdd != 0f)
+            f.Overrides.Add(new ActiveOverride
+            {
+                Mods = new[] { ParamMod.Add(TParam.CounterWindow, ps.CounterWindowAdd) },
+                ExpiresAt = _now + MathF.Max(dur, 0.05f), ReasonTag = ps.ReasonTag,
+            });
+        if (ps.ProcCdSec >= 3f)   // 잦은 스택형(관중몰이 2s)은 제외 — 라벨 도배 방지
+            Emit(new Decision(_now, f.Index, "PASV_" + ps.ReasonTag, "Passive", MathF.Max(2f, dur)));
+    }
+
+    /// <summary>[7]§5 성격 패시브 — 판단 틱마다 조건 평가(상시조건형은 매 틱 갱신, 이산 proc은 쿨다운).</summary>
+    private void TickPassives(FighterRuntime f, FighterRuntime opp)
+    {
+        if (f.Passive is not { } ps) return;
+        bool ready = _now >= f.PassiveReadyAt;
+        switch (ps.Trigger)
+        {
+            case PassiveTrigger.Periodic:                                     // 전장 분석
+                if (ready) ProcPassive(f, ps, ps.Duration);
+                break;
+            case PassiveTrigger.ConsecHitsTaken:                              // 투지(스택)
+                if (ready && f.ConsecHitsTaken >= (int)ps.Threshold)
+                {
+                    f.PassiveStacks = Math.Min(ps.StackMax, f.PassiveStacks + 1);
+                    f.PassiveStackExpiry = _now + ps.Duration;
+                    ProcPassive(f, ps, ps.Duration);
+                }
+                break;
+            case PassiveTrigger.SelfHpBelow:                                  // 최후의 발악(상시조건)
+                if (f.HpPct <= ps.Threshold) f.PassiveBuffUntil = _now + 0.25f;
+                break;
+            case PassiveTrigger.SelfHpAboveWinning:                           // 여유
+                if (f.HpPct >= ps.Threshold && f.HpPct > opp.HpPct) f.PassiveBuffUntil = _now + 0.25f;
+                break;
+            case PassiveTrigger.HpDeficit:                                    // 기사도의 보답
+                if (opp.HpPct - f.HpPct >= ps.Threshold) f.PassiveBuffUntil = _now + 0.25f;
+                break;
+            case PassiveTrigger.TimeLowAndLosing:                             // 역전의 영웅
+                if (_c.MatchTimeSec > 0f
+                    && (_c.MatchTimeSec - _now) / _c.MatchTimeSec <= ps.Threshold
+                    && f.HpPct < opp.HpPct) f.PassiveBuffUntil = _now + 0.25f;
+                break;
+            case PassiveTrigger.OppHeavyWindup:                               // 생존 본능
+                if (ready && !f.IsExhausted && f.Stamina >= ps.StCost
+                    && opp.State == FighterState.Windup && opp.MotionKindNow == MotionKind.Heavy)
+                {
+                    f.Stamina = MathF.Max(0f, f.Stamina - ps.StCost);
+                    f.DodgeIFrameBonus = ps.DodgeIFrameAdd; f.DodgeRefundPct = ps.DodgeRefundPct;
+                    ProcPassive(f, ps, ps.Duration);
+                }
+                break;
+            case PassiveTrigger.OppRecovery:                                  // 기회의 일격
+                if (ready && opp.State == FighterState.Recovery) ProcPassive(f, ps, ps.Duration);
+                break;
+            case PassiveTrigger.OppHpBelow:                                   // 어부지리(처형 대시 — 고결은 거부, [7]§8)
+                if (f.Def.PersonalityId == "PER_HONORABLE") break;
+                if (ready && !f.IsExhausted && f.Stamina >= ps.StCost && opp.HpPct <= ps.Threshold
+                    && f.State is FighterState.Idle or FighterState.Move && _rng.Roll(ps.Prob))
+                {
+                    f.Stamina = MathF.Max(0f, f.Stamina - ps.StCost);
+                    f.PassiveReadyAt = _now + ps.ProcCdSec;
+                    Emit(new Decision(_now, f.Index, "PASV_" + ps.ReasonTag, "Passive", 2f));
+                    DoSkillStrike(f, opp, new ActiveSpec(ps.ReasonTag, SkillTrigger.InRange, 0f, 1f, 0f, 0f,
+                        ActiveKind.Strike, DashIn: true, StrikeHeavy: true));
+                }
+                break;
+            case PassiveTrigger.CrowdStackFull:                               // 쇼타임(군중 5스택 소모)
+                if (ready && f.PassiveStacks >= 5) { f.PassiveStacks = 0; ProcPassive(f, ps, ps.Duration); }
+                break;
+        }
+    }
+
+    /// <summary>관중몰이 스택 적립([7]§5 쇼맨) — 크리·강공 마무리·도발에서 호출.</summary>
+    private void CrowdStackGain(FighterRuntime f)
+    {
+        if (f.Passive is not { Trigger: PassiveTrigger.OnCritOrHeavyOrTaunt } ps) return;
+        if (_now < f.PassiveReadyAt) return;
+        f.PassiveStacks = Math.Min(ps.StackMax, f.PassiveStacks + 1);
+        f.PassiveReadyAt = _now + ps.ProcCdSec;
+    }
+
     /// <summary>
     /// [7]§1 공통 발동 파이프라인 — 판단 틱마다 SelectAction보다 먼저 평가, 발동 시 그 틱 일반행동 생략.
     /// 트리: ①쿨타임 ②캔슬 가능 상태(Idle/Move/Guard) ③코스트(지침 중 ST 불가·자기치사 방지 [7]§3)
@@ -1194,7 +1326,9 @@ public sealed class MatchSim
         if (f.State is not (FighterState.Idle or FighterState.Move or FighterState.Guard)) return false; // ②
         if (sp.StCost > 0f && (f.IsExhausted || f.Stamina < sp.StCost)) return false;             // ③ 지침 중 ST 불가
         if (sp.GgCost > 0f && f.GuardGauge < sp.GgCost) return false;
-        if (sp.VetoExecution && f.Def.PersonalityId == "PER_HONORABLE") return false;             // ④ 거부권([7]§8 고결 '정정당당')
+        // ④ 거부권([7]§8) — 고결 성격, 또는 '정정당당' 패시브 보유자는 처형류를 쓰지 않는다
+        if (sp.VetoExecution && (f.Def.PersonalityId == "PER_HONORABLE"
+                                 || f.Passive is { VetoExecution: true })) return false;
         float gap = (opp.Pos - f.Pos).Length;
         bool oppHeavyWindup = opp.State == FighterState.Windup && opp.MotionKindNow == MotionKind.Heavy;
         bool cond = sp.Trigger switch                                                             // ⑤+⑥(타당성 겸)
@@ -1233,6 +1367,9 @@ public sealed class MatchSim
         if (sp.GgCost > 0f) f.GuardGauge = MathF.Max(0f, f.GuardGauge - sp.GgCost);
         f.SkillReadyAt = _now + sp.Duration + sp.CooldownSec;
         Emit(new Decision(_now, f.Index, "SKILL_" + sp.ReasonTag, "Skill", MathF.Max(2f, sp.Duration)));
+        // 함정 간파([7]§5 신중): 상대가 오의를 꺼낸 직후 1초 — 카운터 창 +0.4·피해 +25%
+        if (opp.Passive is { Trigger: PassiveTrigger.OppSkillActivated } pfs && _now >= opp.PassiveReadyAt)
+            ProcPassive(opp, pfs, pfs.Duration);
         switch (sp.Kind)
         {
             case ActiveKind.Buff:
@@ -1378,6 +1515,13 @@ public sealed class MatchSim
         if (SkillNow(atk) is not null && atk.SkillAtkBonus > 0f) dmg *= 1f + atk.SkillAtkBonus;
         if (SkillNow(def) is { } skd) dmg *= skd.DmgTakenMult;
         if (_now < atk.SkillCounterBoostUntil) dmg *= atk.ActiveSkill?.CounterBoostMult ?? 1f;   // 방패 막기: 차단 직후 반격 +30%
+        // ── 성격 패시브([7]§5) ──
+        dmg *= StackDmgMult(atk);                                                    // 투지·관중몰이 스택
+        if (PassiveNow(atk) is { } pa2) { dmg *= pa2.DmgDealtMult; if (crit) dmg *= pa2.CritDmgMult; }
+        if (PassiveNow(def) is { } pd2) dmg *= pd2.DmgTakenMult;                     // 최후의 발악: 받피 +25%
+        if (atk.Passive is { Trigger: PassiveTrigger.OppVulnerable } pex               // 약점 포착(상시조건)
+            && (def.GuardDisabled || def.IsExhausted || def.State == FighterState.Stagger))
+            dmg *= pex.DmgDealtMult;
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
         {
@@ -1389,6 +1533,26 @@ public sealed class MatchSim
         def.ConsecHitsTaken++;
         def.NoHitTimer = 0f;
         Emit(new HitLanded(_now, atk.Index, def.Index, dmg, crit, counter, guarded, armored));
+        // 피의 갈증([7]§5 잔혹): 출혈 중이거나 빈사인 상대를 가격하면 흡혈
+        if (atk.Passive is { Trigger: PassiveTrigger.OnDealHit } pbl && _now >= atk.PassiveReadyAt
+            && (def.BleedStacks > 0 || def.HpPct <= pbl.LifestealOppHpBelow))
+        {
+            atk.PassiveReadyAt = _now + pbl.ProcCdSec;
+            atk.Hp = MathF.Min(atk.HpMax, atk.Hp + dmg * pbl.LifestealPct);
+        }
+        // 공포 군림([7]§5 잔혹): 상대 HP가 임계 단위로 깎일 때마다 공포 1단(공격성↓, 최대 3단)
+        if (atk.Passive is { Trigger: PassiveTrigger.OppHpStep } pt
+            && def.FearStacks < pt.FearStackMax && def.HpPct <= def.FearHpMark - pt.Threshold)
+        {
+            def.FearHpMark = def.HpPct; def.FearStacks++;
+            def.Overrides.Add(new ActiveOverride
+            {
+                Mods = new[] { ParamMod.Add(TParam.Aggression, pt.FearAggPerStack) },
+                ExpiresAt = float.MaxValue, ReasonTag = pt.ReasonTag,
+            });
+            Emit(new Decision(_now, def.Index, "PASV_" + pt.ReasonTag, "Passive", 2.5f));
+        }
+        if (crit) CrowdStackGain(atk);   // 관중몰이([7]§5 쇼맨): 크리
         // 심판의 일격 차지 취소([7]§3): 차지 중 피격 → 시전 취소·쿨타임 50%만 적용
         if (def.SkillExecStrikeAt > 0f)
         {
@@ -1451,6 +1615,14 @@ public sealed class MatchSim
         if (f.State == to) { f.StateTimer = timer; return; }
         Emit(new StateChanged(_now, f.Index, f.State, to));
         if (to is FighterState.HitStun or FighterState.Stagger) f.LastStunAt = _now;   // 난무([7]) 확정창 프록시
+        // 침착([7]§5 냉철): 피격 경직 진입 시 확률로 분노·도발 상태를 떨쳐낸다
+        if (to == FighterState.HitStun && f.Passive is { Trigger: PassiveTrigger.OnHitStun, ClearDebuffs: true } pc
+            && _now >= f.PassiveReadyAt && _rng.Roll(pc.Prob))
+        {
+            f.PassiveReadyAt = _now + pc.ProcCdSec;
+            if (f.Overrides.RemoveAll(o => o.ReasonTag == "RAGED") > 0)
+                Emit(new Decision(_now, f.Index, "PASV_" + pc.ReasonTag, "Passive", 2f));
+        }
         f.State = to;
         f.StateTimer = timer;
         f.StateElapsed = 0f;
