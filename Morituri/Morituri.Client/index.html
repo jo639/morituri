@@ -192,6 +192,8 @@
   .modal{ position:absolute; inset:0; background:rgba(10,6,2,.65); display:none; align-items:center; justify-content:center; z-index:60;
           backdrop-filter:blur(2px); }
   .modal.on{ display:flex; animation:fadeIn .15s ease; }
+  /* 종료·해방 등 결정 재확인 팝업은 다른 모달(설정 z60) 안에서 열릴 수 있어 항상 그 위에 — 무대 연출(moment z85)보다는 아래 */
+  #cfModal{ z-index:80; }
   .mbox{ background:linear-gradient(180deg,rgba(210,171,85,.05),transparent 32%), var(--panel);
          border:1px solid var(--line); border-radius:var(--r3); padding:20px 22px; width:min(560px,92%);
          box-shadow:var(--sh2); }
