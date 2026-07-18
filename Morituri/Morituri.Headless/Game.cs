@@ -3653,7 +3653,12 @@ public sealed partial class Game
         if (!SkillTable.Exists(skillId)) return Err("없는 스킬");
         var sk = SkillTable.Get(skillId);
         if (g.SkillIds.Contains(skillId)) return Err("이미 익힌 스킬");
-        if (sk.GatePersonality != g.PersonalityId) return Err($"성격 불일치 — {sk.Def.Name}은(는) {sk.GatePersonality.Replace("PER_", "")} 전용");
+        // 게이트([7]): 액티브 = 무기 결합, 패시브 = 성격 결합
+        if (sk.GateWeapon != null)
+        {
+            if (sk.GateWeapon != g.WeaponId) return Err($"무기 불일치 — {sk.Def.Name}은(는) {sk.GateWeapon.Replace("WPN_", "")} 전용");
+        }
+        else if (sk.GatePersonality != g.PersonalityId) return Err($"성격 불일치 — {sk.Def.Name}은(는) {sk.GatePersonality.Replace("PER_", "")} 전용");
         if (sk.RankTier >= 2 && (int)g.Talent < SkillTable.Tier2MinTalent) return Err("Ⅱ급 스킬은 집정관 이상의 그릇만 담을 수 있다");
         if (g.TrainingPoints < 3) return Err("훈련 포인트 부족 (수련 3pt)");
         int slots = g.Talent >= TalentGrade.Champion ? 2 : 1;

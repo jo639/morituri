@@ -99,8 +99,9 @@ public sealed class MatchSim
             if (_tick % decisionTicks == 0)
                 { consumed0 = TacticInterrupts(_f[p0]); consumed1 = TacticInterrupts(_f[p1]); }
             // 유틸리티 행동층 = 선수별 지터 박자(평균=DecisionTickSec, 폭만 흔듦). 둘이 겹칠 때만 parity 순서 교대.
-            if (_tick >= _f[p0].NextDecisionTick) { if (!consumed0) TacticAction(_f[p0]); ScheduleNextDecision(_f[p0]); }
-            if (_tick >= _f[p1].NextDecisionTick) { if (!consumed1) TacticAction(_f[p1]); ScheduleNextDecision(_f[p1]); }
+            // [7]§1: 장착 액티브는 일반 SelectAction보다 먼저 평가 — 발동 시 그 틱의 일반 행동 생략.
+            if (_tick >= _f[p0].NextDecisionTick) { if (!consumed0 && !TrySkillActivate(_f[p0], _f[p1])) TacticAction(_f[p0]); ScheduleNextDecision(_f[p0]); }
+            if (_tick >= _f[p1].NextDecisionTick) { if (!consumed1 && !TrySkillActivate(_f[p1], _f[p0])) TacticAction(_f[p1]); ScheduleNextDecision(_f[p1]); }
             _f[0].PrevPos = _f[0].Pos; _f[1].PrevPos = _f[1].Pos;  // 이동 전 위치 — 충돌 귀속용
             FsmAdvance(_f[p0]); FsmAdvance(_f[p1]);
             ResolveCollision();   // Disc 충돌: 두 점유 공간(2×r) 통과·교환 금지
@@ -166,12 +167,9 @@ public sealed class MatchSim
                 rt.RangeBonus += t.RangeAdd;
                 rt.RangeMult *= t.RangeMult;
                 rt.SizeScale *= t.SizeScale;
-                // 액티브 스킬(T12 확장): 장착된 발동형은 런타임에 명세를 실어둔다(첫 하나만 — 슬롯이 2여도 발동형은 하나).
+                // 무기 액티브([7]§4): 장착된 액티브는 런타임에 명세를 실어둔다([7]§1 — 동시 액티브 1개).
                 if (rt.ActiveSkill == null && SkillTable.Exists(id) && SkillTable.Get(id).Active is { } asp)
-                {
                     rt.ActiveSkill = asp;
-                    rt.ActiveSkillName = SkillTable.Get(id).Def.Name.Replace("(스킬)", "");
-                }
             }
 
         // 감정(T10): 일시적 심리 상태를 결정 경로에만 주입 (트리거 확률 + Directive 가중치). 데미지 수식 무관.
@@ -276,26 +274,6 @@ public sealed class MatchSim
             ? MathF.Min(_c.PatienceMax, f.Patience + pDrain * 3f * Dt)   // 교전 중 빠르게 회복
             : MathF.Max(0f, f.Patience - pDrain * Dt);                    // 대치 중 감소
 
-        // 액티브 스킬(T12 확장): 조건은 전부 결정적 — 충족 순간 자동 발동(감독 개입 없음), 시한 배율만 부여.
-        if (f.ActiveSkill is { } sp && _now >= f.SkillReadyAt && _now >= f.SkillBuffUntil)
-        {
-            bool fire = sp.Trigger switch
-            {
-                ActiveTrigger.HpBelow      => f.HpPct <= sp.Threshold,
-                ActiveTrigger.StaminaBelow => f.Stamina <= f.StaminaMax * sp.Threshold,
-                ActiveTrigger.AfterDown    => f.State == FighterState.GetUp,
-                _ => false,
-            };
-            if (fire)
-            {
-                f.SkillBuffUntil = _now + sp.Duration;
-                f.SkillReadyAt = _now + sp.Duration + sp.Cooldown;
-                if (sp.StamRestore > 0f) f.Stamina = MathF.Min(f.StaminaMax, f.Stamina + sp.StamRestore);
-                // 가독성: 발동 순간을 Decision으로 방출 — 뷰어가 「스킬 발동」 라벨로 표시(모션 없음, 인지용)
-                Emit(new Decision(_now, f.Index, "SKILL_" + f.ActiveSkillName, "Skill", MathF.Max(2f, sp.Duration)));
-            }
-        }
-
         // 스태미나 (문서[4] 6장)
         float regen = f.State switch
         {
@@ -310,8 +288,7 @@ public sealed class MatchSim
         if (f.Weapon.Range >= _c.KiteCostMinRange && f.State == FighterState.Move
             && f.CurrentAction is ActionRequest.Retreat or ActionRequest.Strafe)
             regen = -_c.KiteStamCostPerSec;
-        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult
-                               * (SkillNow(f) is { } sk ? sk.StamRegenMult : 1f);
+        if (regen > 0f) regen *= f.Dir.StamRegenMult * f.StamRegenTraitMult;
         f.Stamina = Math.Clamp(f.Stamina + regen * Dt, 0f, f.StaminaMax);
 
         if (f.IsExhausted) f.ExhaustTimer -= Dt;
@@ -895,8 +872,7 @@ public sealed class MatchSim
             case FighterState.Move:
             {
                 float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
-                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f)    // 초상비: 대시 직후 이속↑
-                            * (SkillNow(f) is { } skm ? skm.MoveMult : 1f); // 액티브 스킬(발동 중만)
+                            * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f);   // 초상비: 대시 직후 이속↑
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
                 Vec2 toOpp = PerceivedMovePos(f) - f.Pos;
                 float distO = toOpp.Length;
@@ -1077,7 +1053,16 @@ public sealed class MatchSim
             float dmg = CombatMath.FinalDamage(atk.Weapon, motionMult, atk.Def.Stats, def.Def.Stats, ctx, _c);
             ApplyDamage(atk, def, dmg, false, false, true);
 
-            if (gr.IsGuardBreak)
+            // 분쇄 일격([7]§4 도끼 Ⅰ): 버프 보유 중 강공이 가드에 닿으면 무조건 가드파괴 + 출혈. 버프 1회 소모.
+            // 예외([7]): 방패 막기 완전가드는 관통 무시 — 완전가드는 미탑재라 현재는 패링(위에서 이미 무효)이 그 역할.
+            bool sunder = SkillNow(atk) is { SunderNextHeavy: true } && atk.MotionKindNow == MotionKind.Heavy;
+            if (sunder)
+            {
+                atk.SkillBuffUntil = -1f;      // 1회 소모
+                ApplyBleed(atk, def);          // 출혈 라이더 — 기존 스택 모델로 매핑(도끼 BleedDps 기준)
+            }
+
+            if (gr.IsGuardBreak || sunder)
             {
                 def.GuardDisabled = true;
                 Emit(new GuardBroken(_now, def.Index));
@@ -1126,6 +1111,14 @@ public sealed class MatchSim
             ChangeState(def, FighterState.Down, _c.DownDurationSec);
             return;
         }
+        // 불퇴의 자세([7]§4 대검 Ⅱ): 포이즈 무한 — 스태거/넉백 면역(피해·히트스턴·가드붕괴·다운은 정상).
+        // (강공 차지 −30% 라이더는 모션 시간 계층이라 애니메이션 트랙에서.)
+        if (SkillNow(def) is { PoiseImmune: true })
+        {
+            if (def.State is not (FighterState.Stagger or FighterState.Down or FighterState.GetUp))
+                ChangeState(def, FighterState.HitStun, CombatMath.ApplyPoiseDamage(def.Poise, def.PoiseMax, atk.Weapon, motionMult, ds.IsExhausted, _c).StunSec);
+            return;
+        }
         var pr = CombatMath.ApplyPoiseDamage(def.Poise, def.PoiseMax, atk.Weapon, motionMult, ds.IsExhausted, _c);
         def.Poise = pr.PoiseAfter;
         def.PoiseRegenBlockTimer = _c.PoiseRecoverDelaySec;
@@ -1147,6 +1140,50 @@ public sealed class MatchSim
     /// <summary>액티브 스킬이 발동 중이면 명세를, 아니면 null. 미장착이면 언제나 null(매트릭스 무영향).</summary>
     private ActiveSpec? SkillNow(FighterRuntime f) => f.ActiveSkill is { } sp && _now < f.SkillBuffUntil ? sp : null;
 
+    /// <summary>
+    /// [7]§1 공통 발동 파이프라인 — 판단 틱마다 SelectAction보다 먼저 평가, 발동 시 그 틱 일반행동 생략.
+    /// 트리: ①쿨타임 ②캔슬 가능 상태(Idle/Move/Guard) ③코스트(지침 중 ST 불가·자기치사 방지 [7]§3)
+    ///       ④거부권(1차 탑재분엔 처형류 없음 — 심판의 일격 등 탑재 시 검사) ⑤조건 게이트 ⑥전술 타당성 ⑦확률 롤.
+    /// 발동은 장착 시에만 평가·롤 — 미장착 세계의 RNG 수열 불변(매트릭스 안전).
+    /// </summary>
+    private bool TrySkillActivate(FighterRuntime f, FighterRuntime opp)
+    {
+        if (f.ActiveSkill is not { } sp) return false;
+        if (_now < f.SkillReadyAt || _now < f.SkillBuffUntil) return false;                       // ①
+        if (f.State is not (FighterState.Idle or FighterState.Move or FighterState.Guard)) return false; // ②
+        if (sp.StCost > 0f && (f.IsExhausted || f.Stamina < sp.StCost)) return false;             // ③
+        float gap = (opp.Pos - f.Pos).Length;
+        bool cond = sp.Trigger switch                                                             // ⑤+⑥(타당성 겸)
+        {
+            SkillTrigger.SelfHpBelow     => f.HpPct <= sp.Threshold && gap <= f.EffRange + 2.0f,  // 교전 가능 거리([7] 광전사 타당성)
+            SkillTrigger.EvenFight       => MathF.Abs(f.HpPct - opp.HpPct) <= sp.Threshold && gap <= f.EffRange * 1.3f, // 호각·근접 지속
+            SkillTrigger.ConsecHitsTaken => f.ConsecHitsTaken >= (int)sp.Threshold,
+            // 상대 가드 중([7] 분쇄): 상대의 가드는 대개 내 공격 중이라 내 판단 틱과 안 겹친다 —
+            // '직전 스윙이 막힘'(LastSwingGuarded)을 가드 유지의 근거로 함께 본다(문서 타당성: 가드/근접 유지 중).
+            SkillTrigger.OppGuarding     => (opp.State == FighterState.Guard || f.LastSwingGuarded) && gap <= f.EffRange + 0.4f,
+            _ => false,
+        };
+        if (!cond) return false;
+        // ⑦ 확률 롤 — 인내심 낮을수록 공격 충동↑([7]§1-7 patienceMod 준용)
+        float patienceMod = 1f + (1f - f.Patience / _c.PatienceMax) * 0.5f;
+        if (!_rng.Roll(MathF.Min(0.95f, sp.Prob * patienceMod))) return false;
+        // ── 발동: 코스트 차감 + 효과 적용 + 쿨타임 + 가시화([7]§3 — 조용한 발동 금지) ──
+        if (sp.StCost > 0f) f.Stamina = MathF.Max(0f, f.Stamina - sp.StCost);
+        if (sp.SelfHpPctCost > 0f) f.Hp = MathF.Max(1f, f.Hp - f.HpMax * sp.SelfHpPctCost);       // HP%라 자기치사 없음
+        f.SkillBuffUntil = _now + sp.Duration;
+        f.SkillReadyAt = _now + sp.Duration + sp.CooldownSec;
+        f.SkillAtkBonus = sp.AtkPerMissingHpPct > 0f
+            ? MathF.Min(sp.AtkCap, sp.AtkPerMissingHpPct * (1f - f.HpPct) * 100f) : 0f;           // 광전사: 발동 시점 스냅샷
+        if (sp.CounterWindowAdd != 0f)                                                            // 결투의 격: Override 파이프([7]§2 가산·만료 롤백)
+            f.Overrides.Add(new ActiveOverride
+            {
+                Mods = new[] { ParamMod.Add(TParam.CounterWindow, sp.CounterWindowAdd) },
+                ExpiresAt = _now + sp.Duration, ReasonTag = sp.ReasonTag,
+            });
+        Emit(new Decision(_now, f.Index, "SKILL_" + sp.ReasonTag, "Skill", MathF.Max(2f, sp.Duration)));
+        return true;
+    }
+
     private void ApplyDamage(FighterRuntime atk, FighterRuntime def, float dmg, bool crit, bool counter, bool guarded, bool armored = false)
     {
         // 선취점: 첫 클린 히트(가드 제외) ×1.25 + 본인에 흡수 쉴드 부여(다음 피격 완충).
@@ -1159,8 +1196,8 @@ public sealed class MatchSim
         }
         dmg *= def.DamageTakenMult;   // 받피 특성 (유리몸·질긴가죽·둔감)
         if (guarded) dmg *= def.GuardDamageMult;   // 봉쇄자: 가드 시 추가 감쇠
-        // 액티브 스킬(발동 중만): 가하는/받는 피해 시한 배율
-        if (SkillNow(atk) is { } ska) dmg *= ska.DmgDealtMult;
+        // 무기 액티브([7]§4, 발동 중만): 광전사의 도끼 — 공격력 스냅샷 보너스 / 받피 +25%(설계된 리스크)
+        if (SkillNow(atk) is not null && atk.SkillAtkBonus > 0f) dmg *= 1f + atk.SkillAtkBonus;
         if (SkillNow(def) is { } skd) dmg *= skd.DmgTakenMult;
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)

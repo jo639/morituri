@@ -840,11 +840,11 @@ const SKILLS=[
  {id:'SKL_ANGLE',  n:'노림수',     per:'OPPORTUNIST',tier:1, d:'허점이 열리는 순간을 기다린다 — 인지 −0.03s·이동 속도 +3%'},
  {id:'SKL_READ2',  n:'전장 분석',  per:'CALM',       tier:2, d:'전장 전체가 느리게 보인다 — 인지지연 −0.08s (집정관+)'},
  {id:'SKL_BULWARK',n:'불괴',       per:'HONORABLE',  tier:2, d:'무너지지 않는 방벽 — 가드 받는 피해 −35%·이동 속도 −4% (집정관+)'},
- // 발동형 — 모리튜리가 조건 충족 시 스스로 쓴다(감독 개입 불가). 경기 중 금빛 「스킬 발동」 라벨로 표시
- {id:'SKL_SECONDWIND',n:'재기의 호흡', per:'BOLD',     tier:1, act:1, d:'궁지에서 숨을 고른다 — HP 35% 이하 시 스태미나 +30·8초간 회복 +50% (경기당 1회)'},
- {id:'SKL_FRENZY',    n:'핏빛 광란',   per:'CRUEL',    tier:1, act:1, d:'제 피 냄새에 눈이 뒤집힌다 — HP 50% 이하 시 6초간 가하는 피해 +10%·받는 피해 +5% (경기당 1회)'},
- {id:'SKL_BURST',     n:'질풍',        per:'RECKLESS', tier:1, act:1, d:'쓰러진 몸이 먼저 튀어나간다 — 다운에서 일어날 때 6초간 이속 +10% (재사용 20초)'},
- {id:'SKL_LASTSTAND', n:'최후의 보루', per:'HONORABLE',tier:2, act:1, d:'무너지기 직전이 가장 단단하다 — HP 30% 이하 시 8초간 받는 피해 −15% (집정관+, 경기당 1회)'},
+ // 무기 액티브([7]§4) — AI가 조건·확률로 스스로 발동(관전형 — 감독이 누르지 않는다). 경기 중 금빛 「스킬 발동」 라벨
+ {id:'SKL_DUELIST', n:'결투의 격',     wpn:'SWORD',      tier:2, act:1, d:'호각의 상대와 격이 오른다 — 6초간 카운터 창 +0.3 (24s · 집정관+)'},
+ {id:'SKL_SUNDER',  n:'분쇄 일격',     wpn:'AXE',        tier:1, act:1, d:'가드째 부순다 — 다음 강공이 가드를 무조건 파괴 + 출혈 (ST22 · 11s)'},
+ {id:'SKL_BERSERK', n:'광전사의 도끼', wpn:'AXE',        tier:2, act:1, d:'제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 최대 +40%·받는 피해 +25% (26s · 집정관+)'},
+ {id:'SKL_UNBROKEN',n:'불퇴의 자세',   wpn:'GREATSWORD', tier:2, act:1, d:'물러서지 않는다 — 5초간 포이즈 무한(스태거 면역) (24s · 집정관+)'},
 ];
 const SKL=id=>SKILLS.find(s=>s.id===id)||{n:id,d:''};
 const sklChip=id=>{ const s=SKL(id); return `<span class="chip" style="background:${s.act?'rgba(201,168,76,.18)':'rgba(91,155,224,.18)'};color:${s.act?'#e0c78a':'#9bc4ec'};border:1px solid ${s.act?'rgba(201,168,76,.45)':'rgba(91,155,224,.4)'}" title="${s.d}">${s.act?'{bolt}':'{book}'} ${s.n}</span>`; };
@@ -2664,7 +2664,8 @@ function masteryRow(f){
 window.openSkillModal = (id)=>{
   const f=(st.MyFighters||[]).find(x=>x.Id===id); if(!f) return;
   const rank=(TAL[f.Talent]||{r:0}).r, owned=f.Skills||[];
-  const avail=SKILLS.filter(s=>s.per===f.Personality);
+  // 게이트([7]): 패시브 = 성격 결합 / 액티브 = 무기 결합
+  const avail=SKILLS.filter(s=> s.act ? s.wpn===f.Weapon : s.per===f.Personality);
   const rows = avail.length ? avail.map(s=>{
     const has=owned.includes(s.id), locked=s.tier>=2&&rank<3, full=owned.length>=f.SkillSlots&&!has;
     return `<button class="tacbtn" ${has||locked?'disabled style="opacity:.45"':''} onclick="learnSkill('${id}','${s.id}',${full})">

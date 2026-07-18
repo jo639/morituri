@@ -7,29 +7,38 @@ namespace Morituri.Sim.Data;
 /// 생성 추첨 풀(TraitGen)에는 절대 들어가지 않는다 → 미장착 세계의 매트릭스는 구조적으로 불변.
 /// 수치 원칙: 타고난 특성보다 항상 약하게(스킬은 보완재, [6]§3.2 "낮은 계급에도 유용한 것").
 /// </summary>
-/// <summary>액티브 스킬 발동 조건 — 전부 결정적(난수 없음 = 리플레이·매트릭스 안전).</summary>
-public enum ActiveTrigger
+/// <summary>액티브 발동 조건([7]§4 트리의 조건 게이트) — 상태 기반, AI가 스스로 판단.</summary>
+public enum SkillTrigger
 {
-    HpBelow,        // 자기 HP 비율이 임계 이하로 떨어지는 순간
-    StaminaBelow,   // 자기 스태미나 비율이 임계 이하
-    AfterDown,      // 다운에서 일어나는 순간(GetUp)
+    SelfHpBelow,      // 자기 HP 비율 ≤ 임계 (광전사의 도끼)
+    EvenFight,        // 호각 — HP 격차 ≤ 임계%p & 교전 지속 (결투의 격)
+    ConsecHitsTaken,  // 연속 피격 ≥ 임계 (불퇴의 자세)
+    OppGuarding,      // 상대 가드 중 & 사거리내 (분쇄 일격)
 }
 
 /// <summary>
-/// 액티브 스킬 명세 — <b>모리튜리가 스스로 발동</b>한다(감독 개입 불가, 조건 충족 시 자동).
-/// 효과는 시한 배율(이속·가피·받피·스태미나 회복)만 — 기존 소비 지점에 곱해질 뿐 새 수식 없음.
+/// [7] 무기 액티브 명세 — <b>AI가 조건·확률로 발동</b>한다(관전형 — 감독이 누르는 게 아님, [7] 전제).
+/// 발동 = [7]§1 트리(쿨→상태→코스트→조건→타당성→확률 롤) 통과. 효과 = 시한 버프·1회 플래그.
+/// 코스트: ST(공격 버스트)/HP%(배수진)/CD만(수비·유틸) — [7]§0.
 /// </summary>
 public sealed record ActiveSpec(
-    ActiveTrigger Trigger, float Threshold, float Duration, float Cooldown,
-    float MoveMult = 1f, float DmgDealtMult = 1f, float DmgTakenMult = 1f,
-    float StamRegenMult = 1f, float StamRestore = 0f);
+    string ReasonTag,                       // [7] 가시화 원칙 — Decision("SKILL_"+tag)로 발동 방출
+    SkillTrigger Trigger, float Threshold, float Prob,
+    float Duration, float CooldownSec,
+    float StCost = 0f, float SelfHpPctCost = 0f,
+    float CounterWindowAdd = 0f,            // 결투의 격: 카운터창 +0.3 (Override 파이프, 캡 +0.6 [7]§2)
+    float DmgTakenMult = 1f,                // 광전사의 도끼: 받피 +25% (설계 의도된 리스크)
+    float AtkPerMissingHpPct = 0f, float AtkCap = 0f,   // 광전사: 공격력 +0.8%/(부족 HP%p), 최대 +40%
+    bool PoiseImmune = false,               // 불퇴의 자세: 포이즈 무한 = 스태거/넉백 면역(가드붕괴·다운은 아님)
+    bool SunderNextHeavy = false);          // 분쇄 일격: 다음 강공 가드 무조건파괴 1회(미사용 시 만료 소멸)
 
 public sealed record SkillDef(
-    TraitDef Def,              // 효과 본체(TraitDef 재사용 — MatchSim이 특성과 동일 파이프로 소비)
-    string GatePersonality,    // 패시브 = 성격 결합([7]§5). 습득 시점의 성격이 게이트
-    int RankTier,              // Ⅰ=1(전 천부) / Ⅱ=2(집정관 이상 — [6]§1.5 접근권)
+    TraitDef Def,               // 효과 본체(패시브) 또는 식별자(액티브 — 배율 전부 1)
+    string GatePersonality,     // 패시브 = 성격 결합([7]§5). 액티브는 무기 게이트(GateWeapon)라 빈 문자열
+    int RankTier,               // Ⅰ=1(전 천부) / Ⅱ=2(집정관 이상 — [6]§1.5 접근권)
     string Desc,
-    ActiveSpec? Active = null); // null=패시브. 액티브는 TraitDef 배율이 전부 1(상시 효과 없음)
+    ActiveSpec? Active = null,  // null=패시브
+    string? GateWeapon = null); // 액티브 = 무기 결합([7]§4 "무기별 액티브 2개")
 
 public static class SkillTable
 {
@@ -53,15 +62,26 @@ public static class SkillTable
         new(new TraitDef("SKL_READ2",   "전장 분석(스킬)", PerceptDelayAdd: -0.08f),                     "PER_CALM",        2, "전장 전체가 느리게 보인다 — 인지지연 −0.08s"),
         new(new TraitDef("SKL_BULWARK", "불괴(스킬)",    GuardDamageMult: 0.65f, MoveSpeedMult: 0.96f),  "PER_HONORABLE",   2, "무너지지 않는 방벽 — 가드 받피 −35%·이속 −4%"),
 
-        // ── 액티브 (모리튜리 자동 발동 — 감독 개입 불가, 조건은 전부 결정적) ──
-        new(new TraitDef("SKL_SECONDWIND", "재기의 호흡(스킬)"), "PER_BOLD",     1, "궁지에서 숨을 고른다 — HP 35% 이하 시 스태미나 +30·8초간 회복 +50% (경기당 1회)",
-            new ActiveSpec(ActiveTrigger.HpBelow, 0.35f, 8f, 999f, StamRegenMult: 1.5f, StamRestore: 30f)),
-        new(new TraitDef("SKL_FRENZY",     "핏빛 광란(스킬)"),   "PER_CRUEL",    1, "제 피 냄새에 눈이 뒤집힌다 — HP 50% 이하 시 6초간 가하는 피해 +10%·받는 피해 +5% (경기당 1회)",
-            new ActiveSpec(ActiveTrigger.HpBelow, 0.50f, 6f, 999f, DmgDealtMult: 1.10f, DmgTakenMult: 1.05f)),
-        new(new TraitDef("SKL_BURST",      "질풍(스킬)"),        "PER_RECKLESS", 1, "쓰러진 몸이 먼저 튀어나간다 — 다운에서 일어날 때 6초간 이속 +10% (재사용 20초)",
-            new ActiveSpec(ActiveTrigger.AfterDown, 0f, 6f, 20f, MoveMult: 1.10f)),
-        new(new TraitDef("SKL_LASTSTAND",  "최후의 보루(스킬)"), "PER_HONORABLE", 2, "무너지기 직전이 가장 단단하다 — HP 30% 이하 시 8초간 받는 피해 −15% (경기당 1회)",
-            new ActiveSpec(ActiveTrigger.HpBelow, 0.30f, 8f, 999f, DmgTakenMult: 0.85f)),
+        // ── 무기 액티브([7]§4 카탈로그) — 1차 탑재: 모션이 필요 없는 버프·자세·플래그형 4종.
+        //    코스트/CD/확률/트리 = 문서 수치 그대로. 나머지(연격·견제 찌르기·철벽 반격·쇄도 베기·난무·
+        //    그림자 보·대지 강타·심판의 일격·휘감기·공간 지배·방패 막기·방패 밀치기)는 전용 모션·CC·
+        //    자동공격 경로가 필요해 애니메이션 트랙에서 탑재한다.
+        new(new TraitDef("SKL_DUELIST", "결투의 격(스킬)"), "", 2,
+            "호각의 상대와 격이 오른다 — 6초간 카운터 창 +0.3 (CD만 / 24s · 主RCT)",
+            new ActiveSpec("DUELIST", SkillTrigger.EvenFight, 0.10f, 0.6f, 6f, 24f,
+                CounterWindowAdd: 0.3f), GateWeapon: "WPN_SWORD"),
+        new(new TraitDef("SKL_SUNDER", "분쇄 일격(스킬)"), "", 1,
+            "가드째 부순다 — 다음 강공이 가드를 무조건 파괴 + 출혈 (ST22 / 11s · 主ATK, 5초 내 미사용 시 소멸)",
+            new ActiveSpec("SUNDER", SkillTrigger.OppGuarding, 0f, 0.6f, 5f, 11f,
+                StCost: 22f, SunderNextHeavy: true), GateWeapon: "WPN_AXE"),
+        new(new TraitDef("SKL_BERSERK", "광전사의 도끼(스킬)"), "", 2,
+            "제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 +0.8%/(부족 HP%p) 최대 +40%·받는 피해 +25% (26s · 主ATK)",
+            new ActiveSpec("BERSERK", SkillTrigger.SelfHpBelow, 0.50f, 0.7f, 8f, 26f,
+                SelfHpPctCost: 0.05f, DmgTakenMult: 1.25f, AtkPerMissingHpPct: 0.008f, AtkCap: 0.40f), GateWeapon: "WPN_AXE"),
+        new(new TraitDef("SKL_UNBROKEN", "불퇴의 자세(스킬)"), "", 2,
+            "물러서지 않는다 — 5초간 포이즈 무한(스태거·넉백 면역, 가드붕괴·다운은 아님) (CD만 / 24s · 主DEF)",
+            new ActiveSpec("UNBROKEN", SkillTrigger.ConsecHitsTaken, 2f, 0.6f, 5f, 24f,
+                PoiseImmune: true), GateWeapon: "WPN_GREATSWORD"),
     };
 
     private static readonly Dictionary<string, SkillDef> _byId = All.ToDictionary(s => s.Def.Id);
