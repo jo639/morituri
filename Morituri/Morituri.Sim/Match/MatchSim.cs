@@ -310,6 +310,10 @@ public sealed class MatchSim
             var other = _f[1 - f.Index];
             if (ask.EarlyEndGapM > 0f && _now < f.SkillBuffUntil
                 && Vec2.Dist(f.Pos, other.Pos) > ask.EarlyEndGapM) f.SkillBuffUntil = _now;   // 연격: 멀어지면 종료
+            if (f.SkillRangeAddM > 0f && _now >= f.SkillRangeAddUntil)   // 긴 창: 만료 → 리치 원복
+            {
+                f.RangeBonus -= f.SkillRangeAddM; f.SkillRangeAddM = 0f;
+            }
             if (ask.AutoPokeMult > 0f && _now < f.SkillBuffUntil && _now >= f.SkillNextPokeAt
                 && !f.IsAttackSwing && other.Hp > 0f
                 && Vec2.Dist(f.Pos, other.Pos) <= f.EffRange)                                  // 공간 지배: 진입자 자동 견제
@@ -958,7 +962,8 @@ public sealed class MatchSim
             case FighterState.Move:
             {
                 if (_now < f.SkillRootedUntil) break;   // 휘감기([7]): 이동봉쇄 — 이동만 묶인다(행동은 가능)
-                float speed = f.MoveSpeed * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
+                float speed = f.MoveSpeed * (_now < f.SlowUntil ? f.SlowMult : 1f)   // 둔화([7]§4.5): 최하위 CC — 행동은 자유
+                            * (f.IsExhausted ? _c.ExhaustMoveSpeedMult : 1f) * (1f + CrowdMoveBuff * f.CrowdMomentum)
                             * (_now < f.DashSpeedBuffUntil ? 1.25f : 1f)    // 초상비: 대시 직후 이속↑
                             * PassiveMul(f, x => x.MoveMult);   // 성격 패시브([7]§5)
                 // 추격 방향은 '마지막으로 인지한' 위치를 따른다(인간 풋워크 랙) — 실시간 호밍 금지.
@@ -1150,6 +1155,17 @@ public sealed class MatchSim
                 return;
             }
             atk.LastSwingGuarded = true; // 막힌 칼 = 프레임 불리 (후딜 ×GuardedRecoveryMult)
+            // 반격 태세([7]§4.5 검 Ⅱ): 자세 중 '가드 성공' 1회 → 즉시 반격(선해제로 상호 재귀 없음).
+            // 창 (구)철벽 반격이 '피격 반응'이었던 것과 트리가 다르다 — 이쪽은 막아낸 순간.
+            if (_now < def.SkillGuardCounterUntil && def.Hp > 0f && atk.Hp > 0f)
+            {
+                def.SkillGuardCounterUntil = 0f;
+                var gctx = new CombatMath.HitContext(false, false, true, false,
+                    1f + CrowdDmgBuff * def.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax), atk.IsExhausted);
+                ApplyDamage(def, atk, CombatMath.FinalDamage(def.Weapon, _c.MotionMultLight, def.Def.Stats, atk.Def.Stats, gctx, _c),
+                            false, true, false, false);
+                Emit(new Decision(_now, def.Index, "SKILL_GUARDRIPOSTE", "Skill", 1.2f));
+            }
             float raw = CombatMath.RawDamage(atk.Weapon, motionMult, atk.Def.Stats) * (inner ? _c.InnerRangePenalty : 1f);
             var gr = CombatMath.ResolveGuardHit(raw, atk.Weapon, def.GuardGauge, def.Stamina, _c);
             def.GuardGauge = gr.GuardGaugeAfter;
@@ -1478,6 +1494,11 @@ public sealed class MatchSim
                 f.SkillAtkBonus = sp.AtkPerMissingHpPct > 0f
                     ? MathF.Min(sp.AtkCap, sp.AtkPerMissingHpPct * (1f - f.HpPct) * 100f) : 0f;   // 광전사: 발동 시점 스냅샷
                 if (sp.AutoPokeMult > 0f) f.SkillNextPokeAt = _now;                               // 공간 지배: 즉시 1타 가능
+                if (sp.RangeAddM > 0f)   // 긴 창([7]§4.5): 지속 동안 리치를 얹고 만료 시 되돌린다
+                {
+                    f.RangeBonus += sp.RangeAddM; f.SkillRangeAddM = sp.RangeAddM;
+                    f.SkillRangeAddUntil = _now + sp.Duration;
+                }
                 if (sp.CounterWindowAdd != 0f)                                                    // 결투의 격: Override 파이프([7]§2 가산·만료 롤백)
                     f.Overrides.Add(new ActiveOverride
                     {
@@ -1488,7 +1509,8 @@ public sealed class MatchSim
             case ActiveKind.Stance:
                 f.SkillBuffUntil = _now + sp.Duration;
                 if (sp.FullBlock) f.SkillFullBlockUntil = _now + sp.Duration;                     // 방패 막기
-                if (sp.AutoCounter) f.SkillAutoCounterUntil = _now + sp.Duration;                 // 철벽 반격
+                if (sp.AutoCounter) f.SkillAutoCounterUntil = _now + sp.Duration;                 // (구)철벽 반격
+                if (sp.CounterOnGuard) f.SkillGuardCounterUntil = _now + sp.Duration;             // 반격 태세([7]§4.5)
                 break;
             case ActiveKind.Strike:
                 DoSkillStrike(f, opp, sp);                                                        // 즉발(모션 없는 1차 구현)
@@ -1549,6 +1571,33 @@ public sealed class MatchSim
             Vec2 np = opp.Pos + dir * sp.KnockbackM;
             if (np.Length > maxR) np *= maxR / np.Length;
             opp.Pos = np;
+        }
+        // 둔화([7]§4.5 채찍 Ⅰ): 이동만 늦춘다 — §2 CC 위계의 최하위(다운>가드붕괴>스태거>포박>둔화).
+        // 행동을 묶지 않으므로 하이퍼아머·불퇴 면역 대상이 아니다(이동 디버프는 상태 전이가 아님).
+        if (sp.SlowSec > 0f && sp.SlowMult < 1f)
+        {
+            opp.SlowUntil = _now + sp.SlowSec;
+            opp.SlowMult = sp.SlowMult;   // 갱신형(중첩 없음) — 다시 맞으면 지속만 새로 흐른다
+        }
+        // 몰아붙이기([7]§4.5 방패 Ⅱ): 밀며 동반 이동 → 경계에 처박으면 추가타.
+        // 벽 충돌 비대칭([disc] 넉백 예외)의 정식 구현 — 밀린 쪽만 벽 피해를 받는다.
+        if (sp.CarryM > 0f && !immune)
+        {
+            Vec2 dir = opp.Pos - f.Pos; float d = dir.Length;
+            dir = d > 1e-4f ? dir * (1f / d) : new Vec2(1f, 0f);
+            Vec2 want = opp.Pos + dir * sp.CarryM;
+            bool slammed = want.Length > maxR;                 // 경계를 넘겼다 = 벽에 처박혔다
+            opp.Pos = slammed ? want * (maxR / want.Length) : want;
+            f.Pos = opp.Pos - dir * MathF.Max(0.9f, f.EffRange * 0.55f);   // 밀어붙인 쪽도 따라붙는다
+            if (f.Pos.Length > maxR) f.Pos *= maxR / f.Pos.Length;
+            if (slammed && sp.WallSlamDmgMult > 0f && opp.Hp > 0f)
+            {
+                var wctx = new CombatMath.HitContext(false, false, false, false,
+                    1f + CrowdDmgBuff * f.CrowdMomentum, _rng.Range(_c.VarianceMin, _c.VarianceMax), opp.IsExhausted);
+                ApplyDamage(f, opp, CombatMath.FinalDamage(f.Weapon, _c.MotionMultHeavy * sp.WallSlamDmgMult,
+                            f.Def.Stats, opp.Def.Stats, wctx, _c), false, false, false, false);
+                Emit(new Decision(_now, f.Index, "SKILL_WALLSLAM", "Skill", 1.5f));
+            }
         }
         if (sp.PullM > 0f || sp.RootSec > 0f)   // 휘감기: 멀면 끌어당김 / 가까우면 이동봉쇄(택1, [7]§4)
         {

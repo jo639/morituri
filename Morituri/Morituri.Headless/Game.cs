@@ -1479,10 +1479,29 @@ public sealed partial class Game
         foreach (var g in _cast)
         {
             g.Age++;
+            // 노련함([7]§6.2): 10년마다 특성 1개 추가 — 세월이 쌓아 올린 몸의 지혜.
+            // 배타 축을 지키며 아직 없는 특성 중에서 고른다(생성 추첨과 같은 규칙).
+            if (g.TraitIds.Contains(TraitTable.Veteran) && g.Age % 10 == 0)
+            {
+                var owned = g.TraitIds.Select(t => TraitTable.Exists(t) ? TraitTable.Get(t) : null).Where(t => t != null).ToList();
+                var pool = TraitTable.All.Where(t => !g.TraitIds.Contains(t.Id)
+                                && !(t.ExclAxis.Length > 0 && owned.Any(o => o!.ExclAxis == t.ExclAxis && o.ExclPolarity == -t.ExclPolarity)))
+                            .ToArray();
+                if (pool.Length > 0)
+                {
+                    // 결정론: 세계 시드 + 선수 id + 나이로 고정 — 같은 세계는 늘 같은 특성을 준다
+                    var trng = new SimRandom(_worldSeed ^ (ulong)StableHash(g.Id) ^ ((ulong)g.Age * 2654435761UL));
+                    var add = pool[Math.Min(pool.Length - 1, (int)(trng.NextFloat01() * pool.Length))];
+                    g.TraitIds = g.TraitIds.Append(add.Id).ToArray();
+                    if (g.IsPlayer)
+                        _story.Add((_rounds + 1, "trait", $"{{sprout}} {g.Name}({g.Age}세) — 노련함이 값을 한다: 「{add.Name}」을(를) 얻었다"));
+                }
+            }
             if (g.Age >= g.AgingStartAge)
             {
                 float relief = g.IsPlayer ? 0.25f * (_medicalLv - 1) : 0f;
                 if (g.TraitIds.Contains(TraitTable.SlowAge)) relief = Math.Min(0.9f, relief + 0.4f);   // 저속노화(#16): 감소폭 −40%p
+                if (g.TraitIds.Contains(TraitTable.Veteran)) relief = Math.Min(0.9f, relief + 0.25f);  // 노련함([7]§6.2): 노화 완화
                 g.PotentialBudget = MathF.Max(MinPotentialBudget, g.PotentialBudget - AgingDecayPerSeason * (1f - relief));
                 float excess = BudgetUsed(g.Stats) - g.PotentialBudget;
                 if (excess > 0f)

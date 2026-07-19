@@ -64,6 +64,11 @@ public sealed record ActiveSpec(
     // ── Stance 효과(피격 반응) ──
     bool FullBlock = false, float CounterBoostMult = 1f, float CounterBoostSec = 0f, // 방패 막기: 완전차단+직후 반격 보너스
     bool AutoCounter = false,               // 철벽 반격: 자세 중 최초 피격 1회에 즉시 반격
+    // ── [7]§4.5 후보 도입분(라니스타 배정) ──
+    bool CounterOnGuard = false,            // 반격 태세: 자세 중 '가드 성공'에 즉시 반격(피격 반응인 AutoCounter와 트리 구분)
+    float RangeAddM = 0f,                   // 사거리 증가: 지속 동안 리치 +m (만료 시 되돌림)
+    float SlowMult = 1f, float SlowSec = 0f,// 둔화: 상대 이동속도 배율·지속(§2 CC — 다운/붕괴/스태거보다 약한 최하위)
+    float CarryM = 0f, float WallSlamDmgMult = 0f,  // 캐리+벽꽝: 밀며 동반 이동 · 경계 충돌 시 추가타 배수
     // ── Charge 효과(심판의 일격) ──
     float ChargeSec = 0f, float ExecuteDmgMult = 0f, float ExecuteKillPct = 0f,
     bool VetoExecution = false);            // 거부권 대상([7]§8 — 고결은 처형류 발동 거부
@@ -232,19 +237,21 @@ public static class SkillTable
             "베기가 베기를 부른다 — 3.5초간 공격 속도 +35%, 상대가 멀어지면 조기 종료 (ST20 / 9s · 主ATK)",
             new ActiveSpec("COMBO", SkillTrigger.OppGuardGaugeBelow, 0.70f, 0.5f, 3.5f, 9f,
                 StCost: 20f, AttackSpeedMult: 1.35f, EarlyEndGapM: 3.0f), GateWeapon: "WPN_SWORD"),
-        new(new TraitDef("SKL_DUELIST", "결투의 격(스킬)"), "", 2,
-            "호각의 상대와 격이 오른다 — 6초간 카운터 창 +0.3 (CD만 / 24s · 主RCT)",
-            new ActiveSpec("DUELIST", SkillTrigger.EvenFight, 0.10f, 0.6f, 6f, 24f,
-                CounterWindowAdd: 0.3f), GateWeapon: "WPN_SWORD"),
+        new(new TraitDef("SKL_GUARDSTANCE", "반격 태세(스킬)"), "", 2,
+            "막아낸 그 순간이 기회다 — 3초 자세, 그동안 가드에 성공하면 즉시 반격 (CD만 / 20s · 主RCT)",
+            new ActiveSpec("GUARDSTANCE", SkillTrigger.OppHeavyWindupOrPress, 2.25f, 0.7f, 3f, 20f, ActiveKind.Stance,
+                CounterOnGuard: true), GateWeapon: "WPN_SWORD"),
         // 창 — 카이터 복원 핵심([7])
-        new(new TraitDef("SKL_LUNGE", "견제 찌르기(스킬)"), "", 1,
-            "다가오는 걸음을 창끝이 벌한다 — 즉발 찌르기 + 넉백 (ST18 / 8s · 主SPD)",
-            new ActiveSpec("LUNGE", SkillTrigger.GapBand, 0f, 0.6f, 0f, 8f, ActiveKind.Strike,
-                StCost: 18f, GapMinM: 2.4f, GapMaxM: 4.2f, KnockbackM: 1.2f), GateWeapon: "WPN_SPEAR"),
-        new(new TraitDef("SKL_RIPOSTE", "철벽 반격(스킬)"), "", 2,
-            "받아치는 창 — 1.5초 자세, 그동안 최초 피격에 즉시 반격 (CD만 / 22s · 主RCT)",
-            new ActiveSpec("RIPOSTE", SkillTrigger.OppHeavyWindupOrPress, 2.25f, 0.7f, 1.5f, 22f, ActiveKind.Stance,
-                AutoCounter: true), GateWeapon: "WPN_SPEAR"),
+        new(new TraitDef("SKL_REACHPUSH", "긴 창(스킬)"), "", 1,
+            "창대를 고쳐 쥔다 — 4초간 리치 +0.4 + 즉발 밀어내기 (ST20 / 12s · 主SPD)",
+            new ActiveSpec("REACHPUSH", SkillTrigger.GapBand, 0f, 0.6f, 4f, 12f,
+                StCost: 20f, GapMinM: 1.6f, GapMaxM: 4.2f,
+                RangeAddM: 0.4f, KnockbackM: 1.2f), GateWeapon: "WPN_SPEAR"),
+        new(new TraitDef("SKL_ZONELOCK", "공간 지배(스킬)"), "", 2,
+            "이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제(약공 ×0.6 / 0.8s) + 카이팅 ST 면제 (CD만 / 26s · 主SPD)",
+            new ActiveSpec("ZONELOCK", SkillTrigger.GapBand, 0f, 0.6f, 6f, 26f,
+                GapMinM: 0f, GapMaxM: 5.0f, KiteExempt: true,
+                AutoPokeMult: 0.6f, AutoPokeIntervalSec: 0.8f), GateWeapon: "WPN_SPEAR"),
         // 도끼
         new(new TraitDef("SKL_SUNDER", "분쇄 일격(스킬)"), "", 1,
             "가드째 부순다 — 다음 강공이 가드를 무조건 파괴 + 출혈 (ST22 / 11s · 主ATK, 5초 내 미사용 시 소멸)",
@@ -282,23 +289,24 @@ public static class SkillTable
             new ActiveSpec("EXECUTE", SkillTrigger.OppExecutable, 0.35f, 0.8f, 1.2f, 28f, ActiveKind.Charge,
                 ChargeSec: 1.2f, ExecuteDmgMult: 2.5f, ExecuteKillPct: 0.15f, VetoExecution: true), GateWeapon: "WPN_HAMMER"),
         // 채찍 — 카이터 복원 핵심([7])
-        new(new TraitDef("SKL_ENTANGLE", "휘감기(스킬)"), "", 1,
+        new(new TraitDef("SKL_LASH", "채찍 후리기(스킬)"), "", 1,
+            "가죽이 다리를 훑는다 — 피해 + 3초간 이동 속도 −25% (ST18 / 10s · 主SPD)",
+            new ActiveSpec("LASH", SkillTrigger.GapBand, 0f, 0.6f, 0f, 10f, ActiveKind.Strike,
+                StCost: 18f, GapMinM: 2.0f, GapMaxM: 4.5f, SlowMult: 0.75f, SlowSec: 3f), GateWeapon: "WPN_WHIP"),
+        new(new TraitDef("SKL_ENTANGLE", "휘감기(스킬)"), "", 2,
             "가죽이 발목을 삼킨다 — 피해 + 멀면 끌어당김·가까우면 1초 이동봉쇄 (ST20 / 12s · 主SPD)",
             new ActiveSpec("ENTANGLE", SkillTrigger.GapBand, 0f, 0.6f, 0f, 12f, ActiveKind.Strike,
                 StCost: 20f, GapMinM: 3.0f, GapMaxM: 4.5f, PullM: 1.2f, RootSec: 1.0f), GateWeapon: "WPN_WHIP"),
-        new(new TraitDef("SKL_ZONELOCK", "공간 지배(스킬)"), "", 2,
-            "이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제(약공 ×0.6/0.8s) + 카이팅 소모 면제 (CD만 / 26s · 主DEF)",
-            new ActiveSpec("ZONELOCK", SkillTrigger.GapBand, 0f, 0.6f, 6f, 26f,
-                GapMinM: 0f, GapMaxM: 2.25f, KiteExempt: true, AutoPokeMult: 0.6f, AutoPokeIntervalSec: 0.8f), GateWeapon: "WPN_WHIP"),
         // 방패
-        new(new TraitDef("SKL_SHIELDBLOCK", "방패 막기(스킬)"), "", 1,   // id는 패시브 '불괴(SKL_BULWARK)'와 충돌 회피 — reasonTag는 [7]대로 BULWARK
-            "정면은 뚫리지 않는다 — 0.8초 완전 차단 + 직후 1초 반격 +30% (GG20 / 8s · 主DEF, 반응형 최우선)",
-            new ActiveSpec("BULWARK", SkillTrigger.OppWindupAny, 0f, 0.7f, 0.8f, 8f, ActiveKind.Stance,
-                GgCost: 20f, FullBlock: true, CounterBoostMult: 1.3f, CounterBoostSec: 1f), GateWeapon: "WPN_SHIELD"),
-        new(new TraitDef("SKL_SHIELDBASH", "방패 밀치기(스킬)"), "", 2,
+        new(new TraitDef("SKL_SHIELDBASH", "방패 밀치기(스킬)"), "", 1,
             "방패가 무기가 되는 순간 — 돌진 방패치기: 가드붕괴 + 다운(면역이면 붕괴만) (ST25 / 20s · 主DEF)",
             new ActiveSpec("SHIELDBASH", SkillTrigger.OppGuardingOrStunned, 0f, 0.6f, 0f, 20f, ActiveKind.Strike,
                 StCost: 25f, DashIn: true, BashBreak: true, DownSec: 1.5f), GateWeapon: "WPN_SHIELD"),
+        new(new TraitDef("SKL_CARRY", "몰아붙이기(스킬)"), "", 2,
+            "방패로 떠밀어 벽까지 몰고 간다 — 상대를 2.2m 밀어내고, 경계에 처박으면 강타 ×1.6 + 스태거 (ST30 / 24s · 主DEF)",
+            new ActiveSpec("CARRY", SkillTrigger.OppGuardingOrStunned, 0f, 0.6f, 0f, 24f, ActiveKind.Strike,
+                StCost: 30f, DashIn: true, CarryM: 2.2f, WallSlamDmgMult: 1.6f,
+                StaggerOnHitSec: 0.8f), GateWeapon: "WPN_SHIELD"),
     };
 
     private static readonly Dictionary<string, SkillDef> _byId = All.ToDictionary(s => s.Def.Id);

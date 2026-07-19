@@ -113,6 +113,12 @@ public sealed class FighterRuntime
     public float DodgeRefundPct;          // 생존 본능: 회피 성공 시 스태미나 환급 비율(창 열림 중)
     public float DodgeIFrameBonus;        // 생존 본능: 회피 무적 연장(창 열림 중)
     public float DodgeWindowUntil = -1f;  // 생존 본능 창 만료(패시브 다중화 후 전용 시각)
+    // [7]§4.5 도입분 — 반격 태세·긴 창·둔화
+    public float SkillGuardCounterUntil;  // 반격 태세: 가드 성공 시 즉시 반격하는 자세 창
+    public float SkillRangeAddUntil;      // 긴 창: 리치 보너스 만료
+    public float SkillRangeAddM;          // 긴 창: 현재 얹힌 리치(만료 시 되돌린다)
+    public float SlowUntil;               // 둔화 만료
+    public float SlowMult = 1f;           // 둔화 배율(이동속도)
 
     public bool Has(string traitId) => Traits.Contains(traitId);
     public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)

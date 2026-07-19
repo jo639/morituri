@@ -567,6 +567,31 @@ public class GameTests
     }
 
     [Test]
+    public void SkillGen_CountDistribution_ScalesWithTalent()
+    {
+        // 라니스타 확정 규칙: 개수 상한 없음, 확률만 천부 비례.
+        // 노예는 최대 2(Ⅰ급 액티브·패시브) / 집정관+는 최대 4까지 나오되 0개도 가능해야 한다.
+        var rng = new Morituri.Sim.Core.SimRandom(31337);
+        int slaveMax = 0, consulMax = 0; bool consulZero = false, slaveTwo = false;
+        double slaveAvg = 0, caesarAvg = 0;
+        for (int i = 0; i < 3000; i++)
+        {
+            int sn = SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", TalentGrade.Slave).Length;
+            int cn = SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", TalentGrade.Consul).Length;
+            caesarAvg += SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", TalentGrade.Caesar).Length;
+            slaveAvg += sn;
+            slaveMax = Math.Max(slaveMax, sn); consulMax = Math.Max(consulMax, cn);
+            if (cn == 0) consulZero = true;
+            if (sn == 2) slaveTwo = true;
+        }
+        Assert.That(slaveMax, Is.EqualTo(2), "노예는 Ⅰ급 둘까지(액티브·패시브)");
+        Assert.That(slaveTwo, Is.True, "노예도 2개를 타고날 수 있다");
+        Assert.That(consulMax, Is.EqualTo(4), "집정관은 최대 4개(액티브 2 + 패시브 2)");
+        Assert.That(consulZero, Is.True, "집정관도 0개일 수 있다");
+        Assert.That(caesarAvg / 3000.0, Is.GreaterThan(slaveAvg / 3000.0), "천부가 높을수록 평균 개수가 많다");
+    }
+
+    [Test]
     public void SkillGen_Bastard_BreaksTier2Ceiling()
     {
         // 사생아([7]§6.2): 천부 등급을 넘는 Ⅱ급 스킬을 지닌다 — 계급 천장 예외
@@ -726,6 +751,19 @@ public class GameTests
         }
         float glory = st.GetProperty("Glory").GetSingle();
         Assert.That(glory, Is.GreaterThan(0f), "위신 업적/타이틀로 영광 획득");
+
+        // 돌파 비용(상한/40)만큼 모일 때까지 시즌을 더 돈다 — 시드에 따라 적립 속도가 달라 고정 시즌 수는 취약
+        int gguard = 0;
+        while (gguard++ < 8)
+        {
+            var cur = Parse(g.StateJson());
+            if (cur.GetProperty("MyFighters").GetArrayLength() == 0) { g.GachaJson(); g.RecruitJson(0); RunFullSeason(g); continue; }
+            float need = MathF.Ceiling(cur.GetProperty("MyFighters")[0].GetProperty("PotentialBudget").GetSingle() / 40f);
+            if (cur.GetProperty("Glory").GetSingle() >= need) break;
+            RunFullSeason(g);
+        }
+        st = Parse(g.StateJson());
+        glory = st.GetProperty("Glory").GetSingle();
 
         // 잠재력 돌파 — 영광 소모, 상한 상승
         string id = st.GetProperty("MyFighters")[0].GetProperty("Id").GetString()!;
