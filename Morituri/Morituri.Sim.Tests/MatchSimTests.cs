@@ -58,9 +58,9 @@ public class MatchSimTests
     [Test]
     public void TraitGen_RespectsCountDistributionAndExclusion()
     {
-        // 부여 개수 1(75%)/2(20%)/3(5%) + 상반 배타(같은 축 반대극성 공존 금지) — 결정론.
+        // 부여 개수 0(15%)/1(50%)/2(25%)/3(8%)/4(2%) + 상반 배타(같은 축 반대극성 공존 금지) — 결정론.
         var rng = new Morituri.Sim.Core.SimRandom(12345);
-        var counts = new int[4];
+        var counts = new int[6];
         for (int i = 0; i < 5000; i++)
         {
             var ids = TraitGen.Roll(rng);
@@ -72,9 +72,11 @@ public class MatchSimTests
                     $"상반 특성 공존: {string.Join(",", ids)}");
             Assert.That(ids.Distinct().Count(), Is.EqualTo(ids.Length), "중복 특성");
         }
-        Assert.That(counts[1] / 5000.0, Is.EqualTo(0.75).Within(0.04), "1개 부여 ≈75%");
-        Assert.That(counts[2] / 5000.0, Is.EqualTo(0.20).Within(0.04), "2개 부여 ≈20%");
-        Assert.That(counts[3] / 5000.0, Is.EqualTo(0.05).Within(0.03), "3개 부여 ≈5%");
+        Assert.That(counts[0] / 5000.0, Is.EqualTo(0.15).Within(0.03), "0개 부여 ≈15%");
+        Assert.That(counts[1] / 5000.0, Is.EqualTo(0.50).Within(0.04), "1개 부여 ≈50%");
+        Assert.That(counts[2] / 5000.0, Is.EqualTo(0.25).Within(0.04), "2개 부여 ≈25%");
+        Assert.That(counts[3] / 5000.0, Is.EqualTo(0.08).Within(0.03), "3개 부여 ≈8%");
+        Assert.That(counts[4] / 5000.0, Is.EqualTo(0.02).Within(0.02), "4개 부여 ≈2%");
     }
 
     [Test]

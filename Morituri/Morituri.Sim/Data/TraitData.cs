@@ -100,8 +100,9 @@ public static class TraitGen
     /// <summary>talent = 천부 등급. 조건부 특성을 추첨 단계에서 걸러낸다(무의미한 부여 방지).</summary>
     public static string[] Roll(SimRandom rng, TalentGrade talent = TalentGrade.Slave)
     {
+        // 라니스타 조정: 0개 15% / 1개 50% / 2개 25% / 3개 8% / 4개 2%
         float r = rng.NextFloat01();
-        int count = r < 0.05f ? 3 : r < 0.25f ? 2 : 1;   // 5% 3개 / 20% 2개 / 75% 1개
+        int count = r < 0.15f ? 0 : r < 0.65f ? 1 : r < 0.90f ? 2 : r < 0.98f ? 3 : 4;
 
         var picked = new List<TraitDef>(count);
         // 사생아는 '천부 천장을 넘는다'가 전부라 이미 Ⅱ급을 담을 수 있는 집정관+에겐 아무 의미가 없다 → 후보에서 제외.

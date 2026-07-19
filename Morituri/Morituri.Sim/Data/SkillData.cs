@@ -48,7 +48,7 @@ public sealed record ActiveSpec(
     float DmgTakenMult = 1f,                // 광전사의 도끼: 받피 +25% (설계 의도된 리스크)
     float AtkPerMissingHpPct = 0f, float AtkCap = 0f,   // 광전사: 공격력 +0.8%/(부족 HP%p), 최대 +40%
     bool PoiseImmune = false,               // 불퇴의 자세: 포이즈 무한 = 스태거/넉백 면역(가드붕괴·다운은 아님)
-    bool SunderNextHeavy = false,           // 분쇄 일격: 다음 강공 가드 무조건파괴 1회(미사용 시 만료 소멸)
+    bool SunderNextHeavy = false,           // 분쇄 일격: 이 타격이 출혈을 남긴다(구 '다음 강공 강화'에서 즉발로 전환)
     float AttackSpeedMult = 1f,             // 연격: 공속 +35% (모션 시간 ÷) — 광폭화와 가산 캡은 모션 트랙에서
     float EarlyEndGapM = 0f,                // 연격: 상대가 이 거리보다 멀어지면 조기 종료
     bool KiteExempt = false,                // 공간 지배: 카이팅 ST 소모 면제
@@ -69,6 +69,7 @@ public sealed record ActiveSpec(
     float RangeAddM = 0f,                   // 사거리 증가: 지속 동안 리치 +m (만료 시 되돌림)
     float SlowMult = 1f, float SlowSec = 0f,// 둔화: 상대 이동속도 배율·지속(§2 CC — 다운/붕괴/스태거보다 약한 최하위)
     float CarryM = 0f, float WallSlamDmgMult = 0f,  // 캐리+벽꽝: 밀며 동반 이동 · 경계 충돌 시 추가타 배수
+    bool SelfDodgeOut = false,              // 긴 창: 발동 즉시 늘어난 사거리 밖으로 자기 회피(무적창은 일반 회피와 동일)
     // ── Charge 효과(심판의 일격) ──
     float ChargeSec = 0f, float ExecuteDmgMult = 0f, float ExecuteKillPct = 0f,
     bool VetoExecution = false);            // 거부권 대상([7]§8 — 고결은 처형류 발동 거부
@@ -243,20 +244,24 @@ public static class SkillTable
                 CounterOnGuard: true), GateWeapon: "WPN_SWORD"),
         // 창 — 카이터 복원 핵심([7])
         new(new TraitDef("SKL_REACHPUSH", "긴 창(스킬)"), "", 1,
-            "창대를 고쳐 쥔다 — 4초간 리치 +0.4 + 즉발 밀어내기 (ST20 / 12s · 主SPD)",
+            "창대를 고쳐 쥔다 — 4초간 리치 +0.4, 발동 즉시 새 사거리 밖으로 몸을 뺀다(무적 회피·소모 없음) (ST20 / 12s · 主SPD)",
             new ActiveSpec("REACHPUSH", SkillTrigger.GapBand, 0f, 0.6f, 4f, 12f,
                 StCost: 20f, GapMinM: 1.6f, GapMaxM: 4.2f,
-                RangeAddM: 0.4f, KnockbackM: 1.2f), GateWeapon: "WPN_SPEAR"),
+                RangeAddM: 0.4f, SelfDodgeOut: true), GateWeapon: "WPN_SPEAR"),
         new(new TraitDef("SKL_ZONELOCK", "공간 지배(스킬)"), "", 2,
             "이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제(약공 ×0.6 / 0.8s) + 카이팅 ST 면제 (CD만 / 26s · 主SPD)",
             new ActiveSpec("ZONELOCK", SkillTrigger.GapBand, 0f, 0.6f, 6f, 26f,
                 GapMinM: 0f, GapMaxM: 5.0f, KiteExempt: true,
                 AutoPokeMult: 0.6f, AutoPokeIntervalSec: 0.8f), GateWeapon: "WPN_SPEAR"),
         // 도끼
+        // 버프형(다음 강공 강화)이었으나 관전 결과 강화만 하고 강공을 안 쳐 헛도는 일이 잦아
+        // 즉발 타격으로 전환(라니스타 지시) — 발동 즉시 가드를 부수고 출혈을 남긴다.
         new(new TraitDef("SKL_SUNDER", "분쇄 일격(스킬)"), "", 1,
-            "가드째 부순다 — 다음 강공이 가드를 무조건 파괴 + 출혈 (ST22 / 11s · 主ATK, 5초 내 미사용 시 소멸)",
-            new ActiveSpec("SUNDER", SkillTrigger.OppGuarding, 0f, 0.6f, 5f, 11f,
-                StCost: 22f, SunderNextHeavy: true), GateWeapon: "WPN_AXE"),
+            "가드째 부순다 — 즉발 강타로 가드를 무조건 파괴 + 출혈 (ST22 / 11s · 主ATK)",
+            // 값어치는 피해가 아니라 '가드를 연다'는 것 — 강타로 두면 타격형 순증으로 승률이 무너진다(실측 +80%p).
+            // 약공 배율로 낮춰 가드파괴·출혈만 남긴다.
+            new ActiveSpec("SUNDER", SkillTrigger.OppGuarding, 0f, 0.6f, 0f, 11f, ActiveKind.Strike,
+                StCost: 22f, StrikeDmgMult: 0.7f, BashBreak: true, SunderNextHeavy: true), GateWeapon: "WPN_AXE"),
         new(new TraitDef("SKL_BERSERK", "광전사의 도끼(스킬)"), "", 2,
             "제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 +0.8%/(부족 HP%p) 최대 +40%·받는 피해 +25% (26s · 主ATK)",
             new ActiveSpec("BERSERK", SkillTrigger.SelfHpBelow, 0.50f, 0.7f, 8f, 26f,
@@ -327,7 +332,7 @@ public static class SkillGen
 {
     // 천부 등급별 부여 확률 (노예→카이사르 순, TalentGrade 인덱스)
     private static readonly float[] Tier1Prob = { 0.25f, 0.31f, 0.37f, 0.43f, 0.49f, 0.55f };
-    private static readonly float[] Tier2Prob = { 0f, 0f, 0f, 0.10f, 0.20f, 0.30f };
+    private static readonly float[] Tier2Prob = { 0f, 0f, 0f, 0.43f, 0.49f, 0.55f };
 
     /// <summary>
     /// 스킬 추첨 뒤 특성을 정리한다 — '의미 있을 때만 지닌다'(라니스타 규칙).

@@ -1499,6 +1499,19 @@ public sealed class MatchSim
                     f.RangeBonus += sp.RangeAddM; f.SkillRangeAddM = sp.RangeAddM;
                     f.SkillRangeAddUntil = _now + sp.Duration;
                 }
+                // 긴 창: 창대를 고쳐 쥐며 물러난다 — 늘어난 사거리 '밖'까지 즉시 후퇴 + 회피 무적창.
+                // 스태미나를 따로 안 먹는다(스킬 ST가 이미 값). 밀어내기 대신 스스로 빠지는 카이터 정체성.
+                if (sp.SelfDodgeOut)
+                {
+                    Vec2 away = f.Pos - opp.Pos; float d = away.Length;
+                    away = d > 1e-4f ? away * (1f / d) : new Vec2(1f, 0f);
+                    float want = f.EffRange + 0.3f;              // 새 리치가 이미 반영된 값
+                    Vec2 target = f.Pos + away * MathF.Max(0f, want - d);
+                    if (target.Length > _c.ArenaRadius - 0.5f)   // 벽이면 접선으로 미끄러진다(일반 회피와 같은 규칙)
+                        target = f.Pos + (away + away.Perp() * f.CircleSign).Normalized() * MathF.Max(0f, want - d);
+                    f.Pos = ClampToArena(target);
+                    ChangeState(f, FighterState.Dodge, _c.DodgeDurationSec);   // 무적창 = 일반 회피와 동일
+                }
                 if (sp.CounterWindowAdd != 0f)                                                    // 결투의 격: Override 파이프([7]§2 가산·만료 롤백)
                     f.Overrides.Add(new ActiveOverride
                     {
@@ -1562,6 +1575,8 @@ public sealed class MatchSim
             float dmg = CombatMath.FinalDamage(f.Weapon, mm, f.Def.Stats, opp.Def.Stats, ctx, _c);
             if (guarding && sp.GuardPierce > 0f) dmg *= sp.GuardPierce;           // 대지 강타: 가드관통 50%
             ApplyDamage(f, opp, dmg, false, false, asGuarded);
+            // 분쇄 일격: 즉발 타격이 출혈까지 남긴다(무기 출혈 트랙 재사용 — 도끼 BleedDps 기준)
+            if (sp.SunderNextHeavy && !asGuarded) ApplyBleed(f, opp);
             if (opp.Hp <= 0f) return;
         }
         if (sp.KnockbackM > 0f && !immune)   // 견제 찌르기: 넉백(하이퍼아머·불퇴면 무효, 피해는 이미 적용)
