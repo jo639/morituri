@@ -3098,7 +3098,7 @@ function renderMarket(){
   $('candGrid').innerHTML = st.Candidates.length ? st.Candidates.map(c=>
     `<div class="fc cand"><h3>${c.Name} <span class="note" style="font-weight:400">${c.Age}세</span></h3>
      <div class="bd">${w(c.Weapon)} · ${p(c.Personality)} · 전술 일부: <b>${t(c.RevealedTactic)}</b></div>
-     <div class="chips">${(c.Hints||[]).map(h=>`<span class="chip" style="color:#a8d8b0;border:1px solid rgba(168,216,176,.4)" title="스카우터 정보">{eye} ${h}</span>`).join('')}<span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">전술 2종 ???</span></div>
+     <div class="chips">${(c.Hints||[]).map(h=>`<span class="chip" style="color:#a8d8b0;border:1px solid rgba(168,216,176,.4)" title="스카우터 정보">{eye} ${h}</span>`).join('')}<span class="chip hid">천부 ???</span><span class="chip hid">잠재력 ???</span><span class="chip hid">특성 ???</span><span class="chip hid">기술 ???</span><span class="chip hid">전술 2종 ???</span></div>
      <button class="recruit" data-idx="${c.Idx}">{scroll} 길게 눌러 영입</button></div>`).join('')
     : '<div class="note">후보 없음 — 뽑기를 돌려라.</div>';
   // 영입은 되돌릴 수 없다 — 길게 눌러 확정(방출·자유·매각과 같은 규약)
@@ -3166,7 +3166,7 @@ function openGachaReveal(){
         <div class="bd">${w(c.Weapon)} · ${p(c.Personality)}</div>
         <div class="note">전술 일부: <b style="color:#9bc4ec">${t(c.RevealedTactic)}</b></div>
         ${(c.Hints||[]).map(h=>`<div class="note" style="color:#a8d8b0">{eye} ${h}</div>`).join('')}
-        <div class="note" style="margin-top:5px">천부 ??? · 잠재 ??? · 특성 ???</div>
+        <div class="note" style="margin-top:5px">천부 ??? · 잠재 ??? · 특성 ??? · 기술 ???</div>
         <div class="rv-pickhint">{scroll} 길게 눌러 낙인을 찍는다</div>
       </div>`).join('')}</div>
     <div class="note" style="text-align:center;opacity:.55;font-size:11px;cursor:pointer" onclick="$('rvModal').classList.remove('on')">…천천히 저울질한다 (시장으로) ×</div>`;
@@ -3233,13 +3233,17 @@ function openRecruitReveal(f, missed){
         <span class="note">천부</span> <b style="color:${tal.c};font-size:${big?26:19}px;text-shadow:${big?`0 0 14px ${tal.c}`:'none'}">${f.Talent}</b>
         ${caesar?'<div style="color:#ffd75e;font-weight:800;margin-top:2px">{crown} 카이사르 — 전설 그 자체. 한 세대에 하나 나올까 말까 한 그릇!</div>'
           : big?'<div style="color:var(--gold);font-weight:700;margin-top:2px">{star} 불멸자 — 한 세대에 한둘뿐인 원석!</div>':''}</div>
+      <div class="rv-step" style="animation-delay:3.2s;margin-top:8px">
+        <span class="note">타고난 기술</span> ${(f.Skills||[]).length
+          ? (f.Skills||[]).map(sid=>sklChip(sid)).join('')
+          : '<span class="note">없다 — 몸뚱이 하나로 싸운다</span>'}</div>
     </div>
-    ${missedRows?`<div class="rv-step" style="animation-delay:3.2s">
+    ${missedRows?`<div class="rv-step" style="animation-delay:4.0s">
       <h4 style="color:var(--dim);margin:6px 0 3px;font-size:12px">놓친 원석들</h4>${missedRows}${verdict}</div>`:''}
-    <div class="rv-step" style="animation-delay:${missedRows?3.8:3.0}s">
+    <div class="rv-step" style="animation-delay:${missedRows?4.6:3.8}s">
       <button class="tacbtn" style="text-align:center;margin-top:10px" onclick="$('rvModal').classList.remove('on');go('ludus')">루두스로 →</button></div>`;
   $('rvModal').classList.add('on');
-  setTimeout(sfxStep, 900); setTimeout(sfxStep, 1600);
+  setTimeout(sfxStep, 900); setTimeout(sfxStep, 1600); setTimeout(sfxStep, 3200);   // 특성·잠재력·기술
   setTimeout(()=> big ? sfxJackpot() : sfxReveal(tal.r), 2400);
   if (big) setTimeout(()=>{   // 잭팟 비네트 — 천부 공개 순간 화면 가장자리 맥동
     const v=document.createElement('div'); v.className='rv-vignette'; v.style.setProperty('--glowc',tal.c);

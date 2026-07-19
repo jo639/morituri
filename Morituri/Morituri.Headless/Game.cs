@@ -1089,6 +1089,23 @@ public sealed partial class Game
     }
     private static int StableHash(string s) { int h = 0; foreach (char c in s) h = h * 31 + c; return h & 0x7fffffff; }
 
+    /// <summary>특성 1개 추가 부여 — 배타 축을 지키며 아직 없는 것 중에서.
+    /// 결정론: 세계 시드 + 선수 id + 나이로 고정해 같은 세계는 늘 같은 특성을 준다([7]§6.1).</summary>
+    private void GrantExtraTrait(Gladiator g, string why)
+    {
+        var owned = g.TraitIds.Where(TraitTable.Exists).Select(TraitTable.Get).ToList();
+        var pool = TraitTable.All.Where(t => !g.TraitIds.Contains(t.Id)
+                        && !(t.ExclAxis.Length > 0
+                             && owned.Any(o => o.ExclAxis == t.ExclAxis && o.ExclPolarity == -t.ExclPolarity)))
+                    .ToArray();
+        if (pool.Length == 0) return;
+        var trng = new SimRandom(_worldSeed ^ (ulong)StableHash(g.Id) ^ ((ulong)g.Age * 2654435761UL));
+        var add = pool[Math.Min(pool.Length - 1, (int)(trng.NextFloat01() * pool.Length))];
+        g.TraitIds = g.TraitIds.Append(add.Id).ToArray();
+        if (g.IsPlayer)
+            _story.Add((_rounds + 1, "trait", $"{{sprout}} {g.Name}({g.Age}세) — {why}: 「{add.Name}」을(를) 얻었다"));
+    }
+
     // ── [18] 살아있는 검투소 명부 — 라니스타 인물·후원자 정치·시즌 동향 ──
     private static readonly (string Trait, string Quote)[] LanistaTraits =
     {
@@ -1479,24 +1496,11 @@ public sealed partial class Game
         foreach (var g in _cast)
         {
             g.Age++;
-            // 노련함([7]§6.2): 10년마다 특성 1개 추가 — 세월이 쌓아 올린 몸의 지혜.
-            // 배타 축을 지키며 아직 없는 특성 중에서 고른다(생성 추첨과 같은 규칙).
-            if (g.TraitIds.Contains(TraitTable.Veteran) && g.Age % 10 == 0)
-            {
-                var owned = g.TraitIds.Select(t => TraitTable.Exists(t) ? TraitTable.Get(t) : null).Where(t => t != null).ToList();
-                var pool = TraitTable.All.Where(t => !g.TraitIds.Contains(t.Id)
-                                && !(t.ExclAxis.Length > 0 && owned.Any(o => o!.ExclAxis == t.ExclAxis && o.ExclPolarity == -t.ExclPolarity)))
-                            .ToArray();
-                if (pool.Length > 0)
-                {
-                    // 결정론: 세계 시드 + 선수 id + 나이로 고정 — 같은 세계는 늘 같은 특성을 준다
-                    var trng = new SimRandom(_worldSeed ^ (ulong)StableHash(g.Id) ^ ((ulong)g.Age * 2654435761UL));
-                    var add = pool[Math.Min(pool.Length - 1, (int)(trng.NextFloat01() * pool.Length))];
-                    g.TraitIds = g.TraitIds.Append(add.Id).ToArray();
-                    if (g.IsPlayer)
-                        _story.Add((_rounds + 1, "trait", $"{{sprout}} {g.Name}({g.Age}세) — 노련함이 값을 한다: 「{add.Name}」을(를) 얻었다"));
-                }
-            }
+            // 선천 특성 추가 부여 2종([7]§6.1·§6.2) — 둘 다 같은 규칙(배타 축 준수·미보유 중 추첨).
+            //  · 20세 달성: 1개 추가 (성장 서사 — [7]§6.1, 나이 시스템이 생겨 이제 구현 가능)
+            //  · 노련함 보유자: 10년마다 1개 추가 (세월이 쌓아 올린 지혜)
+            if (g.Age == 20) GrantExtraTrait(g, "스무 살 — 몸이 제 결을 찾았다");
+            if (g.TraitIds.Contains(TraitTable.Veteran) && g.Age % 10 == 0) GrantExtraTrait(g, "노련함이 값을 한다");
             if (g.Age >= g.AgingStartAge)
             {
                 float relief = g.IsPlayer ? 0.25f * (_medicalLv - 1) : 0f;
