@@ -34,7 +34,7 @@
   .tcut{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
   .tnowrap{ white-space:nowrap; flex:0 0 auto; }
   #logo{ font-family:var(--font-display); font-weight:800; font-size:16px; letter-spacing:.14em;
-         color:var(--gold); cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; flex:0 0 auto; }
+         color:var(--gold); cursor:var(--cur-hand); display:inline-flex; align-items:center; gap:8px; white-space:nowrap; flex:0 0 auto; }
   nav{ display:flex; gap:0; align-self:stretch; min-width:0; }
   nav button{ background:none; border:none; color:var(--dim); padding:0 10px; position:relative; white-space:nowrap;
               display:inline-flex; align-items:center; gap:5px; transition:color .15s; font-size:12.5px; }
@@ -88,7 +88,7 @@
   .note{ color:var(--dim); font-size:12px; }
   .err{ color:var(--b); font-size:12px; min-height:16px; }
   /* R4: 모멘트 — 죽음·영광의 전화면 정지 연출 */
-  #moment{ position:absolute; inset:0; z-index:85; display:none; align-items:center; justify-content:center; cursor:pointer;
+  #moment{ position:absolute; inset:0; z-index:85; display:none; align-items:center; justify-content:center; cursor:var(--cur-hand);
     background:radial-gradient(ellipse at 50% 45%, rgba(14,9,4,.88), rgba(6,4,2,.97) 75%); }
   /* 가시성·등장은 JS 인라인으로 구동 — CSS 애니메이션은 일부 웹뷰가 0%에 얼려 인라인을 이기는 문제가 있어 쓰지 않는다 */
   #moment.on{ display:flex; }

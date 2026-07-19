@@ -57,7 +57,7 @@
   /* 경기 결과 목록 */
   #matchlog{ display:flex; flex-direction:column; gap:3px; max-height:320px; overflow:auto; }
   .ml{ display:flex; gap:10px; align-items:baseline; padding:4px 10px; border-radius:var(--r1); background:var(--panel);
-       font-size:13px; cursor:pointer; border:1px solid transparent; transition:background .12s,border-color .12s; }
+       font-size:13px; cursor:var(--cur-hand); border:1px solid transparent; transition:background .12s,border-color .12s; }
   .ml:hover{ background:var(--panel2); border-color:var(--line); }
   .ml.mine{ border-left:3px solid var(--gold); }
   .ml .rd{ color:var(--dim); font-size:11px; min-width:44px; }
@@ -71,7 +71,7 @@
              border:1px solid var(--line-soft); }
   .node circle{ fill:var(--panel2); stroke:var(--gold-deep); stroke-width:1.5; }
   .node text{ fill:var(--ink); font-size:13px; font-weight:700; text-anchor:middle; }
-  #drop{ border:2px dashed var(--line); border-radius:var(--r2); padding:40px; text-align:center; color:var(--dim); margin-top:20px; cursor:pointer; }
+  #drop{ border:2px dashed var(--line); border-radius:var(--r2); padding:40px; text-align:center; color:var(--dim); margin-top:20px; cursor:var(--cur-hand); }
   .empty{ color:var(--dim); font-style:italic; padding:6px 8px; }
 </style>
 </head>
