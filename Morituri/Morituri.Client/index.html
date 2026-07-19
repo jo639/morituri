@@ -134,6 +134,71 @@
        border:1px solid var(--line-soft); border-top:3px solid var(--gold);
        border-radius:var(--r2); padding:12px 14px; box-shadow:var(--sh1); }
   .fc.ai{ border-top-color:#5a4a32; }
+  /* ── 도감 — 좌측 색인 레일 + 우측 표제/항목 ── */
+  .cxpad{ display:flex; gap:18px; align-items:flex-start; }
+  .cxrail{ flex:0 0 178px; position:sticky; top:0; }
+  .cxrail-t{ font-family:var(--font-display); font-size:13px; color:var(--gold); letter-spacing:.06em;
+             padding:0 0 7px; border-bottom:1px solid var(--gold-deep); margin-bottom:8px;
+             display:flex; align-items:center; gap:6px; }
+  .cxrail-f{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);
+             font-size:10.5px; line-height:1.6; color:var(--dim); opacity:.75; font-style:italic; }
+  .cxnav{ display:block; width:100%; text-align:left; background:transparent; border:0;
+          border-left:2px solid transparent; color:var(--dim); font-size:12.5px;
+          padding:6px 8px; border-radius:0 var(--r1) var(--r1) 0;
+          display:flex; align-items:center; gap:7px; transition:color .12s, background .12s, border-color .12s; }
+  .cxnav:hover{ color:var(--ink); background:rgba(210,171,85,.06); }
+  .cxnav.cur{ color:var(--gold); background:linear-gradient(90deg,rgba(210,171,85,.14),transparent);
+              border-left-color:var(--gold); font-weight:700; }
+  .cxnav .c{ margin-left:auto; font-size:10px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .cxmain{ flex:1 1 auto; min-width:0; }
+  .cxhead{ margin-bottom:12px; }
+  .cxhead h2{ margin:0 0 4px; border:0; padding:0; font-family:var(--font-display); font-size:19px;
+              letter-spacing:.03em; display:flex; align-items:center; gap:8px; }
+  .cxhead .lead{ font-size:12px; color:var(--dim); line-height:1.55; max-width:62ch; }
+  .cxhead .rule{ border:0; height:1px; margin:9px 0 0;
+                 background:linear-gradient(90deg,var(--gold-deep),transparent 70%); }
+  /* 하위 필터(스킬: 무기별/성격별) */
+  .cxsub{ display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .cxsub .lab{ font-size:11px; color:var(--dim); }
+  /* 묶음 표제 — 무기별·성격별 구획 */
+  .cxgh{ display:flex; align-items:center; gap:8px; margin:20px 0 9px; }
+  .cxgh:first-child{ margin-top:2px; }
+  .cxgh b{ font-family:var(--font-display); font-size:14px; color:var(--gold); letter-spacing:.03em;
+           display:flex; align-items:center; gap:6px; }
+  .cxgh .sub{ font-size:11px; color:var(--dim); }
+  .cxgh .ln{ flex:1 1 auto; height:1px; background:linear-gradient(90deg,var(--line),transparent); }
+  /* 항목 카드 */
+  .cxgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:11px; }
+  .cxc{ background:linear-gradient(180deg,rgba(210,171,85,.055),transparent 40%), var(--panel);
+        border:1px solid var(--line-soft); border-left:3px solid var(--gold-deep);
+        border-radius:var(--r2); padding:11px 13px 12px; box-shadow:var(--sh1);
+        transition:border-left-color .14s, box-shadow .14s; }
+  .cxc:hover{ border-left-color:var(--gold); box-shadow:var(--sh2); }
+  .cxc.act{ border-left-color:#a8802e; }
+  .cxc.neg{ border-left-color:#7a3a30; }
+  .cxc-h{ display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .cxc-em{ flex:0 0 auto; width:26px; height:26px; border-radius:var(--r1);
+           background:rgba(210,171,85,.10); border:1px solid var(--line);
+           display:flex; align-items:center; justify-content:center; color:var(--gold); }
+  .cxc-em .ic{ width:15px; height:15px; }
+  .cxc-n{ font-family:var(--font-display); font-size:15px; letter-spacing:.02em; color:var(--ink); }
+  .cxc-k{ font-size:10px; color:var(--gold); border:1px solid var(--gold-deep); border-radius:3px;
+          padding:0 5px; line-height:15px; white-space:nowrap; }
+  .cxc-k.neg{ color:#e0a89f; border-color:#7a3a30; }
+  .cxc-id{ margin-left:auto; font-size:9.5px; color:var(--dim); opacity:.5; letter-spacing:.06em; }
+  /* 수치표 — 이름/값 두 칸 */
+  .cxst{ margin:8px 0 0; border-top:1px solid var(--line-soft); }
+  .cxst .r{ display:flex; gap:10px; font-size:11.5px; padding:2.5px 1px;
+            border-bottom:1px solid rgba(73,56,35,.35); }
+  .cxst .r:last-child{ border-bottom:0; }
+  .cxst .r span{ color:var(--dim); flex:0 0 68px; }
+  .cxst .r b{ color:var(--gold); font-weight:600; font-variant-numeric:tabular-nums;
+              flex:1 1 auto; text-align:right; }
+  .cxc-d{ margin-top:8px; font-size:12px; line-height:1.55; color:var(--ink); }
+  .cxc-f{ margin-top:7px; padding-left:8px; border-left:1px solid var(--gold-deep);
+          font-size:11px; line-height:1.5; color:var(--dim); font-style:italic; }
+  .cxc-x{ margin-top:8px; font-size:10.5px; color:var(--dim); }
+  .cxc-x b{ color:var(--gold); font-weight:600; }
   /* 루두스 명성 박스 */
   #repBox{ background:linear-gradient(90deg,rgba(210,171,85,.10),rgba(210,171,85,.02) 60%), var(--panel);
            border:1px solid var(--line-soft); border-top:3px solid var(--gold);
@@ -583,10 +648,17 @@
     </div>
   </div></div>
 
-  <div class="screen" id="codex"><div class="pad">
-    <h2>{book} 도감 <span class="note">무기·전술·성격·특성 설명</span></h2>
-    <div id="codexTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
-    <div id="codexBody"></div>
+  <div class="screen" id="codex"><div class="pad cxpad">
+    <div class="cxrail">
+      <div class="cxrail-t">{book} 도감</div>
+      <div id="codexTabs"></div>
+      <div class="cxrail-f">모래 위의 모든 것은<br>여기에 적혀 있다.</div>
+    </div>
+    <div class="cxmain">
+      <div class="cxhead" id="codexHead"></div>
+      <div id="codexSub"></div>
+      <div id="codexBody"></div>
+    </div>
   </div></div>
 
   <div class="screen" id="archive"><div class="pad">
@@ -1855,7 +1927,8 @@ window.addEventListener('keydown', e=>{
 
 // 성격별 투구 볏 색(절차적 초상화 악센트)
 const PERCOL={CALM:'#5b9be0',RECKLESS:'#e0685f',ARROGANT:'#c9a84c',HONORABLE:'#e8e0d0',COWARD:'#8a8f98',CRUEL:'#a03a5a',BOLD:'#e08a3a',WARY:'#6a8a6a',SHOWMAN:'#c94ca8',OPPORTUNIST:'#4ca8a0'};
-const cx=(cat,id)=>(CODEX[cat].find(e=>e.id===id)||{}).d||'';
+// 도감 요약 한 줄 — 좁은 카드(전력 비교 등)용. tl이 있으면 그것을, 없으면 설명 전문을 쓴다
+const cx=(cat,id)=>{ const e = CODEX[cat].items.find(x=>x.id===id)||{}; return e.tl||e.d||''; };
 // 절차적 모리튜리 초상(투구+볏) — 진영색·성격색. 에셋 없이 코드 합성.
 // 무기 미니 글리프(초상 배지용) — 24×24 스트로크 패스
 const WPNGLYPH={
@@ -2353,7 +2426,7 @@ const TOUR = [
   { sel:'nav [data-s="watch"]', ic:'{play}', txt:'<b>관전</b>은 지난 경기의 다시보기다. 명경기 보관함과 선수 검색으로 모래 위의 순간을 되짚는다.' },
   { sel:'nav [data-s="news"]', ic:'{news}', txt:'<b>신문</b>은 매주 발행되는 콜로세움 뉴스 — 누가 떴고 누가 졌는지, 세상이 뭐라 떠드는지 여기 실린다.' },
   { sel:'nav [data-s="gamble"]', ic:'{dice}', txt:'<b>도박장</b>에서 AI 경기에 베팅한다(내 경기는 금지 — 승부조작). <b>빚과 대출</b>도 여기 「검은 인장의 장부」에서 관리한다.', optional:true },
-  { sel:'nav [data-s="codex"]', ic:'{book}', txt:'<b>도감</b>에 무기 8종·성격 10종·전술 10종의 설명이 있다. 무엇을 쥐었고, 어떤 기질이며, 무슨 전술을 쓰는지 — 모리튜리를 이해하려거든 여기서 배운다.' },
+  { sel:'nav [data-s="codex"]', ic:'{book}', txt:'<b>도감</b>에 무기·전술·성격·스킬·특성·천부의 수치와 설명이 전부 적혀 있다. 스킬은 무기별·성격별로 묶어 볼 수 있다 — 모리튜리를 이해하려거든 여기서 배운다.' },
   { sel:'nav [data-s="archive"]', ic:'{archive}', txt:'<b>보관함</b>엔 유서·서신·메모·단서가 쌓인다. 문서를 누르면 펼쳐 읽을 수 있다 — 선대 가이우스가 남긴 것들도.' },
   { sel:'#next', ic:'{ludus}', txt:'준비됐다면, 여기서 시작하라. 나머지는 모래가 가르칠 것이다. <span style="color:var(--dim)">— 카토</span>' },
 ];
@@ -3334,94 +3407,199 @@ async function renderPatron(){
       </div></div>`).join('')}</div>` : '<div class="note">아직 라이벌 검투소가 없다.</div>';
 }
 
-// ── 도감 (무기·전술·성격·특성 레퍼런스 — 현황 문서 3~6절 기준) ──
+// ── 도감 (무기·전술·성격·특성·스킬 레퍼런스 — 현황 문서 3~6절, [7] 스킬카탈로그 기준) ──
+// 항목 규약: n=이름, id=내부 코드, k=분류 배지, st=[[항목,값]] 수치표, d=작동 방식, f=세계관 한 줄, neg=페널티 강조
 const CODEX = {
-  무기: [
-    {n:'검', id:'SWORD', s:'피해 33 · 사거리 2.4 · 후딜 0.45', d:'기준 무기. 균형잡힌 근접 표준 — 빠르고 안전한 약공.'},
-    {n:'창', id:'SPEAR', s:'피해 38 · 사거리 3.9 · 후딜 0.55', d:'장거리 카이터. 찌르고 빠짐(공격 후 0.5s 강제 후퇴). 리치로 일방 견제.'},
-    {n:'도끼', id:'AXE', s:'피해 64 · 사거리 2.1 · 후딜 0.85', d:'최고 화력 + 출혈(클린히트당 스택, 최대 3, 1.0/s). 하이퍼아머 없음 = 끊길 수 있는 고위험 한방.'},
-    {n:'대검', id:'GREATSWORD', s:'피해 55 · 사거리 3.0 · 후딜 0.75', d:'하이퍼아머(강공 중 안 끊김) + 강공 선호. 묵직한 리치 파워.'},
-    {n:'쌍검', id:'DUALBLADES', s:'피해 18×2 · 사거리 1.65 · 후딜 0.42', d:'2타 초근접 난전. 최단 후딜·최고 기동.'},
-    {n:'망치', id:'HAMMER', s:'피해 58 · 사거리 1.95 · 후딜 0.90', d:'최대 경직 + 하이퍼아머. 느리지만 멈출 수 없는 일격.'},
-    {n:'채찍', id:'WHIP', s:'피해 35 · 사거리 4.5 · 후딜 0.50', d:'최장거리 견제. 가드 우회 0.10. 찌르고 빠짐(0.6s 후퇴).'},
-    {n:'방패', id:'SHIELD', s:'피해 30 · 사거리 2.25 · 후딜 0.50', d:'가드 보너스 +0.60 + 패링(0.15s 자격창). 방어·반격 특화.'},
-  ],
-  전술: [
-    {n:'압박', id:'PRESSURE', s:'선호거리 1.5 · 공격성 0.70', d:'근접 압박 — 파고들어 카이터를 사냥.'},
-    {n:'카운터', id:'COUNTER', s:'선호거리 3.0 · 카운터 0.80 · 가드 0.65', d:'거리 유지·후딜 반격. 창 시그니처. 버티다 처벌.'},
-    {n:'견제', id:'ZONER', s:'선호거리 4.2 · 페인트 0.50', d:'최장거리 견제. 채찍 시그니처. 스윗스팟 유지.'},
-    {n:'난전', id:'BRAWLER', s:'선호거리 1.05 · 리스크 0.70', d:'초근접 난타. 쌍검·도끼 시그니처. 고위험 고화력.'},
-    {n:'결단', id:'DECISION', s:'선호거리 3.3 · 가드 0.55', d:'신중한 판정 노림. 가드·페인트로 확정 기회 대기.'},
-    {n:'사냥꾼', id:'HUNTER', s:'선호거리 2.4 · Commit 0.65', d:'약해진 사냥감 추적 — 상대 HP≤35% 시 공격성 +0.3.'},
-    {n:'도박', id:'GAMBLER', s:'선호거리 1.8 · 리스크 0.90', d:'고위험 도박. 모 아니면 도.'},
-    {n:'회피', id:'EVADER', s:'선호거리 3.75 · 공격성 0.25', d:'회피 중심. 낮은 공격성·긴 허용오차.'},
-    {n:'방어', id:'DEFENDER', s:'선호거리 2.1 · 가드 0.40', d:'가드 중심 수비. 방패 시그니처.'},
-    {n:'균형', id:'BALANCED', s:'선호거리 2.4 · 공격성 0.50', d:'범용 만능형. 기본값.'},
-  ],
-  성격: [
-    {n:'냉철', id:'CALM', d:'트리거 확률 절반 · 도발 위축 상쇄. 감정에 흔들리지 않는 전술가.'},
-    {n:'충동', id:'RECKLESS', d:'HP≤30% 폭주 · 연속 피격 분노. 도발당하면 격노.'},
-    {n:'오만', id:'ARROGANT', d:'우세+상대 스태거 시 도발(역전 위험). 우세하면 태만.'},
-    {n:'고결', id:'HONORABLE', d:'다운된 상대엔 추가타 자제. 드문 경의의 도발.'},
-    {n:'겁쟁이', id:'COWARD', d:'강공 윈드업 회피 · 치명타 후 위축. 도발당하면 더 물러남.'},
-    {n:'잔혹', id:'CRUEL', d:'취약 상태(가드붕괴·빈사·지침)에 공격성 폭발. 다운 추가타.'},
-    {n:'대담', id:'BOLD', d:'시간 부족+열세 시 전력. 역전을 노린 도발.'},
-    {n:'신중', id:'WARY', d:'Commit +0.20 · 스태미나 낮으면 공격성 −0.3. 자원 관리형.'},
-    {n:'쇼맨', id:'SHOWMAN', d:'화려함·조롱 도발 · 빈사 강공 마무리("{masks} 쇼타임"=화려한 강공 지시, 데미지 직접증가 아님). 도발·스펙터클로 관중게이지를 잘 채운다 → 관중 유리 시 피해 최대 +12%·이동 속도 +8%(모든 선수 공통, 쇼맨이 잘 채울 뿐). 관중 외면 시 가장 크게 위축.'},
-    {n:'기회주의', id:'OPPORTUNIST', d:'평소 신중, 가드붕괴·지침 허점에 계산적으로 폭발.'},
-  ],
-  가이드: [
-    {n:'기본 루프', id:'LOOP', d:'영입(뽑기·이적) → 전술 선택 → 경기(라이브 관전·개입) → 성장(훈련·마스터리) → 시즌말 정산·승강. 매 경기 출전료(인기=흥행)·승리 보너스가 수입.'},
-    {n:'라이브 개입', id:'LIVE', d:'내 경기는 전용 화면에서 관전. {pause} 전술 변경(경기당 2회)으로 그 순간부터 새 전술 — 열세를 뒤집어라. {ff}으로 즉시 결과 확정도 가능.'},
-    {n:'경제', id:'ECON', d:'{coin}골드=출전료·승리·순위·컵·이적. 사용: 뽑기·시설·이적·이벤트. 부족하면 사채(이자 20%·명성 압박). {glory}영광=업적·타이틀·승격 전용 — 잠재력 돌파·제국 특전에.'},
-    {n:'성장 3갈래', id:'GROW', d:'훈련 포인트(3경기마다) → 스탯 훈련(상한까지) / 마스터리(비스탯). 상한이 차면 {glory}영광 돌파로 상한 확장. 노화(30~36세 시작)는 상한을 깎는다.'},
-    {n:'리그 구조', id:'LEAGUE', d:'1부 콜로세움/2부 투기장 — 시즌말 성적으로 승강(꼴찌 2⇄상위 2). 정규 = 부 내 전원 라운드로빈(모두가 모두와 딱 한 번) → 미드시즌 {masks}사투르날리아 대항전(루두스 대표 1인) → 이벤트 빅매치({skull}처형전 변주) → 챔피언십 컵(1부 top4).'},
-    {n:'위험 관리', id:'RISK', d:'피로(경기당 +5, 격전 +12)가 쌓이면 부상 위험↑. 격전(KO패·빈사)을 반복하면 {coffin}사망·{skull}영구 중상 같은 운명이 실시간으로 닥친다. 스파링은 안전한 성장.'},
-    {n:'세대·유산', id:'LEGACY', d:'명성 60+ 전설을 은퇴시키면 스승으로 남아 영입 유산(원석 품질↑·신인 잠재 +10). 죽음은 유산 없이 끝 — 노장은 제때 보내라.'},
-  ],
-  스킬: SKILLS.map(s=>({n:(s.tier>=2?'Ⅱ · ':'')+s.n, id:s.id,
-    s:`${PER[s.per]||s.per} 전용 · ${s.tier>=2?'집정관+ · ':''}수련 3pt`, d:s.d+' — 특성과 달리 수련으로 익히고 교체할 수 있다(슬롯: 챔피언+ 2칸, 그외 1칸).'})),
-  '천부·잠재력': [
-    {n:'천부 재능', id:'TALENT', s:'생성 시 결정 · 초기 스탯 총합(버짓)', d:'태어난 그릇. 최초 6스탯의 총합을 정한다 — 영입 전엔 비공개(뽑기 도박의 핵심). 루두스 등급·스승이 높으면 좋은 원석을 만날 확률↑(best-of-N 롤).'},
-    {n:'노예', id:'SLAVE', s:'확률 50% · 버짓 395', d:'다수. 평균 이하의 시작 — 하지만 잠재력이 크면 대기만성.'},
-    {n:'투사', id:'FIGHTER', s:'확률 28% · 버짓 410', d:'싸움깨나 하는 몸.'},
-    {n:'챔피언', id:'CHAMPION', s:'확률 14% · 버짓 425', d:'우승을 노릴 재목.'},
-    {n:'집정관', id:'CONSUL', s:'확률 6% · 버짓 442', d:'귀한 원석.'},
-    {n:'불멸자', id:'IMMORTAL', s:'확률 1.8% · 버짓 460', d:'한 세대에 한둘.'},
-    {n:'카이사르', id:'CAESAR', s:'확률 0.2% · 버짓 480', d:'전설 그 자체 — 발굴하면 업적.'},
-    {n:'잠재력', id:'POTENTIAL', s:'성장 상한(최대 버짓) — 잿불 420 · 불씨 445 · 횃불 470 · 화염 495 · 봉화 520 · 태양 545', d:'자랄 수 있는 한계. 경기 자동성장·훈련 포인트가 이 상한까지만 쌓인다. 상한 도달 후엔 {glory}영광 돌파(상한 +25)·마스터리(비스탯)로 계속 성장. 노화가 시작되면 상한 자체가 시즌마다 깎인다.'},
-  ],
-  특성: [
-    {n:'유리몸', id:'BRITTLE', s:'받는 피해 ×1.20', d:'순수 페널티. 질긴가죽·둔감과 배타.'},
-    {n:'질긴가죽', id:'TOUGHHIDE', s:'받는 피해 ×0.88 · 이동 속도 ×0.92', d:'맷집형. 유리몸과 배타.'},
-    {n:'둔감', id:'DULL', s:'받는 피해 ×0.85 · 인지지연 +0.06', d:'맷집 ↔ 반응 트레이드오프.'},
-    {n:'마르지않는샘', id:'SPRING', s:'스태미나max ×1.25 · 회복 ×1.20', d:'지구력형. 허약체질과 배타.'},
-    {n:'허약체질', id:'FRAIL', s:'스태미나max ×0.75 · 회복 ×0.70', d:'순수 페널티. 카이팅 가스아웃에 취약.'},
-    {n:'민첩', id:'FLEET', s:'이동 속도 ×1.12 · HP ×0.90', d:'속도 ↔ 체력 교환.'},
-    {n:'불굴', id:'STAND', s:'포이즈 ×1.30', d:'경직 저항. 잘 안 무너짐.'},
-    {n:'봉쇄자', id:'STONEWALL', s:'가드 시 받는 피해 ×0.5', d:'가드 한정 경감(일반 받는 피해와 별개).'},
-    {n:'유리턱', id:'GLASSJAW', s:'포이즈 ×0.60', d:'기절 잘 걸림.'},
-    {n:'거인', id:'GIANT', s:'HP ×1.25 · 사거리 ×1.25 · 크기 ×1.30', d:'비례 리치 우위. 선타 유리.'},
-    {n:'좀비', id:'ZOMBIE', s:'이동 속도 ×0.85 + HP≤30% 디버프 면역', d:'위기에 강한 고유 행동.'},
-    {n:'숨고르기', id:'CATCHBREATH', s:'스태미나≥80% 시 모든 공격 확정 크리', d:'고스태미나 폭딜 고유 행동.'},
-    {n:'초상비', id:'LIGHTFOOT', s:'대시 ST소모 ×0.5 + 대시 후 1s 이동 속도↑', d:'회피·기동 고유 행동.'},
-    {n:'선취점', id:'FIRSTBLOOD', s:'첫 클린히트 ×1.25 + 흡수 쉴드 50/8s', d:'선제 이득 고유 행동.'},
-    {n:'처형자', id:'EXECUTIONER', s:'상대 HP≤30% 데미지 ×1.5', d:'빈사의 적을 확실히 끝낸다(마무리형).'},
-    {n:'일격필살', id:'ASSASSIN', s:'클린히트 4% 확률 ×2.4', d:'드물게 터지는 치명적 한 방 — 이변 제조기.'},
-    {n:'광폭화', id:'BERSERK', s:'자신 HP≤35% 데미지 ×1.3', d:'궁지에 몰릴수록 강해진다 — 역전의 씨앗.'},
-    {n:'천재', id:'GENIUS', s:'잠재 상한 ×1.15 · 경기 성장 ↑(0.5→0.8)', d:'성장 여력이 근본적으로 크다(메타 특성).'},
-    {n:'저속노화', id:'SLOWAGE', s:'노화 시작 +4세 · 상한 감소 −40%p', d:'오래 정점을 유지한다 — 노장의 축복(메타).'},
-  ],
+  무기: {
+    ic:'sword', lead:'모래 위에서 손에 쥐는 것. 무엇을 쥐었느냐가 사거리와 속도, 그리고 그 자의 싸움 전부를 정한다. 아래 수치는 보정 없는 기본값이며 스탯·특성·마스터리가 여기에 곱해진다.',
+    items:[
+    {n:'검', id:'SWORD', tl:'균형잡힌 근접 표준 — 약점이 없다', k:'표준 · 근접', st:[['피해','33'],['사거리','2.4'],['후딜','0.45s']],
+     d:'모든 수치의 기준점. 빠르고 안전한 약공으로 어느 거리에서도 답을 낸다. 압도적인 장점이 없는 대신 치명적인 약점도 없다.',
+     f:'처음 쥐는 것도 검이고, 끝까지 살아남는 자가 쥔 것도 대개 검이다.'},
+    {n:'창', id:'SPEAR', tl:'리치로 일방 견제 — 붙이면 무력', k:'장병기 · 카이터', st:[['피해','38'],['사거리','3.9'],['후딜','0.55s'],['고유','찌르고 빠짐 0.5s']],
+     d:'리치로 일방적으로 두드린다. 공격 후 강제로 물러나므로 상대는 매번 거리를 새로 좁혀야 한다. 파고들리면 아무것도 못 한다.',
+     f:'창잡이는 이기는 법을 모른다. 다만 지지 않는 거리를 안다.'},
+    {n:'도끼', id:'AXE', tl:'최고 화력 + 출혈 — 끊기면 끝', k:'중병기 · 출혈', st:[['피해','64'],['사거리','2.1'],['후딜','0.85s'],['출혈','최대 3중첩 · 1.0/s'],['하이퍼아머','없음']],
+     d:'단일 타격 최고 화력. 클린히트마다 출혈이 쌓여 가만히 두면 알아서 깎인다. 다만 휘두르는 중 경직되면 그대로 끊긴다 — 고위험 고보상.',
+     f:'한 번만 맞히면 된다. 문제는 그 한 번까지 살아 있어야 한다는 것이다.'},
+    {n:'대검', id:'GREATSWORD', tl:'하이퍼아머 강공 — 밀어붙인다', k:'중병기 · 하이퍼아머', st:[['피해','55'],['사거리','3.0'],['후딜','0.75s'],['하이퍼아머','강공 중']],
+     d:'강공 중에는 맞아도 끊기지 않는다. 리치와 화력을 함께 갖춰 상대의 잔타를 무시하고 자기 스윙을 끝까지 밀어붙인다.',
+     f:'멈추게 하려면 죽여야 한다. 그전까지 칼은 내려온다.'},
+    {n:'쌍검', id:'DUALBLADES', tl:'초근접 2타 — 최단 후딜', k:'쌍수 · 난전', st:[['피해','18 ×2'],['사거리','1.65'],['후딜','0.42s']],
+     d:'전 무기 중 최단 후딜·최고 기동. 2타 판정이라 잔압으로 상대를 계속 흔든다. 리치가 짧아 붙지 못하면 존재하지 않는 무기.',
+     f:'거리를 지운다. 그 안쪽은 쌍검잡이의 방이다.'},
+    {n:'망치', id:'HAMMER', tl:'최대 경직 — 느리지만 무너뜨린다', k:'중병기 · 경직', st:[['피해','58'],['사거리','1.95'],['후딜','0.90s'],['경직','최대'],['하이퍼아머','강공 중']],
+     d:'가장 느리고 가장 무겁다. 한 번 맞으면 상대의 자세가 무너져 다음 타격까지 이어진다. 빗나가면 0.9초의 무방비.',
+     f:'망치는 상대를 베지 않는다. 서 있을 자격을 빼앗는다.'},
+    {n:'채찍', id:'WHIP', tl:'최장 사거리 견제 — 가드 우회', k:'장병기 · 견제', st:[['피해','35'],['사거리','4.5'],['후딜','0.50s'],['가드 우회','0.10'],['고유','찌르고 빠짐 0.6s']],
+     d:'최장 사거리. 가드 너머로 조금씩 새어 들어가며 상대를 바깥에 묶어둔다. 접근을 허용하는 순간 가장 약한 무기가 된다.',
+     f:'맞은 자는 언제 맞았는지 모른다. 다만 계속 피가 흐른다.'},
+    {n:'방패', id:'SHIELD', tl:'가드·패링 반격 — 버티는 무기', k:'방어구 · 반격', st:[['피해','30'],['사거리','2.25'],['후딜','0.50s'],['가드 보너스','+0.60'],['패링 창','0.15s']],
+     d:'혼자서는 상대를 죽이지 못한다. 대신 상대가 스스로 무너질 때까지 버티고, 패링이 성공한 순간을 처벌로 바꾼다.',
+     f:'방패잡이의 승리는 길고 지루하다. 관중은 야유하고, 그는 살아서 나간다.'},
+  ]},
+  전술: {
+    ic:'swords', lead:'경기 전에 고르고 경기 중에 바꿀 수 있는 지시. 선호 거리와 공격성이 AI의 모든 판단에 밑값으로 깔린다. 무기와 성격에 맞으면 위력이 배가되고, 어긋나면 제 무기를 스스로 버리는 셈이 된다.',
+    items:[
+    {n:'압박', id:'PRESSURE', k:'공세', st:[['선호 거리','1.5'],['공격성','0.70']],
+     d:'끊임없이 파고든다. 거리를 먹고 사는 창·채찍을 무너뜨리는 정답이지만, 자기 스태미나도 함께 태운다.', f:'숨 쉴 틈을 주지 않는 것 자체가 무기다.'},
+    {n:'카운터', id:'COUNTER', k:'반격 · 창 시그니처', st:[['선호 거리','3.0'],['카운터','0.80'],['가드','0.65']],
+     d:'먼저 치지 않는다. 상대의 후딜을 기다렸다가 그 틈만 처벌한다. 참을성이 없으면 그냥 안 때리는 전술이 된다.', f:'먼저 휘두른 쪽이 먼저 비어 있다.'},
+    {n:'견제', id:'ZONER', k:'거리 · 채찍 시그니처', st:[['선호 거리','4.2'],['페인트','0.50']],
+     d:'제 무기만 닿고 상대 무기는 닿지 않는 스윗스팟을 유지한다. 리치 우위가 없으면 성립하지 않는다.', f:'싸움은 이미 거리에서 끝나 있었다.'},
+    {n:'난전', id:'BRAWLER', k:'근접 · 쌍검/도끼 시그니처', st:[['선호 거리','1.05'],['리스크','0.70']],
+     d:'가장 가까운 거리에서 서로 두들긴다. 화력이 높은 쪽이 이기는 단순한 계산 — 그래서 도끼와 쌍검의 자리다.', f:'물러서지 않기로 한 두 사람은 결국 한 사람이 된다.'},
+    {n:'결단', id:'DECISION', k:'운영', st:[['선호 거리','3.3'],['가드','0.55']],
+     d:'가드와 페인트로 상대를 흔들며 확정된 기회만 노린다. 판정승을 설계하는 전술.', f:'백 번의 헛손질보다 한 번의 확신.'},
+    {n:'사냥꾼', id:'HUNTER', k:'추격', st:[['선호 거리','2.4'],['Commit','0.65'],['조건','상대 HP≤35% → 공격성 +0.3']],
+     d:'상대가 약해지기 전까지는 평범하다. 피 냄새를 맡는 순간 성격이 바뀐다 — 마무리를 놓치지 않는 전술.', f:'쫓기 시작하면 끝날 때까지 멈추지 않는다.'},
+    {n:'도박', id:'GAMBLER', k:'고위험', st:[['선호 거리','1.8'],['리스크','0.90']],
+     d:'가장 위험한 선택지를 항상 고른다. 전력 차를 뒤집을 유일한 방법이자, 이길 경기를 버리는 가장 빠른 길.', f:'주사위는 라니스타가 던지고, 피는 검투사가 흘린다.'},
+    {n:'회피', id:'EVADER', k:'지연', st:[['선호 거리','3.75'],['공격성','0.25']],
+     d:'거의 때리지 않는다. 상대의 스태미나를 말려 죽이거나 시간을 끌어 판정으로 간다.', f:'관중은 싫어하고, 장부는 좋아한다.'},
+    {n:'방어', id:'DEFENDER', k:'수비 · 방패 시그니처', st:[['선호 거리','2.1'],['가드','0.40']],
+     d:'가드를 중심으로 자리를 지킨다. 방패와 만나면 뚫기 어려운 벽이 되지만, 스스로 이기는 힘은 약하다.', f:'무너지지 않는 것도 승리의 한 형태다.'},
+    {n:'균형', id:'BALANCED', k:'범용 · 기본값', st:[['선호 거리','2.4'],['공격성','0.50']],
+     d:'어느 쪽으로도 치우치지 않는다. 상대를 모를 때, 혹은 선수의 무기·성격이 이미 충분히 뚜렷할 때의 무난한 답.', f:'특별할 것이 없다는 것이 약점이 되는 날은 드물다.'},
+  ]},
+  성격: {
+    ic:'mind', lead:'타고나는 기질. 감정 트리거의 발동 확률과 AI의 결정 가중치만 바꾼다 — 피해량이나 스탯을 직접 올리지는 않는다. 성격은 또한 그 선수가 배울 수 있는 패시브 스킬 두 종을 결정한다.',
+    items:[
+    {n:'냉철', id:'CALM', tl:'감정에 흔들리지 않는다', k:'기질', st:[['감정 트리거','×0.5'],['도발 위축','상쇄']],
+     d:'분노도 공포도 절반만 받는다. 도발에 흔들리지 않고 계산한 대로 싸우지만, 폭발적인 반전의 순간도 없다.', f:'그는 관중석을 한 번도 올려다보지 않았다.'},
+    {n:'충동', id:'RECKLESS', tl:'몰릴수록 거칠어진다 — 도발에 격노', k:'기질', st:[['조건','HP≤30% 폭주'],['반응','연속 피격 시 분노'],['도발','격노']],
+     d:'몰릴수록 거칠어진다. 도발당하면 판단을 버리고 달려든다 — 역전의 씨앗이자 자멸의 지름길.', f:'피를 보면 자기 것인지 남의 것인지 구분하지 않았다.'},
+    {n:'오만', id:'ARROGANT', tl:'이길 때 손을 놓고 조롱한다', k:'기질', st:[['조건','우세 + 상대 스태거 → 도발'],['부작용','우세 시 태만']],
+     d:'이기고 있을 때 손을 놓고 상대를 조롱한다. 관중은 열광하고, 그 사이 상대는 숨을 고른다.', f:'그가 진 경기는 모두 이기고 있던 경기였다.'},
+    {n:'고결', id:'HONORABLE', tl:'쓰러진 상대를 밟지 않는다', k:'기질', st:[['금기','다운·빈사 추가타 자제'],['도발','드묾 · 경의의 표시']],
+     d:'쓰러진 상대를 밟지 않는다. 확실한 마무리를 스스로 포기하는 대가로, 관중과 후원자의 존경을 얻는다.', f:'모래는 그를 기억하지 않지만, 로마는 기억한다.'},
+    {n:'겁쟁이', id:'COWARD', tl:'위험을 먼저 피한다 — 도발에 후퇴', k:'기질', st:[['반응','강공 윈드업 회피'],['조건','치명타 피격 후 위축'],['도발','더 물러남']],
+     d:'죽음의 냄새를 남보다 먼저 맡는다. 비겁하다고 야유받지만, 겁쟁이는 오래 산다.', f:'살아남은 자가 다음 경기에 선다.'},
+    {n:'잔혹', id:'CRUEL', tl:'약해진 상대에 공격성 폭발', k:'기질', st:[['조건','가드붕괴·빈사·지침 상대에 공격성 폭발'],['성향','다운 추가타']],
+     d:'상대가 약해진 순간을 즐긴다. 끝낼 수 있을 때 절대 놓치지 않는 마무리형 기질.', f:'끝을 길게 끄는 것도 그에게는 즐거움이었다.'},
+    {n:'대담', id:'BOLD', tl:'질 것 같을 때 크게 건다', k:'기질', st:[['조건','잔여 시간 부족 + 열세 → 전력'],['도발','역전을 노린 것']],
+     d:'질 것 같을 때 가장 크게 건다. 판정패로 조용히 지느니 무너지더라도 승부를 보는 쪽을 택한다.', f:'마지막 종이 울리기 전에 결판을 내려 했다.'},
+    {n:'신중', id:'WARY', tl:'자원을 아끼며 무리하지 않는다', k:'기질', st:[['Commit','+0.20'],['조건','스태미나 부족 시 공격성 −0.3']],
+     d:'자원을 관리한다. 무리한 교전을 피하고 스태미나가 남아 있는 쪽으로 경기를 끌고 간다.', f:'그의 승리는 대개 3라운드 이후에 있었다.'},
+    {n:'쇼맨', id:'SHOWMAN', tl:'관중을 몰고 다닌다 — 외면당하면 위축', k:'기질 · 관중', st:[['성향','조롱 도발 · 화려한 마무리'],['관중 유리','피해 최대 +12% · 이속 +8%'],['관중 외면','가장 크게 위축']],
+     d:'관중 게이지를 채우는 데 가장 능하다. 관중 보너스 자체는 모든 선수에게 공통이며, 쇼맨은 그걸 잘 채울 뿐 — "쇼타임"도 화려한 강공 지시이지 피해 증가가 아니다. 대신 관중이 등을 돌리면 누구보다 크게 무너진다.',
+     f:'그는 이기러 온 것이 아니라 기억되러 왔다.'},
+    {n:'기회주의', id:'OPPORTUNIST', tl:'평소 신중, 허점에 계산적 폭발', k:'기질', st:[['평시','신중'],['조건','가드붕괴·지침 허점에 계산적 폭발']],
+     d:'평소에는 눈에 띄지 않는다. 상대가 처음으로 크게 무너진 그 한 번을 위해 경기 내내 기다린다.', f:'기다림은 그에게 소극적인 일이 아니었다.'},
+  ]},
+  스킬: { ic:'bolt', lead:'특성과 달리 훈련으로 익히고 교체할 수 있다(수련 3pt). 슬롯은 챔피언+ 2칸, 그 외 1칸. 무기 액티브는 AI가 조건과 확률에 따라 스스로 발동하고 — 감독이 누르지 않는다 — 성격 패시브는 조건이 맞으면 자동으로 적용된다. Ⅱ급은 집정관 이상만 익힐 수 있다.', items:[] },
+  '천부·잠재력': {
+    ic:'star', lead:'태어난 그릇(천부)과 자랄 수 있는 한계(잠재력). 둘 다 생성 시 결정되며 영입 전에는 공개되지 않는다 — 뽑기가 도박인 이유가 여기에 있다.',
+    items:[
+    {n:'천부 재능', id:'TALENT', k:'개념', st:[['결정 시점','생성 시'],['효과','초기 6스탯 총합(버짓)']],
+     d:'그 사람이 어떤 몸으로 태어났는지. 루두스 등급과 스승이 높을수록 좋은 원석을 만날 확률이 오른다(best-of-N 롤).',
+     f:'모래는 공평하지 않다. 시작부터 그렇다.'},
+    {n:'노예', id:'SLAVE', k:'천부 등급', st:[['확률','50%'],['버짓','395']], d:'가장 흔한 출발점. 평균 이하에서 시작하지만 잠재력이 크면 대기만성이 된다.', f:'이름조차 팔려온 대로 불렸다.'},
+    {n:'투사', id:'FIGHTER', k:'천부 등급', st:[['확률','28%'],['버짓','410']], d:'싸움깨나 해본 몸. 1부에서도 당장 쓸 수 있는 평범한 즉시 전력.', f:'모래에 오기 전에도 이미 사람을 때려봤다.'},
+    {n:'챔피언', id:'CHAMPION', k:'천부 등급', st:[['확률','14%'],['버짓','425']], d:'우승을 노려볼 재목. 스킬 슬롯 2칸이 열리는 기준선이기도 하다.', f:'검을 쥐는 자세부터 달랐다.'},
+    {n:'집정관', id:'CONSUL', k:'천부 등급', st:[['확률','6%'],['버짓','442'],['해금','Ⅱ급 스킬']], d:'귀한 원석. Ⅱ급 스킬을 익힐 수 있는 최저 등급.', f:'귀족들이 이름을 묻기 시작하는 지점.'},
+    {n:'불멸자', id:'IMMORTAL', k:'천부 등급', st:[['확률','1.8%'],['버짓','460']], d:'한 세대에 한둘. 제대로 키우면 리그의 판도가 바뀐다.', f:'죽지 않는다는 뜻이 아니다. 잊히지 않는다는 뜻이다.'},
+    {n:'카이사르', id:'CAESAR', k:'천부 등급 · 최고', st:[['확률','0.2%'],['버짓','480']], d:'전설 그 자체. 발굴하는 것만으로 업적이 남는다.', f:'평생 한 번 볼까 말까 한 것을, 라니스타는 평생 기다린다.'},
+    {n:'잠재력', id:'POTENTIAL', k:'개념 · 성장 상한',
+     st:[['잿불','420'],['불씨','445'],['횃불','470'],['화염','495'],['봉화','520'],['태양','545']],
+     d:'경기 자동성장과 훈련 포인트는 이 상한까지만 쌓인다. 상한에 닿은 뒤에는 {glory}영광 돌파(상한 +25)와 마스터리(비스탯)로만 계속 성장한다. 노화가 시작되면 상한 자체가 시즌마다 깎인다.',
+     f:'재능은 어디까지 갈 수 있는지를 정하고, 훈련은 언제 도착할지를 정한다.'},
+  ]},
+  특성: {
+    ic:'gem', lead:'생성 시 붙는 선천적 특질. 훈련으로 얻거나 지울 수 없고 교체도 불가능하다. 배타 관계인 특성은 함께 붙지 않는다. 붉은 항목은 순수한 약점이다.',
+    items:[
+    {n:'질긴가죽', id:'TOUGHHIDE', k:'맷집', st:[['받는 피해','×0.88'],['이동 속도','×0.92'],['배타','유리몸']], d:'맞아도 덜 아프지만 그만큼 느리다. 정면에서 버티는 방패·망치와 잘 맞는다.', f:'채찍 자국이 남지 않는 가죽이 있다.'},
+    {n:'둔감', id:'DULL', k:'맷집', st:[['받는 피해','×0.85'],['인지지연','+0.06'],['배타','유리몸']], d:'가장 큰 피해 경감을 반응 속도로 지불한다. 회피형에게는 치명적, 하이퍼아머 무기에는 무난.', f:'아픈 줄 모르니 물러설 줄도 몰랐다.'},
+    {n:'마르지않는샘', id:'SPRING', k:'지구력', st:[['스태미나 최대','×1.25'],['회복','×1.20'],['배타','허약체질']], d:'긴 경기를 지배한다. 카이팅·회피처럼 스태미나를 태우는 운영의 전제 조건.', f:'3라운드에도 그의 숨은 고르게 남아 있었다.'},
+    {n:'민첩', id:'FLEET', k:'기동', st:[['이동 속도','×1.12'],['HP','×0.90']], d:'속도를 체력으로 산다. 거리 조절이 곧 생존인 창·채찍에서 값어치가 가장 크다.', f:'맞지 않으면 체력은 필요 없다.'},
+    {n:'불굴', id:'STAND', k:'경직 저항', st:[['포이즈','×1.30']], d:'좀처럼 자세가 무너지지 않는다. 망치·대검의 경직 압박을 정면으로 무시한다.', f:'무릎을 꿇지 않는 방법을 아는 자.'},
+    {n:'봉쇄자', id:'STONEWALL', k:'방어', st:[['가드 시 받는 피해','×0.5'],['비고','일반 피해 경감과 별개']], d:'가드에 한해 절반만 받는다. 방패와 겹치면 전 게임에서 가장 단단한 조합.', f:'그의 방패 뒤는 다른 세계였다.'},
+    {n:'거인', id:'GIANT', k:'체격', st:[['HP','×1.25'],['사거리','×1.25'],['크기','×1.30']], d:'모든 무기의 리치가 비례해 늘어난다. 선타를 항상 먼저 넣는다 — 다만 몸이 커 회피 판정도 커진다.', f:'그가 서면 그늘이 졌다.'},
+    {n:'좀비', id:'ZOMBIE', k:'고유 행동', st:[['이동 속도','×0.85'],['조건','HP≤30% 디버프 면역']], d:'빈사에 몰릴수록 흔들리지 않는다. 공포·분노·출혈로 마무리하려는 상대의 계산을 무너뜨린다.', f:'죽었어야 할 몸이 계속 일어섰다.'},
+    {n:'숨고르기', id:'CATCHBREATH', k:'고유 행동', st:[['조건','스태미나 ≥80%'],['효과','모든 공격 확정 크리']], d:'스태미나가 가득한 동안 폭딜을 낸다. 초반 러시와 짧은 교전 설계에 최적.', f:'그는 늘 첫 합에 승부를 걸었다.'},
+    {n:'초상비', id:'LIGHTFOOT', k:'고유 행동', st:[['대시 소모','×0.5'],['효과','대시 후 1s 이동 속도↑']], d:'회피와 재접근이 거의 공짜가 된다. 카이팅과 난입 양쪽 모두를 지탱한다.', f:'모래 위에 발자국이 얕았다.'},
+    {n:'선취점', id:'FIRSTBLOOD', k:'고유 행동', st:[['첫 클린히트','×1.25'],['추가','흡수 쉴드 50 / 8s']], d:'경기 시작 이득을 굳힌다. 짧게 끝내는 무기와 만나면 초반에 승부가 기운다.', f:'첫 피를 본 쪽이 대개 마지막 피도 본다.'},
+    {n:'처형자', id:'EXECUTIONER', k:'마무리', st:[['조건','상대 HP≤30%'],['피해','×1.5']], d:'빈사의 상대를 확실히 끝낸다. 판정으로 흘러갈 경기를 KO로 닫는 특성.', f:'끝내는 법을 아는 자는 드물다.'},
+    {n:'일격필살', id:'ASSASSIN', k:'이변', st:[['확률','클린히트 4%'],['피해','×2.4']], d:'드물지만 한 방에 판을 뒤집는다. 전력 차가 큰 경기에서 이변의 주된 원인.', f:'그날의 배당은 아무도 예상하지 못했다.'},
+    {n:'광폭화', id:'BERSERK', k:'역전', st:[['조건','자신 HP≤35%'],['피해','×1.3']], d:'몰릴수록 강해진다. 충동·대담 같은 기질과 겹치면 역전 각본이 완성된다.', f:'마지막 피 한 방울까지 값을 받아냈다.'},
+    {n:'천재', id:'GENIUS', k:'메타 · 성장', st:[['잠재 상한','×1.15'],['경기 성장','0.5 → 0.8']], d:'성장 여력 자체가 크다. 당장의 전력이 아니라 두세 시즌 뒤를 사는 특성.', f:'가르치는 쪽이 먼저 지쳤다.'},
+    {n:'저속노화', id:'SLOWAGE', k:'메타 · 수명', st:[['노화 시작','+4세'],['상한 감소','−40%p']], d:'정점을 오래 유지한다. 노장을 억지로 은퇴시키지 않아도 되는 유일한 축복.', f:'다들 늙었는데 그만 그대로였다.'},
+    {n:'유리몸', id:'BRITTLE', k:'약점', neg:1, st:[['받는 피해','×1.20'],['배타','질긴가죽 · 둔감']], d:'순수 페널티. 한 대 한 대가 치명적이라 맞지 않는 운영이 강제된다.', f:'뼈가 소리를 내는 걸 관중이 먼저 들었다.'},
+    {n:'허약체질', id:'FRAIL', k:'약점', neg:1, st:[['스태미나 최대','×0.75'],['회복','×0.70'],['배타','마르지않는샘']], d:'순수 페널티. 카이팅·회피 운영을 하다 스스로 가스아웃된다.', f:'2라운드부터는 다른 사람이 되었다.'},
+    {n:'유리턱', id:'GLASSJAW', k:'약점', neg:1, st:[['포이즈','×0.60']], d:'순수 페널티. 쉽게 경직되어 망치·대검 앞에서 연쇄적으로 무너진다.', f:'한 번 흔들리면 다시 서지 못했다.'},
+  ]},
 };
+// 스킬은 SKILLS(엔진 미러)에서 도감 항목으로 파생 — 두 곳에 같은 텍스트를 두지 않는다
+CODEX.스킬.items = SKILLS.map(s=>({
+  n:s.n, id:s.id, act:!!s.act, wpn:s.wpn, per:s.per, tier:s.tier,
+  k:(s.act?'무기 액티브':'성격 패시브') + (s.tier>=2?' · Ⅱ급':''),
+  st:[[s.act?'무기':'성격', s.act?(WPN[s.wpn]||s.wpn):(PER[s.per]||s.per)],
+      ['요구 등급', s.tier>=2?'집정관 이상':'제한 없음'],
+      ['습득', '수련 3pt']],
+  d:s.d,
+}));
+
+const CX_ORDER = ['무기','전술','성격','스킬','특성','천부·잠재력'];
 let codexCat = '무기';
+let codexSkillBy = 'wpn';   // 스킬 보기: 무기별 / 성격별
+
+function cxCard(e){
+  const cls = e.act ? ' act' : (e.neg ? ' neg' : '');
+  const em  = e.act ? 'bolt' : (e.per ? 'book' : (CODEX[codexCat].ic));
+  return `<div class="cxc${cls}">
+    <div class="cxc-h">
+      <span class="cxc-em">{${em}}</span>
+      <span class="cxc-n">${e.n}</span>
+      ${e.k?`<span class="cxc-k${e.neg?' neg':''}">${e.k}</span>`:''}
+      <span class="cxc-id">${e.id}</span>
+    </div>
+    ${e.st&&e.st.length?`<div class="cxst">${e.st.map(([k,v])=>`<div class="r"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`:''}
+    <div class="cxc-d">${e.d}</div>
+    ${e.f?`<div class="cxc-f">${e.f}</div>`:''}
+    ${e.x?`<div class="cxc-x">${e.x}</div>`:''}
+  </div>`;
+}
+const cxGrid = items => `<div class="cxgrid">${items.map(cxCard).join('')}</div>`;
+function cxGroupHead(ic, name, sub){
+  return `<div class="cxgh"><b>{${ic}} ${name}</b>${sub?`<span class="sub">${sub}</span>`:''}<span class="ln"></span></div>`;
+}
+
+// 스킬 전용 — 무기별/성격별 구획으로 나눠 보여준다
+function cxSkillBody(){
+  const items = CODEX.스킬.items;
+  if (codexSkillBy === 'wpn'){
+    return Object.keys(WPN).map(id=>{
+      const g = items.filter(s=>s.wpn===id);
+      return cxGroupHead('sword', WPN[id], `액티브 ${g.length}종 — AI 자동 발동`) + cxGrid(g);
+    }).join('');
+  }
+  return Object.keys(PER).map(id=>{
+    const g = items.filter(s=>s.per===id);
+    return cxGroupHead('mind', PER[id], `패시브 ${g.length}종 — 조건 충족 시 자동`) + cxGrid(g);
+  }).join('');
+}
+
 function renderCodex(){
-  const cats = Object.keys(CODEX);
-  $('codexTabs').innerHTML = cats.map(c=>
-    `<button class="tacbtn" style="width:auto;padding:6px 16px;${c===codexCat?'border-color:var(--gold);color:var(--gold);background:var(--panel3)':''}" onclick="codexCat='${c}';renderCodex()">${c} <span class="d">${CODEX[c].length}</span></button>`).join('');
-  $('codexBody').innerHTML = `<div class="grid">${CODEX[codexCat].map(e=>
-    `<div class="fc"><h3>${e.n} <span class="note" style="font-weight:400;font-size:11px">${e.id}</span></h3>
-      ${e.s?`<div class="chips"><span class="chip" style="background:rgba(201,168,76,.14);color:var(--gold)">${e.s}</span></div>`:''}
-      <div class="bd" style="margin-top:4px">${e.d}</div></div>`).join('')}</div>`;
+  const cat = CODEX[codexCat];
+  $('codexTabs').innerHTML = CX_ORDER.map(c=>
+    `<button class="cxnav${c===codexCat?' cur':''}" onclick="codexCat='${c}';renderCodex()">
+       {${CODEX[c].ic}} ${c} <span class="c">${CODEX[c].items.length}</span></button>`).join('');
+  $('codexHead').innerHTML =
+    `<h2>{${cat.ic}} ${codexCat} <span class="note" style="font-size:12px">${cat.items.length}항목</span></h2>
+     <div class="lead">${cat.lead}</div><hr class="rule">`;
+
+  if (codexCat === '스킬'){
+    $('codexSub').innerHTML = `<span class="lab">묶어 보기</span>
+      <div class="seg">
+        <button data-v="wpn" class="${codexSkillBy==='wpn'?'cur':''}" onclick="codexSkillBy='wpn';renderCodex()">무기별 (액티브 16)</button>
+        <button data-v="per" class="${codexSkillBy==='per'?'cur':''}" onclick="codexSkillBy='per';renderCodex()">성격별 (패시브 20)</button>
+      </div>`;
+    $('codexBody').innerHTML = cxSkillBody();
+  } else {
+    $('codexSub').innerHTML = '';
+    $('codexBody').innerHTML = cxGrid(cat.items);
+  }
+  $('codex').scrollTop = 0;
 }
 
 // ── 메뉴 ──
