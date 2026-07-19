@@ -17,17 +17,12 @@ namespace Morituri.Headless;
 /// </summary>
 public static class SkillFreq
 {
-    // 액티브 소유자의 전술·성격 — 그 무기의 표준 운용(skillprobe의 대진 선정과 같은 기조)
-    private static readonly Dictionary<string, (string T, string P)> OwnerStyle = new()
+    // 소유자 전술은 <b>전량 순회</b>한다. 무기마다 전술 하나로 고정하면 ST 코스트가 큰 스킬이
+    // 고소모 전술(난전 등)에 걸려 "조건이 안 열린다"로 오독된다(분쇄 일격 ST22 사례).
+    private static readonly string[] OwnerTactics =
     {
-        ["WPN_SWORD"]      = ("TAC_BALANCED", "PER_CALM"),
-        ["WPN_SPEAR"]      = ("TAC_COUNTER",  "PER_WARY"),
-        ["WPN_AXE"]        = ("TAC_BRAWLER",  "PER_CRUEL"),
-        ["WPN_GREATSWORD"] = ("TAC_PRESSURE", "PER_BOLD"),
-        ["WPN_DUALBLADES"] = ("TAC_BRAWLER",  "PER_BOLD"),
-        ["WPN_HAMMER"]     = ("TAC_PRESSURE", "PER_BOLD"),
-        ["WPN_WHIP"]       = ("TAC_ZONER",    "PER_WARY"),
-        ["WPN_SHIELD"]     = ("TAC_DEFENDER", "PER_HONORABLE"),
+        "TAC_BALANCED", "TAC_PRESSURE", "TAC_COUNTER", "TAC_ZONER", "TAC_BRAWLER",
+        "TAC_DEFENDER", "TAC_DECISION", "TAC_HUNTER", "TAC_GAMBLER", "TAC_EVADER",
     };
 
     private static readonly string[] OppWeapons =
@@ -41,11 +36,13 @@ public static class SkillFreq
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         var actives = SkillTable.All.Where(s => s.Active != null && s.GateWeapon != null).ToArray();
 
-        Console.WriteLine($"=== 액티브 스킬 사용빈도 — 스킬당 {OppWeapons.Length}상대 × {seeds}시드 = {OppWeapons.Length * seeds}경기 ===");
+        Console.WriteLine($"=== 액티브 스킬 사용빈도 — 스킬당 {OwnerTactics.Length}전술 × {OppWeapons.Length}상대 × {seeds}시드 "
+                        + $"= {OwnerTactics.Length * OppWeapons.Length * seeds}경기 ===");
         Console.WriteLine("  활용률 = 실제 발동 ÷ 이론 상한(경기시간÷주기).  유휴 = 쿨이 돌았는데 안 쓰고 흘린 시간의 비율");
+        Console.WriteLine("  최고전술 = 활용률이 가장 높은 전술(전술 편차가 크면 코스트·거리 게이트가 원인)");
         Console.WriteLine("  판정: 활용률 60%+ 양호 / 30~60% 낮음(▽) / 30% 미만 심각(▼▼)\n");
-        Console.WriteLine($"{"스킬",-16}{"무기",-6}{"주기",6}{"발동/경기",10}{"이론상한",9}{"활용률",8}{"유휴%",7}{"무발동",7}{"첫발동",7}  판정");
-        Console.WriteLine(new string('─', 92));
+        Console.WriteLine($"{"스킬",-16}{"무기",-6}{"주기",6}{"발동/경기",10}{"이론상한",9}{"활용률",8}{"유휴%",7}{"무발동",7}  {"최고전술",-12}  판정");
+        Console.WriteLine(new string('─', 100));
 
         var rows = new List<(string Name, string Wpn, float Util, float Idle, float PerMatch, float Zero)>();
 
@@ -53,43 +50,47 @@ public static class SkillFreq
         {
             var sp = sk.Active!;
             string wpn = sk.GateWeapon!;
-            var (tac, per) = OwnerStyle[wpn];
             float cycle = sp.Duration + sp.CooldownSec;
 
             int matches = 0, fires = 0, zeroMatches = 0;
-            float sumDur = 0f, sumTheo = 0f, sumIdle = 0f, sumReadyWindow = 0f, sumFirst = 0f;
-            int firstCount = 0;
+            float sumDur = 0f, sumTheo = 0f, sumIdle = 0f;
+            string bestTac = "—"; float bestUtil = -1f;
 
-            foreach (var ow in OppWeapons)
-                for (int g = 0; g < seeds; g++)
-                {
-                    ulong seed = (ulong)(g * 7919 + 13);
-                    var me  = new FighterDef("본인", FighterStats.Baseline, wpn, tac, per) { TraitIds = new[] { sk.Def.Id } };
-                    var opp = new FighterDef("상대", FighterStats.Baseline, ow, "TAC_BALANCED", "PER_CALM");
-
-                    var events = new List<SimEvent>();
-                    var res = new MatchSim().Run(me, opp, seed, events, null);
-
-                    var times = events.OfType<Decision>()
-                        .Where(d => d.FighterId == 0 && d.ReasonTag == "SKILL_" + sp.ReasonTag)
-                        .Select(d => d.Time).OrderBy(t => t).ToList();
-
-                    matches++; fires += times.Count;
-                    sumDur += res.DurationSec;
-                    sumTheo += MathF.Floor(res.DurationSec / cycle) + 1f;   // t=0에 1회 가능 + 이후 주기마다
-                    if (times.Count == 0) zeroMatches++;
-                    else { sumFirst += times[0]; firstCount++; }
-
-                    // 쿨 타임라인 복원 — 준비된 뒤 흘려보낸 시간을 합산한다
-                    float ready = 0f, idle = 0f, window = 0f;
-                    foreach (float t in times)
+            foreach (var tac in OwnerTactics)
+            {
+                int tFires = 0; float tTheo = 0f; int tMatches = 0;
+                foreach (var ow in OppWeapons)
+                    for (int g = 0; g < seeds; g++)
                     {
-                        if (t >= ready) { idle += t - ready; window += t - ready; }
-                        ready = t + cycle;
+                        ulong seed = (ulong)(g * 7919 + 13);
+                        var me  = new FighterDef("본인", FighterStats.Baseline, wpn, tac, "PER_CALM") { TraitIds = new[] { sk.Def.Id } };
+                        var opp = new FighterDef("상대", FighterStats.Baseline, ow, "TAC_BALANCED", "PER_CALM");
+
+                        var events = new List<SimEvent>();
+                        var res = new MatchSim().Run(me, opp, seed, events, null);
+
+                        var times = events.OfType<Decision>()
+                            .Where(d => d.FighterId == 0 && d.ReasonTag == "SKILL_" + sp.ReasonTag)
+                            .Select(d => d.Time).OrderBy(t => t).ToList();
+
+                        float theoOne = MathF.Floor(res.DurationSec / cycle) + 1f;   // t=0에 1회 + 이후 주기마다
+                        matches++; fires += times.Count; sumDur += res.DurationSec; sumTheo += theoOne;
+                        tMatches++; tFires += times.Count; tTheo += theoOne;
+                        if (times.Count == 0) zeroMatches++;
+
+                        // 쿨 타임라인 복원 — 준비된 뒤 흘려보낸 시간을 합산한다
+                        float ready = 0f, idle = 0f;
+                        foreach (float t in times)
+                        {
+                            if (t >= ready) idle += t - ready;
+                            ready = t + cycle;
+                        }
+                        if (res.DurationSec > ready) idle += res.DurationSec - ready;
+                        sumIdle += idle;
                     }
-                    if (res.DurationSec > ready) { idle += res.DurationSec - ready; window += res.DurationSec - ready; }
-                    sumIdle += idle; sumReadyWindow += window;
-                }
+                float tUtil = tTheo > 0f ? 100f * tFires / tTheo : 0f;
+                if (tUtil > bestUtil) { bestUtil = tUtil; bestTac = TacShort(tac); }
+            }
 
             float perMatch = fires / (float)matches;
             float theo     = sumTheo / matches;
@@ -97,11 +98,10 @@ public static class SkillFreq
             // 유휴% = 준비완료 상태로 보낸 시간 ÷ 전체 경기시간
             float idlePct  = sumDur > 0f ? 100f * sumIdle / sumDur : 0f;
             float zeroPct  = 100f * zeroMatches / matches;
-            float firstAt  = firstCount > 0 ? sumFirst / firstCount : -1f;
             string verdict = util >= 60f ? "양호" : util >= 30f ? "▽ 낮음" : "▼▼ 심각";
 
             Console.WriteLine($"{sk.Def.Name.Replace("(스킬)", ""),-16}{Short(wpn),-6}{cycle,5:F0}s{perMatch,10:F2}{theo,9:F1}"
-                            + $"{util,7:F1}%{idlePct,6:F0}%{zeroPct,6:F1}%{(firstAt < 0 ? "  —" : $"{firstAt,6:F1}s"),7}  {verdict}");
+                            + $"{util,7:F1}%{idlePct,6:F0}%{zeroPct,6:F1}%  {$"{bestTac} {bestUtil:F0}%",-12}  {verdict}");
             rows.Add((sk.Def.Name.Replace("(스킬)", ""), Short(wpn), util, idlePct, perMatch, zeroPct));
         }
 
@@ -111,6 +111,13 @@ public static class SkillFreq
         Console.WriteLine("\n※ 이론 상한은 '조건을 무시하고 쿨만 돌면 쓴다'는 가정 — 트리거가 좁은 스킬은 낮게 나오는 게 정상이다.");
         Console.WriteLine("※ 유휴%가 높은데 활용률이 낮으면 = 쓸 수 있는 시간이 길었는데 안 쓴 것(확률 롤·조건이 원인).");
     }
+
+    private static string TacShort(string tacId) => tacId switch
+    {
+        "TAC_BALANCED" => "균형", "TAC_PRESSURE" => "압박", "TAC_COUNTER" => "카운터", "TAC_ZONER" => "견제",
+        "TAC_BRAWLER" => "난전", "TAC_DEFENDER" => "방어", "TAC_DECISION" => "결단", "TAC_HUNTER" => "사냥꾼",
+        "TAC_GAMBLER" => "도박", "TAC_EVADER" => "회피", _ => tacId,
+    };
 
     private static string Short(string wpnId) => wpnId switch
     {

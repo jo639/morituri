@@ -1,4 +1,4 @@
-namespace Morituri.Sim.Data;
+﻿namespace Morituri.Sim.Data;
 
 /// <summary>
 /// T06_BalanceConstants (문서[5] 7장).
@@ -111,6 +111,14 @@ public readonly record struct BalanceConstants
     public float DecisionJitterMinMult  { get; init; }  // 최소 배율 (중앙 1.0 유지 시 평균 반응지연 보존)
     public float DecisionJitterMaxMult  { get; init; }  // 최대 배율
     public float TauntProbMult          { get; init; }  // 도발 인터럽트 확률 전역 보정 — 지터가 증폭한 도발 메타 재정렬(1.0=중립)
+
+    // --- 액티브 스킬 기회 활용([7]§1-7 확률 롤 보정): 쿨이 돈 채 오래 놀고 있으면 발동 확률이 확정에 수렴 ---
+    // 쿨 직후에는 문서 확률 그대로(즉발 남발 방지), 준비 상태가 길어질수록 "웬만하면 쓴다"로 기운다.
+    public float SkillPityRampSec { get; init; }  // 준비된 지 이 시간이 지나면 상한 확률에 도달
+    public float SkillPityCap     { get; init; }  // 도달 상한(1.0 = 확정. 조건·코스트 게이트는 그대로 유효)
+    // 오의 비축: 쿨이 곧 끝나는 액티브의 ST 코스트만큼을 평시 비축선에 얹어 평범한 스윙이 삼키지 않게 한다
+    public float SkillReserveLookaheadSec { get; init; }  // 쿨 종료 이 시간 전부터 미리 아낀다
+    public float SkillReserveMaxPct       { get; init; }  // 비축 상한(최대 ST 대비) — 과보호로 무공격 되는 것 방지
 
     // --- 인내심 (영원 대치 해소): 무교전이 길어지면 소모 → 공격 충동. 거울전(reachAdvantage 부재) 교착 방지 ---
     public float PatienceMax           { get; init; }  // 가득 찬 인내심
@@ -242,6 +250,10 @@ public readonly record struct BalanceConstants
         DecisionJitterMinMult = 0.4f,   // 0.2s×0.4=0.08s ~ ×1.6=0.32s, 중앙 1.0 → 평균 0.2s 보존(밸런스 격리)
         DecisionJitterMaxMult = 1.6f,
         TauntProbMult = 0.2f,           // 지터 도발 증폭 보정(수렴 중) — 거울 도발률·챔피언전을 baseline으로
+        SkillPityRampSec = 6f,        // 6초 놀았으면 조건이 열리는 다음 순간 거의 확실히 쓴다
+        SkillPityCap = 0.95f,         // 완전 확정(1.0)은 피한다 — 판단의 흔들림을 남긴다
+        SkillReserveLookaheadSec = 2f,  // 쿨 2초 전부터 아껴 둔다
+        SkillReserveMaxPct = 0.35f,     // 최대 ST의 35%까지만 — 그 이상 아끼면 공격을 못 한다
         PatienceMax = 100f,
         PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)

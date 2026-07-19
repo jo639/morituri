@@ -675,6 +675,17 @@ public sealed class MatchSim
         // Reserve는 평시 수싸움의 절제이지 황금 기회를 흘려보내는 규칙이 아니다. 이 면제가 없으면
         // 수비형은 가드로 비축분까지 말라 "기다리던 처벌 창"이 와도 못 때린다 (상성 매트릭스 디버깅).
         float reserveAbs = oppLocked ? 0f : d.StaminaReserve * f.StaminaMax;
+        // 오의 비축([7]§1 코스트 우선): 액티브가 쿨을 마쳤거나 곧 마치는데 ST가 코스트에 못 미치면
+        // 평범한 스윙이 그 한 번을 삼켜버린다(계측: 코스트 기각이 판단 틱의 40~60%). 준비된 스킬이 있으면
+        // 그 코스트만큼을 평시 비축선에 얹어, 스킬을 쓸 몫을 남긴다 — 확정 기회(oppLocked) 면제는 그대로.
+        // 스킬 미장착(액티브 null)이면 이 보정은 전혀 걸리지 않는다 = 상성 매트릭스 무영향.
+        // ⚠ 타격형(Strike/Charge)은 제외한다. 그쪽은 스킬 자체가 '한 대'라서 ST를 보장해 주면
+        //    평타를 아낀 값보다 스킬 타격이 더 커져 순이득이 된다 — 실측에서 쇄도 베기 승률 0%→100%,
+        //    대지 강타 0%→93%로 무너졌다. 타격형의 낮은 발동률은 ST22가 매기는 정당한 값이다.
+        if (!oppLocked && f.ActiveSkill is { StCost: > 0f } rsp
+            && rsp.Kind is not (ActiveKind.Strike or ActiveKind.Charge)
+            && _now >= f.SkillReadyAt - _c.SkillReserveLookaheadSec)
+            reserveAbs = MathF.Max(reserveAbs, MathF.Min(rsp.StCost, f.StaminaMax * _c.SkillReserveMaxPct));
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) light = 0f;
         if (f.Stamina - _c.StamCostAttackHeavy < reserveAbs || f.IsExhausted) heavy = 0f;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) feint = 0f;
@@ -1360,7 +1371,18 @@ public sealed class MatchSim
         if (!cond) return false;
         // ⑦ 확률 롤 — 인내심 낮을수록 공격 충동↑([7]§1-7 patienceMod 준용)
         float patienceMod = 1f + (1f - f.Patience / _c.PatienceMax) * 0.5f;
-        if (!_rng.Roll(MathF.Min(0.95f, sp.Prob * patienceMod))) return false;
+        float prob = sp.Prob * patienceMod;
+        // 기회 활용 보정: 쿨이 돈 채로 오래 놀고 있었다면 확률을 상한까지 끌어올린다.
+        // 조건이 열리는 순간이 드문 스킬(가드 중·빈사 등)은 그 한 번을 확률 롤로 흘려보내면
+        // 사실상 없는 스킬이 된다 — 준비 시간이 길수록 "웬만하면 쓴다"로 수렴시킨다.
+        // SkillReadyAt은 발동 시 now+Duration+Cooldown으로 갱신되므로 (now − ReadyAt) = 준비 후 경과.
+        float readyFor = _now - f.SkillReadyAt;
+        if (readyFor > 0f && _c.SkillPityRampSec > 0f)
+        {
+            float t = MathF.Min(1f, readyFor / _c.SkillPityRampSec);
+            prob += (_c.SkillPityCap - prob) * t;
+        }
+        if (!_rng.Roll(MathF.Min(_c.SkillPityCap, prob))) return false;
         // ── 발동: 코스트 차감 + 효과 적용 + 쿨타임 + 가시화([7]§3 — 조용한 발동 금지) ──
         if (sp.StCost > 0f) f.Stamina = MathF.Max(0f, f.Stamina - sp.StCost);
         if (sp.SelfHpPctCost > 0f) f.Hp = MathF.Max(1f, f.Hp - f.HpMax * sp.SelfHpPctCost);       // HP%라 자기치사 없음
