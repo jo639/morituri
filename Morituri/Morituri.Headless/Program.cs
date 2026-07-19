@@ -37,6 +37,12 @@ if (args.Length > 0 && args[0] == "skillprobe")
     return;
 }
 
+if (args.Length > 0 && args[0] == "skillfreq")
+{
+    SkillFreq.Run(args.Length > 1 && int.TryParse(args[1], out int fg) ? fg : 40);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "designlint")
 {
     Environment.Exit(DesignLint.Run(args));
