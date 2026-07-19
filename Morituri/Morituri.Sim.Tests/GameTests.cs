@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Morituri.Headless;
 using Morituri.Sim.Data;
+using Morituri.Sim.Match;
 
 namespace Morituri.Sim.Tests;
 
@@ -540,6 +541,29 @@ public class GameTests
         Assert.That(total, Is.GreaterThan(0), "부여가 일어난다");
         Assert.That(counts.ContainsKey(0), Is.True, "0개인 자도 나온다(슬롯 강제 아님)");
         Assert.That(maxCount, Is.GreaterThan(1), "여럿 지닌 자도 나온다");
+    }
+
+    [Test]
+    public void Passives_TwoOwned_BothEvaluated()
+    {
+        // 패시브 다중화: 냉철의 Ⅰ급(침착)·Ⅱ급(전장 분석)을 함께 지니면 둘 다 살아 있어야 한다.
+        // 전장 분석은 Periodic(8s마다 proc) — 두 개를 다 얹어도 proc 라벨이 방출되는지로 검증.
+        var both = new[] { "SKL_COMPOSE", "SKL_READ" };
+        var a = new FighterDef("둘다", FighterStats.Baseline, "WPN_SWORD", "TAC_BALANCED", "PER_CALM")
+                { TraitIds = both };
+        var b = new FighterDef("상대", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_RECKLESS");
+        var ev = new List<Morituri.Sim.Events.SimEvent>();
+        new MatchSim().Run(a, b, 4242, ev, null);
+        bool readProc = ev.OfType<Morituri.Sim.Events.Decision>()
+                          .Any(d => d.FighterId == 0 && d.ReasonTag == "PASV_READ");
+        Assert.That(readProc, Is.True, "Ⅱ급 패시브가 함께 있어도 평가된다");
+
+        // 하나만 지녔을 때와 비교 — 단일 보유도 여전히 동작(회귀 방지)
+        var onlyRead = a with { TraitIds = new[] { "SKL_READ" } };
+        var ev2 = new List<Morituri.Sim.Events.SimEvent>();
+        new MatchSim().Run(onlyRead, b, 4242, ev2, null);
+        Assert.That(ev2.OfType<Morituri.Sim.Events.Decision>()
+                       .Any(d => d.FighterId == 0 && d.ReasonTag == "PASV_READ"), Is.True, "단일 보유 회귀 없음");
     }
 
     [Test]

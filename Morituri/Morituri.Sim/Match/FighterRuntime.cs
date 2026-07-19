@@ -27,6 +27,16 @@ public sealed class ActiveOverride
 /// 선수 1명의 런타임 전체 = 문서[3] 3장 Blackboard.
 /// 순수 데이터 + 파생 스탯 캐시. 로직은 MatchSim이 담당 (테스트 용이성).
 /// </summary>
+/// <summary>보유 패시브 한 종의 런타임 상태 — 쿨다운·버프·스택이 스킬마다 독립으로 흐른다([7]§5).</summary>
+public sealed class PassiveState
+{
+    public required Data.PassiveSpec Spec;
+    public float ReadyAt;             // 다음 proc 가능 시각
+    public float BuffUntil = -1f;     // 시한 효과 만료
+    public int   Stacks;              // 투지·관중몰이 스택
+    public float StackExpiry;         // 스택 만료(투지)
+}
+
 public sealed class FighterRuntime
 {
     public required int Index { get; init; }
@@ -96,15 +106,13 @@ public sealed class FighterRuntime
     public float LastStunAt = -99f;       // 마지막 경직(HitStun/Stagger) 진입 시각 — 난무의 '확정 히트 창' 근사
 
     // 성격 패시브([7]§5) — 조건 충족 시 자동 proc. 미장착이면 전부 기본값 = 매트릭스 무영향.
-    public Data.PassiveSpec? Passive;     // 장착된 proc형 패시브(첫 하나만)
-    public float PassiveReadyAt;          // proc 쿨다운
-    public float PassiveBuffUntil = -1f;  // 시한 효과 만료
-    public int   PassiveStacks;           // 투지·관중몰이 스택
-    public float PassiveStackExpiry;      // 스택 만료(투지)
+    // 선천 부여로 패시브를 둘까지 지닐 수 있다(Ⅰ급·Ⅱ급). 상태(쿨·버프·스택)는 패시브마다 따로 흐른다.
+    public List<PassiveState> Passives = new();
     public int   FearStacks;              // 공포 군림: 이 선수가 받는 공포 단계
     public float FearHpMark = 1f;         // 공포 군림: 마지막 공포 부여 시점의 HP 비율
     public float DodgeRefundPct;          // 생존 본능: 회피 성공 시 스태미나 환급 비율(창 열림 중)
     public float DodgeIFrameBonus;        // 생존 본능: 회피 무적 연장(창 열림 중)
+    public float DodgeWindowUntil = -1f;  // 생존 본능 창 만료(패시브 다중화 후 전용 시각)
 
     public bool Has(string traitId) => Traits.Contains(traitId);
     public float EffRange => Weapon.Range * RangeMult + RangeBonus;   // 유효 사거리 (거인: ×RangeMult 비례)

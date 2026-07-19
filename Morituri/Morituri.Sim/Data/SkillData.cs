@@ -339,12 +339,7 @@ public static class SkillGen
             // 사생아가 천장을 넘어 받을 때는 집정관 몫의 확률을 쓴다(등급이 그보다 낮아도)
             float p = tier2 ? Tier2Prob[Math.Max(ti, bastard ? SkillTable.Tier2MinTalent : ti)]
                             : Tier1Prob[ti];
-            if (rng.NextFloat01() >= p) continue;
-            // ⚠ 현 엔진은 패시브를 하나만 평가한다(FighterRuntime.Passive 단일 필드).
-            //    액티브는 다중 보유·스킬별 쿨타임을 지원하지만 패시브 다중화는 미구현이라,
-            //    죽은 스킬을 쥐어주지 않도록 패시브는 1개로 제한한다. 다중 패시브 구현 시 이 조건을 지운다.
-            if (sk.Passive != null && picked.Any(id => SkillTable.Get(id).Passive != null)) continue;
-            picked.Add(sk.Def.Id);
+            if (rng.NextFloat01() < p) picked.Add(sk.Def.Id);
         }
         return picked.ToArray();
     }
