@@ -206,7 +206,8 @@ public sealed partial class Game
         RelRow[] Relations, string[] Emotions, string[] Chronicle, int Fatigue, bool Injured, string Ludus,
         string? EmoBio = null,   // 커리어 감정 이력 요약(심리 기질 — W10a)
         int BestStreak = 0, int Executions = 0, float AvgTime = 0f, float AvgDamage = 0f,   // 모리튜리 기록(#2)
-        PermInjuryInfo[]? PermInjuries = null);   // 영구 부상(#6) — 부위명 + 스탯 저하
+        PermInjuryInfo[]? PermInjuries = null,   // 영구 부상(#6) — 부위명 + 스탯 저하
+        string[]? Skills = null);   // T12 타고난 기술(무기 액티브 · 성격 패시브) — 상세 프로필 표기
     private sealed record GameStateDoc(SeasonDoc Season, float Gold, int FreeGachas, float GachaCost,
         int TrainingLv, int MedicalLv, int QuartersLv, int RosterCap, bool SeasonActive,
         List<MyFighterDoc> MyFighters, List<CandidateDoc> Candidates, NextMatchDoc? NextMatch,
@@ -712,7 +713,8 @@ public sealed partial class Game
             BestStreak: g.BestStreak, Executions: g.Executions,
             AvgTime: (g.CW + g.CL + g.CD) > 0 ? g.TotalMatchTime / (g.CW + g.CL + g.CD) : 0f,
             AvgDamage: (g.CW + g.CL + g.CD) > 0 ? g.TotalDamage / (g.CW + g.CL + g.CD) : 0f,
-            PermInjuries: g.PermInjuries.Count > 0 ? PermInjuryInfos(g) : null);
+            PermInjuries: g.PermInjuries.Count > 0 ? PermInjuryInfos(g) : null,
+            Skills: g.SkillIds.Length > 0 ? g.SkillIds : null);
         return JsonSerializer.Serialize(doc, JsonOpts);
     }
 

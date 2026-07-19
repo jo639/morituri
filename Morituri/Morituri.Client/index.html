@@ -986,6 +986,13 @@ async function openProfile(id){
     `<div class="row"><span>${r.RelIcon} <b style="color:var(--b)">${r.RelName}</b> — ${r.OppName}${r.OppIsMine?' <span class="chip">우리</span>':''}</span><b>${r.W}-${r.L} (${r.Enc}전)</b></div>`).join('')
     : '<div class="note">아직 특별한 인연이 없다.</div>';
   const chron = f.Chronicle.length ? f.Chronicle.map(c=>`<div class="rrow"><span class="d">${c}</span></div>`).join('') : '<div class="note">기록될 무용담이 아직 없다.</div>';
+  // 타고난 기술 — 무기 액티브(AI가 스스로 발동)와 성격 패시브(조건 충족 시 자동)를 갈라 보여준다([7]§4·§5)
+  const sk = f.Skills || [];
+  const skRow = (label, list, empty) => `<div class="row" style="align-items:flex-start"><span>${label}</span>` +
+    `<div class="chips" style="justify-content:flex-end;margin:0">${list.length ? list.map(sklChip).join('') : `<span class="note">${empty}</span>`}</div></div>`;
+  const skills = sk.length
+    ? skRow('{bolt} 액티브', sk.filter(id=>SKL(id).act), '없다') + skRow('{book} 패시브', sk.filter(id=>!SKL(id).act), '없다')
+    : '<div class="note">타고난 기술이 없다.</div>';
   $('profBody').innerHTML = `
     <div style="display:flex;gap:14px;align-items:flex-start">
       <div style="flex:0 0 108px">${portraitSvg(f.Weapon,f.Personality,f.IsPlayer?'a':'b')}</div>
@@ -1004,6 +1011,7 @@ async function openProfile(id){
     ${(f.PermInjuries&&f.PermInjuries.length)?`<div class="row" style="align-items:flex-start"><span>{medic} 영구 부상</span><b style="color:var(--blood);text-align:right">${f.PermInjuries.map(i=>`${i.Name} <span style="color:var(--dim);font-weight:400">(${i.Stat})</span>`).join('<br>')}</b></div>`:''}
     <div class="row"><span>전술풀</span><b>${f.TacticPool.map(x=>t(x)+(x===f.Tactic?'●':'')).join(' · ')}</b></div>
     ${f.EmoBio?`<div class="row"><span>{mind} 심리 이력</span><b class="note" title="쌓인 감정은 성격을 바꿀 수 있다 — 트라우마는 위축으로, 자만은 오만으로">${f.EmoBio}</b></div>`:''}
+    <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">{book} 타고난 기술</h4>${skills}
     <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">{swords} 관계</h4>${rel}
     <h4 style="color:var(--gold);margin:12px 0 4px;font-size:12px">{scroll} 연대기</h4>${chron}`;
   $('profModal').classList.add('on');
