@@ -1193,11 +1193,12 @@ public sealed partial class Game
             var alt = StatGen.Roll(rng);
             if (alt.TalentBudget > end.TalentBudget) end = alt;   // 더 나은 원석 채택
         }
-        var traits = TraitGen.Roll(rng);
+        var traits = TraitGen.Roll(rng, end.Talent);
         // 선천 스킬([7] 개정 — 라니스타 결정): 수련이 아니라 타고난다. 슬롯 상한 없음.
         // 자격 있는 스킬마다 독립 추첨 → 같은 등급이어도 0개인 자와 여럿 지닌 자가 갈린다.
-        // 사생아 특성은 Ⅱ급 천부 천장을 무시한다([6]§1.5 계급 천장 예외).
+        // 사생아 특성은 Ⅱ급 천부 천장을 무시하고, 하나도 안 걸리면 Ⅱ급 하나를 보장받는다.
         var skills = SkillGen.Roll(rng, wpn, per, end.Talent, traits.Contains(TraitTable.Bastard));
+        traits = SkillGen.ReconcileTraits(traits, skills);   // 빠른손: 액티브가 없으면 떼어낸다
         var pool = RollTacticPool(rng, sigTactic);
         // 천재(#16): 잠재력 상한 ×1.15 — 성장 여력이 근본적으로 크다
         float potBudget = traits.Contains(TraitTable.Genius) ? end.PotentialBudget * 1.15f : end.PotentialBudget;

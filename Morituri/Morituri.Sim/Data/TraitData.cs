@@ -97,13 +97,18 @@ public static class TraitTable
 /// </summary>
 public static class TraitGen
 {
-    public static string[] Roll(SimRandom rng)
+    /// <summary>talent = 천부 등급. 조건부 특성을 추첨 단계에서 걸러낸다(무의미한 부여 방지).</summary>
+    public static string[] Roll(SimRandom rng, TalentGrade talent = TalentGrade.Slave)
     {
         float r = rng.NextFloat01();
         int count = r < 0.05f ? 3 : r < 0.25f ? 2 : 1;   // 5% 3개 / 20% 2개 / 75% 1개
 
         var picked = new List<TraitDef>(count);
-        var pool = TraitTable.All;
+        // 사생아는 '천부 천장을 넘는다'가 전부라 이미 Ⅱ급을 담을 수 있는 집정관+에겐 아무 의미가 없다 → 후보에서 제외.
+        // (빠른손은 스킬 추첨 뒤에야 의미를 알 수 있어 여기서 못 거른다 — Reconcile이 처리한다.)
+        var pool = (int)talent >= SkillTable.Tier2MinTalent
+                 ? TraitTable.All.Where(t => t.Id != TraitTable.Bastard).ToArray()
+                 : TraitTable.All;
         int guard = 0;
         while (picked.Count < count && guard++ < 64)
         {

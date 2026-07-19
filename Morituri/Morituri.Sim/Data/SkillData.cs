@@ -329,6 +329,16 @@ public static class SkillGen
     private static readonly float[] Tier1Prob = { 0.25f, 0.31f, 0.37f, 0.43f, 0.49f, 0.55f };
     private static readonly float[] Tier2Prob = { 0f, 0f, 0f, 0.10f, 0.20f, 0.30f };
 
+    /// <summary>
+    /// 스킬 추첨 뒤 특성을 정리한다 — '의미 있을 때만 지닌다'(라니스타 규칙).
+    /// 빠른손(액티브 CD −15%)은 액티브를 하나도 못 타고났으면 아무 값이 없으므로 떼어낸다.
+    /// </summary>
+    public static string[] ReconcileTraits(string[] traits, string[] skills)
+    {
+        bool hasActive = skills.Any(id => SkillTable.Get(id).Active != null);
+        return hasActive ? traits : traits.Where(t => t != "TRT_SWIFT").ToArray();
+    }
+
     /// <summary>bastard = '사생아' 특성 — 천부 등급을 넘는 스킬을 지닌다([7]§6 계급 천장 예외).</summary>
     public static string[] Roll(SimRandom rng, string weaponId, string personalityId,
                                TalentGrade talent, bool bastard = false)
@@ -348,6 +358,15 @@ public static class SkillGen
             float p = tier2 ? Tier2Prob[Math.Max(ti, bastard ? SkillTable.Tier2MinTalent : ti)]
                             : Tier1Prob[ti];
             if (rng.NextFloat01() < p) picked.Add(sk.Def.Id);
+        }
+        // 사생아는 '천부 천장을 넘는 Ⅱ급을 지닌다'가 정의다 — 추첨이 하나도 안 걸렸으면 보장해 준다.
+        // (특성이 이름값을 못 하는 경우를 없앤다. 집정관+에겐 애초에 사생아가 안 붙는다 — TraitGen)
+        if (bastard && !picked.Any(id => SkillTable.Get(id).RankTier >= 2))
+        {
+            var t2 = SkillTable.All.Where(sk => sk.RankTier >= 2 && !picked.Contains(sk.Def.Id)
+                        && (sk.GateWeapon != null ? sk.GateWeapon == weaponId
+                                                  : sk.GatePersonality == personalityId)).ToArray();
+            if (t2.Length > 0) picked.Add(t2[Math.Min(t2.Length - 1, (int)(rng.NextFloat01() * t2.Length))].Def.Id);
         }
         return picked.ToArray();
     }

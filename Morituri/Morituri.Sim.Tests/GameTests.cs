@@ -592,6 +592,40 @@ public class GameTests
     }
 
     [Test]
+    public void ConditionalTraits_OnlyGrantedWhenMeaningful()
+    {
+        // 라니스타 규칙: 의미 있을 때만 부여한다.
+        var rng = new Morituri.Sim.Core.SimRandom(555);
+        // ① 집정관 이상에게는 사생아가 붙지 않는다(이미 Ⅱ급을 담을 수 있어 무의미)
+        foreach (var hi in new[] { TalentGrade.Consul, TalentGrade.Immortal, TalentGrade.Caesar })
+            for (int i = 0; i < 800; i++)
+                Assert.That(TraitGen.Roll(rng, hi).Contains(TraitTable.Bastard), Is.False, $"{hi}에 사생아 없음");
+        // 집정관 미만에는 여전히 나온다
+        bool sawLow = false;
+        for (int i = 0; i < 2000 && !sawLow; i++)
+            sawLow = TraitGen.Roll(rng, TalentGrade.Slave).Contains(TraitTable.Bastard);
+        Assert.That(sawLow, Is.True, "노예에겐 사생아가 나온다");
+
+        // ② 사생아를 지니면 반드시 Ⅱ급 스킬을 하나 이상 타고난다
+        for (int i = 0; i < 500; i++)
+        {
+            var sk = SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", TalentGrade.Slave, bastard: true);
+            Assert.That(sk.Any(id => SkillTable.Get(id).RankTier >= 2), Is.True, "사생아 = Ⅱ급 보장");
+        }
+
+        // ③ 액티브가 없으면 빠른손은 떨어져 나간다
+        var swiftOnly = new[] { "TRT_SWIFT", "TRT_FLEET" };
+        Assert.That(SkillGen.ReconcileTraits(swiftOnly, new[] { "SKL_COMPOSE" }).Contains("TRT_SWIFT"),
+                    Is.False, "패시브만 있으면 빠른손 제거");
+        Assert.That(SkillGen.ReconcileTraits(swiftOnly, System.Array.Empty<string>()).Contains("TRT_SWIFT"),
+                    Is.False, "스킬이 없으면 빠른손 제거");
+        Assert.That(SkillGen.ReconcileTraits(swiftOnly, new[] { "SKL_COMBO" }).Contains("TRT_SWIFT"),
+                    Is.True, "액티브가 있으면 빠른손 유지");
+        Assert.That(SkillGen.ReconcileTraits(swiftOnly, new[] { "SKL_COMBO" }).Contains("TRT_FLEET"),
+                    Is.True, "다른 특성은 건드리지 않는다");
+    }
+
+    [Test]
     public void SkillGen_Bastard_BreaksTier2Ceiling()
     {
         // 사생아([7]§6.2): 천부 등급을 넘는 Ⅱ급 스킬을 지닌다 — 계급 천장 예외
