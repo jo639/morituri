@@ -954,7 +954,7 @@ public sealed partial class Game
             _pendingProposalOpp = null; SaveWorld(); return StateJson();
         }
         var me = _cast.FirstOrDefault(g => g.Id == fighterId && g.IsPlayer);
-        if (me == null) return Err("내 선수 아님");
+        if (me == null) return Err("내 모리튜리가 아니다");
         int round = SeasonActive && _cursor < _schedule.Count ? _schedule[_cursor].Round : _rounds + 1;
         _schedule.Insert(_cursor, new SchedRec(round, me.Id, opp.Id, true, 0f, "proposal",
             _proposalExec ? "execution" : "normal"));   // 다음 경기로 삽입(전시 — 도전장이면 {skull}처형전)
@@ -970,7 +970,7 @@ public sealed partial class Game
     {
         var t = _pendingEventId == null ? null : FindTemplate(_pendingEventId);
         if (t == null) return Err("대기 중인 이벤트가 없다");
-        if (choiceIdx < 0 || choiceIdx >= t.Choices.Length) return Err("잘못된 선택");
+        if (choiceIdx < 0 || choiceIdx >= t.Choices.Length) return Err("그런 선택지가 없다");
         Gladiator? subj = _pendingEventFighter != null ? _cast.FirstOrDefault(g => g.Id == _pendingEventFighter) : null;
         if (t.NeedsFighter && subj == null) { _pendingEventId = _pendingEventFighter = null; SaveWorld(); return Err("대상 선수가 없다 — 이벤트 취소"); }
         // 난입 술집시비(#2/#14): "주먹으로 답한다"(choice 0)면 실제 경기(술집 배경)로 붙는다 → viewer.json
@@ -1651,7 +1651,7 @@ public sealed partial class Game
     public string ReleaseJson(string fighterId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         var rng = new SimRandom(_worldSeed ^ 0x8E1E_A5EDUL + (ulong)(g.CW * 7 + g.CL * 3 + _seasonNo));
         var pool = ActiveRivalLudi.ToList();
         var youth = pool.Where(r => r.Persona == "youth").ToList();
@@ -1697,7 +1697,7 @@ public sealed partial class Game
         var A = ById(s.A); var B = ById(s.B);
         if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
         if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
-        if (side is < 0 or > 5) return Err("잘못된 선택");
+        if (side is < 0 or > 5) return Err("그런 선택지가 없다");
         amount = MathF.Min(MathF.Floor(amount), _gold);
         if (_gold - amount < 1f) amount = _gold;   // 전액 베팅: 잔돈(1 미만) 남기지 않고 전부 건다
         if (amount < 5) return Err("최소 5 데나리우스 (잔고 부족)");
@@ -1721,7 +1721,7 @@ public sealed partial class Game
     public string TransfersJson()
     {
         if (_playerless) return Err("CLI 모드");
-        if (SeasonActive) return Err("이적은 프리시즌에만");
+        if (SeasonActive) return Err("이적은 프리시즌에만 열린다");
         var rng = new SimRandom(_worldSeed ^ 0x7124_5FE2UL + (ulong)_seasonsPlayed * 41UL);
         var pool = _cast.Where(g => !g.IsPlayer).OrderBy(_ => rng.NextUInt64()).Take(3)
             .Select(g => new TransferBuyDoc(g.Id, g.Name, g.WeaponId.Replace("WPN_", ""), g.PersonalityId.Replace("PER_", ""),
@@ -1744,7 +1744,7 @@ public sealed partial class Game
     /// <summary>AI 선수 인수: 골드 지불 → 내 로스터로. 판 검투소는 신인으로 공석 승계.</summary>
     public string TransferBuyJson(string id)
     {
-        if (SeasonActive) return Err("이적은 프리시즌에만");
+        if (SeasonActive) return Err("이적은 프리시즌에만 열린다");
         var g = _cast.FirstOrDefault(x => x.Id == id && !x.IsPlayer);
         if (g == null) return Err("매물이 아니다");
         if (_cast.Count(x => x.IsPlayer) >= RosterCap) return Err($"로스터 가득참 (상한 {RosterCap})");
@@ -1764,7 +1764,7 @@ public sealed partial class Game
     /// <summary>인수 제안 수락: 내 스타를 라이벌 루두스에 판다 — 골드는 크지만 전력을 잃는다.</summary>
     public string TransferSellJson(string id)
     {
-        if (SeasonActive) return Err("이적은 프리시즌에만");
+        if (SeasonActive) return Err("이적은 프리시즌에만 열린다");
         var offerJson = TransfersJson();
         var doc = JsonDocument.Parse(offerJson).RootElement;
         if (!doc.TryGetProperty("SellOffer", out var so) || so.ValueKind == JsonValueKind.Null) return Err("유효한 제안이 없다");
@@ -1859,7 +1859,7 @@ public sealed partial class Game
     public string SurgeryJson(string fighterId, string kind = "temp", string part = "")
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         var rng = new SimRandom(_worldSeed ^ 0x5069_CA1FUL + (ulong)(++_surgerySeq) * 53UL);
         float roll = rng.NextFloat01();
         bool healed = false; string outcome;
@@ -1933,7 +1933,7 @@ public sealed partial class Game
     {
         if (_playerless) return Err("CLI 모드");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         if (g.InjuryMatches > 0) return Err("부상 중 — 거리 싸움은 무리다");
         if (g.Fatigue >= 85) return Err("너무 지쳤다 — 휴식이 먼저");
         var rng = new SimRandom(_worldSeed ^ 0x5417_B4A1UL + (ulong)(_streetSeq++) * 29UL);
@@ -1969,7 +1969,7 @@ public sealed partial class Game
     public string SparringJson(string fighterId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);   // #3 시즌 중에도 가능
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         if (g.InjuryMatches > 0) return Err("부상 중 — 스파링은 무리다");
         if (g.Fatigue >= 80) return Err("피로가 너무 쌓였다 — 휴식이 먼저");
         var rng = new SimRandom(_worldSeed ^ 0x5B42_00AAUL + (ulong)_sparCount++ * 7UL);
@@ -2019,7 +2019,7 @@ public sealed partial class Game
     {
         if (_playerless) return Err("CLI 모드");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         if (g.InjuryMatches > 0) return Err("부상 중 — 패싸움은 무리다");
         if (g.Fatigue >= 80) return Err("너무 지쳤다 — 휴식이 먼저");
         var rng = new SimRandom(_worldSeed ^ 0x6A46_B0A5UL + (ulong)(_streetSeq++) * 37UL);
@@ -2091,7 +2091,7 @@ public sealed partial class Game
     public string RetireJson(string fighterId, string path = "")
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);   // #3 시즌 중에도 가능
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         if (path is not ("instructor" or "master" or "scout")) return Err("은퇴 진로를 선택하라 (교관·스승·스카우터). 그 외엔 방출·해방으로");
         // 자격 검증(진로 지정 시)
         if (path == "instructor" && g.Fame < InstructorFameMin) return Err($"교관 자격 미달 — 명성 {InstructorFameMin:F0}+ 필요 (현재 {g.Fame:F0})");
@@ -2145,7 +2145,7 @@ public sealed partial class Game
         var tactics = _masterTacticPool ?? (_masterTactic != null ? new[] { _masterTactic } : Array.Empty<string>());
         if (traits.Length == 0 && tactics.Length == 0) return Err("전수할 스승의 유산이 없다");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         // 선택 검증 — 미지정(구버전 호환)이면 기존 기본값
         string? pickT = string.IsNullOrEmpty(traitId) ? null : traitId;
         string? pickC = string.IsNullOrEmpty(tacticId) ? null : (tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId);
@@ -2194,7 +2194,7 @@ public sealed partial class Game
     public string PerkJson(string id)
     {
         var def = PerkDefs.FirstOrDefault(p => p.Id == id);
-        if (def.Id == null) return Err("잘못된 특전");
+        if (def.Id == null) return Err("그런 특전이 없다");
         int lv = PerkLv(id);
         if (lv >= def.Max) return Err($"{def.Name} 최대 Lv");
         int cost = def.Costs[lv];
@@ -2246,7 +2246,7 @@ public sealed partial class Game
     public string ManumitJson(string fighterId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         float cost = MathF.Round(150f + g.Fame * 1.5f);
         if (_gold < cost) return Err($"잔고 부족 (해방 몸값 {cost:F0} = 150 + 명성×1.5)");
         _gold -= cost;
@@ -2714,7 +2714,7 @@ public sealed partial class Game
     {
         if (_festStage != 0) return Err("대항전이 이미 시작됐다");
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         _festRepId = g.Id;
         SaveWorld(); if (_interactive) WriteSeasonJson();
         return JsonSerializer.Serialize(new { ok = true, rep = g.Name }, JsonOpts);
@@ -2823,12 +2823,12 @@ public sealed partial class Game
         string init = side == 1 ? (_live.InitialTactic2 ?? "") : _live.InitialTactic;
         if (pool == null || switches == null) return Err("조종 대상이 없다");
         string full = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
-        if (!pool.Contains(full)) return Err("전술풀에 없는 전술");
+        if (!pool.Contains(full)) return Err("이 자가 아는 전술이 아니다");
         // 그 시각에 이미 적용 중인 전술을 다시 고르면 = 변화 없음 → 기회 미차감(#12)
         string activeNow = switches.Where(x => x.Time <= time).OrderBy(x => x.Time).LastOrDefault()?.TacticId ?? init;
         if (full == activeNow)
             return JsonSerializer.Serialize(new { ok = true, remaining = 2 - switches.Count, nochange = true }, JsonOpts);
-        if (switches.Count >= 2) return Err("전술 변경은 경기당 2회");
+        if (switches.Count >= 2) return Err("전술은 경기당 두 번까지만 바꿀 수 있다");
         switches.Add(new TacticSwitch(MathF.Max(0.1f, time), full));
         LiveResim();
         return JsonSerializer.Serialize(new { ok = true, remaining = 2 - switches.Count }, JsonOpts);
@@ -2864,7 +2864,7 @@ public sealed partial class Game
     /// <summary>명경기 재관전: 보관함의 스냅샷+시드로 결정론 재시뮬(시즌 무관 영속).</summary>
     public string WatchGreatJson(int idx)
     {
-        if (idx < 0 || idx >= _greatest.Count) return Err("명경기 없음");
+        if (idx < 0 || idx >= _greatest.Count) return Err("기억할 만한 경기가 없다");
         var e = _greatest[idx].Entry;
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
@@ -2887,7 +2887,7 @@ public sealed partial class Game
     public string WatchJson(int idx)
     {
         var e = idx < 0 ? _matchLog.LastOrDefault() : _matchLog.FirstOrDefault(x => x.Idx == idx);
-        if (e == null) return Err("경기 기록 없음");
+        if (e == null) return Err("남은 경기 기록이 없다");
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
         ViewerExport.WriteDoc(e.DefA, e.DefB, e.Seed, res, frames, events, "viewer.json",
@@ -2916,7 +2916,7 @@ public sealed partial class Game
     {
         if (idx >= 0) return WatchJson(idx);
         int pos = -1 - idx;
-        if (pos < 0 || pos >= _archive.Count) return Err("아카이브 경기 없음");
+        if (pos < 0 || pos >= _archive.Count) return Err("보관된 경기가 없다");
         var e = _archive[pos].Entry;
         var events = new List<SimEvent>(); var frames = new List<ReplayFrame>();
         var res = new MatchSim().Run(e.DefA, e.DefB, e.Seed, events, frames);
@@ -2939,9 +2939,9 @@ public sealed partial class Game
     public string TacticJson(string fighterId, string tacticId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         string tid = tacticId.StartsWith("TAC_") ? tacticId : "TAC_" + tacticId;
-        if (!g.TacticPool.Contains(tid)) return Err("보유 전술 아님");
+        if (!g.TacticPool.Contains(tid)) return Err("익히지 않은 전술이다");
         g.TacticId = tid;
         SaveWorld();
         return StateJson();
@@ -3607,8 +3607,8 @@ public sealed partial class Game
     /// <summary>영입: 후보 택1 → 전체 공개 + 로스터 편입 (시즌 중이면 다음 시즌부터 출전).</summary>
     public string RecruitJson(int idx)
     {
-        if (idx < 0 || idx >= _candidates.Count) return Err("후보 없음");
-        if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err("로스터 가득참");
+        if (idx < 0 || idx >= _candidates.Count) return Err("고를 후보가 없다");
+        if (_cast.Count(g => g.IsPlayer) >= RosterCap) return Err("자리가 없다 — 숙소가 찼다");
         var g = _candidates[idx];
         // 미선택 후보 공개 + 일부는 라이벌 루두스로 편입(#8) — 지나친 원석이 적이 되어 돌아온다
         _lastReveal.Clear();
@@ -3675,10 +3675,10 @@ public sealed partial class Game
     public string TrainJson(string fighterId, string axis)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
-        if (g.TrainingPoints <= 0) return Err("훈련 포인트 없음");
+        if (g == null) return Err("내 모리튜리가 아니다");
+        if (g.TrainingPoints <= 0) return Err("훈련 포인트가 없다");
         int a = Array.IndexOf(AxisNames, axis);
-        if (a < 0) return Err("잘못된 축");
+        if (a < 0) return Err("그런 단련 축이 없다");
         float axisCap = 150f + _axisCapBonus[a];   // 교관 유산: 해당 축 상한 상향(누적)
         if (AxisVal(g.Stats, a) >= axisCap) return Err($"축 상한({axisCap:F0})");
         if (BudgetUsed(g.Stats) + 1f > g.PotentialBudget) return Err($"잠재력 상한 도달 ({g.PotentialBudget:F0})");
@@ -3692,7 +3692,7 @@ public sealed partial class Game
     public string BreakthroughJson(string fighterId)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         int cost = BreakthroughCost(g);
         if (_glory < cost) return Err($"영광 부족 (돌파 {cost} 필요)");
         _glory -= cost;
@@ -3707,10 +3707,10 @@ public sealed partial class Game
     public string MasteryJson(string fighterId, string track)
     {
         var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
+        if (g == null) return Err("내 모리튜리가 아니다");
         int lv = track switch { "grit" => g.MGrit, "recover" => g.MRecover, "show" => g.MShow, "pay" => g.MPay, _ => -1 };
-        if (lv < 0) return Err("잘못된 마스터리");
-        if (lv >= 5) return Err("마스터리 최대(5)");
+        if (lv < 0) return Err("그런 수련은 없다");
+        if (lv >= 5) return Err("더 갈고닦을 것이 없다 (5)");
         int cost = lv + 1;
         if (g.TrainingPoints < cost) return Err($"훈련 포인트 부족 ({cost} 필요)");
         g.TrainingPoints -= cost;
@@ -3729,8 +3729,8 @@ public sealed partial class Game
         if (kind == "ludus") { _ludusName = name; SaveWorld(); return StateJson(); }
 
         var g = _cast.FirstOrDefault(x => x.Id == id && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
-        if (_cast.Any(x => x != g && x.Name == name)) return Err("이미 있는 이름");
+        if (g == null) return Err("내 모리튜리가 아니다");
+        if (_cast.Any(x => x != g && x.Name == name)) return Err("이미 그 이름을 쓰는 자가 있다");
         string old = g.Name;
         g.Name = name;
         for (int i = 0; i < _champions.Count; i++) if (_champions[i].Name == old) _champions[i] = _champions[i] with { Name = name };
@@ -3751,9 +3751,9 @@ public sealed partial class Game
             "quarters" => (_quartersLv, 2, new[] { 300f, 600f }),
             _ => (0, 0, Array.Empty<float>()),
         };
-        if (costs.Length == 0) return Err("잘못된 시설");
+        if (costs.Length == 0) return Err("그런 시설이 없다");
         int step = facility == "quarters" ? lv : lv - 1;          // 다음 단계 비용 인덱스
-        if (step >= costs.Length || lv >= max) return Err("최대 레벨");
+        if (step >= costs.Length || lv >= max) return Err("더 올릴 수 없다 — 이미 끝이다");
         if (_gold < costs[step]) return Err($"잔고 부족 ({costs[step]:F0})");
         _gold -= costs[step];
         if (facility == "training") _trainingLv++;
