@@ -119,6 +119,9 @@ public readonly record struct BalanceConstants
     // 오의 비축: 쿨이 곧 끝나는 액티브의 ST 코스트만큼을 평시 비축선에 얹어 평범한 스윙이 삼키지 않게 한다
     public float SkillReserveLookaheadSec { get; init; }  // 쿨 종료 이 시간 전부터 미리 아낀다
     public float SkillReserveMaxPct       { get; init; }  // 비축 상한(최대 ST 대비) — 과보호로 무공격 되는 것 방지
+    // 조건 우회: 준비된 지 이만큼 지나면 트리거 조건을 접고 쓴다(정체성 트리거는 제외 — MatchSim 주석)
+    public float SkillBypassSec         { get; init; }
+    public float SkillBypassRangeSlackM { get; init; }  // 우회 발동 시 인정할 사거리 여유(m)
 
     // --- 인내심 (영원 대치 해소): 무교전이 길어지면 소모 → 공격 충동. 거울전(reachAdvantage 부재) 교착 방지 ---
     public float PatienceMax           { get; init; }  // 가득 찬 인내심
@@ -254,6 +257,8 @@ public readonly record struct BalanceConstants
         SkillPityCap = 0.95f,         // 완전 확정(1.0)은 피한다 — 판단의 흔들림을 남긴다
         SkillReserveLookaheadSec = 2f,  // 쿨 2초 전부터 아껴 둔다
         SkillReserveMaxPct = 0.35f,     // 최대 ST의 35%까지만 — 그 이상 아끼면 공격을 못 한다
+        SkillBypassSec = 2f,            // 쿨 끝나고 2초 안에 조건이 안 열리면 그냥 쓴다
+        SkillBypassRangeSlackM = 1.0f,  // 사거리 +1m까지는 타당한 거리로 인정
         PatienceMax = 100f,
         PatienceDrainBase = 10f,      // 인내형(Agg 0.2)≈14초·공격형(Agg 0.8)≈8초 무교전이면 충동 최대
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)

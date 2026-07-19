@@ -1368,7 +1368,16 @@ public sealed class MatchSim
                                             && gap <= f.EffRange + 1.5f,
             _ => false,
         };
-        if (!cond) return false;
+        // 조건 우회([7]§1-5 완화): 쿨이 끝나고도 트리거가 안 열리면 오의는 영영 안 나온다.
+        // 준비 후 SkillBypassSec이 지나면 조건을 접고 사거리 타당성만 보고 쓴다 — "쿨 돌면 웬만하면 쓴다".
+        // 단, 조건이 곧 그 스킬의 정체성인 것은 우회하지 않는다:
+        //   처형(빈사) · 확정타(상대 취약) · 간격 돌파(DashIn).
+        //   특히 DashIn은 거리 조건을 지우면 돌진이 상시 보장돼 카이팅 상성이 무너진다(실측 대검 0%→100%).
+        bool identityTrigger = sp.Trigger is SkillTrigger.OppExecutable or SkillTrigger.OppVulnerable || sp.DashIn;
+        bool bypass = !identityTrigger
+                   && _now - f.SkillReadyAt >= _c.SkillBypassSec
+                   && gap <= f.EffRange + _c.SkillBypassRangeSlackM;
+        if (!cond && !bypass) return false;
         // ⑦ 확률 롤 — 인내심 낮을수록 공격 충동↑([7]§1-7 patienceMod 준용)
         float patienceMod = 1f + (1f - f.Patience / _c.PatienceMax) * 0.5f;
         float prob = sp.Prob * patienceMod;
