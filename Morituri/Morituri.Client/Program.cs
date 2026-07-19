@@ -66,8 +66,6 @@ internal static class Program
             "/api/surgery" when method == "POST" => game.SurgeryJson(StrOf(body ?? "", "id"),
                                                                      StrOf(body ?? "", "kind") is { Length: > 0 } sk ? sk : "temp",
                                                                      StrOf(body ?? "", "part")),
-            "/api/learnskill" when method == "POST" => game.LearnSkillJson(StrOf(body ?? "", "id"), StrOf(body ?? "", "skillId"),
-                                                                           StrOf(body ?? "", "forget") is { Length: > 0 } fg ? fg : null),
             "/api/liveswitch" when method == "POST" => game.LiveSwitchJson(FloatOf(body ?? "", "time"), StrOf(body ?? "", "tacticId"), IntOf(body ?? "", "side")),
             "/api/settle" when method == "POST" => game.LiveSettleJson(),
             "/api/sparring" when method == "POST" => game.SparringJson(StrOf(body ?? "", "id")),

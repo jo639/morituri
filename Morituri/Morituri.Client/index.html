@@ -2626,7 +2626,7 @@ function renderLudus(){
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
       ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" class="act glory" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>{impact} 잠재력 돌파 ({glory}${f.BreakthroughCost})</button>`:''}
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b>${
-        f.TrainingPoints>=3?`<button onclick="openSkillModal('${f.Id}')" title="패시브 스킬 수련(3pt) — 성격 전용, 슬롯 ${(f.Skills||[]).length}/${f.SkillSlots}" style="background:#26303f;border:1px solid #5b9be0;color:#9bc4ec;border-radius:5px;padding:0 8px;font-size:11px;cursor:pointer">{book} 수련</button>`:''}</div>
+        (f.Skills||[]).length?`<button onclick="openSkillModal('${f.Id}')" title="타고난 기술 ${(f.Skills||[]).length}종 — 열람 전용" style="background:#26303f;border:1px solid #5b9be0;color:#9bc4ec;border-radius:5px;padding:0 8px;font-size:11px;cursor:pointer">{book} 기술 ${(f.Skills||[]).length}</button>`:''}</div>
       ${masteryRow(f)}
       <div class="row"><span>시즌 / 통산</span><b>${f.W}-${f.L}-${f.D} / ${f.CW}-${f.CL}-${f.CD}</b></div>
       <div class="row"><span>명성 / 인기</span><b>${f.Fame} / ${f.Popularity}</b></div>
@@ -2782,37 +2782,22 @@ function masteryRow(f){
         can?`<button onclick="mastery('${f.Id}','${tr}')" style="background:#4a3a26;border:none;color:var(--gold);border-radius:4px;margin-left:3px;padding:0 5px;cursor:pointer">+</button>`:''}</span>`;
     }).join('')}</div>`;
 }
-// ── T12 스킬 수련(패시브 MVP): 성격 전용 · 슬롯(챔피언+ 2, 그외 1) · 훈련 3pt ──
+// ── 타고난 기술(선천 부여) — 익히거나 바꿀 수 없다. 열람 전용 ──
 window.openSkillModal = (id)=>{
   const f=(st.MyFighters||[]).find(x=>x.Id===id); if(!f) return;
-  const rank=(TAL[f.Talent]||{r:0}).r, owned=f.Skills||[];
-  // 게이트([7]): 패시브 = 성격 결합 / 액티브 = 무기 결합
-  const avail=SKILLS.filter(s=> s.act ? s.wpn===f.Weapon : s.per===f.Personality);
-  const rows = avail.length ? avail.map(s=>{
-    const has=owned.includes(s.id), locked=s.tier>=2&&rank<3, full=owned.length>=f.SkillSlots&&!has;
-    return `<button class="tacbtn" ${has||locked?'disabled style="opacity:.45"':''} onclick="learnSkill('${id}','${s.id}',${full})">
-      <b>${s.tier>=2?'Ⅱ · ':''}${s.n}</b>${s.act?' <span style="color:#e0c78a;font-size:11px">{bolt} 발동형 — 스스로 쓴다</span>':''} ${has?'<span class="d">— 보유 중</span>':locked?'<span class="d" style="color:var(--b)">— 집정관 이상의 그릇 필요</span>':full?'<span class="d" style="color:#d8b24a">— 슬롯 가득(교체)</span>':''}
-      <div class="d">${s.d}</div></button>`;
-  }).join('') : '<div class="note">이 성격이 익힐 수 있는 스킬이 없다.</div>';
-  $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">{book} 스킬 수련 — ${f.Name}</h3>
-    <div class="note" style="text-align:center">${p(f.Personality)} 전용 · 슬롯 ${owned.length}/${f.SkillSlots} · 수련 비용 훈련 3pt (보유 ${f.TrainingPoints}pt)</div>
+  const owned=f.Skills||[];
+  const rows = owned.length ? owned.map(sid=>{
+    const s=SKL(sid);
+    return `<div class="tacbtn" style="cursor:default">
+      <b>${s.tier>=2?'Ⅱ · ':''}${s.n}</b>${s.act?' <span style="color:#e0c78a;font-size:11px">{bolt} 발동형 — 스스로 쓴다</span>'
+                                                 :' <span style="color:#9bc4ec;font-size:11px">{book} 상시형</span>'}
+      <div class="d">${s.d}</div></div>`;
+  }).join('') : '<div class="note" style="text-align:center;padding:10px 0">타고난 기술이 없다 — 몸뚱이 하나로 싸운다.</div>';
+  $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">{book} 타고난 기술 — ${f.Name}</h3>
+    <div class="note" style="text-align:center">기술은 태어날 때 정해진다 — 수련으로 얻거나 바꿀 수 없다</div>
     <div style="margin-top:8px">${rows}</div>
     <button class="tacbtn" style="text-align:center;margin-top:10px;opacity:.7" onclick="$('rvModal').classList.remove('on')">닫기</button>`;
   $('rvModal').classList.add('on');
-};
-window.learnSkill = (id,skillId,needForget)=>{
-  if (!needForget) return doLearn(id,skillId,'');
-  const f=(st.MyFighters||[]).find(x=>x.Id===id); if(!f) return;
-  $('rvBox').innerHTML = `<h3 style="color:#9bc4ec;text-align:center;margin:0">교체 — 어떤 기술을 잊을까?</h3>
-    ${(f.Skills||[]).map(sid=>`<button class="tacbtn" onclick="doLearn('${id}','${skillId}','${sid}')">
-      「${SKL(sid).n}」을(를) 잊고 → <b>「${SKL(skillId).n}」</b>을(를) 익힌다</button>`).join('')}
-    <button class="tacbtn" style="text-align:center;margin-top:8px;opacity:.7" onclick="openSkillModal('${id}')">← 뒤로</button>`;
-};
-window.doLearn = async (id,skillId,forget)=>{
-  const r = await api('/api/learnskill',{id,skillId,forget});
-  if (r.error){ $('rvModal').classList.remove('on'); $('ludusErr').textContent=r.error; return; }
-  st=r; $('rvModal').classList.remove('on'); renderLudus(); refreshTop(); sfxReveal(2);
-  $('ludusErr').innerHTML = `<span style="color:#9bc4ec">{book} 수련 완료 — 「${SKL(skillId).n}」을(를) 익혔다</span>`;
 };
 window.mastery = async (id,track)=>{
   const r = await api('/api/mastery',{id,track});

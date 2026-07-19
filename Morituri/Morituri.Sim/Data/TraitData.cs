@@ -13,7 +13,17 @@ public sealed record TraitDef(
     float HpMaxMult = 1f, float StaminaMaxMult = 1f, float StamRegenMult = 1f,
     float MoveSpeedMult = 1f, float PoiseMaxMult = 1f, float PerceptDelayAdd = 0f,
     float DamageTakenMult = 1f, float DodgeCostMult = 1f, float RangeAdd = 0f, float SizeScale = 1f,
-    float GuardDamageMult = 1f, float RangeMult = 1f);   // RangeMult: 사거리 비례 배율(거인)   // 가드 성공 시 받는 피해 추가 배율(봉쇄자 <1). 일반 받피(DamageTakenMult)와 별개로 가드에만 적용
+    float GuardDamageMult = 1f, float RangeMult = 1f,   // RangeMult: 사거리 비례 배율(거인)   // 가드 성공 시 받는 피해 추가 배율(봉쇄자 <1). 일반 받피(DamageTakenMult)와 별개로 가드에만 적용
+    // ── [7]§6.2 미구현분 구현([7] 표 순서) ──
+    float AttackSpeedMult = 1f,        // 광란: 공속 배율(모션 시간 ÷) — 스킬 연격과 같은 파이프
+    float DamageDealtMult = 1f,        // 광란의 대가. [7]은 '명중 −10%'지만 이 엔진엔 명중 판정이 없어
+                                       // 기대 피해가 같은 형태(피해 −10%)로 옮겼다(코드 주석 근거 명기 규약)
+    float SkillCooldownMult = 1f,      // 빠른손: 모든 액티브 CD 배율
+    float CounterWindowAdd = 0f,       // 반격가: 카운터 창 +(캡 +0.6 [7]§2 공유)
+    float CounterDamageMult = 1f,      // 반격가: 카운터 피해 배율
+    float NonCounterDamageMult = 1f,   // 반격가의 대가: 카운터가 아닌 피해 배율
+    float EmotionResistMult = 1f,      // 강심장: 공포·분노·도발 트리거 확률 배율
+    bool FearImmune = false);          // 겁없는자: 공포 완전 면역(강심장과 영역 구분 — [7]§6.2)
 
 public static class TraitTable
 {
@@ -29,6 +39,10 @@ public static class TraitTable
     // ── 신규 메타 특성(#16) — 전투 무영향, Game.cs가 성장/노화에 적용 ──
     public const string Genius      = "TRT_GENIUS";       // 잠재력 상한 ×1.15 · 성장속도↑ (Meta)
     public const string SlowAge     = "TRT_SLOWAGE";      // 노화 감소 (Meta)
+    // ── [7]§6.2 미구현분(라니스타 지시로 구현). 소집·분신은 제외 ──
+    public const string Fearless    = "TRT_FEARLESS";     // 공포 완전 면역(데이터 FearImmune)
+    public const string Veteran     = "TRT_VETERAN";      // 노련함 — 노화 능력↑ + 10년마다 특성 1개 추가 (Meta)
+    public const string Bastard     = "TRT_BASTARD";      // 사생아 — 천부 등급을 넘는 Ⅱ급 스킬 보유 ([6]§1.5 천장 예외, Meta)
 
     // ── 카탈로그 ──
     public static readonly TraitDef[] All =
@@ -57,6 +71,16 @@ public static class TraitTable
         // 신규 메타(전투 무영향 — Game.cs 적용)
         new(Genius,           "천재"),                                              // Meta: 잠재 상한 ×1.15·성장↑
         new(SlowAge,          "저속노화"),                                          // Meta: 노화 감소
+        // ── [7]§6.2 미구현분 ──
+        // 감정 축(ExclAxis "emotion"): 겁없는자·강심장(−1) ⊗ (향후 감정 취약 특성 +1)
+        new(Fearless,         "겁없는자",   "emotion", -1, FearImmune: true),
+        new("TRT_STOIC",      "강심장",     "emotion", -1, EmotionResistMult: 0.40f),   // 공포·분노·도발 −60%
+        new("TRT_FRENZY",     "광란",       AttackSpeedMult: 1.20f, DamageDealtMult: 0.90f),
+        new("TRT_SWIFT",      "빠른손",     SkillCooldownMult: 0.85f),                  // 모든 액티브 CD −15%
+        new("TRT_RIPOSTEUR",  "반격가",     CounterWindowAdd: 0.30f, CounterDamageMult: 1.30f,
+                                            NonCounterDamageMult: 0.92f),
+        new(Veteran,          "노련함"),                                            // Meta: 노화 완화 + 10년마다 특성 +1
+        new(Bastard,          "사생아"),                                            // Meta: Ⅱ급 스킬 천장 예외
     };
 
     // 스킬(T12)도 같은 조회 파이프에 등록 — MatchSim은 특성과 스킬을 구분하지 않는다([6]§3.1 엔진 하나).

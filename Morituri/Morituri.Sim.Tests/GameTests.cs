@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Morituri.Headless;
+using Morituri.Sim.Data;
 
 namespace Morituri.Sim.Tests;
 
@@ -505,54 +506,58 @@ public class GameTests
         Assert.That(covered, Is.True, "시드×시즌 순회 중 승부조작 이벤트가 최소 한 번은 떠 상태머신을 검증");
     }
 
-    // 성격 → 해당 성격 전용 스킬(Game.LearnSkillJson 성격 게이트와 일치)
-    private static string SkillForPersonality(string per) => per switch
+    [Test]
+    public void SkillGen_GrantsInnateSkills_RespectingGates()
     {
-        "CALM" => "SKL_READ", "RECKLESS" => "SKL_RUSH", "ARROGANT" => "SKL_LEISURE",
-        "HONORABLE" => "SKL_AEGIS", "COWARD" => "SKL_SURVIVE", "CRUEL" => "SKL_VIGOR",
-        "BOLD" => "SKL_NERVE", "WARY" => "SKL_ECONOMY", "SHOWMAN" => "SKL_FLAIR", _ => "SKL_ANGLE",
-    };
+        // 스킬은 수련이 아니라 생성 시 부여된다([7] 개정). 게이트는 유지 —
+        // 액티브=무기 일치 / 패시브=성격 일치 / Ⅱ급=집정관 이상.
+        var rng = new Morituri.Sim.Core.SimRandom(20260719);
+        int total = 0, tier2BelowConsul = 0, maxCount = 0;
+        var counts = new Dictionary<int, int>();
+
+        foreach (var talent in new[] { TalentGrade.Slave, TalentGrade.Fighter, TalentGrade.Champion,
+                                       TalentGrade.Consul, TalentGrade.Immortal, TalentGrade.Caesar })
+            for (int i = 0; i < 500; i++)
+            {
+                var ids = SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", talent);
+                total += ids.Length;
+                maxCount = Math.Max(maxCount, ids.Length);
+                counts[ids.Length] = counts.GetValueOrDefault(ids.Length) + 1;
+                foreach (var id in ids)
+                {
+                    var sk = SkillTable.Get(id);
+                    // 자격: 액티브는 그 무기, 패시브는 그 성격
+                    if (sk.GateWeapon != null)
+                        Assert.That(sk.GateWeapon, Is.EqualTo("WPN_SWORD"), "액티브 무기 게이트");
+                    else
+                        Assert.That(sk.GatePersonality, Is.EqualTo("PER_CALM"), "패시브 성격 게이트");
+                    if (sk.RankTier >= 2 && (int)talent < SkillTable.Tier2MinTalent) tier2BelowConsul++;
+                }
+                Assert.That(ids.Distinct().Count(), Is.EqualTo(ids.Length), "중복 부여 없음");
+            }
+
+        Assert.That(tier2BelowConsul, Is.EqualTo(0), "집정관 미만은 Ⅱ급을 타고나지 않는다");
+        Assert.That(total, Is.GreaterThan(0), "부여가 일어난다");
+        Assert.That(counts.ContainsKey(0), Is.True, "0개인 자도 나온다(슬롯 강제 아님)");
+        Assert.That(maxCount, Is.GreaterThan(1), "여럿 지닌 자도 나온다");
+    }
 
     [Test]
-    public void Game_LearnSkill_GatesAndEquips()
+    public void SkillGen_Bastard_BreaksTier2Ceiling()
     {
-        TempDir("skill");
-        var g = new Game(1, 53, fresh: true, interactive: false, playerless: false);
-        g.GachaJson(); g.RecruitJson(0);
-        var my = Parse(g.StateJson()).GetProperty("MyFighters")[0];
-        string id = my.GetProperty("Id").GetString()!;
-        string per = my.GetProperty("Personality").GetString()!;
-        string skill = SkillForPersonality(per);
-        string wrong = skill == "SKL_READ" ? "SKL_RUSH" : "SKL_READ";
-        Assert.That(Parse(g.LearnSkillJson(id, wrong)).GetProperty("error").GetString()!.Contains("성격"), Is.True, "성격 게이트");
-        Assert.That(Parse(g.LearnSkillJson(id, skill)).GetProperty("error").GetString()!.Contains("훈련 포인트"), Is.True, "포인트 게이트");
+        // 사생아([7]§6.2): 천부 등급을 넘는 Ⅱ급 스킬을 지닌다 — 계급 천장 예외
+        var rng = new Morituri.Sim.Core.SimRandom(777);
+        bool sawTier2 = false;
+        for (int i = 0; i < 2000 && !sawTier2; i++)
+            sawTier2 = SkillGen.Roll(rng, "WPN_SWORD", "PER_CALM", TalentGrade.Slave, bastard: true)
+                               .Any(id => SkillTable.Get(id).RankTier >= 2);
+        Assert.That(sawTier2, Is.True, "사생아 노예도 Ⅱ급을 타고날 수 있다");
 
-        // 시즌 진행으로 훈련 포인트 적립(3경기당 1pt) → 습득
-        int guard = 0; bool ready = false;
-        while (guard++ < 200 && !ready)
-        {
-            g.PlayNext();
-            var st = Parse(g.StateJson());
-            var fs = st.GetProperty("MyFighters");
-            if (fs.GetArrayLength() == 0)   // 극적 운명(사망 등)으로 로스터가 비면 재영입 — 테스트 목적은 스킬 게이트라 시드 무관하게 지속
-            {
-                g.GachaJson(); g.RecruitJson(0);
-                fs = Parse(g.StateJson()).GetProperty("MyFighters");
-                if (fs.GetArrayLength() == 0) continue;   // 금화 부족 — 경기 진행하며 재시도
-                id = fs[0].GetProperty("Id").GetString()!;
-                continue;
-            }
-            ready = fs[0].GetProperty("TrainingPoints").GetInt32() >= 3;
-        }
-        Assert.That(ready, Is.True, "훈련 포인트 3 적립");
-        // 성격은 시즌 중 변할 수 있으므로(T10 Phase4 성격 변화) 습득 시점의 현재 성격에 맞춰 스킬을 다시 고른다
-        string curPer = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Personality").GetString()!;
-        string learn = SkillForPersonality(curPer);
-        var ok = Parse(g.LearnSkillJson(id, learn));
-        Assert.That(ok.TryGetProperty("error", out _), Is.False, "습득 성공");
-        var skills = Parse(g.StateJson()).GetProperty("MyFighters")[0].GetProperty("Skills");
-        Assert.That(skills.EnumerateArray().Any(s => s.GetString() == learn), Is.True, "스킬 장착·영속 문서 노출");
-        Assert.That(Parse(g.LearnSkillJson(id, learn)).TryGetProperty("error", out _), Is.True, "중복 습득 거부");
+        // 사생아가 아니면 노예는 절대 Ⅱ급을 못 받는다
+        var rng2 = new Morituri.Sim.Core.SimRandom(777);
+        for (int i = 0; i < 2000; i++)
+            Assert.That(SkillGen.Roll(rng2, "WPN_SWORD", "PER_CALM", TalentGrade.Slave)
+                                .Any(id => SkillTable.Get(id).RankTier >= 2), Is.False, "천장 유지");
     }
 
     [Test]

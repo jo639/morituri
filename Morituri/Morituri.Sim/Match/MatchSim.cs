@@ -167,9 +167,21 @@ public sealed class MatchSim
                 rt.RangeBonus += t.RangeAdd;
                 rt.RangeMult *= t.RangeMult;
                 rt.SizeScale *= t.SizeScale;
+                rt.TraitAtkSpeedMult *= t.AttackSpeedMult;
+                rt.TraitDamageDealtMult *= t.DamageDealtMult;
+                rt.TraitSkillCdMult *= t.SkillCooldownMult;
+                rt.TraitCounterWindowAdd += t.CounterWindowAdd;
+                rt.TraitCounterDmgMult *= t.CounterDamageMult;
+                rt.TraitNonCounterDmgMult *= t.NonCounterDamageMult;
+                rt.TraitEmotionResist *= t.EmotionResistMult;
+                if (t.FearImmune) rt.TraitFearImmune = true;
                 // 무기 액티브([7]§4): 장착된 액티브는 런타임에 명세를 실어둔다([7]§1 — 동시 액티브 1개).
-                if (rt.ActiveSkill == null && SkillTable.Exists(id) && SkillTable.Get(id).Active is { } asp)
-                    rt.ActiveSkill = asp;
+                if (SkillTable.Exists(id) && SkillTable.Get(id).Active is { } asp)
+                {
+                    rt.ActiveSkills.Add(asp);
+                    rt.SkillReadyPer[asp.ReasonTag] = 0f;
+                    rt.ActiveSkill ??= asp;   // 버프 주체 기본값(첫 발동 전까지)
+                }
                 // 성격 패시브([7]§5): proc형 명세. 상시형의 공격성 페널티는 영구 Override로(방비).
                 if (rt.Passive == null && SkillTable.Exists(id) && SkillTable.Get(id).Passive is { } psp)
                 {
@@ -182,6 +194,13 @@ public sealed class MatchSim
                         });
                 }
             }
+        // 반격가([7]§6.2): 카운터 창 +0.3 — 상시 특성이므로 영구 Override로 얹는다(캡 +0.6은 [7]§2 공유).
+        if (rt.TraitCounterWindowAdd != 0f)
+            rt.Overrides.Add(new ActiveOverride
+            {
+                Mods = new[] { ParamMod.Add(TParam.CounterWindow, rt.TraitCounterWindowAdd) },
+                ExpiresAt = float.MaxValue, ReasonTag = "RIPOSTEUR",
+            });
 
         // 감정(T10): 일시적 심리 상태를 결정 경로에만 주입 (트리거 확률 + Directive 가중치). 데미지 수식 무관.
         if (def.EmotionIds != null)
@@ -479,7 +498,8 @@ public sealed class MatchSim
         if (!TriggerEval.Matches(r, ctx)) return false;
         // 도발만 전역 보정: 판단주기 지터가 전투를 더 결단적으로 만들어 "우세+건강/스태거" 도발 조건 노출이
         // 늘어 도발이 증폭됐다(거울 21→50%). TauntProbMult로 도발 메타만 새 운영점에 재정렬(다른 인터럽트 무관).
-        float pMod = (1f + f.Personality.GlobalProbMod + f.EmotionTriggerProbMod + f.RelationTriggerProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f);
+        float pMod = (1f + f.Personality.GlobalProbMod + f.EmotionTriggerProbMod + f.RelationTriggerProbMod) * (r.Interrupt == InterruptAction.Taunt ? _c.TauntProbMult : 1f)
+                   * f.TraitEmotionResist;   // 강심장([7]§6.2): 공포·분노·도발 트리거 −60%
         if (!_rng.Roll(r.Probability * pMod)) return false;
 
         bool fired = r.Interrupt switch
@@ -682,10 +702,14 @@ public sealed class MatchSim
         // ⚠ 타격형(Strike/Charge)은 제외한다. 그쪽은 스킬 자체가 '한 대'라서 ST를 보장해 주면
         //    평타를 아낀 값보다 스킬 타격이 더 커져 순이득이 된다 — 실측에서 쇄도 베기 승률 0%→100%,
         //    대지 강타 0%→93%로 무너졌다. 타격형의 낮은 발동률은 ST22가 매기는 정당한 값이다.
-        if (!oppLocked && f.ActiveSkill is { StCost: > 0f } rsp
-            && rsp.Kind is not (ActiveKind.Strike or ActiveKind.Charge)
-            && _now >= f.SkillReadyAt - _c.SkillReserveLookaheadSec)
-            reserveAbs = MathF.Max(reserveAbs, MathF.Min(rsp.StCost, f.StaminaMax * _c.SkillReserveMaxPct));
+        if (!oppLocked)
+            foreach (var rsp in f.ActiveSkills)
+            {
+                if (rsp.StCost <= 0f || rsp.Kind is ActiveKind.Strike or ActiveKind.Charge) continue;
+                float rAt = f.SkillReadyPer.TryGetValue(rsp.ReasonTag, out float rv) ? rv : 0f;
+                if (_now < rAt - _c.SkillReserveLookaheadSec) continue;
+                reserveAbs = MathF.Max(reserveAbs, MathF.Min(rsp.StCost, f.StaminaMax * _c.SkillReserveMaxPct));
+            }
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) light = 0f;
         if (f.Stamina - _c.StamCostAttackHeavy < reserveAbs || f.IsExhausted) heavy = 0f;
         if (f.Stamina - _c.StamCostAttackLight < reserveAbs || f.IsExhausted) feint = 0f;
@@ -881,7 +905,8 @@ public sealed class MatchSim
         }
         f.WindupTotalSec = CombatMath.MotionTime(f.Motion.WindupBaseSec, f.Weapon, f.Def.Stats, _c)
             / (SkillNow(f) is { AttackSpeedMult: > 1f } cwa ? cwa.AttackSpeedMult : 1f)    // 연격([7]): 공속 +35%
-            / (PassiveNow(f) is { AtkSpeedMult: > 1f } pwa ? pwa.AtkSpeedMult : 1f); // 최후의 발악·쇼타임 등
+            / (PassiveNow(f) is { AtkSpeedMult: > 1f } pwa ? pwa.AtkSpeedMult : 1f) // 최후의 발악·쇼타임 등
+            / f.TraitAtkSpeedMult;                                                   // 광란([7]§6.2): 공속 +20%
         f.CurrentAction = action;
         if (!isFeint) { f.AttackAttempts++; f.LastAttack = action; }
         ChangeState(f, FighterState.Windup, f.WindupTotalSec);
@@ -1068,7 +1093,8 @@ public sealed class MatchSim
                     * (atk.LastSwingGuarded ? _c.GuardedRecoveryMult : 1f)
                     / (SkillNow(atk) is { AttackSpeedMult: > 1f } cra ? cra.AttackSpeedMult : 1f)    // 연격([7]): 공속 +35%
                     * (PassiveNow(atk) is { } pre ? pre.RecoveryMult : 1f)                           // 배짱([7]§5): 후딜 −25%
-                    / (PassiveNow(atk) is { AtkSpeedMult: > 1f } pra ? pra.AtkSpeedMult : 1f);
+                    / (PassiveNow(atk) is { AtkSpeedMult: > 1f } pra ? pra.AtkSpeedMult : 1f)
+                    / atk.TraitAtkSpeedMult;                                         // 광란([7]§6.2)
                 ChangeState(atk, FighterState.Recovery, recDur);
                 // [안B] 공격 후 이탈: 카이터(창·채찍)는 후딜 후 일정 시간 후퇴 강제 → '찌르고 빠짐' 리듬.
                 if (atk.Weapon.PostAttackRetreatSec > 0f)
@@ -1172,6 +1198,9 @@ public sealed class MatchSim
         if (atk.Has(TraitTable.Executioner) && def.HpPct <= 0.30f) damage *= 1.5f;   // 처형자: 마무리
         if (atk.Has(TraitTable.Berserk) && atk.HpPct <= 0.35f) damage *= 1.3f;       // 광폭화: 궁지의 폭발
         if (atk.Has(TraitTable.Assassin) && _rng.Roll(0.04f)) { damage *= 2.4f; Emit(new Decision(_now, atk.Index, "ASSASSINATE", "Trait", 1.5f)); }  // 일격필살
+        // [7]§6.2 미구현분 — 광란(주는 피해 −10%) · 반격가(카운터 +30% / 비카운터 −8%)
+        damage *= atk.TraitDamageDealtMult;
+        damage *= isCounter ? atk.TraitCounterDmgMult : atk.TraitNonCounterDmgMult;
 
         // 하이퍼아머: 방어자가 중량 강공을 커밋 중인데 들어온 게 약공 → 데미지·카운터딜은 받되 경직 무효.
         // (강공으로 받아쳐야 끊긴다. 약공 스팸으로는 못 막는다 — 중량 무기의 '막을 수 없는 일격' 정체성.)
@@ -1331,9 +1360,18 @@ public sealed class MatchSim
     /// </summary>
     private bool TrySkillActivate(FighterRuntime f, FighterRuntime opp)
     {
-        if (f.ActiveSkill is not { } sp) return false;
         if (f.SkillExecStrikeAt > 0f) return true;   // 심판의 일격 차지 중 = 무방비 정지(그 틱 행동 소비)
-        if (_now < f.SkillReadyAt || _now < f.SkillBuffUntil) return false;                       // ①
+        if (_now < f.SkillBuffUntil) return false;   // 발동 중인 버프가 있으면 겹쳐 쓰지 않는다([7]§1)
+        foreach (var cand in f.ActiveSkills)
+            if (TryOneSkill(f, opp, cand)) return true;
+        return false;
+    }
+
+    /// <summary>액티브 한 종의 발동 트리([7]§1). 쿨타임은 스킬마다 따로 흐른다.</summary>
+    private bool TryOneSkill(FighterRuntime f, FighterRuntime opp, ActiveSpec sp)
+    {
+        float readyAt = f.SkillReadyPer.TryGetValue(sp.ReasonTag, out float ra) ? ra : 0f;
+        if (_now < readyAt) return false;                                                         // ①
         if (f.State is not (FighterState.Idle or FighterState.Move or FighterState.Guard)) return false; // ②
         if (sp.StCost > 0f && (f.IsExhausted || f.Stamina < sp.StCost)) return false;             // ③ 지침 중 ST 불가
         if (sp.GgCost > 0f && f.GuardGauge < sp.GgCost) return false;
@@ -1375,7 +1413,7 @@ public sealed class MatchSim
         //   특히 DashIn은 거리 조건을 지우면 돌진이 상시 보장돼 카이팅 상성이 무너진다(실측 대검 0%→100%).
         bool identityTrigger = sp.Trigger is SkillTrigger.OppExecutable or SkillTrigger.OppVulnerable || sp.DashIn;
         bool bypass = !identityTrigger
-                   && _now - f.SkillReadyAt >= _c.SkillBypassSec
+                   && _now - readyAt >= _c.SkillBypassSec
                    && gap <= f.EffRange + _c.SkillBypassRangeSlackM;
         if (!cond && !bypass) return false;
         // ⑦ 확률 롤 — 인내심 낮을수록 공격 충동↑([7]§1-7 patienceMod 준용)
@@ -1384,8 +1422,8 @@ public sealed class MatchSim
         // 기회 활용 보정: 쿨이 돈 채로 오래 놀고 있었다면 확률을 상한까지 끌어올린다.
         // 조건이 열리는 순간이 드문 스킬(가드 중·빈사 등)은 그 한 번을 확률 롤로 흘려보내면
         // 사실상 없는 스킬이 된다 — 준비 시간이 길수록 "웬만하면 쓴다"로 수렴시킨다.
-        // SkillReadyAt은 발동 시 now+Duration+Cooldown으로 갱신되므로 (now − ReadyAt) = 준비 후 경과.
-        float readyFor = _now - f.SkillReadyAt;
+        // SkillReadyPer는 발동 시 now+Duration+Cooldown으로 갱신되므로 (now − readyAt) = 준비 후 경과.
+        float readyFor = _now - readyAt;
         if (readyFor > 0f && _c.SkillPityRampSec > 0f)
         {
             float t = MathF.Min(1f, readyFor / _c.SkillPityRampSec);
@@ -1396,7 +1434,8 @@ public sealed class MatchSim
         if (sp.StCost > 0f) f.Stamina = MathF.Max(0f, f.Stamina - sp.StCost);
         if (sp.SelfHpPctCost > 0f) f.Hp = MathF.Max(1f, f.Hp - f.HpMax * sp.SelfHpPctCost);       // HP%라 자기치사 없음
         if (sp.GgCost > 0f) f.GuardGauge = MathF.Max(0f, f.GuardGauge - sp.GgCost);
-        f.SkillReadyAt = _now + sp.Duration + sp.CooldownSec;
+        f.SkillReadyPer[sp.ReasonTag] = _now + sp.Duration + sp.CooldownSec * f.TraitSkillCdMult;  // 빠른손([7]§6.2): CD −15%
+        f.ActiveSkill = sp;   // 버프·차지·반격보너스의 주체를 이번 발동으로 갱신
         Emit(new Decision(_now, f.Index, "SKILL_" + sp.ReasonTag, "Skill", MathF.Max(2f, sp.Duration)));
         // 함정 간파([7]§5 신중): 상대가 오의를 꺼낸 직후 1초 — 카운터 창 +0.4·피해 +25%
         if (opp.Passive is { Trigger: PassiveTrigger.OppSkillActivated } pfs && _now >= opp.PassiveReadyAt)
@@ -1572,7 +1611,7 @@ public sealed class MatchSim
             atk.Hp = MathF.Min(atk.HpMax, atk.Hp + dmg * pbl.LifestealPct);
         }
         // 공포 군림([7]§5 잔혹): 상대 HP가 임계 단위로 깎일 때마다 공포 1단(공격성↓, 최대 3단)
-        if (atk.Passive is { Trigger: PassiveTrigger.OppHpStep } pt
+        if (atk.Passive is { Trigger: PassiveTrigger.OppHpStep } pt && !def.TraitFearImmune   // 겁없는자([7]§6.2): 공포 완전 면역
             && def.FearStacks < pt.FearStackMax && def.HpPct <= def.FearHpMark - pt.Threshold)
         {
             def.FearHpMark = def.HpPct; def.FearStacks++;
@@ -1588,7 +1627,7 @@ public sealed class MatchSim
         if (def.SkillExecStrikeAt > 0f)
         {
             def.SkillExecStrikeAt = -1f; def.SkillBuffUntil = _now;
-            if (def.ActiveSkill is { } es) def.SkillReadyAt = _now + es.CooldownSec * 0.5f;
+            if (def.ActiveSkill is { } es) def.SkillReadyPer[es.ReasonTag] = _now + es.CooldownSec * 0.5f;
         }
         // 철벽 반격([7]§4 창 Ⅱ): 자세 중 최초 피격 1회 — 즉시 반격(카운터 판정). 선해제로 상호 재귀 없음.
         if (_now < def.SkillAutoCounterUntil && def.Hp > 0f && atk.Hp > 0f)

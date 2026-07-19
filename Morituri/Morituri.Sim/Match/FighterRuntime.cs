@@ -68,11 +68,23 @@ public sealed class FighterRuntime
     public bool  FirstHitDone;          // 선취점: 첫 클린 히트 소비 여부
     public float ShieldHp;              // 흡수 쉴드 잔량 (선취점·향후 액티브)
     public float ShieldExpiry;          // 흡수 쉴드 만료
+    // [7]§6.2 미구현분 — 광란·빠른손·반격가·강심장·겁없는자
+    public float TraitAtkSpeedMult = 1f;      // 광란: 공속(모션 시간 ÷)
+    public float TraitDamageDealtMult = 1f;   // 광란의 대가: 주는 피해 배율
+    public float TraitSkillCdMult = 1f;       // 빠른손: 액티브 CD 배율
+    public float TraitCounterWindowAdd;       // 반격가: 카운터 창 가산
+    public float TraitCounterDmgMult = 1f;    // 반격가: 카운터 피해 배율
+    public float TraitNonCounterDmgMult = 1f; // 반격가의 대가: 비카운터 피해 배율
+    public float TraitEmotionResist = 1f;     // 강심장: 감정 트리거 확률 배율
+    public bool  TraitFearImmune;             // 겁없는자: 공포 면역
 
     // 무기 액티브([7]§4) — AI가 조건·확률로 자동 발동. 장착 없으면 전부 기본값 = 매트릭스 무영향.
-    public Data.ActiveSpec? ActiveSkill;  // 장착된 액티브(무기당 1개 — [7]§1 동시 액티브 1개)
+    // 선천 부여로 액티브를 둘까지 지닐 수 있다(Ⅰ급·Ⅱ급). [7]§1 '동시 발동 1개'는 유지 —
+    // 여러 개를 지니되 한 번에 하나만 발동하고, 쿨타임은 스킬마다 따로 흐른다.
+    public List<Data.ActiveSpec> ActiveSkills = new();      // 보유한 액티브 전부
+    public Dictionary<string, float> SkillReadyPer = new(); // ReasonTag → 다음 사용 가능 시각
+    public Data.ActiveSpec? ActiveSkill;  // 마지막으로 발동한(=현재 버프/차지 주체) 액티브
     public float SkillBuffUntil = -1f;    // 발동 효과 만료 시각
-    public float SkillReadyAt;            // 재발동 가능 시각(쿨다운)
     public float SkillAtkBonus;           // 광전사의 도끼: 발동 시점 스냅샷(+0.8%/부족HP%p, 캡 +40%)
     public float SkillFullBlockUntil;     // 방패 막기: 완전 차단 창
     public float SkillCounterBoostUntil;  // 방패 막기: 차단 직후 반격 보너스 창

@@ -1,3 +1,5 @@
+using Morituri.Sim.Core;
+
 namespace Morituri.Sim.Data;
 
 /// <summary>
@@ -302,4 +304,48 @@ public static class SkillTable
     private static readonly Dictionary<string, SkillDef> _byId = All.ToDictionary(s => s.Def.Id);
     public static SkillDef Get(string id) => _byId[id];
     public static bool Exists(string id) => _byId.ContainsKey(id);
+}
+
+/// <summary>
+/// 선천 스킬 부여 — 스킬은 <b>수련으로 익히는 것이 아니라 타고나는 것</b>(라니스타 결정).
+/// 슬롯 상한은 없다. 자격 있는 스킬마다 독립적으로 확률을 굴리므로 개수는 0~4로 흩어진다.
+///
+/// 자격(=기존 게이트 유지): 액티브는 무기 일치, 패시브는 성격 일치, Ⅱ급은 집정관 이상.
+/// 그래서 노예는 최대 2개(Ⅰ급 액티브·패시브), 집정관 이상은 최대 4개가 자연히 나온다.
+/// 확률은 천부 등급에 비례 — 좋은 그릇일수록 재능을 타고날 여지가 크되, 집정관이 0개일 수도 있다.
+/// 결정론: 주입된 SimRandom으로만 굴린다.
+/// </summary>
+public static class SkillGen
+{
+    // 천부 등급별 부여 확률 (노예→카이사르 순, TalentGrade 인덱스)
+    private static readonly float[] Tier1Prob = { 0.25f, 0.31f, 0.37f, 0.43f, 0.49f, 0.55f };
+    private static readonly float[] Tier2Prob = { 0f, 0f, 0f, 0.10f, 0.20f, 0.30f };
+
+    /// <summary>bastard = '사생아' 특성 — 천부 등급을 넘는 스킬을 지닌다([7]§6 계급 천장 예외).</summary>
+    public static string[] Roll(SimRandom rng, string weaponId, string personalityId,
+                               TalentGrade talent, bool bastard = false)
+    {
+        int ti = (int)talent;
+        var picked = new List<string>(4);
+        foreach (var sk in SkillTable.All)
+        {
+            // 자격 심사 — 액티브(무기 결합) / 패시브(성격 결합)
+            bool eligible = sk.GateWeapon != null ? sk.GateWeapon == weaponId
+                                                  : sk.GatePersonality == personalityId;
+            if (!eligible) continue;
+            // Ⅱ급 계급 천장 — 사생아는 이 천장을 무시한다
+            bool tier2 = sk.RankTier >= 2;
+            if (tier2 && !bastard && ti < SkillTable.Tier2MinTalent) continue;
+            // 사생아가 천장을 넘어 받을 때는 집정관 몫의 확률을 쓴다(등급이 그보다 낮아도)
+            float p = tier2 ? Tier2Prob[Math.Max(ti, bastard ? SkillTable.Tier2MinTalent : ti)]
+                            : Tier1Prob[ti];
+            if (rng.NextFloat01() >= p) continue;
+            // ⚠ 현 엔진은 패시브를 하나만 평가한다(FighterRuntime.Passive 단일 필드).
+            //    액티브는 다중 보유·스킬별 쿨타임을 지원하지만 패시브 다중화는 미구현이라,
+            //    죽은 스킬을 쥐어주지 않도록 패시브는 1개로 제한한다. 다중 패시브 구현 시 이 조건을 지운다.
+            if (sk.Passive != null && picked.Any(id => SkillTable.Get(id).Passive != null)) continue;
+            picked.Add(sk.Def.Id);
+        }
+        return picked.ToArray();
+    }
 }

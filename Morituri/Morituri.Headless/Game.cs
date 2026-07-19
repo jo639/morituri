@@ -1177,6 +1177,10 @@ public sealed partial class Game
             if (alt.TalentBudget > end.TalentBudget) end = alt;   // 더 나은 원석 채택
         }
         var traits = TraitGen.Roll(rng);
+        // 선천 스킬([7] 개정 — 라니스타 결정): 수련이 아니라 타고난다. 슬롯 상한 없음.
+        // 자격 있는 스킬마다 독립 추첨 → 같은 등급이어도 0개인 자와 여럿 지닌 자가 갈린다.
+        // 사생아 특성은 Ⅱ급 천부 천장을 무시한다([6]§1.5 계급 천장 예외).
+        var skills = SkillGen.Roll(rng, wpn, per, end.Talent, traits.Contains(TraitTable.Bastard));
         var pool = RollTacticPool(rng, sigTactic);
         // 천재(#16): 잠재력 상한 ×1.15 — 성장 여력이 근본적으로 크다
         float potBudget = traits.Contains(TraitTable.Genius) ? end.PotentialBudget * 1.15f : end.PotentialBudget;
@@ -1188,7 +1192,7 @@ public sealed partial class Game
             TacticPool = pool, TacticId = pool[0],
             Stats = end.Stats, Talent = end.Talent, Potential = end.Potential,
             TalentBudget = end.TalentBudget, PotentialBudget = potBudget,
-            TraitIds = traits, IsPlayer = isPlayer,
+            TraitIds = traits, SkillIds = skills, IsPlayer = isPlayer,
             Age = ageMin + (int)(rng.NextFloat01() * (ageMax - ageMin + 1)),
             AgingStartAge = agingStart,   // 30~36 (+저속노화 4)
         };
@@ -3641,37 +3645,6 @@ public sealed partial class Game
         MaybeSpawnStoryEvent(afterMatch: false);   // [13] 서막: 첫 영입 → 첫 방문자(S5)
         SaveWorld();
         if (_interactive) WriteSeasonJson();
-        return StateJson();
-    }
-
-    /// <summary>T12 스킬 수련(패시브 MVP): 훈련 포인트 3으로 습득. 게이트 = 성격 일치 + 천부(Ⅱ급은 집정관+).
-    /// 슬롯(챔피언+ 2, 그외 1)이 차 있으면 forget으로 지정한 기존 스킬과 교체.</summary>
-    public string LearnSkillJson(string fighterId, string skillId, string? forget = null)
-    {
-        var g = _cast.FirstOrDefault(x => x.Id == fighterId && x.IsPlayer);
-        if (g == null) return Err("내 선수 아님");
-        if (!SkillTable.Exists(skillId)) return Err("없는 스킬");
-        var sk = SkillTable.Get(skillId);
-        if (g.SkillIds.Contains(skillId)) return Err("이미 익힌 스킬");
-        // 게이트([7]): 액티브 = 무기 결합, 패시브 = 성격 결합
-        if (sk.GateWeapon != null)
-        {
-            if (sk.GateWeapon != g.WeaponId) return Err($"무기 불일치 — {sk.Def.Name}은(는) {sk.GateWeapon.Replace("WPN_", "")} 전용");
-        }
-        else if (sk.GatePersonality != g.PersonalityId) return Err($"성격 불일치 — {sk.Def.Name}은(는) {sk.GatePersonality.Replace("PER_", "")} 전용");
-        if (sk.RankTier >= 2 && (int)g.Talent < SkillTable.Tier2MinTalent) return Err("Ⅱ급 스킬은 집정관 이상의 그릇만 담을 수 있다");
-        if (g.TrainingPoints < 3) return Err("훈련 포인트 부족 (수련 3pt)");
-        int slots = g.Talent >= TalentGrade.Champion ? 2 : 1;
-        if (g.SkillIds.Length >= slots)
-        {
-            if (forget == null || !g.SkillIds.Contains(forget))
-                return Err($"스킬 슬롯 가득 ({slots}칸) — 잊을 스킬을 지정하라");
-            g.SkillIds = g.SkillIds.Where(s => s != forget).ToArray();
-        }
-        g.TrainingPoints -= 3;
-        g.SkillIds = g.SkillIds.Append(skillId).ToArray();
-        _story.Add((0, "skill", $"{{book}} 수련 — {g.Name}, 「{sk.Def.Name.Replace("(스킬)", "")}」을(를) 익혔다"));
-        SaveWorld();
         return StateJson();
     }
 
