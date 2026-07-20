@@ -2254,7 +2254,10 @@ function showEvent(){
 // 자동 팝업(개막·다음 경기 버튼과 분리) · 화자 초상+이름패 · 타자기 · 전용 [다음 ▶] · 선택 강제.
 const DLG_SCENES = {
   story_s0:'서막 「유산」|카푸아 · 프리시즌 · AUC 681',
-  story_s5:'서막 「검은 인장」|해질녘의 루두스',
+  story_s1:'서막 「유산」|빈 막사 · 장례를 마치고',
+  story_s3:'서막 「유산」|연습장 · 첫 훈련',
+  story_s4:'서막 「유산」|의무실 · 등불 하나',
+  story_s5:'서막 「유산」|개막 전야 · 잔 두 개',
   story_house_gold:'1막 「모래 위의 도시」|재력가의 환영',
   story_house_youth:'1막 「모래 위의 도시」|육성가의 환영',
   story_house_blood:'1막 「모래 위의 도시」|잔혹가의 도발',
@@ -2267,15 +2270,19 @@ const DLG_SCENES = {
   story_e2:'후일담 「황제의 게임」|특명 뒤의 손',
   story_e3:'후일담 「황제의 게임」|콜로세움의 귀빈석',
 };
-const DLG_CAST = { '카토':{key:'cato',role:'루두스의 교관'}, '무레나':{key:'murena',role:'검은 인장의 중개인'} };
+const DLG_CAST = { '카토':{key:'cato',role:'루두스의 교관'}, '무레나':{key:'murena',role:'검은 인장의 중개인'},
+  '테아':{key:'thea',role:'루두스의 약제사'}, '루킬리우스':{key:'lucilius',role:'카푸아의 조영관'} };
 const escHtml = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // 초상: 라니스타 제작 이미지(story_<key>.png — 투명 PNG) 우선, 없으면 실루엣 폴백
 window.dlgSilhouette = who => {
-  const tone = who==='murena' ? '#2e1e26' : '#5a4630';
-  const face = who==='murena' ? '#c9a88f' : '#b98a5e';
+  // 인물별 실루엣 톤 — 카토(흙·가죽) / 무레나(검은 인장) / 테아(약재·잿빛) / 루킬리우스(자주·과시)
+  const tone = who==='murena' ? '#2e1e26' : who==='thea' ? '#38403c' : who==='lucilius' ? '#4a2c46' : '#5a4630';
+  const face = who==='murena' ? '#c9a88f' : who==='thea' ? '#c2a992' : who==='lucilius' ? '#d2b199' : '#b98a5e';
   return `<svg viewBox="0 0 100 100"><rect width="100" height="100" rx="10" fill="var(--panel)" stroke="var(--gold-deep)"/>
     <ellipse cx="50" cy="92" rx="30" ry="24" fill="${tone}"/><circle cx="50" cy="44" r="20" fill="${face}" opacity=".9"/>
-    ${who==='murena'?'<path d="M30 52 Q30 20 50 20 Q70 20 70 52 L70 34 Q50 16 30 34 Z" fill="#241820"/>':''}</svg>`;
+    ${who==='murena'?'<path d="M30 52 Q30 20 50 20 Q70 20 70 52 L70 34 Q50 16 30 34 Z" fill="#241820"/>':''}
+    ${who==='thea'?'<path d="M31 46 Q31 22 50 22 Q69 22 69 46 L69 40 Q50 30 31 40 Z" fill="#2b312e"/>':''}
+    ${who==='lucilius'?'<path d="M50 68 L64 74 L50 80 L36 74 Z" fill="#6b3f63" opacity=".85"/>':''}</svg>`;
 };
 const dlgPortrait = who => who==='none' ? '' :
   `<img src="story_${who}.png" onerror="this.parentElement.innerHTML=dlgSilhouette('${who}')">`;

@@ -170,12 +170,19 @@ public class GameTests
         var g = new Game(1, 5, fresh: true, interactive: false, playerless: false);
         g.GachaJson(); g.RecruitJson(0); g.GachaJson(); g.RecruitJson(0);
         g.PlayNext();   // 개막
-        // 내 경기를 진행하며 이벤트 스폰을 기다림(최대 2시즌)
+        // 내 경기를 진행하며 이벤트 스폰을 기다림(최대 2시즌).
+        // [13a] 캠페인 씬(story_*)은 이 테스트의 대상이 아니다 — 마주치면 해소하고 랜덤 이벤트를 계속 기다린다.
         bool spawned = false; int guard = 0;
         while (guard++ < 800)
         {
+            var pe = Parse(g.StateJson()).GetProperty("PendingEvent");
+            if (pe.ValueKind != JsonValueKind.Null)
+            {
+                if (!pe.GetProperty("Id").GetString()!.StartsWith("story_")) { spawned = true; break; }
+                g.ChooseEventJson(1);   // 스토리 씬은 소극 선택으로 흘려보낸다
+                continue;
+            }
             g.PlayNext();
-            if (Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind != JsonValueKind.Null) { spawned = true; break; }
         }
         Assert.That(spawned, Is.True, "플레이어 경기 후 텍스트 이벤트 스폰");
 
@@ -940,7 +947,9 @@ public class GameTests
     [Test]
     public void Game_Story_Campaign_ProloguesToChronicle()
     {
-        // [13] 캠페인 상태머신: 장례(S0) → 첫 방문자(S5) → 1막 비트 → 종막(승격 or 시즌3 소프트 종료) = chronicle.
+        // [13a] 캠페인 상태머신: 장례(S0) → 빈 막사(S1) → [첫 영입] → 첫 훈련(S3) → 의무실(S4) → 개막 전야(S5)
+        //   → 1막 비트 → 종막(승격 or 시즌3 소프트 종료) = chronicle.
+        // 무레나는 서막에 오지 않는다(v0.3) — 서막의 압박은 얼굴이 아니라 숫자(장부)가 담당한다.
         TempDir("story");
         var g = new Game(1, 77, fresh: true, interactive: false, playerless: false);
         var st0 = Parse(g.StateJson());
@@ -949,10 +958,24 @@ public class GameTests
         Assert.That(st0.GetProperty("Legends").GetArrayLength(), Is.EqualTo(4), "창세 전설 4명 시드");
         Assert.That(st0.GetProperty("Campaign").GetProperty("Hint").ValueKind, Is.EqualTo(JsonValueKind.String), "카토의 조언(튜토리얼 힌트)");
         g.ChooseEventJson(1);   // S0 해소
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s1"), "장례 → 빈 막사(S1) · 영입 전에도 발화");
+        g.ChooseEventJson(1);   // S1 「장부를 연다」 — 조각 2
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
+            "영입 전에는 S3가 오지 않는다(서막은 영입을 기다린다)");
         g.GachaJson(); g.RecruitJson(0);
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
-            Is.EqualTo("story_s5"), "첫 영입 → 검은 인장의 방문(S5)");
-        g.ChooseEventJson(1);   // 거절
+            Is.EqualTo("story_s3"), "첫 영입 → 첫 훈련(S3)");
+        g.ChooseEventJson(1);
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s4"), "첫 훈련 → 의무실(S4) · 테아 등장");
+        g.ChooseEventJson(1);
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s5"), "의무실 → 개막 전야(S5)");
+        g.ChooseEventJson(1);   // 조각 7(카토의 회상 ①)
+        // 서막 전체에 무레나가 등장하지 않았는지 — 조작 예약이 걸려 있으면 안 된다
+        Assert.That(Parse(g.StateJson()).GetProperty("Keepsakes").ValueKind, Is.EqualTo(JsonValueKind.Array),
+            "서막에서 보관함에 유품이 편철된다");
 
         // 카토 코멘터리: 내 경기는 항상 한 줄 평
         var m = g.PlayNext();   // 개막

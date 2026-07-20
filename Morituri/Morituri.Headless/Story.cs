@@ -17,7 +17,8 @@ public sealed partial class Game
     private string _storyStage = "chronicle";               // prologue → act1 → chronicle
     private readonly HashSet<string> _storyBeats = new();   // 스폰된 비트 id (s0, s5, house_*, b2~b5, finale)
     private string? _storyCtx;                              // 현재 대기 스토리 이벤트의 문맥(가문 비트 = ludusId)
-    private string? _fixChoice;                             // 서막 S5의 선택(accept/refuse) — 무레나 대사 변주
+    private string? _fixChoice;                             // 조작 제안의 선택(accept/refuse) — 무레나 대사 변주
+    private readonly HashSet<string> _storyFlags = new();   // [13a] 선택의 꼬리 — 이후 씬의 분기·문구·에토스에만 사용(게임플레이 스탯 신규 0)
     private readonly List<KeepsakeRec> _keepsakes = new();  // 가이우스의 유령 — 보관함 유품(유서·메모·서신·단서)
     private float _unrest;                                  // 반란 지수 0~100
     private readonly List<LegendRec> _legends = new();      // 전설 카탈로그
@@ -63,9 +64,14 @@ public sealed partial class Game
         if (_playerless || _pendingEventId != null) return false;
         if (_storyStage == "chronicle") return MaybeSpawnEmperorArc(afterMatch);
 
-        // 서막 — 장례(S0) → 첫 방문자(S5, 첫 영입 후)
+        // 서막 「유산」 — 장례(S0) → 빈 막사(S1) → [첫 영입] → 첫 훈련(S3) → 의무실(S4) → 개막 전야(S5)
+        // v0.3: 무레나는 서막에 오지 않는다. 서막의 압박은 얼굴이 아니라 숫자(장부)가 담당 — 첫 방문은 1막 A3.
         if (!_storyBeats.Contains("s0")) return SpawnStory("story_s0", "s0");
-        if (!_storyBeats.Contains("s5") && _cast.Any(g => g.IsPlayer)) return SpawnStory("story_s5", "s5");
+        if (!_storyBeats.Contains("s1")) return SpawnStory("story_s1", "s1");
+        bool hired = _cast.Any(g => g.IsPlayer);
+        if (!_storyBeats.Contains("s3") && hired) return SpawnStory("story_s3", "s3");
+        if (!_storyBeats.Contains("s4") && hired) return SpawnStory("story_s4", "s4");
+        if (!_storyBeats.Contains("s5") && hired) return SpawnStory("story_s5", "s5");
         if (_storyStage == "prologue")
         {
             if (!SeasonActive) return false;
@@ -114,6 +120,27 @@ public sealed partial class Game
         }
         return false;
     }
+
+    // ── [13a] 선택의 꼬리 · 에토스 · 단서(기억의 벽) ──
+
+    /// <summary>씬 선택의 흔적. 이후 씬의 분기·문구에만 쓴다 — 전투·스탯 무관.</summary>
+    private string Flag(string f) { _storyFlags.Add(f); return ""; }
+
+    /// <summary>기억의 벽 조각(7개) — 획득 시 카드 UI를 띄우지 않는다(글자만 선명해짐).</summary>
+    private static readonly string[] ClueIds =
+        { "clue_axe", "clue_ledger", "clue_commentary", "clue_legend", "clue_thea", "clue_letter", "clue_recall" };
+    private int ClueCount => ClueIds.Count(_storyFlags.Contains);
+
+    /// <summary>누적 성향 — B7 자백의 태도를 가른다. 파생 계산(저장 안 함): 냉혹 ≤−3 / 중립 / 인간 ≥+3.</summary>
+    private static readonly string[] EthosCold =
+        { "fixed_once", "stayed_silent", "cato_sided", "punished", "infirmary_closed", "exec_accepted",
+          "buried_quiet", "sent_hurt", "overworked", "sold_star" };
+    private static readonly string[] EthosHuman =
+        { "told_truth", "rookie_sided", "asked_why", "infirmary_open", "exec_refused",
+          "carved_name", "rested_hurt", "rested_tired", "kept_star" };
+    private int EthosScore => EthosHuman.Count(_storyFlags.Contains) - EthosCold.Count(_storyFlags.Contains);
+    /// <summary>cold / mid / warm — 사실은 같고 카토가 왜 말하는가가 다르다.</summary>
+    private string EthosBand => EthosScore <= -3 ? "cold" : EthosScore >= 3 ? "warm" : "mid";
 
     private bool SpawnStory(string templateId, string beatId, string? ctx = null)
     {
@@ -177,21 +204,104 @@ public sealed partial class Game
                 ("아버지의 유서를 품에 넣는다", _ => { AddGaiusWill(); return "유서를 품었다 — 보관함에 보관 (그는 무엇을 거절했던 걸까)"; }),
                 ("무덤에 흙을 얹고 돌아선다", _ => { AddGaiusWill(); return "카토: \"…갑시다. 산 사람은 모래를 갈아야지요.\""; }) } },
 
-        // ── 서막 S5 「첫 방문자」 — 무레나, 검은 인장 ──
-        new EvtTemplate { Id = "story_s5", Icon = "{candle}", Title = "검은 인장의 방문", NeedsFighter = false,
-            Body = _ => "해질녘, 값비싼 토가를 입은 사내가 빚 증서 뭉치를 탁자에 올려놓는다. 인장은 검다.\n" +
-                "{speech} 무레나: \"가이우스의 후계자시군. 빚은 피를 가리지 않습니다. …허나 갚을 방법은 여러 가지지요.\"\n" +
-                "{speech} 무레나: \"당신 모리튜리가 적당한 날에 적당히 져 주기만 하면 됩니다. 우린 아무도 죽이지 않아요 — 당신들이 돈 때문에 죽이는 거죠. 우린 그저 결과를 정리할 뿐.\"",
+        // ── 서막 S1 「빈 막사」 — 조각 1(도끼)·2(장부) ──
+        new EvtTemplate { Id = "story_s1", Icon = "{ludus}", Title = "빈 막사", NeedsFighter = false,
+            Body = _ => "장례를 마치고 돌아온 루두스. 카토가 막사 문을 연다. 침상 여덟 중 여섯이 비어 있다. " +
+                "남은 둘에도 사람은 없다 — 담요만 개켜져 있다. 개켠 방식이 똑같다. 같은 사람이 개켰다는 뜻이다.\n" +
+                "{speech} 카토: \"작년 겨울에 둘, 봄에 셋. 나머지 하나는 팔았습니다. 값은 빚으로 갔고요.\"\n" +
+                "{speech} 카토: \"담요는 제가 갭니다. 아무도 없는데도 갭니다.\"\n" +
+                "{speech} 카토: \"가이우스는 여덟을 다 채우고도 빚을 졌습니다. 당신은 둘로 시작하시는군요. …어느 쪽이 나은지는 저도 모르겠습니다.\"\n" +
+                "연습장 쪽 벽에 도끼가 한 자루 걸려 있다. 자루가 손때로 검다. 날은 녹슬지 않았다 — 누군가 계속 닦고 있다는 뜻이다.\n" +
+                "{speech} 카토: \"장부는 저 궤에 있습니다. 열어보시겠습니까. …열든 안 열든 숫자는 그대로입니다만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("고개를 끄덕인다 (다음 경기를 던지면 골드 +120)", _ => {
-                    var f = MyNextFighter(); if (f == null) return "던질 모리튜리가 없다 — 무레나가 코웃음 치며 떠났다";
-                    _fixFighterId = f.Id; _fixReward = 120f; _fixChoice = "accept";
-                    AddClue("무레나 — \"우리가 없으면 이 경기장은 일주일도 못 갑니다.\"");
-                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"현명하시군요. 가이우스보다는.\""; }),
-                ("증서를 밀어낸다 (명성 +10)", _ => {
-                    AddRep(10f); _fixChoice = "refuse";
-                    AddClue("무레나 — \"당신 아버지는 끝까지 거절했습니다. 딱 한 번만 져 주면 됐는데. …그는 이겼고, 뭘 얻었습니까?\"");
-                    return "명성 +10 — 무레나: \"당신 아버지랑 똑같군. 그 고집이 어디로 이어졌는지는… 아실 텐데.\""; }) } },
+                ("장부를 연다", _ => {
+                    Flag("ledger_read"); Flag("clue_ledger");
+                    AddKeepsake("메모", "검은 인장 장부", "숫자는 컸다. 그런데 눈에 걸린 것은 다른 것이었다.\n\n" +
+                        "15년 전까지 매달 반복되던 지출 한 줄 — 「의원 비용 — O.」\n" +
+                        "다른 이름은 전부 온전히 적혀 있는데, 이것만 이니셜이다. 그리고 어느 달부터 그냥 끊겨 있다.\n\n" +
+                        "카토: \"…오래된 겁니다. 신경 쓰지 마십시오.\"\n" +
+                        "그는 장부를 덮으려다 말았다. 덮으면 더 이상해진다는 걸 아는 사람의 손이었다.", "루두스 장부");
+                    return "장부를 읽었다 — 카토: \"가이우스도 그 자리에 그렇게 앉아 있었습니다. 숫자를 다 읽고도 도망치지 않았지요.\""; }),
+                ("저 도끼는 누구 것인지 묻는다", _ => {
+                    Flag("axe_asked"); Flag("clue_axe");
+                    AddKeepsake("단서", "벽에 걸린 도끼", "자루가 손때로 검다. 날은 녹슬지 않았다.\n\n" +
+                        "카토: \"…저건 안 씁니다.\"\n\n" +
+                        "그는 그 말만 하고 궤 쪽으로 걸어갔다. 걸어가면서 손등으로 도끼날을 한 번 스쳤다. 습관이었다.", "연습장 벽");
+                    return "카토: \"…저건 안 씁니다.\" — 그 이상은 말하지 않았다"; }),
+                ("궤를 덮고 나간다", _ => { Flag("ledger_unread"); return "카토: \"현명하십니다. …아직은요.\""; }) } },
+
+        // ── 서막 S3 「첫 훈련」 — 목검(의지) ──
+        new EvtTemplate { Id = "story_s3", Icon = "{sword}", Title = "첫 훈련", NeedsFighter = false,
+            Body = _ => "연습장. 신참이 목검을 내던진다. 카토가 주워 다시 건넨다. 세 번째다. " +
+                "목검 손잡이에 이미 금이 가 있다 — 던져서 그런 게 아니라, 쥐는 힘이 잘못돼서 그렇다.\n" +
+                "{speech} 카토: \"라니스타. 이 아이가 그러더군요. 자기는 검을 배우러 온 게 아니라 죽으러 온 거라고.\"\n" +
+                "{speech} 카토: \"틀린 말은 아닙니다. 순서가 틀렸을 뿐이지요. 배우고 나서 죽는 겁니다.\"\n" +
+                "그가 당신을 본다. 결정을 미루는 눈이다. 그는 이런 눈을 잘 하지 않는다.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("카토의 방식대로 하라", _ => {
+                    Flag("cato_sided");
+                    var f = MyFirst; if (f != null) f.Fatigue = Math.Min(100, f.Fatigue + 15);
+                    return "그날 밤 연습장의 불은 늦게까지 꺼지지 않았다 — 카토: \"셋째 날부터는 안 던지더군요. 넷째 날부터는 말도 안 하고요.\""; }),
+                ("아이의 말을 들어보자", _ => {
+                    Flag("rookie_sided");
+                    return "카토: \"가이우스도 그랬습니다. 사람 말을 다 들었지요. 그래서 저는 아직도 그 사람이 밉습니다.\"" +
+                        " — 다음 날 아침 신참은 목검을 던지지 않았고, 금 간 손잡이를 천으로 감아 두었다"; }),
+                ("둘 다 모래 위에 세워둔다", _ => {
+                    Flag("both_stood");
+                    var f = MyFirst; if (f != null) f.Fatigue = Math.Min(100, f.Fatigue + 8);
+                    return "카토가 웃었다. 소리는 나지 않았다 — \"좋습니다. 그게 라니스타지요. 저는 편을 들 줄만 알아서요.\""; }) } },
+
+        // ── 서막 S4 「의무실」 — 테아 등장 · 조각 5 ──
+        new EvtTemplate { Id = "story_s4", Icon = "{medic}", Title = "의무실", NeedsFighter = false,
+            Body = _ => "막사 끝, 등불 하나. 약재와 식초 냄새. 마른 여인이 붕대를 삶고 있다. " +
+                "삶은 붕대를 널어 말리는 줄이 방을 가로지르는데, 줄이 낡아서 가운데가 처져 있다.\n" +
+                "{speech} 테아: \"…아, 거기 서 계시면 안 됩니다. 젖어요.\"\n" +
+                "당신이 한 발 옮긴다. 그녀는 고개도 들지 않았다.\n" +
+                "{speech} 테아: \"새 주인이시군요. 가이우스는 매달 이 방 값을 치렀습니다. 밀린 적은 한 번도 없었고요.\"\n" +
+                "{speech} 테아: \"손 씻으셨습니까. 아니면 아무것도 만지지 마시고요.\"\n" +
+                "그녀가 붕대를 건져 짠다. 물이 바닥으로 떨어진다. 한참 그러고 있다.\n" +
+                "{speech} 테아: \"저는 말리지 않습니다, 라니스타. 세어드릴 뿐이지요 — 저 아이가 몇 번 더 뛸 수 있는지.\"\n" +
+                "그녀가 선반을 가리킨다. 항아리들이 비어 있다.\n" +
+                "{speech} 테아: \"지금은 셀 것도 없습니다만.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("의무실을 유지한다 (골드 −60)", _ => {
+                    if (_gold < 60f) { Flag("infirmary_closed"); return "금고가 비었다 — 테아: \"예. 그럼 저는 세지 않겠습니다.\""; }
+                    _gold -= 60f; Flag("infirmary_open");
+                    return "골드 −60, 항아리가 다시 찼다 — 테아: \"…아버지 같으시군요. 칭찬은 아닙니다. 그분은 이 방에 돈을 쓰고 다른 데서 빌렸으니까요.\""; }),
+                ("당분간 닫는다", _ => {
+                    Flag("infirmary_closed");
+                    return "그녀는 화내지 않았다. 항아리를 하나씩 엎어놓기 시작했다. 그게 더 나빴다"; }),
+                ("당신은 얼마나 여기 있었는지 묻는다", _ => {
+                    Flag("clue_thea");
+                    AddKeepsake("단서", "테아의 햇수", "테아: \"열아홉 해입니다.\"\n\n" +
+                        "테아: \"…그 전 해에 여기서 사람이 하나 죽었지요. 그래서 자리가 났고요.\"\n\n" +
+                        "그녀는 그 이상 말하지 않았다. 붕대를 널던 손도 멈추지 않았다.", "약제사 테아");
+                    return "테아: \"열아홉 해입니다. …그 전 해에 여기서 사람이 하나 죽었지요. 그래서 자리가 났고요.\""; }) } },
+
+        // ── 서막 S5 「개막 전야」 — 조각 7(함정: 이긴 사람은 가이우스가 아니다) ──
+        new EvtTemplate { Id = "story_s5", Icon = "{wine}", Title = "개막 전야", NeedsFighter = false,
+            Body = _ => "개막 하루 전. 막사는 조용하다. 카토가 탁자에 앉아 있다.\n" +
+                "{speech} 카토: \"밥은 드셨습니까.\"\n" +
+                "당신이 대답한다. 그는 고개를 끄덕이고 아무 말도 하지 않는다.\n" +
+                "{speech} 카토: \"저 문짝이 또 삐걱거립니다. 3년째 그럽니다. 고치려다 말았고요.\"\n" +
+                "그가 포도주를 두 잔 따른다. 그리고 한 잔을 바닥에 붓는다.\n" +
+                "{speech} 카토: \"습관입니다. 20년을 그렇게 마셨거든요, 저 사람하고.\"\n" +
+                "그가 남은 잔을 당신에게 건넨다.\n" +
+                "{speech} 카토: \"내일이면 당신은 라니스타입니다. 오늘까지는 그냥 아들이고요.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("왜 죽었는지 묻는다", _ => {
+                    Flag("asked_about_gaius"); Flag("clue_recall");
+                    AddKeepsake("메모", "카토의 회상 ①", "카토: \"…마지막 시즌이었습니다. 져야 할 경기가 하나 있었지요. 온 도시가 알고 있었습니다.\"\n\n" +
+                        "카토: \"그런데 이겼습니다.\"\n\n" +
+                        "그의 말이 조금 이상하게 들렸다. 누가 이겼다는 것인지 명확하지 않았다. 당신은 아버지 이야기라고 이해했다.\n\n" +
+                        "카토: \"이겼고, 아무도 축하하지 않았습니다. …저도요.\"\n\n" +
+                        "그가 잔을 내려놓았다. 더 묻지 말라는 뜻이다.", "교관 카토");
+                    return "카토: \"그런데 이겼습니다. …이겼고, 아무도 축하하지 않았습니다. 저도요.\""; }),
+                ("묻지 않는다", _ => "카토: \"…예. 언젠가 물으실 겁니다. 그때 대답하지요.\" — 그는 빈 잔을 오래 들여다보았다"),
+                ("말없이 잔을 받아 마신다", _ => {
+                    Flag("shared_cup");
+                    return "두 사람은 빈 연습장을 오래 바라보았다. 벽의 도끼가 등불에 한 번 번뜩였다" +
+                        " — 카토: \"…내일 뵙겠습니다, 라니스타.\" 그가 당신을 그렇게 부른 것은 처음이다"; }) } },
 
         // ── 1막 비트① 「세 가문」 — 개성별 환영 ──
         new EvtTemplate { Id = "story_house_gold", Icon = "{coin}", Title = "재력가의 환영", NeedsFighter = false, Kind = "letter",
@@ -382,6 +492,9 @@ public sealed partial class Game
             return "{speech} 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 훈련을 분배하고 [다음 경기 ▶]로 시즌을 여십시오";
         if (_cast.Where(g => g.IsPlayer).All(g => g.CW + g.CL + g.CD == 0))
             return "{speech} 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 {pause} 일시정지로 전술을 바꿀 수 있습니다(경기당 2회)";
+        // 1막 — 무레나가 아직 안 왔다면 빚이 먼저 말한다(첫 상환일 예고, [13a] A3)
+        if (_storyStage == "act1" && !_storyBeats.Contains("a3") && _debt > 0f)
+            return "{speech} 카토: \"상환일이 옵니다. 그때는 사람이 직접 옵니다 — 지금까지는 숫자만 왔지만요.\"";
         return null;   // 이후는 이벤트가 이야기한다
     }
 

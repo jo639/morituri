@@ -137,7 +137,8 @@ public sealed partial class Game
         List<PressIssue>? PressArchive = null,   // 콜로세움 월보 영속 아카이브(#1)
         int PreWeek = 0,   // [19] 프리시즌 준비 주간 진척
         int FestStage = 0, List<string>? FestSlots = null,   // {masks} 대항전 단계·진출자
-        string? FestRepId = null, string? FestChampion = null);   // {fest} 내 대표 지명·우승자
+        string? FestRepId = null, string? FestChampion = null,   // {fest} 내 대표 지명·우승자
+        List<string>? StoryFlags = null);   // [13a] 캠페인 선택 플래그(null=구세이브=신규 씬 스킵)
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -992,6 +993,9 @@ public sealed partial class Game
         string outcome = t.Choices[choiceIdx].Apply(subj);
         _story.Add((0, "event_choice", $"{t.Icon} {t.Title} — {outcome}"));
         _pendingEventId = _pendingEventFighter = null;
+        // [13a] 서막은 연쇄한다 — 프리시즌 씬(S0→S1→S3→S4→S5)은 경기를 기다리지 않는다.
+        // 1막 이후는 그대로 경기 페이싱(afterMatch)에 맡긴다 — 각본이 플레이를 밀어내지 않도록.
+        if (_storyStage == "prologue") MaybeSpawnStoryEvent(afterMatch: false);
         SaveWorld();
         return JsonSerializer.Serialize(new { ok = true, title = t.Title, outcome, fight }, JsonOpts);
     }
@@ -3819,6 +3823,7 @@ public sealed partial class Game
         _storyStage = w.StoryStage ?? "chronicle";
         _storyBeats.Clear(); if (w.StoryBeats != null) foreach (var b in w.StoryBeats) _storyBeats.Add(b);
         _storyCtx = w.StoryCtx; _fixChoice = w.FixChoice;
+        _storyFlags.Clear(); if (w.StoryFlags != null) foreach (var f in w.StoryFlags) _storyFlags.Add(f);
         _keepsakes.Clear();
         if (w.Keepsakes != null) _keepsakes.AddRange(w.Keepsakes);
         else if (w.GhostClues != null) foreach (var c in w.GhostClues) AddClue(c);   // 구세이브 유품함 단서 → 보관함 문서 마이그레이션
@@ -3911,7 +3916,8 @@ public sealed partial class Game
             _keepsakes.Count > 0 ? _keepsakes.ToList() : null, _debtLog.Count > 0 ? _debtLog.ToList() : null,
             _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, 0, 0,
             _pressArchive.Count > 0 ? _pressArchive.ToList() : null, _preWeek,
-            _festStage, _festSlots.Count > 0 ? _festSlots.ToList() : null, _festRepId, _festChampion), JsonOpts));
+            _festStage, _festSlots.Count > 0 ? _festSlots.ToList() : null, _festRepId, _festChampion,
+            _storyFlags.Count > 0 ? _storyFlags.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
