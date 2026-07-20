@@ -46,3 +46,7 @@ Morituri/Morituri.Sim.Tests/TestResults/
 Morituri/publish/
 publish/
 *.bak
+
+# ── 파이썬 도구 캐시 (tools/build_cursors.py) ──
+__pycache__/
+*.pyc
