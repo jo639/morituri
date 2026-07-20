@@ -36,6 +36,7 @@ internal static class Program
             "/api/simto" when method == "POST" => game.PlayUntilMineJson(),
             "/api/autofinish" when method == "POST" => game.AutoFinishJson(),
             "/api/watch" when method == "POST" => game.WatchJson(IntOf(body ?? "", "idx")),
+            "/api/prologue" when method == "POST" => game.WatchPrologueJson(),   // [13a] 오르쿠스의 마지막 경기
             "/api/watchgreat" when method == "POST" => game.WatchGreatJson(IntOf(body ?? "", "idx")),
             "/api/archive" when method == "POST" => game.ArchiveListJson(),
             "/api/news" when method == "POST" => game.NewsJson(),

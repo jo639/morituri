@@ -1307,13 +1307,47 @@ const KP_META = {
   '증서': {ic:'{quill}', col:'#8a7a5a', label:'증서'},
   '단서': {ic:'{candle}', col:'var(--gold-deep)', label:'단서'},
 };
+// [13a] 프롤로그 리플레이 배너 — 자백(clue_confess) 전엔 「이름 없는 경기」로 잠긴 듯, 후엔 제목이 밝혀진다.
+// 두 번째 관람이 설계의 목적이다: 같은 픽셀, 완전히 다른 경기.
+function prologueBanner(){
+  const camp = st.Campaign;
+  // 캠페인 커리어에만 노출(구세이브·각본 없는 시작 제외) — 프롤로그를 본 커리어의 기억이므로
+  if (!camp || camp.Stage==='chronicle' && !(camp.Clues||[]).length) return '';
+  const known = (camp.Clues||[]).includes('clue_confess');
+  const title = known ? '오르쿠스의 마지막 경기 · AUC 661' : '이름 없는 경기 · AUC 661';
+  const sub = known
+    ? '이제 당신은 저 경기에서 무엇을 봤는지 안다. 다시 보겠는가.'
+    : '개막 전에 본 그 경기. 무언가 이상했지만, 무엇이었는지는 아직 모른다.';
+  return `<div onclick="watchPrologue()" style="cursor:pointer;margin-bottom:14px;padding:14px 18px;border-radius:10px;
+      background:linear-gradient(135deg,#1a1410,#241a12);border:1px solid ${known?'var(--gold-deep)':'#3a332c'};
+      display:flex;gap:14px;align-items:center;transition:transform .12s ease" onmouseover="this.style.transform='translateX(3px)'" onmouseout="this.style.transform=''">
+    <span style="font-size:26px;flex-shrink:0;${known?'':'filter:grayscale(1);opacity:.7'}">{play}</span>
+    <div style="flex:1;min-width:0">
+      <b style="color:${known?'var(--gold)':'#8a8078'};font-size:14px">${title}</b>
+      <div class="note" style="margin-top:3px">${sub}</div></div>
+    <span style="color:var(--gold)">▶</span></div>`;
+}
+// [13a] 프롤로그를 관전 iframe으로 연다(클라이언트를 떠나지 않는다). onDone: 재생 후 콜백(뉴게임 흐름용).
+window.watchPrologue = async (onDone)=>{
+  const r = await api('/api/prologue', {});   // body 전달 = POST(라우트가 POST만 받는다)
+  if (r.error){ toast('{warn} '+r.error); return; }
+  _replayReturn = document.querySelector('.screen.on')?.id || 'archive';
+  if (_replayReturn==='replay') _replayReturn='archive';
+  _prologueDone = onDone || null;
+  $('replayCard').textContent = `{play} ${r.title||'프롤로그'}`;
+  if ($('replayBack')) $('replayBack').textContent = onDone ? '20년 후 →' : '← 돌아가기';
+  $('watchF').src = 'viewer.html?t='+Date.now();
+  go('replay');
+};
+let _prologueDone = null;
 function renderArchive(){
   _kpSeen = (st.Keepsakes||[]).length; renderBadges();
   const body=$('archiveBody'); if(!body) return;
   const ks = st.Keepsakes||[];
-  if (!ks.length){ body.innerHTML='<div class="note" style="padding:20px 0">아직 보관된 문서가 없다 — 서신을 개봉하거나 유품을 손에 넣으면 이곳에 쌓인다.</div>'; return; }
+  const banner = prologueBanner();
+  if (!ks.length){ body.innerHTML = banner + '<div class="note" style="padding:20px 0">아직 보관된 문서가 없다 — 서신을 개봉하거나 유품을 손에 넣으면 이곳에 쌓인다.</div>'; return; }
   window._kp = ks;
-  body.innerHTML = `<div style="display:flex;flex-direction:column;gap:9px;margin-top:6px">${ks.map((k,i)=>{
+  body.innerHTML = banner + `<div style="display:flex;flex-direction:column;gap:9px;margin-top:6px">${ks.map((k,i)=>{
     const m = KP_META[k.Type]||KP_META['단서'];
     const snip = (k.Body||'').replace(/\n+/g,' ').slice(0,60);
     return `<div onclick="openKeepsake(${i})" style="cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:12px 15px;border-radius:9px;background:var(--panel2);border-left:4px solid ${m.col};transition:transform .12s ease" onmouseover="this.style.transform='translateX(3px)'" onmouseout="this.style.transform=''">
@@ -2614,7 +2648,10 @@ async function loadReplay(apiPath, idx, label){
   $('watchF').src = 'viewer.html?t='+Date.now();
   go('replay');
 }
-window.closeReplay = ()=>{ $('watchF').src='about:blank'; go(_replayReturn); };
+window.closeReplay = ()=>{ $('watchF').src='about:blank';
+  if ($('replayBack')) $('replayBack').textContent='← 돌아가기';
+  if (_prologueDone){ const cb=_prologueDone; _prologueDone=null; cb(); return; }   // [13a] 프롤로그 후 서막 진입
+  go(_replayReturn); };
 window.openArchive = (idx)=> loadReplay('/api/watcharchive', idx, '{play} 다시보기');
 window.openGreat = (idx)=> loadReplay('/api/watchgreat', idx, '{play} 명경기');
 // viewer/리그 iframe 통신: 경기 목록 클릭=관전 · 라이브 재생 완료=정산→결과창
@@ -3736,12 +3773,16 @@ $('mNew').onclick = async ()=>{
         <button class="sw" id="nvSkip"></button>
         <span>캠페인 생략 <span style="color:var(--dim)">(서막·1막 각본 없이 시작 — 회차용)</span></span></label>` });
   if (!ok) return;
-  st = await api('/api/newcareer',{skip: !!($('nvSkip')&&$('nvSkip').checked)});
+  const skip = !!($('nvSkip')&&$('nvSkip').checked);
+  st = await api('/api/newcareer',{skip});
   await refresh();
   _lgDoc=null; _lgMonth=null;   // 새 세계 — 리그 캐시 리셋
   $('menu').style.display='none';
-  go('market');   // 새 커리어 = 영입부터
-  maybeAutoStory(); maybeCoach();   // [13] 서막 S0 자동 개막
+  const enterProlog = ()=>{ go('market'); maybeAutoStory(); maybeCoach(); };   // 서막 S0 자동 개막
+  // [13a] 프롤로그 「AUC 661」 — 로고 다음, S0(장례) 앞. 이름도 설명도 없이 한 경기를 본다.
+  // 관전 iframe으로 재생하고, [← 돌아가기] 시 서막이 이어진다. 캠페인 생략 시엔 건너뛴다.
+  if (!skip) watchPrologue(enterProlog);
+  else enterProlog();
 };
 
 refresh(); renderSlots();

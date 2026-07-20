@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Morituri.Sim.Core;
 using Morituri.Sim.Data;
 
@@ -43,6 +44,22 @@ public sealed partial class Game
         _storyStage = "prologue";
         SeedLegends();
         SpawnStory("story_s0", "s0");
+    }
+
+    /// <summary>[13a] 프롤로그 「AUC 661」 — 오르쿠스의 마지막 경기를 뷰어에 싣는다.
+    /// 사전 기록 재생(부록 E-4 대안): 이 엔진에서는 탑방패가 도끼에게 지지 않으므로 시뮬로는 재현되지 않는다.
+    /// 자백(B7) 전에는 「이름 없는 경기」, 자백 후에는 제목이 밝혀진다 — 두 번째 관람이 이 설계의 목적이다.</summary>
+    public string WatchPrologueJson()
+    {
+        PrologueReplay.Write(Path.Combine(AppContext.BaseDirectory, "viewer.json"));
+        bool known = _storyFlags.Contains("clue_confess");
+        return JsonSerializer.Serialize(new {
+            ok = true,
+            a = known ? "오르쿠스" : "이름 없는 도끼",
+            b = known ? "스쿠타투스" : "탑방패를 든 자",
+            round = 0, isEvent = true, known,
+            title = known ? "오르쿠스의 마지막 경기 · AUC 661" : "이름 없는 경기 · AUC 661",
+        }, JsonOpts);
     }
 
     /// <summary>캠페인 생략(뉴게임 옵션) — 각본 없이 시작, 전부 해금.</summary>
