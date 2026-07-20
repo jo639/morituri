@@ -65,6 +65,12 @@ if (args.Length > 0 && args[0] == "matrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "orcusprobe")
+{
+    OrcusProbe.Run(args.Length > 1 && int.TryParse(args[1], out int on) ? on : 2000);
+    return;
+}
+
 if (args.Length > 0 && args[0] == "weaponprobe")
 {
     Analysis.WeaponProbe(args.Length > 1 && int.TryParse(args[1], out int wg) ? wg : 300);

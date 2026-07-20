@@ -1065,6 +1065,71 @@ public class GameTests
         return false;
     }
 
+    /// <summary>[13a] 서막~1막을 지정한 성향으로 통과시킨다. warm=인간적 선택 / cold=냉혹한 선택.
+    /// 자백(B7)까지 끌고 가서 그 본문을 돌려준다.</summary>
+    private static string? RunToConfession(Game g, bool warm)
+    {
+        var pick = new Dictionary<string, int> {
+            ["story_s3"] = warm ? 1 : 0,          // 아이의 말을 듣는다 / 카토의 방식
+            ["story_s4"] = warm ? 0 : 1,          // 의무실 유지 / 폐쇄
+            ["story_a5"] = warm ? 1 : 0,          // 증서를 밀어낸다 / 조작 수락
+            ["story_a6"] = warm ? 0 : 2,          // 진실을 말한다 / 침묵
+            ["story_b_blood"] = warm ? 0 : 1,     // 쉬게 한다 / 내보낸다
+            ["story_b_monster"] = warm ? 0 : 1,   // 쉬게 한다 / 버틴다
+            ["story_b_wall"] = warm ? 2 : 0,      // 왜 그만뒀는지 묻는다 / 본보기로 벌한다
+            ["story_b_exec"] = warm ? 1 : 0,      // 처형전 거절 / 수락
+        };
+        for (int i = 0; i < 400; i++)
+        {
+            var st = Parse(g.StateJson());
+            var pe = st.GetProperty("PendingEvent");
+            if (pe.ValueKind != JsonValueKind.Null)
+            {
+                string id = pe.GetProperty("Id").GetString()!;
+                if (id == "story_b_confess") return pe.GetProperty("Body").GetString();
+                g.ChooseEventJson(pick.TryGetValue(id, out int c) ? c : 0);
+                continue;
+            }
+            if (st.GetProperty("MyFighters").GetArrayLength() < 2) { g.GachaJson(); g.RecruitJson(0); }
+            if (st.GetProperty("Campaign").GetProperty("Stage").GetString() == "chronicle") return null;
+            g.PlayNext();
+        }
+        return null;
+    }
+
+    [Test]
+    public void Game_Story_Confession_EthosSplitsTone_AndExileSwapsVoice()
+    {
+        // [13a] B7 「20년」 — 사실관계는 하나지만 태도가 셋으로 갈린다(자수/보고/고백).
+        // 그리고 카토를 내치면 경기평의 화자가 바뀐다 — 페널티는 수치가 아니라 어휘의 상실이다.
+        TempDir("confess_warm");
+        var gw = new Game(1, 401, fresh: true, interactive: false, playerless: false);
+        string? warm = RunToConfession(gw, warm: true);
+        Assert.That(warm != null, Is.True, "인간 루트에서 자백 도달");
+        Assert.That(warm!.Contains("앉자마자 고개를 숙였다"), Is.True, "인간 = 고백(용서받을까 봐 겁내며 말한다)");
+        Assert.That(warm.Contains("쇳소리"), Is.True, "폐 천공 — 카토가 눈치챈 계기");
+        Assert.That(warm.Contains("탑방패"), Is.True, "안 죽일 자를 붙이는 대진 = 살해 방식");
+
+        TempDir("confess_cold");
+        var gc = new Game(1, 401, fresh: true, interactive: false, playerless: false);
+        string? cold = RunToConfession(gc, warm: false);
+        Assert.That(cold != null, Is.True, "냉혹 루트에서 자백 도달");
+        Assert.That(cold!.Contains("나갈 수 있는 거리를 재고"), Is.True, "냉혹 = 자수(처분받는 게 마땅하다는 확신)");
+        Assert.That(cold.Contains("그를 죽인 자들이 떠오릅니다"), Is.True, "냉혹 전용 결말부");
+        // 사실관계는 태도와 무관하게 동일해야 한다
+        foreach (var fact in new[] { "오르쿠스", "무레나", "132승" })
+            Assert.That(warm.Contains(fact) && cold.Contains(fact), Is.True, $"사실 「{fact}」는 3태 공통");
+
+        // 처분 — 「나가라」 = 화자 교체
+        gc.ChooseEventJson(0);
+        var after = Parse(gc.StateJson());
+        Assert.That(after.GetProperty("Campaign").GetProperty("Voice").GetString(), Is.EqualTo("exiled"),
+            "카토를 내치면 경기평 화자가 바뀐다");
+        Assert.That(after.GetProperty("Keepsakes").EnumerateArray()
+            .Any(k => k.GetProperty("Title").GetString()!.Contains("자백")), Is.True,
+            "처분과 무관하게 진실은 보관함에 남는다");
+    }
+
     [Test]
     public void Game_Story_EmperorArc_GatesAndOrder()
     {

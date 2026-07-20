@@ -130,9 +130,14 @@ public sealed partial class Game
         if (!_storyBeats.Contains("cf")) return false;   // 자백 전에는 3막으로 넘어가지 않는다
         // B8 무레나가 안다는 것 — 자백 직후
         if (!_storyBeats.Contains("mk")) return SpawnStory("story_b_murena", "mk");
-        // ④ 진상의 반쪽 — 승격 = 서사 동기화
-        if (!_storyBeats.Contains("b4")) return SpawnStory("story_clue", "b4");
-        // ⑤ 승격 결전 전야 — 검은 인장의 요구 (다음 내 경기가 남아 있을 때)
+        // ── 3막 「승격」 — 아버지와 똑같은 갈림길. 다만 이번엔 이기면 무슨 일이 일어나는지 안다 ──
+        // C0 검은 인장의 시험대 — 한 번도 팔지 않은 자에게만. 깨끗한 길에는 보호막이 없다.
+        if (!_storyBeats.Contains("tr") && !_storyFlags.Contains("fixed_once"))
+            return SpawnStory("story_c_trial", "tr");
+        // C1 값이 매겨진 밤 — 간판을 사겠다는 제안
+        if (!_storyBeats.Contains("of") && _cast.Count(g => g.IsPlayer) >= 2)
+            return SpawnStory("story_c_offer", "of");
+        // ⑤ 승격 결전 전야 — 검은 인장의 마지막 요구 (다음 내 경기가 남아 있을 때)
         if (!_storyBeats.Contains("b5") && _cast.Any(g => g.IsPlayer) && HasMyMatchAheadNow())
             return SpawnStory("story_showdown", "b5");
         return false;
@@ -179,7 +184,8 @@ public sealed partial class Game
           "buried_quiet", "sent_hurt", "overworked", "sold_star" };
     private static readonly string[] EthosHuman =
         { "told_truth", "rookie_sided", "asked_why", "infirmary_open", "exec_refused",
-          "carved_name", "rested_hurt", "rested_tired", "kept_star" };
+          "carved_name", "rested_hurt", "rested_tired", "kept_star",
+          "refused_fix" };   // 값을 치르고 거절하는 것이 1막에서 가장 인간적인 행위다(조작 수락 −1과 대칭)
     private int EthosScore => EthosHuman.Count(_storyFlags.Contains) - EthosCold.Count(_storyFlags.Contains);
     /// <summary>cold / mid / warm — 사실은 같고 카토가 왜 말하는가가 다르다.</summary>
     private string EthosBand => EthosScore <= -3 ? "cold" : EthosScore >= 3 ? "warm" : "mid";
@@ -319,7 +325,9 @@ public sealed partial class Game
                 "{speech} 테아: \"지금은 셀 것도 없습니다만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("의무실을 유지한다 (골드 −60)", _ => {
-                    if (_gold < 60f) { Flag("infirmary_closed"); return "금고가 비었다 — 테아: \"예. 그럼 저는 세지 않겠습니다.\""; }
+                    // 시작 금고(50)로는 못 낸다 — 돌보겠다는 선택 자체는 냉혹으로 세지 않는다(의도는 처벌하지 않는다).
+                    if (_gold < 60f) { Flag("infirmary_tried");
+                        return "금고가 모자란다 — 테아: \"…돈이 없으신 거지, 마음이 없으신 건 아니군요.\" 그녀는 항아리를 엎지 않았다"; }
                     _gold -= 60f; Flag("infirmary_open");
                     return "골드 −60, 항아리가 다시 찼다 — 테아: \"…아버지 같으시군요. 칭찬은 아닙니다. 그분은 이 방에 돈을 쓰고 다른 데서 빌렸으니까요.\""; }),
                 ("당분간 닫는다", _ => {
@@ -624,6 +632,47 @@ public sealed partial class Game
                         "무레나: \"그 사람이 저기 있어야, 제가 20년 전에 한 일이 아직 안 끝난 게 되거든요.\"", "중개인 무레나");
                     return "무레나: \"…당신이 그 사람을 내치지 않기를 바랍니다. 그 사람이 저기 있어야, 제가 20년 전에 한 일이 아직 안 끝난 게 되거든요.\""; }) } },
 
+        // ── 3막 C0 「검은 인장의 시험대」 — 한 번도 팔지 않은 자에게만 ──
+        // 깨끗한 길에는 보호막이 없다. 그걸 몸으로 겪어야 C2의 제안이 실제로 매력적으로 들린다.
+        new EvtTemplate { Id = "story_c_trial", Icon = "{swords}", Title = "검은 인장의 시험대", NeedsFighter = false,
+            Body = _ => "검은 인장은 직접 움직이지 않았다. 대신 라이벌 루두스의 라니스타가 공개 석상에서 당신 이름을 불렀다.\n" +
+                "{speech} 라니스타: \"저 집은 깨끗하다고들 하더군요. 빚을 지고도 안 판다고요.\"\n" +
+                "{speech} 라니스타: \"그럼 증명해 보시지요. 우리 간판과 당신 간판, 다음 라운드에. 조건은 없습니다. 다만—\"\n" +
+                "{speech} 라니스타: \"—지면, 그건 깨끗해서가 아니라 그냥 약해서 안 판 거라고 말하겠습니다. 온 도시에요.\"\n" +
+                "그날부터 막사 분위기가 달라졌다. 아무도 말하지 않았지만 다들 알고 있었다.\n" +
+                "밤에 연습장 불이 꺼지지 않았다. " +
+                (_storyFlags.Contains("cato_exiled")
+                    ? "{speech} 테아: \"붕대를 미리 준비해 뒀습니다. 이런 경기는 티가 나거든요.\""
+                    : "{speech} 카토: \"…이게 저쪽 방식입니다. 자기들 손엔 피 안 묻히고요. 20년 전에도 이랬습니다. 먼저 외롭게 만들고, 그 다음에 제안하지요.\""),
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("받는다 (명성 +30 · 인기 +20)", _ => {
+                    Flag("trial_won"); AddRep(30f);
+                    var f = MyFirst; if (f != null) f.Popularity += 20f;
+                    return "명성 +30 · 인기 +20 — 관중석이 조용했다가, 한 박자 늦게 터졌다. 안 팔고 이겼다. 그날 밤 막사에서 검 닦는 소리가 유난히 오래 났다. 아무도 시키지 않았다"; }),
+                ("묵살한다 (명성 −8 · 빚 +30%)", _ => {
+                    Flag("trial_lost"); _ludusRep = MathF.Max(0f, _ludusRep - 8f);
+                    DebtTxn("도발을 묵살한 값 — 시장의 소문", MathF.Round(_debt * 0.3f));
+                    return "명성 −8 · 빚 +30% — 다음 주 시장에서 우리 이야기가 돌았다. 좋은 쪽은 아니었다. 그 주에 증서가 두 통 왔다"; }) } },
+
+        // ── 3막 C1 「값이 매겨진 밤」 — 간판을 사겠다는 제안 ──
+        new EvtTemplate { Id = "story_c_offer", Icon = "{coin}", Title = "값이 매겨진 밤", NeedsFighter = false,
+            Body = _ => "라이벌 가문이 사절을 보냈다.\n" +
+                $"{{speech}} 사절: \"{MyFirst?.Name ?? "당신 간판"}을(를) 사겠습니다. 빚을 전부 덮고도 남는 값입니다.\"\n" +
+                (_storyFlags.Contains("exec_refused")
+                    ? "{speech} 루킬리우스: \"제가 다리를 놨습니다. 저번엔 아쉬웠으니, 이번엔 잘해 드리려고요.\"\n" : "") +
+                (_storyFlags.Contains("cato_exiled")
+                    ? "조언해 줄 사람이 없다. 테아가 문가에 서 있지만 아무 말도 하지 않는다. 그녀는 원래 그런다."
+                    : "{speech} 카토: \"…팔지 마십시오. 저는 이런 말 할 자격 없습니다. 그런데 이 방에서 저 말고 할 사람이 없군요.\""),
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("판다 (빚 청산 · 명성 −10)", _ => {
+                    Flag("sold_star");
+                    float wipe = _debt; if (wipe > 0f) DebtTxn("간판을 판 값 — 전액 청산", -wipe);
+                    _gold += 120f; _ludusRep = MathF.Max(0f, _ludusRep - 10f);
+                    return "빚이 사라졌다. 골드 +120, 명성 −10 — 막사에 침상이 하나 더 비었다. 담요는 다음 날 아침에도 개켜져 있었다"; }),
+                ("거절한다 (명성 +12)", _ => {
+                    Flag("kept_star"); AddRep(12f);
+                    return "명성 +12 — 사절: \"…아버님 아들이시군요. 칭찬으로 드리는 말은 아닙니다.\""; }) } },
+
         // ── 1막 비트② 「첫 원한」 — 지목 격파 도전 ──
         new EvtTemplate { Id = "story_challenge", Icon = "{swords}", Title = "지목 격파", NeedsFighter = false,
             Body = _ => {
@@ -685,13 +734,16 @@ public sealed partial class Game
 
         // ── 종막 「라니스타가 되는 의식」 ──
         new EvtTemplate { Id = "story_finale", Icon = "{ludus}", Title = "모래에게 배우다", NeedsFighter = false,
-            Body = _ => "시즌의 먼지가 가라앉은 훈련장. 카토가 갈퀴를 내려놓고 처음으로 당신을 정면으로 본다.\n" +
-                "{speech} 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
-                "{speech} 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"\n" +
-                "각본은 여기서 끝난다. 콜로세움, 챔피언십 컵, 불멸의 루두스, 세대와 유산 — 그리고 아직 답을 얻지 못한 유품함의 질문들. 모래가 당신을 기억할 뿐.",
-            Choices = new (string, Func<Gladiator?, string>)[] {
-                ("모래를 한 줌 움켜쥔다", _ => "따뜻했다. 오늘 흘린 피의 온기가 아직 남아 있었다 — 이제 전부 당신의 것이다"),
-                ("카토에게 고개를 숙인다", _ => "카토: \"…라니스타가 교관에게 고개를 숙이면 안 됩니다. 다시는요.\" 그의 눈가가 잠깐 붉었다") } },
+            Body = _ => FinaleBody(),
+            Choices = _storyFlags.Contains("cato_exiled")
+                ? new (string, Func<Gladiator?, string>)[] {
+                    ("도끼의 날을 닦는다", _ => "부탁받은 대로 했다. 날은 여전히 녹슬지 않았다 — 이제 그것을 닦는 사람은 당신이다"),
+                    ("모래를 한 줌 움켜쥔다", _ => "따뜻했다. 오늘 흘린 피의 온기가 아직 남아 있었다 — 이제 전부 당신의 것이다") }
+                : new (string, Func<Gladiator?, string>)[] {
+                    ("모래를 한 줌 움켜쥔다", _ => "따뜻했다. 오늘 흘린 피의 온기가 아직 남아 있었다 — 이제 전부 당신의 것이다"),
+                    ("카토에게 고개를 숙인다", _ => _storyFlags.Contains("cato_kept")
+                        ? "카토: \"…라니스타가 교관에게 고개를 숙이면 안 됩니다. 다시는요.\" 그의 눈가가 잠깐 붉었다"
+                        : "카토: \"…라니스타가 교관에게 고개를 숙이면 안 됩니다. 다시는요.\" 그는 아직 당신의 대답을 기다리고 있다") } },
 
         // ═══ 후일담 「황제의 게임」 — 가이우스 미스터리의 나머지 반쪽 (명성 4단계+ 독립 게이트) ═══
 
@@ -874,6 +926,42 @@ public sealed partial class Game
     };
 
     private string ConfessionBody() => ConfessOpening() + ConfessPreamble() + ConfessBody();
+
+    /// <summary>종막 — 카토의 처분이 이 장면의 무게를 뒤집는다.
+    /// 「내가 가르칠 수 있는 건 여기까지입니다」가 튜토리얼 종료 멘트에서 떠날 자격을 구하는 말이 된다.</summary>
+    private string FinaleBody()
+    {
+        string epilogue = "\n각본은 여기서 끝난다. 콜로세움, 챔피언십 컵, 불멸의 루두스, 세대와 유산 — " +
+            "그리고 아직 답을 얻지 못한 보관함의 질문들. 모래가 당신을 기억할 뿐.";
+
+        if (_storyFlags.Contains("cato_exiled"))
+            return "시즌의 먼지가 가라앉은 훈련장. 갈퀴가 벽에 기대어 있다. 아무도 그것을 들지 않았다.\n" +
+                "벽에는 도끼 한 자루와 목검 하나가 그대로 걸려 있다. 20년 동안 누군가 매일 그 자리에 세워두던 것들이다.\n" +
+                "…\n" +
+                "품에서 유서가 만져진다 — 「모래는 정직하다. 그 위의 인간들이 문제일 뿐.」\n" +
+                "이제 그 위에 서 있는 인간은 당신이다.\n" +
+                "{speech} 테아: \"…날은 제가 닦고 있습니다. 부탁받은 건 아니고요.\"" + epilogue;
+
+        if (_storyFlags.Contains("cato_unanswered"))
+            return "시즌의 먼지가 가라앉은 훈련장. 카토가 갈퀴를 내려놓고 처음으로 당신을 정면으로 본다.\n" +
+                "{speech} 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
+                "{speech} 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"\n" +
+                "{speech} 카토: \"…아직 대답을 안 주셨습니다. 재촉하는 건 아닙니다. 기다리는 것도 제 몫이니까요.\"\n" +
+                "그는 갈퀴를 다시 집어 들었다. 내일도 여기 있겠다는 뜻이다." + epilogue;
+
+        if (_storyFlags.Contains("cato_kept"))
+            return "시즌의 먼지가 가라앉은 훈련장. 카토가 포도주를 두 잔 따른다.\n" +
+                "그리고 이번에는 — 붓지 않는다. 두 잔 다 탁자에 놓는다.\n" +
+                "{speech} 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
+                "{speech} 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"\n" +
+                "{speech} 카토: \"저는 계속 여기 있겠습니다. 벌 받으러가 아니라, …이제는 그냥 일하러요.\"\n" +
+                "그가 잔을 든다. 20년 만에 처음으로, 두 잔이 다 채워진 채였다. 벽의 도끼는 여전히 그 자리에 있다." + epilogue;
+
+        // 자백 전에 종막에 닿은 커리어(승격이 빨랐거나 각본을 앞질렀을 때) — 원래의 담백한 종막
+        return "시즌의 먼지가 가라앉은 훈련장. 카토가 갈퀴를 내려놓고 처음으로 당신을 정면으로 본다.\n" +
+            "{speech} 카토: \"내가 가르칠 수 있는 건 여기까지입니다.\"\n…\n" +
+            "{speech} 카토: \"이제부터는… 당신도 모래에게 배우게 될 겁니다.\"" + epilogue;
+    }
 
     /// <summary>자백을 보관함에 편철 — 처분과 무관하게 진실은 남는다. 기억의 벽의 마지막 한 줄.</summary>
     private void ArchiveConfession()
