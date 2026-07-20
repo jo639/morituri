@@ -68,6 +68,7 @@ public sealed partial class Game
         // v0.3: 무레나는 서막에 오지 않는다. 서막의 압박은 얼굴이 아니라 숫자(장부)가 담당 — 첫 방문은 1막 A3.
         if (!_storyBeats.Contains("s0")) return SpawnStory("story_s0", "s0");
         if (!_storyBeats.Contains("s1")) return SpawnStory("story_s1", "s1");
+        if (!_storyBeats.Contains("s2")) return SpawnStory("story_s2", "s2");
         bool hired = _cast.Any(g => g.IsPlayer);
         if (!_storyBeats.Contains("s3") && hired) return SpawnStory("story_s3", "s3");
         if (!_storyBeats.Contains("s4") && hired) return SpawnStory("story_s4", "s4");
@@ -211,8 +212,20 @@ public sealed partial class Game
                 "{speech} 카토: \"작년 겨울에 둘, 봄에 셋. 나머지 하나는 팔았습니다. 값은 빚으로 갔고요.\"\n" +
                 "{speech} 카토: \"담요는 제가 갭니다. 아무도 없는데도 갭니다.\"\n" +
                 "{speech} 카토: \"가이우스는 여덟을 다 채우고도 빚을 졌습니다. 당신은 둘로 시작하시는군요. …어느 쪽이 나은지는 저도 모르겠습니다.\"\n" +
-                "연습장 쪽 벽에 도끼가 한 자루 걸려 있다. 자루가 손때로 검다. 날은 녹슬지 않았다 — 누군가 계속 닦고 있다는 뜻이다.\n" +
-                "{speech} 카토: \"장부는 저 궤에 있습니다. 열어보시겠습니까. …열든 안 열든 숫자는 그대로입니다만.\"",
+                "연습장 쪽 벽에 도끼가 한 자루 걸려 있다. 자루가 손때로 검다. 날은 녹슬지 않았다 — 누군가 계속 닦고 있다는 뜻이다.",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("저 도끼는 누구 것인지 묻는다", _ => {
+                    Flag("axe_asked"); Flag("clue_axe");
+                    AddKeepsake("단서", "벽에 걸린 도끼", "자루가 손때로 검다. 날은 녹슬지 않았다.\n\n" +
+                        "카토: \"…저건 안 씁니다.\"\n\n" +
+                        "그는 그 말만 하고 궤 쪽으로 걸어갔다. 걸어가면서 손등으로 도끼날을 한 번 스쳤다. 습관이었다.", "연습장 벽");
+                    return "카토: \"…저건 안 씁니다.\" — 그 이상은 말하지 않았다"; }),
+                ("말없이 막사를 둘러본다", _ => "카토는 담요를 한 번 더 매만졌다. 그게 그가 하는 인사였다") } },
+
+        // ── 서막 S2 「궤」 — 조각 2(장부). S1과 별도 씬: 도끼와 장부는 택일이 아니다 ──
+        new EvtTemplate { Id = "story_s2", Icon = "{scroll}", Title = "궤", NeedsFighter = false,
+            Body = _ => "카토가 벽 쪽 궤를 턱으로 가리킨다. 자물쇠는 이미 부서져 있다.\n" +
+                "{speech} 카토: \"장부는 저 안에 있습니다. 열어보시겠습니까. …열든 안 열든 숫자는 그대로입니다만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("장부를 연다", _ => {
                     Flag("ledger_read"); Flag("clue_ledger");
@@ -222,13 +235,7 @@ public sealed partial class Game
                         "카토: \"…오래된 겁니다. 신경 쓰지 마십시오.\"\n" +
                         "그는 장부를 덮으려다 말았다. 덮으면 더 이상해진다는 걸 아는 사람의 손이었다.", "루두스 장부");
                     return "장부를 읽었다 — 카토: \"가이우스도 그 자리에 그렇게 앉아 있었습니다. 숫자를 다 읽고도 도망치지 않았지요.\""; }),
-                ("저 도끼는 누구 것인지 묻는다", _ => {
-                    Flag("axe_asked"); Flag("clue_axe");
-                    AddKeepsake("단서", "벽에 걸린 도끼", "자루가 손때로 검다. 날은 녹슬지 않았다.\n\n" +
-                        "카토: \"…저건 안 씁니다.\"\n\n" +
-                        "그는 그 말만 하고 궤 쪽으로 걸어갔다. 걸어가면서 손등으로 도끼날을 한 번 스쳤다. 습관이었다.", "연습장 벽");
-                    return "카토: \"…저건 안 씁니다.\" — 그 이상은 말하지 않았다"; }),
-                ("궤를 덮고 나간다", _ => { Flag("ledger_unread"); return "카토: \"현명하십니다. …아직은요.\""; }) } },
+                ("덮는다", _ => { Flag("ledger_unread"); return "카토: \"현명하십니다. …아직은요.\""; }) } },
 
         // ── 서막 S3 「첫 훈련」 — 목검(의지) ──
         new EvtTemplate { Id = "story_s3", Icon = "{sword}", Title = "첫 훈련", NeedsFighter = false,

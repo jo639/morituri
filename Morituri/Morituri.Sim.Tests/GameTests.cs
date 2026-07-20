@@ -960,7 +960,10 @@ public class GameTests
         g.ChooseEventJson(1);   // S0 해소
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
             Is.EqualTo("story_s1"), "장례 → 빈 막사(S1) · 영입 전에도 발화");
-        g.ChooseEventJson(1);   // S1 「장부를 연다」 — 조각 2
+        g.ChooseEventJson(0);   // S1 「도끼는 누구 것인지 묻는다」 — 조각 1
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s2"), "빈 막사 → 궤(S2) · 도끼와 장부는 택일이 아니다");
+        g.ChooseEventJson(0);   // S2 「장부를 연다」 — 조각 2
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
             "영입 전에는 S3가 오지 않는다(서막은 영입을 기다린다)");
         g.GachaJson(); g.RecruitJson(0);
