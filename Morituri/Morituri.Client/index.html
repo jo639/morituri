@@ -577,6 +577,7 @@
       <div class="fac" id="perkRow"></div>
       <h2>{laurel} 업적</h2>
       <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div id="memWall"></div>
     </div>
     <div id="ldSeason" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
       <h2 style="margin-top:0">{trophy} 챔피언십 컵 <span class="note">(정규시즌 후 상위 4인 토너먼트)</span></h2>
@@ -1345,7 +1346,14 @@ window.openKeepsake = (i)=>{
   $('kpModal').classList.add('on');
 };
 // ── [13] 카토의 한 줄 평 (결과 카드) ──
-const catoLine = c => c?`<div style="margin-top:8px;padding:7px 10px;border-left:3px solid #8a7a5a;background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:#cbb98d">{speech} 카토 — “${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}”</div>`:'';
+// [13a] 경기평의 화자 — 카토를 내친 커리어에서는 내 경기=테아, AI전=루킬리우스.
+// 페널티는 수치가 아니라 어휘의 상실이다(설계 부록 A).
+const catoVoice = mine => (st && st.Campaign && st.Campaign.Voice==='exiled')
+  ? (mine ? {name:'테아', col:'#a8bdb0', bar:'#5a7a68'} : {name:'루킬리우스', col:'#d9b7d2', bar:'#7a5a72'})
+  : {name:'카토', col:'#cbb98d', bar:'#8a7a5a'};
+const catoLine = (c, mine) => { if(!c) return '';
+  const v = catoVoice(mine !== false);
+  return `<div style="margin-top:8px;padding:7px 10px;border-left:3px solid ${v.bar};background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:${v.col}">{speech} ${v.name} — “${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}”</div>`; };
 // ── 승부조작 진행 배너: 가담한 선수가 다음 경기를 던져야 함을 상기 ──
 function renderFixBar(){
   const fb=$('fixBar'); if(!fb) return;
@@ -1742,7 +1750,7 @@ function showMatchResult(m){
   if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>{medic} 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
   html += execTheater(m);
   html += sealedFates(fatesFor(m));
-  html += catoLine(m.Cato);
+  html += catoLine(m.Cato, !!m.WasPlayerMatch);
   html += nextHook();
   $('mrBody').innerHTML = html;
   $('mrModal').classList.add('on');
@@ -2207,7 +2215,7 @@ function showResult(m){
       : execTheater(m);
     $('resBody').innerHTML += `<hr class="hairline">` + execPart + sealedFates(fatesFor(m));
   }
-  $('resBody').innerHTML += catoLine(m.Cato);
+  $('resBody').innerHTML += catoLine(m.Cato, !!m.WasPlayerMatch);
   $('resBody').innerHTML += nextHook();
   $('resModal').classList.add('on');
   if (isJackpot(m)) sfxJackpot();
@@ -2259,13 +2267,26 @@ const DLG_SCENES = {
   story_s3:'서막 「유산」|연습장 · 첫 훈련',
   story_s4:'서막 「유산」|의무실 · 등불 하나',
   story_s5:'서막 「유산」|개막 전야 · 잔 두 개',
-  story_house_gold:'1막 「모래 위의 도시」|재력가의 환영',
-  story_house_youth:'1막 「모래 위의 도시」|육성가의 환영',
-  story_house_blood:'1막 「모래 위의 도시」|잔혹가의 도발',
-  story_challenge:'1막 「모래 위의 도시」|지목 격파',
-  story_unrest:'1막 「모래 위의 도시」|시대의 소음',
-  story_clue:'1막 「모래 위의 도시」|진상의 반쪽',
-  story_showdown:'1막 「모래 위의 도시」|결전 전야',
+  story_a0:'1막 「빚」|개막일 · 위쪽 세 줄',
+  story_a3:'1막 「빚」|첫 상환일 · 정중한 노크',
+  story_a4:'1막 「빚」|관중석 아래 · 향수 냄새',
+  story_a5:'1막 「빚」|열려 있던 문',
+  story_a5b:'1막 「빚」|답을 받으러 온 날',
+  story_a6:'1막 「빚」|사흘 뒤 · 밤',
+  story_a7:'1막 「빚」|시장의 소문',
+  story_house_gold:'1막 「빚」|재력가의 환영',
+  story_house_youth:'1막 「빚」|육성가의 환영',
+  story_house_blood:'1막 「빚」|잔혹가의 도발',
+  story_b_blood:'2막 「대가」|의무실 · 첫 피',
+  story_b_monster:'2막 「대가」|라니스타의 방 · 던져진 청구서',
+  story_b_wall:'2막 「대가」|새벽 · 담장 아래',
+  story_b_exec:'2막 「대가」|처형전의 발주',
+  story_b_confess:'2막 「대가」|20년',
+  story_b_murena:'2막 「대가」|비 오는 상환일',
+  story_challenge:'2막 「대가」|지목 격파',
+  story_unrest:'2막 「대가」|시대의 소음',
+  story_clue:'2막 「대가」|진상의 반쪽',
+  story_showdown:'3막 「승격」|결전 전야',
   story_finale:'종막 「모래에게 배우다」|시즌의 먼지가 가라앉은 훈련장',
   story_e1:'후일담 「황제의 게임」|총애의 초대',
   story_e2:'후일담 「황제의 게임」|특명 뒤의 손',
@@ -2711,8 +2732,34 @@ function renderLudus(){
   $('achGrid').innerHTML = (st.Achievements||[]).map(a=>
     `<div class="chip" title="${a.Desc}" style="padding:6px 10px;${a.Unlocked?'background:rgba(201,168,76,.2);color:var(--gold);border:1px solid var(--gold)':'opacity:.45'}">${a.Unlocked?'{laurel}':'{lock}'} ${a.Name}</div>`).join('');
 
+  renderMemWall();
   renderGoalBoard();
   renderLudusBrief();
+}
+// [13a] 기억의 벽 — 단서 7조각. 획득한 글자만 선명해지고, 7/7에서 문장이 완성된다.
+// 획득 시 카드 UI를 띄우지 않는다(흐름 무방해) — 여기서만 조용히 쌓인다. 원문은 보관함에.
+const MEMWALL_WORDS = [
+  ['clue_axe','도끼'], ['clue_ledger','의원 비용'], ['clue_commentary','말버릇'], ['clue_legend','기록'],
+  ['clue_thea','열아홉 해'], ['clue_letter','서신'], ['clue_recall','축하 없는 승리']];
+function renderMemWall(){
+  const el=$('memWall'); if(!el) return;
+  const camp=st.Campaign;
+  const clues=(camp&&camp.Clues)||[];
+  // 구세이브(chronicle + 조각 0)에는 벽이 없다 — 이 커리어의 과거가 아니므로
+  if (!camp || (camp.Stage==='chronicle' && !clues.length)){ el.innerHTML=''; return; }
+  const got=id=>clues.includes(id);
+  const n=clues.length;
+  const words=MEMWALL_WORDS.map(([id,w])=> got(id)
+    ? `<span title="원문은 보관함에 있다" style="color:var(--gold);letter-spacing:1px">${w}</span>`
+    : `<span style="color:#3a332c;background:#3a332c;border-radius:2px;user-select:none">${'█'.repeat(Math.max(2,w.length))}</span>`).join('<span style="color:#4a4238"> · </span>');
+  const dots=MEMWALL_WORDS.map(([id])=>`<span style="color:${got(id)?'var(--gold)':'#4a4238'}">●</span>`).join(' ');
+  el.innerHTML = `<h2 style="margin-top:18px">{book} 기억의 벽 <span class="note">(회벽에 반쯤 지워진 채 새겨져 있다)</span></h2>
+    <div style="background:linear-gradient(180deg,#1d1a15,#141210);border:1px solid #3a332c;border-radius:10px;padding:14px 18px;max-width:560px">
+      <div style="font-size:14px;line-height:2;font-style:italic">${
+        n>=7 ? '<span style="color:var(--gold);letter-spacing:1px">한 사람이 이기고, 두 사람이 죽었고, 한 사람이 남았다.</span>' : words}</div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px">${dots}</span><span class="note">${n}/7</span></div>
+      ${n>=7?'<div class="note" style="margin-top:6px">벽의 문장이 완성되었다 — 조각의 원문은 보관함에 있다.</div>':''}</div>`;
 }
 // 지휘실 한눈 요약 — 선수단·다음 경기·재정, 기존 st 데이터만(커맨드센터 밀도)
 function renderLudusBrief(){

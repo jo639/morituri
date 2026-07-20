@@ -1006,6 +1006,14 @@ public class GameTests
         Assert.That(fin.GetProperty("Campaign").GetProperty("Stage").GetString(), Is.EqualTo("chronicle"), "종막 도달");
         Assert.That(seen.Contains("story_finale"), Is.True, "라니스타가 되는 의식(종막)");
         Assert.That(seen.Any(x => x.StartsWith("story_house_")), Is.True, "세 가문 비트 발화");
+        // [13a] 1막 「빚」 — 무레나 2단 등장: 채권자(A3) → 유혹자(A5). 개막(A0)이 그 앞에 선다.
+        Assert.That(seen.Contains("story_a0"), Is.True, "1막 A0 개막 발화");
+        Assert.That(seen.Contains("story_a3"), Is.True, "1막 A3 무레나 첫 방문(돈만)");
+        Assert.That(seen.Contains("story_a5"), Is.True, "1막 A5 조작 최초 제안");
+        Assert.That(fin.GetProperty("Campaign").GetProperty("Clues").ValueKind, Is.EqualTo(JsonValueKind.Array),
+            "기억의 벽 — 조각 배열 노출");
+        Assert.That(fin.GetProperty("Legends").EnumerateArray().Any(l => l.GetProperty("Name").GetString() == "오르쿠스"),
+            Is.True, "캠페인 커리어에는 오르쿠스가 반드시 창세 전설로 존재(척추 고정 시드)");
         int unrest = fin.GetProperty("Unrest").GetProperty("Level").GetInt32();
         Assert.That(unrest is >= 0 and <= 100, Is.True, "반란 지수 0~100 클램프");
         // 재로드 영속
