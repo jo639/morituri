@@ -1157,7 +1157,7 @@ function lgHist(d){
   const ordered = [...(d.Story||[])].sort((a,b)=>(a.Kind==='revenge'?0:1)-(b.Kind==='revenge'?0:1));
   $('lgStory').innerHTML = ordered.slice(0,20).map(e=>`<div style="padding:4px 10px;border-radius:6px;background:var(--panel);font-size:12.5px;border-left:3px solid ${e.Kind==='revenge'?'#e0685f':e.Kind==='upset'?'#e0a24c':'var(--gold)'}">${e.Text}</div>`).join('') || '<div class="note">없음</div>';
   // 관계 그래프 + 역사
-  const RELC = {'원수':'#e0685f','공포':'#9b6fd1','라이벌':'#e0a24c','질투':'#d16fa0','집착':'#c94fc9'};
+  const RELC = {'원수':'#e0685f','두려움':'#9b6fd1','라이벌':'#e0a24c','질투':'#d16fa0','집착':'#c94fc9'};
   const names=(d.Fighters||[]).map(f=>f.Name), N=names.length||1, cx=310, cy=310, R=228, pos={};
   names.forEach((nm,i)=>{ const a=-Math.PI/2 + i*2*Math.PI/N; pos[nm]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
   const edges=(d.Relations||[]).filter(r=>RELC[r.Type] && Math.abs(r.Affinity)>=35).sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,20);
@@ -1882,7 +1882,7 @@ function nextHook(){
     const oppN = nm.Opp ? nm.Opp.Name : (nm.AName===nm.MyName?nm.BName:nm.AName);
     if (nm.MyRelation==='원수') bits.push(`{swords} 숙적 ${oppN} — 복수의 시간이다`);
     else if (nm.MyRelation==='라이벌') bits.push(`{flame} 라이벌 ${oppN}과의 자존심 대결`);
-    else if (nm.MyRelation==='공포') bits.push(`{skull} 악몽 같은 상대 ${oppN}을(를) 극복할 기회`);
+    else if (nm.MyRelation==='두려움') bits.push(`{skull} 악몽 같은 상대 ${oppN}을(를) 극복할 기회`);
     const s0 = stkOf(nm.MyName);
     if (s0>=3) bits.push(`${s0}연승이 걸린 일전 — 지면 여기서 끝난다`);
     if (nm.MyWinPct<40) bits.push(`배당 ${nm.MyOdds.toFixed(2)}배의 도전 — 이변을 만들라`);
@@ -2129,7 +2129,7 @@ function openTacModal(nm){
     ${myTraits}${myEmo}${myStkLine}
     <div class="row" style="margin-top:4px"><span>선택 전술</span><b style="color:var(--gold)">${t(nm.MyTactic)}</b></div></div>`;
 
-  const relBadge = nm.MyRelation ? `<div class="note" style="text-align:center;color:var(--b);font-weight:700;margin-top:3px">${nm.MyRelation==='원수'?'{swords}':nm.MyRelation==='공포'?'{skull}':nm.MyRelation==='라이벌'?'{flame}':'{person}'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</div>`:'';
+  const relBadge = nm.MyRelation ? `<div class="note" style="text-align:center;color:var(--b);font-weight:700;margin-top:3px">${nm.MyRelation==='원수'?'{swords}':nm.MyRelation==='두려움'?'{skull}':nm.MyRelation==='라이벌'?'{flame}':'{person}'} ${nm.MyRelation}${nm.MyRelation==='원수'?' — 복수전!':''}</div>`:'';
   const oppCol = `<div style="flex:1;background:var(--panel);border-radius:10px;padding:10px;border-top:3px solid var(--b)">
     ${portraitSvg(o.Weapon,o.Personality,'b')}
     <div style="text-align:center;margin-top:6px"><b style="font-size:15px">${o.Name}</b></div>
@@ -3793,19 +3793,19 @@ const CODEX = {
        d:'쓰러져 본 몸이 기억하는 공포. 감정 중 가장 강하게 판단을 뒤튼다 — 거의 덤비지 않고 멀찍이 돈다. KO패를 <b>안으로 삼키면</b> 트라우마가, <b>밖으로 돌리면</b> 상대를 향한 원한이 된다.', f:'그 경기 이후, 그는 같은 무기만 보면 물러섰다.'},
     ]},
     {v:'rel', label:'관계 (7종)', ic:'handshake',
-     lead:'특정 상대에게만 품는 마음. 감정과 달리 <b>영속</b>하며 맞붙은 전적에서 저절로 자라난다. 유대(−100~+100)와 전적 양상, 그리고 자기 성격이 함께 종류를 정한다 — 같은 일방적 패배라도 겁쟁이·신중은 공포를, 그 외는 원수를 품는다.',
+     lead:'특정 상대에게만 품는 마음. 감정과 달리 <b>영속</b>하며 맞붙은 전적에서 저절로 자라난다. 유대(−100~+100)와 전적 양상, 그리고 자기 성격이 함께 종류를 정한다 — 같은 일방적 패배라도 겁쟁이·신중은 두려움을, 그 외는 원수를 품는다.',
      items:[
       {n:'원수', id:'NEMESIS', k:'적대 · 최강',
        st:[['조건','유대 ≤ −55 (겁쟁이·신중 제외)'],['공격성','+0.25'],['리스크','+0.30'],['고유','복수의 도발']],
        d:'일방적으로 당한 기억이 복수심이 된다. 평소엔 없던 <b>도발 행동</b>이 이 상대에게만 나오고, 무리해서라도 결판을 내려 든다. 복수전은 이 게임이 만드는 가장 뜨거운 이야기다.',
        f:'그의 이름을 부를 때마다 손에 힘이 들어갔다.'},
-      {n:'공포', id:'FEAR', k:'적대 · 위축',
+      {n:'두려움', id:'FEAR', k:'적대 · 위축',
        st:[['조건','유대 ≤ −55(겁쟁이·신중) 또는 ≤ −18'],['공격성','−0.25'],['선호 거리','+0.8'],['가드','+0.15']],
        d:'같은 패배를 겁쟁이와 신중한 자는 다르게 받는다 — 복수 대신 회피를 배운다. 이 상대 앞에서만 유독 소극적으로 싸운다.',
        f:'그 자가 나오는 날은 아침부터 손이 떨렸다.'},
       {n:'질투', id:'ENVY', k:'적대 · 자존심',
        st:[['조건','유대 ≤ −18 (오만·쇼맨·기회주의)'],['공격성','+0.15'],['강공 선호','+0.10']],
-       d:'자존심 있는 자가 밀렸을 때 품는 마음. 공포로 위축되는 대신 무겁게 후려치려 든다.',
+       d:'자존심 있는 자가 밀렸을 때 품는 마음. 두려움으로 위축되는 대신 무겁게 후려치려 든다.',
        f:'저 자가 받는 환호는 원래 내 것이었다.'},
       {n:'집착', id:'OBSESSION', k:'호각 · 극단',
        st:[['조건','12전 이상 · 박빙 85% 이상'],['같은 수 반복','+0.30'],['공격성','+0.10']],

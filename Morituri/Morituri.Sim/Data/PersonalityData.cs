@@ -25,7 +25,7 @@ public enum TriggerCondition
     HpDeficitPct,                 // HP 열세 차이 ≥ value%p
     OppIsNemesis,                 // 관계(T11): 상대가 원수 — 복수심 행동 게이트
     OppIsRival,                   // 관계(T11): 상대가 라이벌 — 집중·방심 면역 게이트
-    OppIsFeared,                  // 관계(T11): 상대가 천적(공포) — 위축·회피 게이트
+    OppIsFeared,                  // 관계(T11): 상대가 천적(두려움) — 위축·회피 게이트
 }
 
 public enum TriggerEffectKind { Override, Interrupt }

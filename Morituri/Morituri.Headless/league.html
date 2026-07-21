@@ -141,7 +141,7 @@
     <input type="file" id="file" accept=".json" hidden></label>
 </div>
 <script>
-const RELCOLOR = {'원수':'--nem','공포':'--fear','라이벌':'--rival','질투':'--envy','집착':'--obs','존경':'--resp','친구':'--friend'};
+const RELCOLOR = {'원수':'--nem','두려움':'--fear','라이벌':'--rival','질투':'--envy','집착':'--obs','존경':'--resp','친구':'--friend'};
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 
 // ── 디비전 페이지 전환 (1부 콜로세움 / 2부 투기장) — 순위·리더보드·경기결과를 부별로 ──
@@ -334,7 +334,7 @@ function drawGraph(d){
   const pos = {};
   names.forEach((nm,i)=>{ const a=-Math.PI/2 + i*2*Math.PI/N; pos[nm]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
 
-  const show = new Set(['원수','공포','라이벌','집착','질투']);
+  const show = new Set(['원수','두려움','라이벌','집착','질투']);
   const edges = d.Relations.filter(r=>show.has(r.Type) && Math.abs(r.Affinity)>=35)
                            .sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,20);
 

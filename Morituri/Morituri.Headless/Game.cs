@@ -179,7 +179,7 @@ public sealed partial class Game
     private sealed record NextMatchDoc(int Round, bool IsEvent, bool IsPlayerMatch,
         string AName, string BName, string? MyId, string? MyName, string[]? MyPool, string? MyTactic, OppPreview? Opp,
         string? MyVsOpp = null,       // 이 상대와의 상대전적 "2승 1패"
-        string? MyRelation = null,    // 내가 상대를 보는 관계 (원수/공포/라이벌…) — 복수전 예고
+        string? MyRelation = null,    // 내가 상대를 보는 관계 (원수/두려움/라이벌…) — 복수전 예고
         string[]? MyEmotions = null,  // 이번 경기에 실리는 감정
         bool OppIsKiter = false,      // 상성 힌트: 상대가 장거리 카이터인가
         string? Stage = null,         // 컵 단계 라벨 (4강 결승) — 정규경기는 null
@@ -535,7 +535,7 @@ public sealed partial class Game
         _               => new[] { "기회는 한 번. 놓치지 않는다.", "네 실수가 곧 나의 승리다.", "언제 찌를지는 내가 정한다." },   // OPPORTUNIST·기타
     };
 
-    /// <summary>전투 직전 대사(#4) — 관계(원수·라이벌·공포·친구) &gt; 감정(자만·트라우마·동기부여·자신감) &gt; 성격 순으로 유기적 선택. 연출 전용(Sim 무관).</summary>
+    /// <summary>전투 직전 대사(#4) — 관계(원수·라이벌·두려움·친구) &gt; 감정(자만·트라우마·동기부여·자신감) &gt; 성격 순으로 유기적 선택. 연출 전용(Sim 무관).</summary>
     private string PreMatchQuote(Gladiator self, Gladiator opp)
     {
         var h2h = _ledger.Get(self.Id, opp.Id);

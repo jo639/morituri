@@ -25,7 +25,7 @@ public static class RelationTable
     // 원수 게이트: 복수의 도발 집착 — 원수에게만 발동(평소엔 없던 행동). OppIsNemesis 조건.
     private static readonly TriggerRule VengeTaunt = new("REL_VENGE_TAUNT", TriggerCondition.OppIsNemesis, 0f,
         TriggerEffectKind.Interrupt, NoMods, InterruptAction.Taunt, 0.50f, 12f, 1.5f, "VENGE");
-    // 공포 게이트: 천적 앞에서의 움찔 회피 — 공포 관계에만. OppIsFeared 조건.
+    // 두려움 게이트: 천적 앞에서의 움찔 회피 — 두려움 관계에만. OppIsFeared 조건.
     private static readonly TriggerRule DreadDodge = new("REL_DREAD_DODGE", TriggerCondition.OppIsFeared, 0f,
         TriggerEffectKind.Interrupt, NoMods, InterruptAction.DodgeBack, 0.50f, 3f, 0f, "DREAD");
 
@@ -33,8 +33,8 @@ public static class RelationTable
     {
         // 원수: 복수심 폭발 — 평소 안 하던 저돌(그 상대에게만) + 복수 도발 게이트.
         new(RelationType.Nemesis, "원수",  new[] { Add(TParam.Aggression, 0.25f), Add(TParam.RiskTolerance, 0.30f), Add(TParam.CommitThreshold, -0.10f) }, 0.20f, 1.0f, VengeTaunt),
-        // 공포(천적): 그 상대 앞에서만 위축·회피·거리 + 움찔 회피 게이트.
-        new(RelationType.Fear,    "공포",  new[] { Add(TParam.Aggression, -0.25f), Add(TParam.PreferredDistance, 0.8f), Add(TParam.GuardBias, 0.15f) }, -0.10f, 0.4f, DreadDodge),
+        // 두려움(천적): 그 상대 앞에서만 위축·회피·거리 + 움찔 회피 게이트.
+        new(RelationType.Fear,    "두려움",  new[] { Add(TParam.Aggression, -0.25f), Add(TParam.PreferredDistance, 0.8f), Add(TParam.GuardBias, 0.15f) }, -0.10f, 0.4f, DreadDodge),
         // 질투: 능가 욕구 — 과공격·강공.
         new(RelationType.Envy,    "질투",  new[] { Add(TParam.Aggression, 0.15f), Add(TParam.HeavyBias, 0.10f) }, 0.15f, 0.6f),
         // 집착: 그 상대만 추격·반복공격.
