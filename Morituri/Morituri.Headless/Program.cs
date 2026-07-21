@@ -65,6 +65,13 @@ if (args.Length > 0 && args[0] == "matrix")
     return;
 }
 
+if (args.Length > 0 && args[0] == "stallprobe")
+{
+    OrcusProbe.Stall(args.Length > 1 && int.TryParse(args[1], out int sn) ? sn : 200,
+                     args.Length > 2 ? (args[2].StartsWith("WPN_") ? args[2] : "WPN_" + args[2].ToUpper()) : "WPN_SWORD");
+    return;
+}
+
 if (args.Length > 0 && args[0] == "orcusprobe")
 {
     OrcusProbe.Run(args.Length > 1 && int.TryParse(args[1], out int on) ? on : 2000);

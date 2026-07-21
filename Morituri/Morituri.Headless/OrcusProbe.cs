@@ -32,7 +32,63 @@ internal static class OrcusProbe
     {
         Console.WriteLine("=== [13a] 프롤로그 시드 탐색 — 오르쿠스(도끼) vs 스쿠타투스(탑방패) ===");
         Console.WriteLine($"    시드 1~{seeds} · 조건: 도끼 승리 + 장기전 + 스태미나 고갈\n");
+        Baseline(Math.Min(seeds, 400));
         Sweep(Math.Min(seeds, 400));
+        Console.WriteLine();
+    }
+
+    /// <summary>교착 해부 — 수비형끼리 180초를 채울 때 실제로 무슨 일이 일어나는가.
+    /// "아예 안 친다"(개전 실패)인지 "치는데 다 막힌다"(관통 실패)인지에 따라 처방이 정반대다.</summary>
+    public static void Stall(int seeds, string weapon = "WPN_SWORD")
+    {
+        Console.WriteLine($"=== 교착 해부: {weapon.Replace("WPN_", "")} · 수비형 조합 ===");
+        Console.WriteLine("  A전술      B전술      평균초 타임아웃  A시도  A명중  A막힘  A가한피해  A남은HP");
+        foreach (var (ta, tb) in new[] {
+            ("TAC_DEFENDER", "TAC_DEFENDER"), ("TAC_DEFENDER", "TAC_COUNTER"),
+            ("TAC_COUNTER",  "TAC_COUNTER"),  ("TAC_PRESSURE", "TAC_DEFENDER") })
+        {
+            var a = new FighterDef("A", FighterStats.Baseline, weapon, ta, "PER_CALM");
+            var b = new FighterDef("B", FighterStats.Baseline, weapon, tb, "PER_CALM");
+            double dur = 0, att = 0, hit = 0, blk = 0, dmg = 0, hp = 0; int to = 0;
+            for (ulong s = 1; s <= (ulong)seeds; s++)
+            {
+                var r = new MatchSim().Run(a, b, s, null);
+                dur += r.DurationSec; if (r.DurationSec >= 179.5f) to++;
+                att += r.StatsA.AttackAttempts; hit += r.StatsA.CleanHits;
+                blk += r.StatsB.Blocks; dmg += r.StatsA.DamageDealt; hp += r.StatsA.HpRemainPct;
+            }
+            Console.WriteLine($"  {ta.Replace("TAC_",""),-10} {tb.Replace("TAC_",""),-10} " +
+                $"{dur/seeds,6:F0} {100.0*to/seeds,7:F0}% {att/seeds,6:F0} {hit/seeds,6:F0} {blk/seeds,6:F0} " +
+                $"{dmg/seeds,9:F0} {100.0*hp/seeds,7:F0}%");
+        }
+        Console.WriteLine();
+    }
+
+    /// <summary>대조군 — **양측 완전 동일 기본 스탯**으로 무기·전술만 다르게. 프롤로그 탐색의 스탯은 각본이 준 것이라
+    /// "엔진이 원래 그런가"를 이걸로 가른다. 여기서도 방어형이 안 지면 스탯이 아니라 동역학 문제다.</summary>
+    private static void Baseline(int seeds)
+    {
+        Console.WriteLine("── 대조군: 기본 스탯 동일, 무기·전술만 다름 (도끼 vs 방패) ──");
+        Console.WriteLine("  도끼전술     방패전술     도끼승률  무승부  평균초  타임아웃");
+        foreach (string atac in new[] { "TAC_PRESSURE", "TAC_BRAWLER", "TAC_COUNTER" })
+        foreach (string dtac in new[] { "TAC_DEFENDER", "TAC_COUNTER" })
+        {
+            var axe = new FighterDef("도끼", FighterStats.Baseline, "WPN_AXE", atac, "PER_CALM");
+            var shd = new FighterDef("방패", FighterStats.Baseline, "WPN_SHIELD", dtac, "PER_CALM");
+            int win = 0, draw = 0, dec = 0, timeout = 0; double dur = 0;
+            for (ulong s = 1; s <= (ulong)seeds; s++)
+            {
+                bool axeFirst = (s & 1) == 1;                       // 코너 교대(선공 편향 상쇄)
+                var r = new MatchSim().Run(axeFirst ? axe : shd, axeFirst ? shd : axe, s, null);
+                dur += r.DurationSec;
+                if (r.DurationSec >= 179.5f) timeout++;
+                if (r.Winner == -1) { draw++; continue; }
+                dec++;
+                if (r.Winner == (axeFirst ? 0 : 1)) win++;
+            }
+            Console.WriteLine($"  {atac.Replace("TAC_",""),-12} {dtac.Replace("TAC_",""),-12} " +
+                $"{100.0 * win / Math.Max(1, dec),7:F1}% {100.0 * draw / seeds,6:F0}% {dur / seeds,7:F0} {100.0 * timeout / seeds,8:F0}%");
+        }
         Console.WriteLine();
     }
 
