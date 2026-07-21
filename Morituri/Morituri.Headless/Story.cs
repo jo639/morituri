@@ -82,15 +82,21 @@ public sealed partial class Game
         if (_playerless || _pendingEventId != null) return false;
         if (_storyStage == "chronicle") return MaybeSpawnEmperorArc(afterMatch);
 
-        // 서막 「유산」 — 장례(S0) → 빈 막사(S1) → [첫 영입] → 첫 훈련(S3) → 의무실(S4) → 개막 전야(S5)
+        // ── 서막 「유산」 — 각 씬은 라니스타가 '무언가를 한 뒤'에만 온다 ──
+        // 페이싱 원칙(라니스타 피드백 2026-07-21): 컷씬을 프리시즌에 몰면 개막 버튼이
+        // 「다음 컷씬」 버튼이 된다. 씬 사이에는 반드시 플레이어의 행동이 하나씩 들어가야 한다.
+        //   S0 장례(즉시) → S1 빈 막사(장례 직후, 같은 밤이라 이어짐)
+        //   → [영입] → S2 궤·장부(돈을 쓰고 나서 장부를 연다)
+        //   → [훈련 배정] → S3 첫 훈련
+        //   → [개막] → S5 개막의 밤(StartSeason 훅)  → [첫 경기] → S4 의무실(1막에서)
         // v0.3: 무레나는 서막에 오지 않는다. 서막의 압박은 얼굴이 아니라 숫자(장부)가 담당 — 첫 방문은 1막 A3.
         if (!_storyBeats.Contains("s0")) return SpawnStory("story_s0", "s0");
         if (!_storyBeats.Contains("s1")) return SpawnStory("story_s1", "s1");
-        if (!_storyBeats.Contains("s2")) return SpawnStory("story_s2", "s2");
         bool hired = _cast.Any(g => g.IsPlayer);
-        if (!_storyBeats.Contains("s3") && hired) return SpawnStory("story_s3", "s3");
-        if (!_storyBeats.Contains("s4") && hired) return SpawnStory("story_s4", "s4");
-        if (!_storyBeats.Contains("s5") && hired) return SpawnStory("story_s5", "s5");
+        if (!_storyBeats.Contains("s2") && hired) return SpawnStory("story_s2", "s2");
+        // S3 첫 훈련 — 준비 주간을 한 번 굴려 본 뒤(신규 영입은 훈련 포인트가 0이라 '훈련 배정'은 게이트가 못 된다).
+        if (!_storyBeats.Contains("s3") && hired && (_preWeek > 0 || _storyFlags.Contains("trained")))
+            return SpawnStory("story_s3", "s3");
         if (_storyStage == "prologue")
         {
             if (!SeasonActive) return false;
@@ -101,6 +107,8 @@ public sealed partial class Game
         // ── 1막 「빚」 — 무레나는 두 번 온다: 채권자로 먼저(A3), 유혹자로 나중에(A5) ──
         // A0 개막 — 판돈을 정리하는 자들이 위쪽 세 줄에 앉아 있다(무레나의 예고)
         if (!_storyBeats.Contains("a0")) return SpawnStory("story_a0", "a0");
+        // S4 의무실 — 첫 경기에서 몸이 상하는 걸 본 뒤에야 이 방을 찾는다(서막에서 이월).
+        if (!_storyBeats.Contains("s4")) return SpawnStory("story_s4", "s4");
         // A2 세 가문 — 각자의 방식으로 신참을 "환영" (개성 타입 바인딩 — 어느 가문이 뽑혀도 동작).
         // 리그에 같은 개성의 루두스가 여럿이어도 환영은 개성당 한 번뿐이다 — 같은 서신이 두 번 오면 세계가 얇아 보인다.
         foreach (var r in ActiveRivalLudi)
@@ -358,8 +366,8 @@ public sealed partial class Game
                     return "테아: \"열아홉 해입니다. …그 전 해에 여기서 사람이 하나 죽었지요. 그래서 자리가 났고요.\""; }) } },
 
         // ── 서막 S5 「개막 전야」 — 조각 7(함정: 이긴 사람은 가이우스가 아니다) ──
-        new EvtTemplate { Id = "story_s5", Icon = "{wine}", Title = "개막 전야", NeedsFighter = false,
-            Body = _ => "개막 하루 전. 막사는 조용하다. 카토가 탁자에 앉아 있다.\n" +
+        new EvtTemplate { Id = "story_s5", Icon = "{wine}", Title = "개막의 밤", NeedsFighter = false,
+            Body = _ => "개막이 선포된 밤. 첫 경기는 내일이다. 막사는 조용하다. 카토가 탁자에 앉아 있다.\n" +
                 "{speech} 카토: \"밥은 드셨습니까.\"\n" +
                 "당신이 대답한다. 그는 고개를 끄덕이고 아무 말도 하지 않는다.\n" +
                 "{speech} 카토: \"저 문짝이 또 삐걱거립니다. 3년째 그럽니다. 고치려다 말았고요.\"\n" +
@@ -383,8 +391,9 @@ public sealed partial class Game
                         " — 카토: \"…내일 뵙겠습니다, 라니스타.\" 그가 당신을 그렇게 부른 것은 처음이다"; }) } },
 
         // ── 1막 A0 「개막」 — 위쪽 세 줄(무레나의 예고) ──
-        new EvtTemplate { Id = "story_a0", Icon = "{arena}", Title = "개막", NeedsFighter = false,
-            Body = _ => "개막일. 관중석은 반쯤 찼다. 당신 이름을 부르는 사람은 없다.\n" +
+        new EvtTemplate { Id = "story_a0", Icon = "{arena}", Title = "위쪽 세 줄", NeedsFighter = false,
+            Body = _ => "첫 경기가 끝났다. 관중석은 반쯤 찼고, 당신 이름을 부르는 사람은 없었다.\n" +
+                "카토가 관중석 위쪽을 턱으로 가리킨다.\n" +
                 "{speech} 카토: \"저기 위쪽 세 줄, 저 사람들이 판돈을 정리하는 자들입니다. 우리 경기를 보러 온 게 아니라, 우리가 얼마짜리인지 보러 왔지요.\"\n" +
                 "{speech} 카토: \"오늘은 그냥 이기십시오. 나머지는 다음에 생각해도 됩니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
@@ -1033,8 +1042,12 @@ public sealed partial class Game
         if (_playerless || _storyStage == "chronicle") return null;
         if (!_cast.Any(g => g.IsPlayer))
             return "{speech} 카토: \"돈이 없습니다. 무기와 기질만 보고 골라야 해요 — 나머지는 모래가 가르칠 겁니다.\" → 영입 탭에서 뽑기로 첫 모리튜리를 들이십시오";
+        // 신규 영입은 훈련 포인트가 0이다 — "훈련을 분배하라"고 안내하면 없는 버튼을 찾게 된다.
+        // 프리시즌에 실제로 할 수 있는 것은 준비 주간(원정·수련)이다.
+        if (!SeasonActive && _preWeek < PreWeeksMax)
+            return "{speech} 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 루두스 탭의 {calendar} 준비 주간으로 개막 전 몸을 만드십시오";
         if (!SeasonActive)
-            return "{speech} 카토: \"무엇을 시킬지가 아니라, 무엇을 하게 둘지를 정하는 겁니다.\" → 훈련을 분배하고 [다음 경기 ▶]로 시즌을 여십시오";
+            return "{speech} 카토: \"준비는 끝났습니다. 나머지는 모래가 정하지요.\" → [시즌 개막 ▶]";
         if (_cast.Where(g => g.IsPlayer).All(g => g.CW + g.CL + g.CD == 0))
             return "{speech} 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 {pause} 일시정지로 전술을 바꿀 수 있습니다(경기당 2회)";
         // 1막 — 무레나가 아직 안 왔다면 빚이 먼저 말한다(첫 상환일 예고, [13a] A3)

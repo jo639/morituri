@@ -2328,6 +2328,7 @@ public sealed partial class Game
         }
         _preWeek++;
         _story.Add((0, "camp", $"[{_preWeek}주차] {note}"));
+        MaybeSpawnStoryEvent(afterMatch: false);   // [13a] 서막 페이싱 — 준비 주간을 굴리면 다음 씬이 온다
         SaveWorld();
         return StateJson();
     }
@@ -2428,7 +2429,12 @@ public sealed partial class Game
     {
         if (!SeasonActive)
         {
-            StartSeason(); SaveWorld();
+            StartSeason();
+            // [13a] 개막의 밤 — 개막 버튼은 제 일(시즌 시작)을 하고, 그 위에 씬이 얹힌다.
+            // 씬이 개막을 가로막으면 버튼을 두 번 눌러야 해서 「다음 컷씬」 버튼이 돼버린다.
+            if (_storyStage == "prologue" && !_storyBeats.Contains("s5") && !_playerless)
+                SpawnStory("story_s5", "s5");
+            SaveWorld();
             if (_interactive) WriteSeasonJson();
             return new MatchSummary(_seasonNo, 0, false, "", "", "", "개막", false, true, false, 0f, "");
         }
@@ -3691,6 +3697,8 @@ public sealed partial class Game
         if (BudgetUsed(g.Stats) + 1f > g.PotentialBudget) return Err($"잠재력 상한 도달 ({g.PotentialBudget:F0})");
         g.TrainingPoints--;
         g.Stats = WithAxis(g.Stats, a, 1f);
+        _storyFlags.Add("trained");   // [13a] 서막 페이싱 — 훈련을 한 번 배정해 본 뒤에 「첫 훈련」 씬이 온다
+        MaybeSpawnStoryEvent(afterMatch: false);
         SaveWorld();
         return StateJson();
     }
