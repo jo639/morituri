@@ -498,8 +498,8 @@
   <span id="status" class="tcut" style="max-width:220px"></span>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0">
     <button id="autoBtn" class="btn ghost tnowrap" title="남은 경기를 현재 전술로 빠르게 완주 (이벤트 시 정지)"><svg class="ic"><use href="icons.svg#ff"/></svg>자동완주</button>
-    <button id="toMineBtn" class="btn ghost tnowrap" title="내 경기 직전까지 AI 경기를 건너뛴다"><svg class="ic"><use href="icons.svg#play"/></svg>내 경기까지</button>
-    <button id="next" class="btn primary tcut" style="max-width:340px">다음 경기 ▶</button>
+    <button id="oneBtn" class="btn ghost tnowrap" title="한 경기만 진행한다 — 도박장에 걸고 결과를 보고 싶을 때"><svg class="ic"><use href="icons.svg#play"/></svg>한 경기</button>
+    <button id="next" class="btn primary tcut" style="max-width:340px">라운드 진행 ▶</button>
   </div>
 </div>
 </div>
@@ -1264,11 +1264,11 @@ async function refresh(){
   const nm = st.NextMatch;
   $('next').textContent = !st.SeasonActive ? `{ludus} 시즌 ${S.SeasonNo + (S.Matches>0?1:0) || 1} 개막 ▶`
     : nm && nm.IsPlayerMatch ? `{swords} ${nm.IsEvent?'{fest} ':''}내 경기: ${nm.AName} vs ${nm.BName} ▶`
-    : nm ? `▶ 다음: ${nm.AName} vs ${nm.BName}${nm.Hype>=70?' {flame}':nm.Hype>=35?' {glory}':''}` : '다음 경기 ▶';
+    : nm ? `▶ 라운드 ${nm.Round||S.Round||''} 진행${nm.Hype>=70?' {flame}':nm.Hype>=35?' {glory}':''}` : '라운드 진행 ▶';
   $('mInfo').textContent = `시즌 ${S.SeasonNo} · 내 선수 ${st.MyFighters.length}/${st.RosterCap} · {coin}${st.Gold}`;
   $('autoBtn').style.display = st.SeasonActive ? '' : 'none';
-  // 내 경기까지 스킵: 다음이 AI 경기이고, 남은 일정에 내 경기가 있을 때만
-  $('toMineBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch && st.HasMyMatchAhead) ? '' : 'none';
+  // [한 경기]: 다음이 AI 경기일 때만 — 베팅하고 그 결과를 보려는 사람을 위한 보조 진행
+  $('oneBtn').style.display = (st.SeasonActive && nm && !nm.IsPlayerMatch) ? '' : 'none';   // 내 경기 차례엔 숨긴다(주 버튼이 그 일을 한다)
   renderBetBar(); renderFixBar(); renderBadges(); checkEpithets(); renderStoryBar(); renderTeaseBar(); renderUnrest();
   maybeAutoStory(); maybeCoach(); maybeTour();   // 캠페인 대사·코치마크·안내 투어(신규 1회)
   return st;
@@ -1764,13 +1764,36 @@ $('next').onclick = async ()=>{
     if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }   // 개막
     const nm = st.NextMatch;
     if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
-    // 디폴트: AI 경기도 한 경기씩 진행 + 결과 카드(#4)
-    const r = await api('/api/next',{});
+    // 기본 = 라운드 단위 진행. AI 경기는 소화하고, 라니스타가 필요한 지점(내 경기·이벤트·시즌말)에서 멈춘다.
+    const r = await api('/api/round',{});
     await refresh();
     if (st.LastSeason && !st.SeasonActive){ showSeason(); }
-    else { showMatchResult(r); go('league'); }
+    else { showRoundDigest(r); go('league'); }
   } finally { nx.disabled=false; }
 };
+// ── 라운드 다이제스트: 지나간 AI 경기를 한 줄씩(승자·KO·흥행·베팅·운명 + 카토 한 줄) ──
+function showRoundDigest(r){
+  const lines = (r && r.lines) || [];
+  if (!lines.length){ go('league'); return; }   // 소화한 게 없다(바로 내 경기·이벤트) — 조용히 넘어간다
+  const stopWord = { mine:'다음은 내 경기다', event:'무언가 당신을 기다린다', season:'시즌이 끝났다', round:'라운드가 끝났다' }[r.stop] || '';
+  $('mrTitle').textContent = `R${r.round} · 모래 위의 하루 (${lines.length}경기)`;
+  let html = `<div style="display:flex;flex-direction:column;gap:7px">` + lines.map(m=>{
+    const ko = m.Ko ? ' <span style="color:var(--b);font-weight:700">KO</span>' : '';
+    const up = m.Upset ? ' <span style="color:var(--gold)">★ 이변</span>' : '';
+    const fates = (m.Fates&&m.Fates.length) ? `<div class="note" style="color:#e0a89f;margin-top:2px">${m.Fates.join(' · ')}</div>` : '';
+    const inj = (m.Injuries&&m.Injuries.length) ? `<div class="note" style="color:#e0a89f;margin-top:2px">{medic} ${m.Injuries.join(' · ')}</div>` : '';
+    const bet = m.BetNote ? `<div class="note" style="margin-top:2px;color:${m.BetWon?'var(--grn)':'var(--b)'};font-weight:${m.BetWon?700:400}">{dice} ${escHtml(m.BetNote)}</div>` : '';
+    return `<div style="padding:8px 12px;border-radius:8px;background:var(--panel2);border-left:3px solid ${m.Upset?'var(--gold)':'#4a3a26'}">
+      <div><b style="color:var(--gold)">${escHtml(m.Winner||'무승부')}</b>${ko}${up}
+        <span class="note"> — ${escHtml(m.A)} vs ${escHtml(m.B)}</span></div>
+      ${bet}${inj}${fates}
+      ${m.Cato?`<div class="note" style="margin-top:3px;font-style:italic;color:#cbb98d">{speech} ${escHtml(m.Cato)}</div>`:''}</div>`;
+  }).join('') + `</div>`;
+  if (stopWord) html += `<div class="note" style="margin-top:10px;text-align:center;color:var(--gold)">${stopWord}</div>`;
+  html += nextHook();
+  $('mrBody').innerHTML = html;
+  $('mrModal').classList.add('on');
+}
 // ── AI 경기 결과 카드(#4): 흥행도·승자·부상·운명 (수익/스탯 제외) ──
 function showMatchResult(m){
   if (!m || !m.A){ go('league'); return; }
@@ -1868,14 +1891,20 @@ function execTheater(m){
     <div class="note">{skull} 처형전 — 패자가 쓰러졌다. 황제가 일어서고, 군중이 숨을 죽인다…</div>
     <div style="display:inline-block;animation:thumbRock .8s ease-in-out infinite;margin-top:6px"><svg style="width:42px;height:42px;color:var(--gold)"><use href="icons.svg#thumb"/></svg></div></div>`;
 }
-// ▶▶ 내 경기까지: AI 경기 일괄 스킵(#3 — 유지)
-$('toMineBtn').onclick = async ()=>{
-  const b=$('toMineBtn'); b.disabled=true;
+// ▶ 한 경기: 한 칸만 진행 — 도박장에 걸고 그 결과를 보고 싶을 때(베팅은 '바로 다음 경기' 한 건이므로)
+$('oneBtn').onclick = async ()=>{
+  if (!st) await refresh();
+  if (st && st.PendingProposal){ showProposal(); return; }
+  if (st && st.PendingEvent){ showEvent(); return; }
+  const b=$('oneBtn'); b.disabled=true;
   try{
-    const r = await api('/api/simto',{});
+    if (!st.SeasonActive){ await api('/api/next',{}); await refresh(); go('league'); return; }
+    const nm = st.NextMatch;
+    if (nm && nm.IsPlayerMatch){ openTacModal(nm); return; }
+    const r = await api('/api/next',{});
     await refresh();
-    if (r.seasonDone){ simNote = `▶▶ ${r.played}경기 자동 진행 · 시즌 종료`; showSeason(); }
-    else { simNote = `▶▶ ${r.played}경기 자동 진행 · 다음은 내 경기`; go('league'); }
+    if (st.LastSeason && !st.SeasonActive) showSeason();
+    else { showMatchResult(r); go('league'); }
   } finally { b.disabled=false; }
 };
 let simNote=null, pendingSeason=false;
@@ -2531,7 +2560,7 @@ window.hideCoach = ()=> $('coach').classList.remove('on');
 const TOUR = [
   { sel:'#gold', ic:'{coin}', txt:'<b>골드</b>는 살림 밑천이다. 경기 출전료·승리와 서사 보너스·시즌 순위, 도박장 베팅으로 번다. 영입·시설·훈련·이벤트·빚 상환에 나간다.' },
   { sel:'#gloryWrap', ic:'{glory}', txt:'<b>영광</b>은 귀한 화폐다 — 업적·타이틀·컵 우승·승격에서만 얻는다. 잠재력의 벽을 넘거나 제국 특전을 사는 데 쓴다.', optional:true },
-  { sel:'nav [data-s="league"]', ic:'{swords}', txt:'<b>리그</b>에서 [다음 경기 ▶]로 하루하루를 진행한다. 정규 라운드로빈 → 미드시즌 <b>사투르날리아 대항전</b> → 상위 4인 <b>챔피언십 컵</b> → 다음 시즌. 순위가 오르면 루두스 등급이 오른다.' },
+  { sel:'nav [data-s="league"]', ic:'{swords}', txt:'<b>리그</b>에서 [라운드 진행 ▶]으로 한 턴씩 나아간다 — AI 경기는 소화하고 <b>내 경기·사건 앞에서 멈춘다</b>. 도박장에 걸고 그 결과를 보고 싶으면 [한 경기]로 한 칸씩. 정규 라운드로빈 → 미드시즌 <b>사투르날리아 대항전</b> → 상위 4인 <b>챔피언십 컵</b> → 다음 시즌.' },
   { sel:'nav [data-s="roster"]', ic:'{scroll}', txt:'<b>로스터</b>엔 리그 전체 선수와 라이벌 검투소 순위가 있다. 카드엔 소속 검투소가 표시되고, 누르면 스탯·특성·관계까지 볼 수 있다.' },
   { sel:'#ludus', ic:'{star}', txt:'<b>명성</b>은 통산 업적이다 — 승리·타이틀·컵으로 쌓이고 <b>줄지 않는다</b>. 모리튜리 급여와 루두스 등급, 명예의 전당 입성이 여기서 나온다.', optional:true },
   { sel:'nav [data-s="roster"]', ic:'{masks}', txt:'<b>인기</b>는 최근의 화제성이다 — 매 경기 서서히 식지만(감쇠), 선전패나 도발로도 오른다. 출전료(흥행)와 스폰서 후원이 인기를 따라온다.' },

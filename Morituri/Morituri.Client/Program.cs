@@ -34,6 +34,7 @@ internal static class Program
             "/api/state" => game.StateJson(),
             "/api/next" when method == "POST" => game.PlayNextJson(body),
             "/api/simto" when method == "POST" => game.PlayUntilMineJson(),
+            "/api/round" when method == "POST" => game.PlayRoundJson(),   // [UX] 라운드 단위 진행(버튼 1회 = 한 턴)
             "/api/autofinish" when method == "POST" => game.AutoFinishJson(),
             "/api/watch" when method == "POST" => game.WatchJson(IntOf(body ?? "", "idx")),
             "/api/prologue" when method == "POST" => game.WatchPrologueJson(),   // [13a] 오르쿠스의 마지막 경기

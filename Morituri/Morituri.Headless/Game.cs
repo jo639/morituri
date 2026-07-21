@@ -1697,6 +1697,9 @@ public sealed partial class Game
 
     /// <summary>다음 AI 경기에 베팅: side 0=A승 1=B승 2=A KO승 3=A판정승 4=B KO승 5=B판정승 — 누가 어떻게 이길지까지.
     /// 경기당 1회, 배당 고정. 연속 적중 3회부터 배당 +10%(스트릭 보너스).</summary>
+    // 베팅 대상은 '바로 다음 경기' 한 건 — 배당(CursorOutcomes)이 커서 위치의 _matchIdx에 묶여 있어
+    // 임의 경기로 넓히면 AI 전술 예측이 어긋나 배당이 틀어진다(스파링 등도 _matchIdx를 밀어 예측 불가).
+    // 라운드 안에서 대상을 고르는 「라운드 베팅」은 배당 산출을 인덱스 기준으로 일반화한 뒤에.
     public string BetJson(int side, float amount)
     {
         if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
@@ -2734,6 +2737,42 @@ public sealed partial class Game
     }
 
     /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
+    /// <summary>라운드 진행의 한 줄 — AI 경기를 건너뛰되 무슨 일이 있었는지는 남긴다(신문 문체).</summary>
+    private sealed record RoundLine(string A, string B, string Winner, bool Ko, float Hype,
+        bool Upset, string? Cato, string? BetNote, bool BetWon, List<string>? Fates, List<string>? Injuries);
+
+    /// <summary>[UX] 라운드 단위 진행 — 버튼 1회 = 게임의 한 턴.
+    /// 한 칸씩 넘기면 내 경기까지 예닐곱 번 연타해야 했다(라니스타 피드백). 라운드를 소화하되
+    /// **라니스타가 필요한 지점에서 멈춘다**: 내 경기 · 스토리/이벤트 · 시즌 종료.
+    /// 지나간 AI 경기는 한 줄씩 다이제스트로 돌려준다 — 관전의 재미(카토 평·베팅·운명)를 잃지 않게.</summary>
+    public string PlayRoundJson()
+    {
+        if (!SeasonActive)   // 아직 개막 전이면 개막이 이 버튼의 일이다
+            return JsonSerializer.Serialize(new { opened = true, stop = "opened", round = 0,
+                lines = Array.Empty<RoundLine>(), summary = PlayNext() }, JsonOpts);
+        EnsureSchedule();
+        if (_cursor >= _schedule.Count) return Err("이번 시즌 경기가 끝났다");
+
+        int round = _schedule[_cursor].Round;
+        var lines = new List<RoundLine>();
+        string stop = "round";
+        for (int guard = 0; guard < 300; guard++)
+        {
+            if (!SeasonActive) { stop = "season"; break; }
+            EnsureSchedule();
+            if (_cursor >= _schedule.Count) { stop = "season"; break; }
+            if (_pendingEventId != null) { stop = "event"; break; }      // 스토리·이벤트는 라니스타의 결정을 기다린다
+            var s = _schedule[_cursor];
+            if (s.Round != round) { stop = "round"; break; }             // 라운드 경계 — 여기서 한 턴 끝
+            if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) { stop = "mine"; break; }   // 내 경기는 라니스타가 본다
+            var m = PlayNext();
+            lines.Add(new RoundLine(m.A, m.B, m.Winner, m.Reason == "KO", m.Hype, m.Upset,
+                m.Cato, m.BetNote, m.BetWon, m.Fates, m.Injuries));
+            if (m.SeasonCompleted) { stop = "season"; break; }
+        }
+        return JsonSerializer.Serialize(new { opened = false, stop, round, lines }, JsonOpts);
+    }
+
     public string PlayUntilMineJson()
     {
         int played = 0; bool seasonDone = false;
