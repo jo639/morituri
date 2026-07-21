@@ -2164,7 +2164,7 @@ function renderLiveCmd(){
     const spent = rem<=0;
     return `<div class="lchead" ${col?`style="color:${col}"`:''}>{swords} ${label} <span class="rem">${spent?'변경 소진':'변경 '+rem+'회'}</span></div>` +
       (pool||[]).map(tc=>{ const isc=tc===cur; const dis=spent&&!isc;
-        return `<button class="livetac${isc?' cur':''}" ${dis?'disabled':''} onclick="liveSetTactic('${tc}',${side})" title="${TACD[tc]||''}">${t(tc)}${isc?' ✓':''}</button>`; }).join('');
+        return `<button class="livetac${isc?' cur':''}" ${lock(!dis, '이번 경기 전술 변경을 다 썼다 — 남은 건 모래가 정한다')} onclick="liveSetTactic('${tc}',${side})" title="${TACD[tc]||''}">${t(tc)}${isc?' ✓':''}</button>`; }).join('');
   };
   let html = panel(liveMirror?('◆ '+liveNameA):'전술', liveMirror?'var(--a)':null, livePool, liveTac, liveRemaining, 0);
   if (liveMirror) html += `<div style="height:10px"></div>` + panel('◆ '+liveNameB, 'var(--b)', livePoolB, liveTacB, liveRemB, 1);
@@ -2331,6 +2331,13 @@ const DLG_SCENES = {
 const DLG_CAST = { '카토':{key:'cato',role:'루두스의 교관'}, '무레나':{key:'murena',role:'검은 인장의 중개인'},
   '테아':{key:'thea',role:'루두스의 약제사'}, '루킬리우스':{key:'lucilius',role:'카푸아의 조영관'} };
 const escHtml = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+// G9 잠긴 이유를 말한다 — 조건 미달이면 disabled + 사유 툴팁(theme.css [data-why]), 충족이면 빈 문자열.
+// 비활성 버튼은 클릭을 못 받지만 hover는 받으므로 핸들러 없이 성립한다.
+const lock = (ok, why) => ok ? '' : `disabled data-why="${escHtml(why).replace(/"/g,'&quot;')}"`;
+// 마크업이 아니라 요소를 직접 잠글 때(속성 대입식 버튼)
+const lockEl = (el, ok, why) => { if(!el) return;
+  el.disabled = !ok;
+  if (ok) el.removeAttribute('data-why'); else el.setAttribute('data-why', why); };
 // 초상: 라니스타 제작 이미지(story_<key>.png — 투명 PNG) 우선, 없으면 실루엣 폴백
 window.dlgSilhouette = who => {
   // 인물별 실루엣 톤 — 카토(흙·가죽) / 무레나(검은 인장) / 테아(약재·잿빛) / 루킬리우스(자주·과시)
@@ -2704,7 +2711,7 @@ function renderLudus(){
         ${f.TrainingPoints>0?`<button onclick="train('${f.Id}','${a}')" title="훈련 포인트로 ${STATH[a]||a} +1">+</button>`:''}</div>`).join('')}</div>
       <div class="cap"><i style="width:${cap}%"></i></div>
       <div class="row"><span>성장 / 잠재력 상한</span><b>${f.BudgetUsed} / ${f.PotentialBudget}</b></div>
-      ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" class="act glory" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px" ${st.Glory>=f.BreakthroughCost?'':'disabled'}>{impact} 잠재력 돌파 ({glory}${f.BreakthroughCost})</button>`:''}
+      ${f.AtCap?`<button onclick="breakthrough('${f.Id}')" class="act glory" title="영광을 써서 잠재력 상한을 올린다 → 계속 성장" style="width:100%;margin-top:4px" ${lock(st.Glory>=f.BreakthroughCost, `영광이 모자란다 — ${f.BreakthroughCost} 필요, 지금 ${Math.round(st.Glory)}`)}>{impact} 잠재력 돌파 ({glory}${f.BreakthroughCost})</button>`:''}
       <div class="row"><span>훈련 포인트</span><b>${f.TrainingPoints}</b>${
         (f.Skills||[]).length?`<button onclick="openSkillModal('${f.Id}')" title="타고난 기술 ${(f.Skills||[]).length}종 — 열람 전용" style="background:#26303f;border:1px solid #5b9be0;color:#9bc4ec;border-radius:5px;padding:0 8px;font-size:11px;cursor:pointer">{book} 기술 ${(f.Skills||[]).length}</button>`:''}</div>
       ${masteryRow(f)}
@@ -2733,7 +2740,7 @@ function renderLudus(){
 
   $('perkRow').innerHTML = (st.Perks||[]).map(p=>
     `<div class="f"><b>${p.Name}</b> Lv${p.Lv}/${p.Max}<div class="note">${p.Desc}</div>
-      ${p.Lv<p.Max?`<button onclick="perk('${p.Id}')" ${st.Glory>=p.NextCost?'':'disabled'}>강화 ({glory}${p.NextCost})</button>`:'<div class="note">최대</div>'}</div>`).join('');
+      ${p.Lv<p.Max?`<button onclick="perk('${p.Id}')" ${lock(st.Glory>=p.NextCost, `영광이 모자란다 — ${p.NextCost} 필요, 지금 ${Math.round(st.Glory)}`)}>강화 ({glory}${p.NextCost})</button>`:'<div class="note">최대</div>'}</div>`).join('');
 
   const cup = st.Cup;
   if (cup && cup.length){
@@ -3081,7 +3088,7 @@ window.bestow = (id)=>{
       +(tactics.length?`<div style="font-size:11px;color:var(--dim);margin:8px 0 2px">전술</div>`
         +tactics.map(tc=>chip(0,_bwTactic===tc,t(tc),`bwPick('c','${tc}')`)).join(''):'')
       +`<div style="display:flex;gap:8px;margin-top:14px">
-         <button class="btn primary" style="flex:1" onclick="bwApply()" ${(_bwTrait||_bwTactic)?'':'disabled'}>{scroll} 전수한다</button>
+         <button class="btn primary" style="flex:1" onclick="bwApply()" ${lock(_bwTrait||_bwTactic, '전수할 특성이나 전술을 먼저 고르십시오')}>{scroll} 전수한다</button>
          <button class="btn ghost" onclick="$('bwModal').classList.remove('on')">취소</button></div>`;
   };
   window._bwRender=render; render();
@@ -3199,8 +3206,10 @@ function refreshTop(){
 function renderMarket(){
   if (!st) return;
   $('marketNote').textContent = `잔고 {coin}${st.Gold} · 뽑기 ${st.FreeGachas>0?'무료 '+st.FreeGachas+'회':'{coin}'+st.GachaCost}`;
-  $('gachaBtn').disabled = st.MyFighters.length >= st.RosterCap;
-  $('gachaPremBtn').disabled = st.MyFighters.length >= st.RosterCap || st.Gold < 300;
+  const roomy = st.MyFighters.length < st.RosterCap;
+  lockEl($('gachaBtn'), roomy, `숙소가 찼다 — ${st.RosterCap}명이 한계다 (숙소를 증축하거나 떠나보내라)`);
+  lockEl($('gachaPremBtn'), roomy && st.Gold >= 300,
+    !roomy ? `숙소가 찼다 — ${st.RosterCap}명이 한계다` : `금고가 모자란다 — 300 필요, 지금 ${Math.round(st.Gold)}`);
   $('candGrid').innerHTML = st.Candidates.length ? st.Candidates.map(c=>
     `<div class="fc cand"><h3>${c.Name} <span class="note" style="font-weight:400">${c.Age}세</span></h3>
      <div class="bd">${w(c.Weapon)} · ${p(c.Personality)} · 전술 일부: <b>${t(c.RevealedTactic)}</b></div>
@@ -3229,7 +3238,7 @@ async function renderTransfers(){
   const buy = (r.Buyables||[]).map(b=>
     `<div class="fc ai"><h3>${b.Name} <span class="note" style="font-weight:400">${b.Ludus}</span></h3>
      <div class="bd">${w(b.Weapon)} · ${p(b.Personality)} · ${b.Age}세 · ${b.Division}부 · 명성 ${b.Fame}</div>
-     <button class="recruit" onclick="buyT('${b.Id}',${b.Price})" ${st.Gold>=b.Price?'':'disabled'}>{handshake} 인수 ({coin}${b.Price})</button></div>`).join('');
+     <button class="recruit" onclick="buyT('${b.Id}',${b.Price})" ${lock(st.Gold>=b.Price, `금고가 모자란다 — ${b.Price} 필요, 지금 ${Math.round(st.Gold)}`)}>{handshake} 인수 ({coin}${b.Price})</button></div>`).join('');
   const sell = r.SellOffer ? `<div class="fc" style="border-top-color:var(--b)"><h3>{letter} 인수 제안</h3>
      <div class="bd"><b>${r.SellOffer.Buyer}</b>이(가) <b style="color:var(--gold)">${r.SellOffer.Name}</b>을(를) 원한다</div>
      <button class="recruit" onclick="sellT('${r.SellOffer.Id}','${r.SellOffer.Name}',${r.SellOffer.Offer})">{coin} 판다 (+${r.SellOffer.Offer})</button></div>` : '';

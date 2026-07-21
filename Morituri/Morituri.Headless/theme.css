@@ -152,6 +152,36 @@ html,body{ cursor:var(--cur-arrow); }
 .btn:hover{ border-color:var(--gold-deep); background:var(--panel3); }
 .btn:active{ transform:translateY(1px); }
 .btn:disabled{ opacity:.4; cursor:default; transform:none; }
+
+/* G9 잠긴 이유 말하기 — 비활성 버튼은 왜 안 되는지 침묵하면 안 된다.
+   disabled는 클릭 이벤트를 못 받지만 :hover는 받으므로 CSS만으로 성립(JS·핸들러 0).
+   쓰는 쪽: <button disabled data-why="영광이 모자란다 (12 필요)"> */
+[data-why][disabled], [data-why].disabled{ position:relative; overflow:visible; }
+/* 말풍선은 버튼 '아래'로 — 이 버튼들의 조상은 overflow-x:hidden + overflow-y:auto 스크롤 컨테이너다.
+   위로 띄우면 컨테이너 상단에 잘린다(G13과 같은 함정). 가로 넘침은 줄바꿈+최대폭으로 막는다. */
+[data-why][disabled]::after, [data-why].disabled::after{
+  content:attr(data-why); position:absolute; left:0; top:calc(100% + 7px);
+  transform:translateY(-3px);
+  padding:6px 10px; border-radius:var(--r1,6px); pointer-events:none;
+  white-space:normal; width:max-content; max-width:230px; text-align:left;
+  background:#1b1610; color:#e8d9b0; border:1px solid var(--gold-deep);
+  font-size:11px; font-weight:600; letter-spacing:.01em; line-height:1.4;
+  box-shadow:0 6px 18px rgba(0,0,0,.55);
+  opacity:0; transition:opacity var(--dur-fast,.12s) var(--ease-out,ease), transform var(--dur-fast,.12s) var(--ease-out,ease);
+  z-index:40;
+}
+[data-why][disabled]::before, [data-why].disabled::before{     /* 말풍선 꼬리 */
+  content:''; position:absolute; left:14px; top:calc(100% + 2px);
+  transform:translateY(-3px);
+  border:5px solid transparent; border-bottom-color:var(--gold-deep);
+  pointer-events:none; opacity:0;
+  transition:opacity var(--dur-fast,.12s) var(--ease-out,ease), transform var(--dur-fast,.12s) var(--ease-out,ease);
+  z-index:40;
+}
+[data-why][disabled]:hover::after, [data-why].disabled:hover::after,
+[data-why][disabled]:hover::before, [data-why].disabled:hover::before{
+  opacity:1; transform:translateY(0);
+}
 .btn.primary{
   background:linear-gradient(180deg,#e0bd6a,var(--gold) 55%,#b8923f);
   color:#231604; border-color:#8a6a2a; font-weight:800;
