@@ -1340,7 +1340,7 @@ public sealed partial class Game
     {
         _seasonNo = _seasonsPlayed + 1;
         _matchIdx = 0; _emoGen = 0; _cursor = 0; _eventsAppended = false;
-        _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCursor = -1;
+        _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCache.Clear();
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0; _tbWinnerId = null;
         _festStage = 0; _festSlots = new(); _festRepId = null; _festChampion = null;   // {masks} 대항전 리셋(대표는 시즌마다 지명)
         _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
@@ -1697,27 +1697,56 @@ public sealed partial class Game
 
     /// <summary>다음 AI 경기에 베팅: side 0=A승 1=B승 2=A KO승 3=A판정승 4=B KO승 5=B판정승 — 누가 어떻게 이길지까지.
     /// 경기당 1회, 배당 고정. 연속 적중 3회부터 배당 +10%(스트릭 보너스).</summary>
-    // 베팅 대상은 '바로 다음 경기' 한 건 — 배당(CursorOutcomes)이 커서 위치의 _matchIdx에 묶여 있어
-    // 임의 경기로 넓히면 AI 전술 예측이 어긋나 배당이 틀어진다(스파링 등도 _matchIdx를 밀어 예측 불가).
-    // 라운드 안에서 대상을 고르는 「라운드 베팅」은 배당 산출을 인덱스 기준으로 일반화한 뒤에.
-    public string BetJson(int side, float amount)
+    /// <summary>베팅 — idx = 이번 라운드의 대상 경기(생략 시 바로 다음 경기).
+    /// 「다음 카드에만」에서 「이 라운드 어디에」로 넓혔다: 베팅이 '걸까 말까'가 아니라 '어디에 걸까'가 된다.
+    /// 배당은 MatchIdxAt으로 그 경기 시점의 AI 전술을 정확히 예측해 산출한다.
+    /// 라운드당 1건 — 판돈을 한 곳에 거는 결정이 곧 재미다.</summary>
+    public string BetJson(int side, float amount, int idx = -1)
     {
         if (!SeasonActive || _cursor >= _schedule.Count) return Err("다음 경기가 없다");
-        var s = _schedule[_cursor];
+        int target = idx < 0 ? _cursor : idx;
+        if (target < _cursor) return Err("이미 지나간 경기다");
+        if (target >= _schedule.Count) return Err("그런 경기가 없다");
+        if (_schedule[target].Round != _schedule[_cursor].Round) return Err("이번 라운드 경기에만 걸 수 있다");
+        var s = _schedule[target];
         var A = ById(s.A); var B = ById(s.B);
         if (A.IsPlayer || B.IsPlayer) return Err("내 루두스 경기엔 걸 수 없다 (승부조작 금지)");
-        if (_betCursor == _cursor) return Err("이미 이 경기에 걸었다");
+        if (_betCursor >= _cursor) return Err("이미 이번 라운드에 걸었다 — 판돈은 한 곳에만");
         if (side is < 0 or > 5) return Err("그런 선택지가 없다");
         amount = MathF.Min(MathF.Floor(amount), _gold);
         if (_gold - amount < 1f) amount = _gold;   // 전액 베팅: 잔돈(1 미만) 남기지 않고 전부 건다
         if (amount < 5) return Err("최소 5 데나리우스 (잔고 부족)");
-        float odds = BetOddsFor(side);   // 승자×방식 조합 확률에서 산정(상성 반영)
+        float odds = BetOddsForAt(target, side);   // 그 경기 시점의 AI 전술을 예측해 산정(상성 반영)
         if (_betStreak >= 2) odds = MathF.Round(odds * 1.10f * 100f) / 100f;   // {flame} 스트릭 보너스
         _gold -= amount; _seasonBetNet -= amount;
-        _betCursor = _cursor; _betSide = side; _betAmount = amount; _betOdds = odds;
+        _betCursor = target; _betSide = side; _betAmount = amount; _betOdds = odds;
         _story.Add((s.Round, "bet", $"{{dice}} 베팅 — {BetLabel(side, A, B)}에 {amount:F0} (배당 {odds:F2}{(_betStreak >= 2 ? " · 스트릭 보너스" : "")})"));
         SaveWorld();
         return StateJson();
+    }
+
+    private sealed record RoundCardDoc(int Idx, int Round, string A, string B, string AId, string BId,
+        float Hype, bool Mine, bool IsNext, float[] Odds);
+
+    /// <summary>이번 라운드의 남은 카드 + 6종 배당 — 「어디에 걸까」를 고르는 판.
+    /// 배당 산출이 카드당 25판이라 상태 폴링이 아니라 도박장을 열 때만 부른다(캐시는 라운드 내내 유효).</summary>
+    public string RoundCardsJson()
+    {
+        if (!SeasonActive || _cursor >= _schedule.Count)
+            return JsonSerializer.Serialize(new { round = 0, betPlaced = false, cards = Array.Empty<RoundCardDoc>() }, JsonOpts);
+        int round = _schedule[_cursor].Round;
+        var cards = new List<RoundCardDoc>();
+        for (int i = _cursor; i < _schedule.Count && _schedule[i].Round == round; i++)
+        {
+            var s = _schedule[i];
+            var A = ById(s.A); var B = ById(s.B);
+            bool mine = A.IsPlayer || B.IsPlayer;
+            cards.Add(new RoundCardDoc(i, s.Round, A.Name, B.Name, A.Id, B.Id, MathF.Round(s.Score),
+                mine, i == _cursor,
+                mine ? Array.Empty<float>()                       // 내 경기엔 못 건다(승부조작 금지)
+                     : Enumerable.Range(0, 6).Select(k => BetOddsForAt(i, k)).ToArray()));
+        }
+        return JsonSerializer.Serialize(new { round, betPlaced = _betCursor >= _cursor, cards }, JsonOpts);
     }
 
     // ── 이적 시장(라이벌 루두스 v2) — 프리시즌 전용. 목록·제안은 시드 파생(저장 불필요, 재조회 일관) ──
@@ -2445,7 +2474,7 @@ public sealed partial class Game
         EnsureSchedule();
 
         // 경기 전 승률 스냅샷(잭팟 연출용 배당) — 상태 조회로 캐시돼 있으면 재사용, 내 경기는 필요 시 산출(15판)
-        float? preProbA = _oddsCursor == _cursor ? _oddsProbA
+        float? preProbA = _oddsCache.TryGetValue(_cursor, out var oc) ? oc.ProbA
             : (ById(_schedule[_cursor].A).IsPlayer || ById(_schedule[_cursor].B).IsPlayer) ? CursorProbA() : null;
 
         var s = _schedule[_cursor++];
@@ -2722,7 +2751,7 @@ public sealed partial class Game
         // 삽입으로 뒤 인덱스가 밀림 — 스케줄 인덱스를 참조하는 상태 보정
         int shifted = ins - _cursor;
         if (shifted > 0 && _betCursor >= _cursor) _betCursor += shifted;
-        if (_oddsCursor >= _cursor) _oddsCursor = -1;   // 커서 경기 배당 캐시 무효화
+        if (shifted > 0) _oddsCache.Clear();   // 인덱스가 밀렸다 — 인덱스 키 배당 캐시 전부 무효
     }
 
     /// <summary>{masks} 대항전 대표 지명 — 대항전 시작 전(프리시즌·정규 전반)에만 가능.</summary>
@@ -3524,24 +3553,37 @@ public sealed partial class Game
 
     // 커서 경기 결과 분포(승자 × 방식) — 승자만이 아니라 "어떻게 이길지"까지 배당에 반영. 시뮬 15판 캐시.
     private readonly record struct BetOutcomes(float A, float B, float AKo, float ADec, float BKo, float BDec);
-    private int _oddsCursor = -1; private float _oddsProbA; private BetOutcomes _oddsOut;
+    private float _oddsProbA;
+    /// <summary>스케줄 인덱스별 배당 캐시 — MatchIdxAt이 불변이라 커서 전진·대진 삽입에도 유효.
+    /// 시즌 개막/스케줄 재편성 때만 비운다.</summary>
+    private readonly Dictionary<int, (BetOutcomes Out, float ProbA)> _oddsCache = new();
     private float _seasonBetNet;                              // 시즌 베팅 수지(결산 표시)
     private int _gauntletStage, _gauntletWins;                // 황제의 초청전: 0=미편성 1=편성됨 · 승수
     private int _betStreak;                                   // 연속 적중(스트릭 보너스 — 3연속부터 배당 +10%)
 
-    /// <summary>커서 경기의 결과 분포(시뮬 15판, 캐시) — 승자×방식(KO/판정) 6종 확률. 다른 시드 스트림이라 결과 유출 없음.</summary>
-    private BetOutcomes CursorOutcomes()
+    /// <summary>스케줄 인덱스 idx 경기가 **실제로 치러질 때**의 _matchIdx.
+    /// _matchIdx는 Play() 안에서만 증가하고 Play()의 호출부는 PlayNext 하나뿐이므로(스파링·거리시비·원정은
+    /// 건드리지 않는다) 정확히 예측된다. 게다가 이 차이는 불변이다 —
+    ///   ① 경기를 치르면 _matchIdx +1, _cursor +1 → 차이 유지
+    ///   ② 앞에 대진이 삽입되면 idx +1, 그 경기도 언젠가 치러져 _matchIdx +1 → 상쇄
+    /// 덕분에 한 번 계산한 미래 카드의 배당 캐시가 라운드 내내 유효하다.</summary>
+    private int MatchIdxAt(int idx) => _matchIdx + (idx - _cursor);
+
+    /// <summary>idx 경기의 결과 분포(시뮬 25판, 인덱스별 캐시) — 승자×방식(KO/판정) 6종 확률.
+    /// 다른 시드 스트림이라 결과 유출 없음.</summary>
+    private BetOutcomes OutcomesAt(int idx)
     {
-        if (_oddsCursor == _cursor) return _oddsOut;
-        var s = _schedule[_cursor];
+        if (_oddsCache.TryGetValue(idx, out var hit)) { _oddsProbA = hit.ProbA; return hit.Out; }
+        var s = _schedule[idx];
         var A = ById(s.A); var B = ById(s.B);
-        var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);   // PlayNext와 동일 소비 순서
+        int midx = MatchIdxAt(idx);
+        var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)midx * 31UL);   // PlayNext와 동일 소비 순서
         string tA = A.IsPlayer ? A.TacticId : SelectTacticAi(A, B, tacRng);
         string tB = B.IsPlayer ? B.TacticId : SelectTacticAi(B, A, tacRng);
         var (dA, dB) = BuildDefs(A, B);
         dA = dA with { TacticsId = tA }; dB = dB with { TacticsId = tB };
         const int K = 25;   // 조합(승자×방식) 해상도를 위해 표본 확대
-        ulong seed = SeasonSeed ^ 0xBE77_0DD5UL + (ulong)_matchIdx * 977UL;
+        ulong seed = SeasonSeed ^ 0xBE77_0DD5UL + (ulong)midx * 977UL;
         int aKo = 0, aDec = 0, bKo = 0, bDec = 0;
         for (int t = 1; t <= K; t++)
         {
@@ -3555,17 +3597,21 @@ public sealed partial class Game
         float pA = (winsA + 0.5f) / (K + 1f), pB = (winsB + 0.5f) / (K + 1f);
         float aKoC = (aKo + 0.5f) / (winsA + 1f), aDecC = (aDec + 0.5f) / (winsA + 1f);
         float bKoC = (bKo + 0.5f) / (winsB + 1f), bDecC = (bDec + 0.5f) / (winsB + 1f);
-        _oddsProbA = Math.Clamp((winsA + 1f) / (decided + 2f), 0.05f, 0.95f);   // VS 표시용 승률(decided 기준)
-        _oddsOut = new BetOutcomes(pA, pB, pA * aKoC, pA * aDecC, pB * bKoC, pB * bDecC);
-        _oddsCursor = _cursor;
-        return _oddsOut;
+        float probA = Math.Clamp((winsA + 1f) / (decided + 2f), 0.05f, 0.95f);   // VS 표시용 승률(decided 기준)
+        var outc = new BetOutcomes(pA, pB, pA * aKoC, pA * aDecC, pB * bKoC, pB * bDecC);
+        _oddsCache[idx] = (outc, probA);
+        _oddsProbA = probA;
+        return outc;
     }
+    private BetOutcomes CursorOutcomes() => OutcomesAt(_cursor);
     private float CursorProbA() { CursorOutcomes(); return _oddsProbA; }
 
     /// <summary>베팅 종류별 배당: 0=A승 1=B승 2=A KO승 3=A 판정승 4=B KO승 5=B 판정승. 조합 확률에서 산정.</summary>
-    private float BetOddsFor(int side)
+    private float BetOddsFor(int side) => BetOddsForAt(_cursor, side);
+
+    private float BetOddsForAt(int idx, int side)
     {
-        var o = CursorOutcomes();
+        var o = OutcomesAt(idx);
         float p = side switch { 0 => o.A, 1 => o.B, 2 => o.AKo, 3 => o.ADec, 4 => o.BKo, 5 => o.BDec, _ => 0.5f };
         return BetOdds(p);
     }
@@ -3705,7 +3751,7 @@ public sealed partial class Game
                 int round = _schedule[Math.Min(at, _schedule.Count - 1)].Round;                      // 이웃과 같은 라운드로 표기
                 _schedule.Insert(at, new SchedRec(round, g.Id, p.Id, false, 0f));
                 if (_betCursor >= at) _betCursor++;             // 삽입으로 밀린 베팅 대상 보정
-                if (_oddsCursor >= at) _oddsCursor = -1;        // 배당 캐시 무효화
+                _oddsCache.Clear();                            // 인덱스가 밀렸다 — 배당 캐시 무효
                 joined++;
             }
         }
@@ -4302,8 +4348,8 @@ public sealed partial class Game
             _greatest.Count > 0 ? _greatest.OrderByDescending(x => x.Drama)
                 .Select((x, i) => new GreatDoc(_greatest.IndexOf(x), x.Season, x.Entry.AName, x.Entry.BName,
                     x.Entry.Winner, x.Entry.Reason, MathF.Round(x.Drama * 10) / 10)).ToList() : null,
-            _betCursor == _cursor && SeasonActive && _cursor < _schedule.Count
-                ? new BetDoc(BetLabel(_betSide, ById(_schedule[_cursor].A), ById(_schedule[_cursor].B)), _betAmount, _betOdds) : null,
+            _betCursor >= _cursor && SeasonActive && _betCursor < _schedule.Count
+                ? new BetDoc(BetLabel(_betSide, ById(_schedule[_betCursor].A), ById(_schedule[_betCursor].B)), _betAmount, _betOdds) : null,
             _favor,
             HasMyMatchAhead: SeasonActive && Enumerable.Range(_cursor, Math.Max(0, _schedule.Count - _cursor))
                 .Any(i => ById(_schedule[i].A).IsPlayer || ById(_schedule[i].B).IsPlayer),

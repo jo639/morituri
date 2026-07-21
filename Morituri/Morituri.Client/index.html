@@ -1198,7 +1198,7 @@ function go(s){
   if (s==='roster') renderRoster();
   if (s==='watch'){ _archiveCache=null; renderWatch(); }
   if (s==='news') renderNews();
-  if (s==='gamble') renderGamble();
+  if (s==='gamble') loadGbBoard();   // 라운드 카드·배당을 이때 한 번 계산(폴링 아님)
   if (s==='codex') renderCodex();
   if (s==='archive') renderArchive();
   if (s==='records'){ _recCache=null; renderRecords(); }
@@ -1660,11 +1660,12 @@ function renderGamble(){
   // 다음 경기 베팅(리그탭 betBar 재사용 로직)
   const nm=st.NextMatch, gn=$('gambleNext');
   if (st.PendingBet){ gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel2);border-left:3px solid #c94ca8;border-radius:8px">{dice} 베팅 중 — <b style="color:#e0a0d8">${st.PendingBet.On}</b>에 {coin}${st.PendingBet.Amount} (배당 ${st.PendingBet.Odds.toFixed(2)}) · 다음 경기에서 정산</div>`; }
-  else if (st.SeasonActive && nm && !nm.IsPlayerMatch){
-    const A=fById(nm.AId), B=fById(nm.BId), stk=(g.Streak||0);
-    if (_gbMatchKey !== (nm.AId+'|'+nm.BId)){ _gbWinner=0; _gbMethod=0; _gbMatchKey=nm.AId+'|'+nm.BId; }  // 경기 바뀌면 조합 리셋
-    gn.innerHTML = `<div style="padding:10px 14px;background:var(--panel);border-radius:10px">
-      <div style="text-align:center;font-weight:700;margin-bottom:6px">다음 경기 — 베팅 전 선수를 살펴보라 <span class="note" style="font-weight:400">(카드 클릭 = 상세)</span></div>
+  else if (st.SeasonActive && gbCard()){
+    const card=gbCard(); const A=fById(card.AId), B=fById(card.BId), stk=(g.Streak||0);
+    if (_gbMatchKey !== (card.AId+'|'+card.BId)){ _gbWinner=0; _gbMethod=0; _gbMatchKey=card.AId+'|'+card.BId; }
+    const ahead = _gbBoard ? card.Idx - _gbBoard.cards[0].Idx : 0;
+    gn.innerHTML = gbCardRail() + `<div style="padding:10px 14px;background:var(--panel);border-radius:10px">
+      <div style="text-align:center;font-weight:700;margin-bottom:6px">${card.IsNext?'다음 경기':`이번 라운드 · ${ahead}경기 뒤`} — 베팅 전 선수를 살펴보라 <span class="note" style="font-weight:400">(카드 클릭 = 상세)</span></div>
       <div style="display:flex;gap:10px;align-items:stretch">
         ${gambleFighterCard(A,'a')}
         <div style="display:flex;align-items:center;font-weight:800;color:var(--gold);font-size:20px">VS</div>
@@ -1688,7 +1689,7 @@ function renderGamble(){
       <div class="note" id="betMsgG" style="text-align:center;margin-top:6px"></div></div>`;
     gbRefresh();
   }
-  else gn.innerHTML = `<div class="note">${nm&&nm.IsPlayerMatch?'다음은 내 경기 — 베팅 불가(승부조작 금지)':'베팅 가능한 다음 경기가 없다'}</div>`;
+  else gn.innerHTML = `<div class="note">${nm&&nm.IsPlayerMatch?'다음은 내 경기 — 베팅 불가(승부조작 금지)':'이번 라운드에 걸 수 있는 경기가 없다'}</div>`;
   // 이력
   $('gambleLog').innerHTML = (g.Log||[]).map(b=>
     `<div style="display:flex;gap:8px;font-size:13px;padding:3px 8px;border-radius:5px;background:var(--panel2)">
@@ -1702,14 +1703,33 @@ let _gbWinner=0, _gbMethod=0, _gbMatchKey=null;   // method 0=무관 1=KO 2=판�
 window.setGbWinner=(v)=>{ _gbWinner=v; gbRefresh(); };
 window.setGbMethod=(v)=>{ _gbMethod=v; gbRefresh(); };
 function gbSide(){ return _gbMethod===0 ? _gbWinner : (_gbWinner===0 ? (_gbMethod===1?2:3) : (_gbMethod===1?4:5)); }
-function gbOdds(){ const nm=st.NextMatch; const w=_gbWinner,m=_gbMethod;
-  return m===0 ? (w===0?nm.OddsA:nm.OddsB) : w===0 ? (m===1?nm.OddsAKo:nm.OddsADec) : (m===1?nm.OddsBKo:nm.OddsBDec); }
-function gbLabel(){ const nm=st.NextMatch; const w=_gbWinner===0?nm.AName:nm.BName;
-  return w + (_gbMethod===0?' 승':_gbMethod===1?' KO승':' 판정승'); }
+// ── 라운드 베팅 보드: 이번 라운드 카드 중 「어디에 걸까」를 고른다 ──
+// 배당 산출이 카드당 25판이라 상태 폴링이 아니라 도박장을 열 때만 /api/roundcards를 부른다.
+let _gbBoard=null, _gbPick=-1;
+function gbBettable(){ return _gbBoard ? _gbBoard.cards.filter(c=>!c.Mine) : []; }
+function gbCard(){ const b=gbBettable(); if(!b.length) return null;
+  return b.find(c=>c.Idx===_gbPick) || b[0]; }
+window.gbSelect = (idx)=>{ _gbPick=idx; renderGamble(); };
+function gbCardRail(){
+  const b=gbBettable(); if (b.length<2) return '';   // 고를 게 없으면 레일도 없다
+  const cur=gbCard();
+  return `<div style="margin-bottom:9px">
+    <div class="note" style="margin-bottom:4px">이번 라운드 — 어디에 걸까 <span style="color:#8a7a5a">(라운드당 한 곳)</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${b.map(c=>{
+      const best=Math.max(...c.Odds.slice(0,2));
+      return `<button onclick="gbSelect(${c.Idx})" class="tgl${c.Idx===cur.Idx?' cur':''}" style="text-align:left;padding:5px 10px">
+        <b>${escHtml(c.A)}</b> vs <b>${escHtml(c.B)}</b>
+        <span class="note" style="margin-left:6px">${c.IsNext?'다음':'×'+best.toFixed(1)}</span></button>`;
+    }).join('')}</div></div>`;
+}
+function gbOdds(){ const c=gbCard(); if(!c) return 1;
+  return c.Odds[gbSide()] || 1; }
+function gbLabel(){ const c=gbCard(); if(!c) return '';
+  return (_gbWinner===0?c.A:c.B) + (_gbMethod===0?' 승':_gbMethod===1?' KO승':' 판정승'); }
 function gbRefresh(){
-  const nm=st.NextMatch; if(!nm||!$('gbWin')) return;
+  const c=gbCard(); if(!c||!$('gbWin')) return;
   const tgl=(fn,v,cur,label)=>`<button onclick="${fn}(${v})" class="tgl${v===cur?' cur':''}">${label}</button>`;
-  $('gbWin').innerHTML = tgl('setGbWinner',0,_gbWinner,nm.AName) + tgl('setGbWinner',1,_gbWinner,nm.BName);
+  $('gbWin').innerHTML = tgl('setGbWinner',0,_gbWinner,c.A) + tgl('setGbWinner',1,_gbWinner,c.B);
   $('gbMeth').innerHTML = tgl('setGbMethod',0,_gbMethod,'무관 (승만)') + tgl('setGbMethod',1,_gbMethod,'{impact} KO승') + tgl('setGbMethod',2,_gbMethod,'{dove} 판정승');
   const od=gbOdds(), amt=parseInt($('betAmtG').value)||0;
   $('gbSummary').innerHTML = `선택 — <b style="color:#e0a0d8">${gbLabel()}</b> · 배당 <b style="color:var(--gold)">×${od.toFixed(2)}</b>`
@@ -1717,10 +1737,18 @@ function gbRefresh(){
 }
 window.placeGb = async ()=>{
   const amt = parseInt($('betAmtG').value)||0;
-  const r = await api('/api/bet',{side:gbSide(), amount:amt});
+  const c = gbCard(); if (!c) return;
+  const r = await api('/api/bet',{side:gbSide(), amount:amt, idx:c.Idx});
   if (r.error){ const m=$('betMsgG'); if(m){ m.style.color='var(--b)'; m.textContent=' {warn} '+r.error; } return; }
-  st=r; renderGamble(); refreshTop();
+  st=r; await loadGbBoard(); refreshTop();
 };
+// 도박장 진입·베팅 후에만 보드를 새로 계산한다(카드당 25판 시뮬)
+async function loadGbBoard(){
+  if (!st || !st.SeasonActive){ _gbBoard=null; renderGamble(); return; }
+  _gbBoard = await api('/api/roundcards',{});
+  if (!gbBettable().some(c=>c.Idx===_gbPick)) _gbPick=-1;   // 라운드가 넘어갔다 — 선택 초기화
+  renderGamble();
+}
 // ── 알림 배지: 할 일이 있는 탭에 ● ──
 function renderBadges(){
   const navs = document.querySelectorAll('nav button');
@@ -3679,6 +3707,124 @@ const CODEX = {
       {n:'태양', id:'POT_SUN', k:'잠재 단계 · 최고', st:[['최대 버짓','545'],['노예에게','1%'],['카이사르에게','10%']], d:'최고 성장 여력. 노예 천부에 태양 잠재가 붙으면 도감이 말하는 대기만성 그 자체다 — 다만 도달까지 여러 시즌이 걸린다.', f:'바닥에서 시작해도 끝내 하늘에 닿는 자가 있다.'},
     ]},
   ]},
+  상태: {
+    ic:'impact', lead:'맞으면 몸이 말을 안 듣는다. 행동 자체를 묶는 것이 <b>제압(CC)</b>이고, 능력만 깎는 것이 <b>쇠약</b>이다. 제압에는 위계가 있어 위쪽이 아래쪽을 덮어쓰며, 하이퍼아머 무기의 강공 커밋 중·「불퇴의 자세」·「좀비」(HP 30% 이하)는 이 위계를 통째로 무시한다 — 둔화만은 예외로, 상태를 바꾸는 게 아니라 걸음만 늦추므로 누구에게나 걸린다.',
+    modes:[
+    {v:'cc', label:'제압 (6종)', ic:'impact',
+     lead:'행동을 묶는 것. 위계는 다운 > 가드붕괴 > 스태거 > 경직 > 이동봉쇄 순이다. 아래 표의 「면역」은 하이퍼아머 강공 커밋·불퇴의 자세·좀비(HP≤30%)를 뜻한다.',
+     items:[
+      {n:'다운', id:'DOWN', k:'제압 · 최상위', st:[['지속','1.5초'],['효과','완전 무력'],['면역','있음']],
+       d:'쓰러진다. 일어날 때까지 아무것도 못 하고, 그 사이는 일방적으로 맞는 시간이다. 「방패 밀치기」가 대표적인 유발기.',
+       f:'모래 맛을 본 자는 대개 다시 일어나지 못했다.'},
+      {n:'가드붕괴', id:'GUARDBREAK', k:'제압 · 방어 해제', st:[['스태거','1.2초 (방패 0.5초)'],['추가','게이지 절반 회복까지 가드 불가'],['면역','좀비만']],
+       d:'막다가 방패가 밀려난다. 스태거에 더해 한동안 <b>가드 자체를 못 쓴다</b> — 수비형에게 가장 치명적인 상태. 게이지 소진·「분쇄 일격」·「방패 밀치기」가 연다.',
+       f:'막을 수 없게 된 방어형은 그저 느린 자다.'},
+      {n:'스태거', id:'STAGGER', k:'제압', st:[['지속','0.8~1.2초'],['효과','행동 불가'],['면역','있음']],
+       d:'자세가 무너져 잠시 아무 행동도 못 한다. 「대지 강타」·「몰아붙이기」의 벽꽝·가드붕괴·패링 3스택이 유발한다.',
+       f:'한 번 무너진 자세는 좀처럼 돌아오지 않는다.'},
+      {n:'경직', id:'HITSTUN', k:'제압 · 가장 흔함', st:[['지속','포이즈 피해에 비례'],['효과','행동 중단'],['면역','하이퍼아머·불굴']],
+       d:'맞을 때마다 짧게 굳는다. 가장 자주 일어나는 제압이며 연타로 이어지면 아무것도 못 하고 갈린다. 「유리턱」은 잘 걸리고 「불굴」은 잘 안 걸린다.',
+       f:'싸움은 대개 이 짧은 순간들의 합이다.'},
+      {n:'이동봉쇄', id:'ROOT', k:'제압 · 이동 한정', st:[['지속','1.0초'],['효과','이동만 불가 (공격은 가능)'],['면역','있음']],
+       d:'발이 묶인다. 때릴 수는 있으니 근접형에겐 가벼우나, 거리로 먹고사는 카이터에겐 사형선고다. 채찍 「휘감기」가 건다.',
+       f:'창잡이에게서 거리를 빼앗으면 남는 것이 없다.'},
+      {n:'넉백 · 끌어당김', id:'KNOCKBACK', k:'강제 이동', st:[['효과','위치를 강제로 옮김'],['면역','있음 (피해는 적용)']],
+       d:'거리를 강제로 벌리거나 좁힌다. 「휘감기」의 끌어당김, 「몰아붙이기」의 밀어내기가 여기 속한다. 면역이면 위치는 안 밀리되 피해는 그대로 들어간다.',
+       f:'서 있고 싶은 자리에 서지 못하는 것도 패배의 한 형태다.'},
+    ]},
+    {v:'debuff', label:'쇠약 (7종)', ic:'medic',
+     lead:'행동은 되지만 몸이 제값을 못 낸다. 제압과 달리 위계도 면역 체계도 없고, 대부분 시간이 지나야 풀린다.',
+     items:[
+      {n:'지침', id:'EXHAUST', k:'쇠약 · 가장 치명적', neg:1,
+       st:[['유발','스태미나 0'],['이동','느려짐'],['받는 피해','증가'],['행동','공격·회피 불가']],
+       d:'이 게임에서 가장 무서운 상태. 공격도 회피도 못 하면서 더 아프게 맞는다. 상대가 걸어주는 것이 아니라 <b>스스로 자원을 태워서 걸린다</b> — 그래서 스태미나 관리가 곧 생존이다.',
+       f:'숨이 먼저 죽고, 그다음에 사람이 죽는다.'},
+      {n:'출혈', id:'BLEED', k:'쇠약 · 지속 피해', neg:1,
+       st:[['유발','도끼 클린히트 · 분쇄 일격'],['최대','3중첩'],['면역','좀비 (HP≤30%)']],
+       d:'가만히 있어도 피가 준다. 도끼의 정체성이며, 중첩되면 상대가 도망칠수록 손해가 커진다.',
+       f:'도끼에 스친 자는 도망치면서 죽는다.'},
+      {n:'둔화', id:'SLOW', k:'쇠약 · 이동', neg:1,
+       st:[['유발','채찍 후리기'],['이동 속도','×0.75'],['지속','3초'],['면역','없음']],
+       d:'걸음이 느려진다. 상태를 바꾸는 것이 아니라 속도만 깎는 것이라 <b>제압 면역이 통하지 않는다</b> — 하이퍼아머 무기에게도 그대로 걸리는 유일한 방해.',
+       f:'따라잡을 수 없다면, 늦게 만들면 된다.'},
+      {n:'공포', id:'FEAR', k:'쇠약 · 심리', neg:1,
+       st:[['유발','「공포 군림」(잔혹)'],['효과','공격성 −0.15 / 단계'],['최대','3단'],['면역','겁없는자(완전) · 강심장 −60%']],
+       d:'상대의 HP가 일정 폭으로 깎일 때마다 공포가 쌓여 점점 덜 덤빈다. 피해를 주는 것이 아니라 <b>싸울 의지를 깎는</b> 상태.',
+       f:'죽이지 않고 이기는 방법도 있다.'},
+      {n:'분노', id:'RAGE', k:'쇠약 · 심리', neg:1,
+       st:[['유발','연속 피격 · 도발당함'],['효과','판단 왜곡 (무리하게 덤빔)'],['해제','「침착」 35%']],
+       d:'화가 나면 판단이 거칠어진다. 능력이 떨어지는 것이 아니라 <b>더 나쁜 선택을 하게</b> 된다 — 오만한 자의 도발이 노리는 것이 이것이다.',
+       f:'그를 이기려거든 먼저 화나게 하라.'},
+      {n:'근접 침투', id:'INNERRANGE', k:'쇠약 · 구조적', neg:1,
+       st:[['조건','장병기가 제 사거리 안쪽에서 공격'],['피해','감소']],
+       d:'창·채찍은 품 안으로 파고들리면 제 위력을 못 낸다. 걸리는 상태가 아니라 무기에 새겨진 구조적 약점이라 해제 수단이 없다 — 거리를 되찾는 것만이 답.',
+       f:'긴 무기의 안쪽은 빈 자리다.'},
+      {n:'부상 · 피로', id:'INJURY', k:'쇠약 · 경기 밖',
+       st:[['피로','경기당 +5 (격전 +12)'],['효과','부상 위험 증가'],['부상','실효 스탯 일시 감소']],
+       d:'모래 위가 아니라 장부에 쌓이는 것. 피로가 쌓이면 부상 위험이 오르고, 부상은 반응·공속·이동에 일시적으로 영향을 준다(공격력·체력 같은 코어는 불변). 영구 중상은 코어까지 깎는다.',
+       f:'라니스타가 진짜로 관리해야 하는 것은 이쪽이다.'},
+    ]},
+  ]},
+  '감정·관계': {
+    ic:'mind', lead:'모리튜리는 경기를 기억한다. <b>감정</b>은 지난 경기가 자기 안에 남긴 상태이고, <b>관계</b>는 특정 상대에게만 품는 마음이다. 둘 다 피해량이나 스탯을 건드리지 않는다 — 오직 <b>판단</b>을 바꾼다. 겁먹은 검투사는 약해지는 것이 아니라 망설이고 거리를 둔다.',
+    modes:[
+    {v:'emo', label:'감정 (7종)', ic:'speech',
+     lead:'경기 결과가 남기는 자국. 매 경기 생기는 것이 아니라 <b>가끔 터지는 변화구</b>다(발생률 7~50%) — 대부분의 경기는 아무 감정도 남기지 않는다. 같은 결과라도 성격에 따라 다르게 해석되어, 같은 승리를 자신감으로 받는 자와 부담으로 받는 자가 갈린다.',
+     items:[
+      {n:'자신감', id:'CONFIDENT', k:'승리 후', st:[['발생률','7%'],['공격성','+0.10'],['결단','빨라짐']],
+       d:'이겨본 몸이 기억하는 감각. 흔한 승리는 좀처럼 자국을 남기지 않아 발생률이 가장 낮다.', f:'이길 수 있다는 것을 아는 것만으로 달라진다.'},
+      {n:'자만', id:'HUBRIS', k:'승리 후 · 위험', neg:1,
+       st:[['발생률','50%'],['트리거 확률','+0.25'],['공격성','−0.10'],['가드','−0.10'],['커밋','+0.15']],
+       d:'압승 뒤에만 붙지만 붙으면 또렷하다. 덜 덤비고 덜 막으면서 도발은 늘어난다 — <b>역전패 제조기</b>이자 이 게임이 준비한 가장 비싼 함정.', f:'이긴 다음 경기가 늘 문제였다.'},
+      {n:'부담감', id:'PRESSURE', k:'승리 후', neg:1,
+       st:[['발생률','15%'],['공격성','−0.10'],['가드','+0.10'],['커밋','+0.10']],
+       d:'지킬 것이 생기면 손이 굳는다. 연승 중인 선수가 갑자기 소극적으로 싸운다면 이것이다.', f:'잃을 것이 없을 때가 가장 강했다.'},
+      {n:'열등감', id:'INFERIOR', k:'패배 후', neg:1,
+       st:[['발생률','15%'],['공격성','−0.15'],['선호 거리','+0.4'],['가드','+0.15']],
+       d:'졌던 기억이 몸을 뒤로 뺀다. 거리를 두고 방어적으로 변해 좀처럼 승부를 걸지 않는다.', f:'한 번 밀린 자는 다음에도 밀린다.'},
+      {n:'동기부여', id:'MOTIVATED', k:'패배 후 · 이로움',
+       st:[['발생률','18%'],['공격성','+0.10'],['카운터 창','+0.05'],['결단','빨라짐']],
+       d:'패배를 연료로 쓴다. 패배 감정 중 유일하게 선수를 더 낫게 만든다 — 더 날카롭게 판단하고 기회를 놓치지 않는다.', f:'그날 이후 그는 달라졌다.'},
+      {n:'좌절', id:'FRUSTRATED', k:'패배 후', neg:1,
+       st:[['발생률','15%'],['트리거 확률','+0.10'],['공격성','+0.10'],['가드','−0.10'],['커밋','−0.15']],
+       d:'덤비긴 하는데 산만하다. 공격적으로 보이지만 방어를 놓고 무리하게 들어가는 자포자기에 가깝다.', f:'악에 받친 칼은 곧게 나가지 않는다.'},
+      {n:'트라우마', id:'TRAUMA', k:'KO 패배 후 · 최악', neg:1,
+       st:[['발생률','22%'],['트리거 확률','−0.15'],['공격성','−0.30'],['선호 거리','+1.0'],['가드','+0.20']],
+       d:'쓰러져 본 몸이 기억하는 공포. 감정 중 가장 강하게 판단을 뒤튼다 — 거의 덤비지 않고 멀찍이 돈다. KO패를 <b>안으로 삼키면</b> 트라우마가, <b>밖으로 돌리면</b> 상대를 향한 원한이 된다.', f:'그 경기 이후, 그는 같은 무기만 보면 물러섰다.'},
+    ]},
+    {v:'rel', label:'관계 (7종)', ic:'handshake',
+     lead:'특정 상대에게만 품는 마음. 감정과 달리 <b>영속</b>하며 맞붙은 전적에서 저절로 자라난다. 유대(−100~+100)와 전적 양상, 그리고 자기 성격이 함께 종류를 정한다 — 같은 일방적 패배라도 겁쟁이·신중은 공포를, 그 외는 원수를 품는다.',
+     items:[
+      {n:'원수', id:'NEMESIS', k:'적대 · 최강',
+       st:[['조건','유대 ≤ −55 (겁쟁이·신중 제외)'],['공격성','+0.25'],['리스크','+0.30'],['고유','복수의 도발']],
+       d:'일방적으로 당한 기억이 복수심이 된다. 평소엔 없던 <b>도발 행동</b>이 이 상대에게만 나오고, 무리해서라도 결판을 내려 든다. 복수전은 이 게임이 만드는 가장 뜨거운 이야기다.',
+       f:'그의 이름을 부를 때마다 손에 힘이 들어갔다.'},
+      {n:'공포', id:'FEAR', k:'적대 · 위축',
+       st:[['조건','유대 ≤ −55(겁쟁이·신중) 또는 ≤ −18'],['공격성','−0.25'],['선호 거리','+0.8'],['가드','+0.15']],
+       d:'같은 패배를 겁쟁이와 신중한 자는 다르게 받는다 — 복수 대신 회피를 배운다. 이 상대 앞에서만 유독 소극적으로 싸운다.',
+       f:'그 자가 나오는 날은 아침부터 손이 떨렸다.'},
+      {n:'질투', id:'ENVY', k:'적대 · 자존심',
+       st:[['조건','유대 ≤ −18 (오만·쇼맨·기회주의)'],['공격성','+0.15'],['강공 선호','+0.10']],
+       d:'자존심 있는 자가 밀렸을 때 품는 마음. 공포로 위축되는 대신 무겁게 후려치려 든다.',
+       f:'저 자가 받는 환호는 원래 내 것이었다.'},
+      {n:'집착', id:'OBSESSION', k:'호각 · 극단',
+       st:[['조건','12전 이상 · 박빙 85% 이상'],['같은 수 반복','+0.30'],['공격성','+0.10']],
+       d:'지겹도록 박빙으로 싸운 끝에 생기는 드문 관계. 상대를 너무 잘 알아 같은 수를 고집스럽게 반복한다.',
+       f:'서로를 너무 오래 봐서, 이제 다른 싸움을 할 줄 몰랐다.'},
+      {n:'라이벌', id:'RIVAL', k:'호각',
+       st:[['조건','4전 이상 · 승패 균형 · 접전 40% 이상'],['공격성','+0.10'],['카운터 창','+0.05'],['결단','빨라짐']],
+       d:'서로 이기고 진 사이. 미워하는 것이 아니라 <b>서로를 끌어올린다</b> — 이 상대 앞에서 더 날카로워진다. 흥행에도 가장 값어치 있는 관계다.',
+       f:'그와 붙는 날에는 관중이 두 배로 왔다.'},
+      {n:'존경', id:'RESPECT', k:'우호',
+       st:[['조건','유대 ≥ +45'],['가드','+0.05']],
+       d:'일방적으로 이겨온 상대에게 품는 여유. 굳이 무리하지 않고 침착하게 싸운다.',
+       f:'몇 번을 이겨도 그 자를 얕보지 않았다.'},
+      {n:'친구', id:'FRIEND', k:'우호 · 약점',
+       st:[['조건','유대 ≥ +18'],['공격성','−0.15'],['커밋','+0.05']],
+       d:'같은 모래를 오래 밟은 정. 손속에 망설임이 생겨 <b>제 실력을 다 내지 못한다</b> — 우호 관계가 늘 이로운 것은 아니다.',
+       f:'같은 밥을 먹던 자의 목을 치는 일은 쉽지 않다.'},
+    ]},
+  ]},
   특성: {
     ic:'gem', lead:'생성 시 붙는 선천적 특질. 훈련으로 얻거나 지울 수 없고 교체도 불가능하다. 배타 관계인 특성은 함께 붙지 않는다. 붉은 항목은 순수한 약점이다.',
     items:[
@@ -3720,10 +3866,9 @@ CODEX.스킬.items = SKILLS.map(s=>({
   d:s.d,
 }));
 
-const CX_ORDER = ['무기','전술','성격','스킬','특성','천부·잠재력'];
+const CX_ORDER = ['무기','전술','성격','스킬','특성','천부·잠재력','상태','감정·관계'];
 let codexCat = '무기';
-let codexSkillBy = 'wpn';   // 스킬 보기: 무기별 / 성격별
-let codexTalBy = 'tal';     // 천부·잠재력 보기: 천부 / 잠재력
+let codexModeBy = {};      // 카테고리별 「묶어 보기」 선택 (천부·잠재력 / 상태 / 감정·관계)
 let _cxEm = 'star';         // 현재 묶음의 카드 엠블럼 아이콘
 
 function cxCard(e){
@@ -3750,7 +3895,7 @@ function cxGroupHead(ic, name, sub){
 // 스킬 전용 — 무기별/성격별 구획으로 나눠 보여준다
 function cxSkillBody(){
   const items = CODEX.스킬.items;
-  if (codexSkillBy === 'wpn'){
+  if ((codexModeBy['스킬'] || 'wpn') === 'wpn'){
     return Object.keys(WPN).map(id=>{
       const g = items.filter(s=>s.wpn===id);
       return cxGroupHead('sword', WPN[id], `액티브 ${g.length}종 — AI 자동 발동`) + cxGrid(g);
@@ -3766,9 +3911,10 @@ function cxSkillBody(){
 const cxCount = c => CODEX[c].items ? CODEX[c].items.length
                                     : CODEX[c].modes.reduce((n,m)=>n+m.items.length,0);
 // 「묶어 보기」 세그먼트 — 현재 값과 선택지를 받아 공통 마크업을 낸다
-const cxSeg = (cur, opts, setter) => `<span class="lab">묶어 보기</span>
+window.cxSetMode = (cat, v) => { codexModeBy[cat] = v; renderCodex(); };
+const cxSeg = (cur, opts) => `<span class="lab">묶어 보기</span>
   <div class="seg">${opts.map(o=>
-    `<button data-v="${o.v}" class="${o.v===cur?'cur':''}" onclick="${setter}='${o.v}';renderCodex()">${o.label}</button>`).join('')}</div>`;
+    `<button data-v="${o.v}" class="${o.v===cur?'cur':''}" onclick="cxSetMode(codexCat,'${o.v}')">${o.label}</button>`).join('')}</div>`;
 
 function renderCodex(){
   const cat = CODEX[codexCat];
@@ -3777,7 +3923,7 @@ function renderCodex(){
        {${CODEX[c].ic}} ${c} <span class="c">${cxCount(c)}</span></button>`).join('');
 
   // 묶음이 있는 카테고리는 묶음의 리드문·아이콘이 표제를 대신한다(개념 설명을 별도 칸으로 두지 않는다)
-  const mode = cat.modes && (cat.modes.find(m=>m.v===codexTalBy) || cat.modes[0]);
+  const mode = cat.modes && (cat.modes.find(m=>m.v===codexModeBy[codexCat]) || cat.modes[0]);
   _cxEm = (mode && mode.ic) || cat.ic;
 
   $('codexHead').innerHTML =
@@ -3785,11 +3931,11 @@ function renderCodex(){
      <div class="lead">${mode ? mode.lead : cat.lead}</div><hr class="rule">`;
 
   if (codexCat === '스킬'){
-    $('codexSub').innerHTML = cxSeg(codexSkillBy,
-      [{v:'wpn',label:'무기별 (액티브 16)'},{v:'per',label:'성격별 (패시브 20)'}], 'codexSkillBy');
+    $('codexSub').innerHTML = cxSeg(codexModeBy['스킬'] || 'wpn',
+      [{v:'wpn',label:'무기별 (액티브 16)'},{v:'per',label:'성격별 (패시브 20)'}]);
     $('codexBody').innerHTML = cxSkillBody();
   } else if (mode){
-    $('codexSub').innerHTML = cxSeg(mode.v, cat.modes, 'codexTalBy');
+    $('codexSub').innerHTML = cxSeg(mode.v, cat.modes);
     $('codexBody').innerHTML = cxGrid(mode.items);
   } else {
     $('codexSub').innerHTML = '';

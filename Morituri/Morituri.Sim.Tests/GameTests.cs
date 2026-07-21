@@ -298,6 +298,84 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Bet_RoundCard_OddsPredictionIsExact()
+    {
+        // [UX] 라운드 베팅 — 이번 라운드의 아무 카드에나 걸 수 있다.
+        // 계약: **미리 계산한 배당이 그 경기에 도달했을 때의 배당과 정확히 같아야 한다.**
+        //   배당은 그 시점의 AI 전술 예측에 달렸고, 예측은 MatchIdxAt(_matchIdx + (idx - _cursor))에 달렸다.
+        //   _matchIdx는 Play()에서만 증가하고 Play()는 PlayNext에서만 불리므로 이 예측이 성립한다.
+        TempDir("roundbet");
+        var g = new Game(1, 65, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+
+        var board0 = Parse(g.RoundCardsJson());
+        var bettable = board0.GetProperty("cards").EnumerateArray()
+            .Where(c => !c.GetProperty("Mine").GetBoolean()).ToList();
+        Assert.That(bettable.Count >= 2, Is.True, "라운드에 걸 수 있는 카드가 둘 이상");
+
+        // 미래 카드(다음 경기가 아닌 것)의 사전 배당을 기록
+        var future = bettable.First(c => !c.GetProperty("IsNext").GetBoolean());
+        int targetIdx = future.GetProperty("Idx").GetInt32();
+        string key = future.GetProperty("A").GetString() + "|" + future.GetProperty("B").GetString();
+        var preOdds = future.GetProperty("Odds").EnumerateArray().Select(o => o.GetSingle()).ToArray();
+
+        // 그 카드가 커서에 올 때까지 진행 → 도달 시 배당과 비교
+        for (int i = 0; i < 20; i++)
+        {
+            var b = Parse(g.RoundCardsJson());
+            var next = b.GetProperty("cards").EnumerateArray()
+                .FirstOrDefault(c => c.GetProperty("IsNext").GetBoolean());
+            if (next.ValueKind != JsonValueKind.Undefined &&
+                next.GetProperty("A").GetString() + "|" + next.GetProperty("B").GetString() == key)
+            {
+                var nowOdds = next.GetProperty("Odds").EnumerateArray().Select(o => o.GetSingle()).ToArray();
+                for (int k = 0; k < 6; k++)
+                    Assert.That(MathF.Abs(nowOdds[k] - preOdds[k]) < 0.001f, Is.True,
+                        $"사전 배당과 도달 시 배당이 같다 (side {k}: {preOdds[k]} vs {nowOdds[k]})");
+                return;
+            }
+            g.PlayNext();
+        }
+        Assert.That(false, Is.True, "대상 카드에 도달하지 못했다");
+    }
+
+    [Test]
+    public void Game_Bet_RoundCard_SettlesOnThatMatch_AndOnePerRound()
+    {
+        TempDir("roundbet2");
+        var g = new Game(1, 65, fresh: true, interactive: false, playerless: false);
+        g.GachaJson(); g.RecruitJson(0);
+        g.PlayNext();   // 개막
+
+        var board = Parse(g.RoundCardsJson());
+        var future = board.GetProperty("cards").EnumerateArray()
+            .First(c => !c.GetProperty("Mine").GetBoolean() && !c.GetProperty("IsNext").GetBoolean());
+        int idx = future.GetProperty("Idx").GetInt32();
+
+        var r = Parse(g.BetJson(0, 20f, idx));
+        Assert.That(r.TryGetProperty("error", out _), Is.False, "미래 카드 베팅 성공");
+        Assert.That(Parse(g.BetJson(1, 20f, idx)).TryGetProperty("error", out _), Is.True, "라운드당 1건");
+
+        // 그 경기 전까지는 정산되지 않는다
+        for (int i = 0; i < 20; i++)
+        {
+            var m = g.PlayNext();
+            bool settled = !string.IsNullOrEmpty(m.BetNote);
+            if (settled)
+            {
+                Assert.That(m.A == future.GetProperty("A").GetString()
+                         && m.B == future.GetProperty("B").GetString(), Is.True,
+                    "정산은 내가 고른 그 경기에서 일어난다");
+                Assert.That(Parse(g.StateJson()).GetProperty("PendingBet").ValueKind,
+                    Is.EqualTo(JsonValueKind.Null), "정산 후 소거");
+                return;
+            }
+        }
+        Assert.That(false, Is.True, "베팅이 정산되지 않았다");
+    }
+
+    [Test]
     public void Game_SaveSlots_IsolatedWorlds()
     {
         TempDir("slots");

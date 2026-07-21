@@ -77,7 +77,9 @@ internal static class Program
             "/api/transfers" when method == "POST" => game.TransfersJson(),
             "/api/buy" when method == "POST" => game.TransferBuyJson(StrOf(body ?? "", "id")),
             "/api/sell" when method == "POST" => game.TransferSellJson(StrOf(body ?? "", "id")),
-            "/api/bet" when method == "POST" => game.BetJson(IntOf(body ?? "", "side"), FloatOf(body ?? "", "amount")),
+            "/api/bet" when method == "POST" => game.BetJson(IntOf(body ?? "", "side"), FloatOf(body ?? "", "amount"),
+                                                             body != null && body.Contains("\"idx\"") ? IntOf(body, "idx") : -1),
+            "/api/roundcards" when method == "POST" => game.RoundCardsJson(),   // 라운드 베팅 보드
             "/api/records" when method == "POST" => game.RecordsJson(),
             "/api/patron" when method == "POST" => game.PatronJson(),
             "/api/ludusdossier" when method == "POST" => game.LudusDossierJson(StrOf(body ?? "", "id")),
