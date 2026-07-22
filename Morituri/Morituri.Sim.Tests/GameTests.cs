@@ -1040,9 +1040,11 @@ public class GameTests
         Assert.That(st0.GetProperty("Legends").GetArrayLength(), Is.EqualTo(4), "창세 전설 4명 시드");
         Assert.That(st0.GetProperty("Campaign").GetProperty("Hint").ValueKind, Is.EqualTo(JsonValueKind.String), "카토의 조언(튜토리얼 힌트)");
         g.ChooseEventJson(1);   // S0 해소
+        g.LessonDoneJson("archive");   // 씬이 가리킨 기능을 만져본다(레슨 큐 소비) — 실제 클라이언트의 흐름과 같게
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
             Is.EqualTo("story_s1"), "장례 → 빈 막사(S1) · 영입 전에도 발화");
         g.ChooseEventJson(0);   // S1 「도끼는 누구 것인지 묻는다」 — 조각 1
+        g.LessonDoneJson("recruit");
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
             "오프닝 2컷 뒤에는 멈춘다 — 영입을 하기 전엔 다음 씬이 오지 않는다(페이싱 원칙 1)");
 
@@ -1050,15 +1052,24 @@ public class GameTests
         Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
             Is.EqualTo("story_s2"), "[영입] → 궤(S2) · 돈을 쓰고 나서 장부를 연다");
         g.ChooseEventJson(0);   // 「장부를 연다」 — 조각 2
-        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
-            "준비 주간을 굴리기 전엔 S3가 오지 않는다");
-
-        g.TrainingCampJson("drill");
-        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").GetProperty("Id").GetString(),
-            Is.EqualTo("story_s3"), "[준비 주간] → 첫 훈련(S3)");
+        var afterS2 = Parse(g.StateJson());
+        // 씬이 기능보다 먼저 온다(2026-07-23 교정): 궤를 연 카토가 그 자리에서 실제 장부(도박장 빚)를 가리키고,
+        // 첫 훈련 씬도 준비 주간을 **굴리기 전에** 와서 준비 주간을 가리킨다. 초판은 둘 다 사후 발화였다.
+        Assert.That(afterS2.GetProperty("Campaign").GetProperty("Lesson").GetString(), Is.EqualTo("debt"),
+            "궤(S2) → 검은 인장의 장부 레슨");
+        Assert.That(afterS2.GetProperty("PendingEvent").GetProperty("Id").GetString(),
+            Is.EqualTo("story_s3"), "궤(S2) → 첫 훈련(S3) · 준비 주간보다 씬이 먼저다");
+        g.LessonDoneJson("debt");
         g.ChooseEventJson(1);
-        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
+        var afterS3 = Parse(g.StateJson());
+        Assert.That(afterS3.GetProperty("Campaign").GetProperty("Lesson").GetString(), Is.EqualTo("train"),
+            "첫 훈련(S3) → 준비 주간·훈련 레슨");
+        Assert.That(afterS3.GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
             "개막을 누르기 전엔 다음 씬이 없다");
+        g.LessonDoneJson("train");   // 레슨 소비 = 라니스타가 준비 주간을 만져본다
+        g.TrainingCampJson("drill");
+        Assert.That(Parse(g.StateJson()).GetProperty("PendingEvent").ValueKind, Is.EqualTo(JsonValueKind.Null),
+            "준비 주간은 더 이상 씬을 부르지 않는다(S3는 이미 왔다)");
         // 서막에 무레나가 오지 않았는지 — 조작 예약이 걸려 있으면 안 된다
         Assert.That(Parse(g.StateJson()).GetProperty("FixTarget").ValueKind, Is.EqualTo(JsonValueKind.Null),
             "서막에는 승부조작 제안이 없다(무레나는 1막 A3부터)");
@@ -1112,6 +1123,42 @@ public class GameTests
         Assert.That(Parse(g2.StateJson()).GetProperty("Campaign").GetProperty("Stage").GetString(),
             Is.EqualTo("chronicle"), "스토리 상태 영속");
         Assert.That(Parse(g2.StateJson()).GetProperty("Legends").GetArrayLength(), Is.GreaterThan(3), "전설 카탈로그 영속");
+    }
+
+    [Test]
+    public void Game_Lessons_EachSceneHandsOffToItsFeature()
+    {
+        // 기능이 소리소문없이 열리지 않는다: 씬이 끝나면 그 화자가 가리킬 기능(레슨)이 예약되고,
+        // 한 번 배우면 다시 오지 않는다. 클라이언트는 이 id로 실제 UI를 스포트라이트한다.
+        TempDir("lesson");
+        var g = new Game(1, 77, fresh: true, interactive: false, playerless: false);
+        string? Lesson() { var c = Parse(g.StateJson()).GetProperty("Campaign"); var l = c.GetProperty("Lesson"); return l.ValueKind == JsonValueKind.Null ? null : l.GetString(); }
+        string[] Taught() => Parse(g.StateJson()).GetProperty("Campaign").GetProperty("Taught")
+                                 .EnumerateArray().Select(x => x.GetString()!).ToArray();
+
+        Assert.That(Lesson(), Is.EqualTo(null), "씬을 보기 전에는 레슨이 없다");
+        g.ChooseEventJson(1);   // S0 장례
+        Assert.That(Lesson(), Is.EqualTo("archive"), "S0 유서 → 보관함");
+        g.LessonDoneJson("archive");
+        Assert.That(Lesson(), Is.EqualTo(null), "소비된 레슨은 사라진다");
+        g.ChooseEventJson(0);   // S1 빈 막사
+        Assert.That(Lesson(), Is.EqualTo("recruit"), "S1 빈 침상 → 영입");
+        g.LessonDoneJson("recruit");
+        g.GachaJson(); g.RecruitJson(0);
+        g.ChooseEventJson(0);   // S2 궤
+        Assert.That(Lesson(), Is.EqualTo("debt"), "S2 장부 → 검은 인장의 장부");
+        // 큐: 레슨을 만져보기 전에 다음 씬이 와도(서막 연쇄) 앞엣것이 덮이지 않는다 — 단일 슬롯이던 초판의 결함.
+        g.ChooseEventJson(1);   // S3 첫 훈련 — debt를 소비하지 않은 채로
+        Assert.That(Lesson(), Is.EqualTo("debt"), "줄 선 레슨이 덮이지 않는다");
+        g.LessonDoneJson("debt");
+        Assert.That(Lesson(), Is.EqualTo("train"), "앞엣것을 배우면 다음 레슨이 올라온다");
+        g.LessonDoneJson("train");
+        Assert.That(string.Join(",", Taught()), Is.EqualTo("archive,debt,recruit,train"), "배운 것이 누적된다");
+
+        // 영속: 다시 열어도 배운 것은 배운 것이다(같은 레슨이 두 번 오지 않는다)
+        var g2 = new Game(1, 77, fresh: false, interactive: false, playerless: false);
+        Assert.That(Parse(g2.StateJson()).GetProperty("Campaign").GetProperty("Taught").GetArrayLength(),
+            Is.EqualTo(4), "배운 레슨은 세이브에 남는다");
     }
 
     [Test]

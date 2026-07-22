@@ -27,11 +27,37 @@ public sealed partial class Game
     private bool _promotedFlag;                             // 이번 시즌 내 모리튜리 승격(종막 게이트, 시즌 내 한정)
     private int _favorAtE1;                                 // E1 발화 시점의 총애 — E2 게이트("E1 후 특명 완수") 기준점
 
+    // ── 레슨: 씬이 말한 기능을 그 화자가 화면에서 직접 가리킨다 (기능이 소리소문없이 열리지 않도록) ──
+    private readonly HashSet<string> _taught = new();       // 이미 배운 레슨(영속) — 한 커리어에 한 번씩만
+    // 대기 큐(영속): 씬이 연달아 오면(서막 연쇄·모달에 가려 미룬 경우) 레슨이 덮이지 않고 줄을 선다.
+    // 단일 슬롯이던 초판은 S2(궤)의 장부 레슨이 S3(첫 훈련)에 덮여 조용히 사라졌다.
+    private readonly List<string> _lessonQueue = new();
+    /// <summary>레슨 전체 목록 — 구세이브를 '전부 배움'으로 채울 때와 클라 검증에 쓴다.</summary>
+    internal static readonly string[] AllLessons =
+        { "archive", "recruit", "debt", "train", "season", "live", "gamble",
+          "infirmary", "repay", "fame", "loan", "patron", "watch", "records" };
+
+    /// <summary>씬이 가리킬 기능을 큐에 세운다 — 이미 배웠거나 줄 서 있으면 무시.</summary>
+    private void QueueLesson(string id)
+    {
+        if (!_taught.Contains(id) && !_lessonQueue.Contains(id)) _lessonQueue.Add(id);
+    }
+
+    /// <summary>레슨 실행 완료(또는 '나중에') — 다시 뜨지 않게 소비. 클라이언트가 화면에서 띄운 레슨도 여기로 등록된다.</summary>
+    public string LessonDoneJson(string id)
+    {
+        _lessonQueue.Remove(id);
+        _taught.Add(id);
+        SaveWorld();
+        return StateJson();
+    }
+
     private sealed record LegendRec(string Name, string Epithet, string Weapon, string Personality,
         string Record, string Fate, int Auc, string Source);   // Source: seed(창세) / hof(명전 승격)
     /// <summary>보관함 문서 — 유서·메모·서신·증서·단서. 클릭 열람용 타입 있는 유품(구 유품함 단서를 승격).</summary>
     private sealed record KeepsakeRec(string Type, string Title, string Body, string From, string When);
-    private sealed record CampaignDoc(string Stage, string[] Beats, string? Hint, string[]? Clues = null,
+    private sealed record CampaignDoc(string Stage, string[] Beats, string? Hint, string? Lesson, string[] Taught,
+        string[]? Clues = null,
         string Voice = "cato",    // 경기평의 화자 — 카토를 내치면 "thea"(내 경기)·"lucilius"(AI전)로 갈린다
         bool OrcusReplay = false);   // 오르쿠스의 마지막 경기 기록 해금(카토의 자백으로 얻는 단서)
     private sealed record UnrestDoc(int Level, string Stage, string Icon, string Effects);
@@ -95,9 +121,10 @@ public sealed partial class Game
         if (!_storyBeats.Contains("s1")) return SpawnStory("story_s1", "s1");
         bool hired = _cast.Any(g => g.IsPlayer);
         if (!_storyBeats.Contains("s2") && hired) return SpawnStory("story_s2", "s2");
-        // S3 첫 훈련 — 준비 주간을 한 번 굴려 본 뒤(신규 영입은 훈련 포인트가 0이라 '훈련 배정'은 게이트가 못 된다).
-        if (!_storyBeats.Contains("s3") && hired && (_preWeek > 0 || _storyFlags.Contains("trained")))
-            return SpawnStory("story_s3", "s3");
+        // S3 첫 훈련 — **준비 주간을 굴리기 전에** 온다. 초판은 `_preWeek > 0`을 게이트로 삼아
+        // "이미 훈련을 배정한 라니스타에게 첫 훈련 씬이 오는" 역순이었다(라니스타 지적 2026-07-23).
+        // 씬이 먼저 말하고, 카토가 그 자리에서 준비 주간을 가리킨다(레슨 train) — 그 클릭이 곧 다음 씬의 페이싱 행동이다.
+        if (!_storyBeats.Contains("s3") && hired) return SpawnStory("story_s3", "s3");
         if (_storyStage == "prologue")
         {
             if (!SeasonActive) return false;
@@ -133,6 +160,8 @@ public sealed partial class Game
         if (!_storyBeats.Contains("a6") && _storyFlags.Contains("fixed_once")) return SpawnStory("story_a6", "a6");
         // A7 이름이 불렸다 — 값이 매겨지기 시작한다(B5·C1 예고)
         if (!_storyBeats.Contains("a7") && LudusTier() >= 1) return SpawnStory("story_a7", "a7");
+        // 「남은 것」 — 시즌이 하나 끝나야 셀 것이 생긴다. 기록실·명예의 전당을 여는 짧은 장면.
+        if (!_storyBeats.Contains("rc") && _seasonsPlayed >= 1) return SpawnStory("story_records", "rc");
         // ── 2막 「대가」 — 값이 청구되기 시작한다. 그리고 끝에서 카토가 무너진다 ──
         // B1 첫 피 — 리액티브(내 선수가 처음 부상을 안고 돌아온 날). 테아가 값을 센다.
         if (!_storyBeats.Contains("bl") && _cast.Any(g => g.IsPlayer && g.InjuryMatches > 0))
@@ -279,7 +308,7 @@ public sealed partial class Game
     private List<EvtTemplate> StoryTemplates() => new()
     {
         // ── 서막 S0 「유산」 — 장례 ──
-        new EvtTemplate { Id = "story_s0", Icon = "{coffin}", Title = "유산", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s0", Icon = "{coffin}", Title = "유산", NeedsFighter = false, Teach = "archive",
             Body = _ => "비 오는 카푸아의 언덕. 선대 라니스타 가이우스의 장례에 조문객은 늙은 교관 하나뿐이다.\n" +
                 "{speech} 카토: \"가이우스는 이길 수 없는 경기를 이겼습니다. 그리고 그날 밤 죽었지요. …남은 건 이 무너진 루두스와 빚, 그리고 접니다.\"\n" +
                 "{speech} 카토: \"유서에 이렇게 적혀 있더군요 — '모래는 정직하다. 그 위의 인간들이 문제일 뿐.'\"",
@@ -288,7 +317,7 @@ public sealed partial class Game
                 ("무덤에 흙을 얹고 돌아선다", _ => { AddGaiusWill(); return "카토: \"…갑시다. 산 사람은 모래를 갈아야지요.\""; }) } },
 
         // ── 서막 S1 「빈 막사」 — 조각 1(도끼)·2(장부) ──
-        new EvtTemplate { Id = "story_s1", Icon = "{ludus}", Title = "빈 막사", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s1", Icon = "{ludus}", Title = "빈 막사", NeedsFighter = false, Teach = "recruit",
             Body = _ => "장례를 마치고 돌아온 루두스. 카토가 막사 문을 연다. 침상 여덟 중 여섯이 비어 있다. " +
                 "남은 둘에도 사람은 없다 — 담요만 개켜져 있다. 개켠 방식이 똑같다. 같은 사람이 개켰다는 뜻이다.\n" +
                 "{speech} 카토: \"작년 겨울에 둘, 봄에 셋. 나머지 하나는 팔았습니다. 값은 빚으로 갔고요.\"\n" +
@@ -305,7 +334,7 @@ public sealed partial class Game
                 ("말없이 막사를 둘러본다", _ => "카토는 담요를 한 번 더 매만졌다. 그게 그가 하는 인사였다") } },
 
         // ── 서막 S2 「궤」 — 조각 2(장부). S1과 별도 씬: 도끼와 장부는 택일이 아니다 ──
-        new EvtTemplate { Id = "story_s2", Icon = "{scroll}", Title = "궤", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s2", Icon = "{scroll}", Title = "궤", NeedsFighter = false, Teach = "debt",
             Body = _ => "카토가 벽 쪽 궤를 턱으로 가리킨다. 자물쇠는 이미 부서져 있다.\n" +
                 "{speech} 카토: \"장부는 저 안에 있습니다. 열어보시겠습니까. …열든 안 열든 숫자는 그대로입니다만.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
@@ -320,7 +349,7 @@ public sealed partial class Game
                 ("덮는다", _ => { Flag("ledger_unread"); return "카토: \"현명하십니다. …아직은요.\""; }) } },
 
         // ── 서막 S3 「첫 훈련」 — 목검(의지) ──
-        new EvtTemplate { Id = "story_s3", Icon = "{sword}", Title = "첫 훈련", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s3", Icon = "{sword}", Title = "첫 훈련", NeedsFighter = false, Teach = "train",
             Body = _ => "연습장. 신참이 목검을 내던진다. 카토가 주워 다시 건넨다. 세 번째다. " +
                 "목검 손잡이에 이미 금이 가 있다 — 던져서 그런 게 아니라, 쥐는 힘이 잘못돼서 그렇다.\n" +
                 "{speech} 카토: \"라니스타. 이 아이가 그러더군요. 자기는 검을 배우러 온 게 아니라 죽으러 온 거라고.\"\n" +
@@ -341,7 +370,7 @@ public sealed partial class Game
                     return "카토가 웃었다. 소리는 나지 않았다 — \"좋습니다. 그게 라니스타지요. 저는 편을 들 줄만 알아서요.\""; }) } },
 
         // ── 서막 S4 「의무실」 — 테아 등장 · 조각 5 ──
-        new EvtTemplate { Id = "story_s4", Icon = "{medic}", Title = "의무실", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s4", Icon = "{medic}", Title = "의무실", NeedsFighter = false, Teach = "infirmary",
             Body = _ => "막사 끝, 등불 하나. 약재와 식초 냄새. 마른 여인이 붕대를 삶고 있다. " +
                 "삶은 붕대를 널어 말리는 줄이 방을 가로지르는데, 줄이 낡아서 가운데가 처져 있다.\n" +
                 "{speech} 테아: \"…아, 거기 서 계시면 안 됩니다. 젖어요.\"\n" +
@@ -370,7 +399,7 @@ public sealed partial class Game
                     return "테아: \"열아홉 해입니다. …그 전 해에 여기서 사람이 하나 죽었지요. 그래서 자리가 났고요.\""; }) } },
 
         // ── 서막 S5 「개막 전야」 — 조각 7(함정: 이긴 사람은 가이우스가 아니다) ──
-        new EvtTemplate { Id = "story_s5", Icon = "{wine}", Title = "개막의 밤", NeedsFighter = false,
+        new EvtTemplate { Id = "story_s5", Icon = "{wine}", Title = "개막의 밤", NeedsFighter = false, Teach = "season",
             Body = _ => "개막이 선포된 밤. 첫 경기는 내일이다. 막사는 조용하다. 카토가 탁자에 앉아 있다.\n" +
                 "{speech} 카토: \"밥은 드셨습니까.\"\n" +
                 "당신이 대답한다. 그는 고개를 끄덕이고 아무 말도 하지 않는다.\n" +
@@ -395,7 +424,7 @@ public sealed partial class Game
                         " — 카토: \"…내일 뵙겠습니다, 라니스타.\" 그가 당신을 그렇게 부른 것은 처음이다"; }) } },
 
         // ── 1막 A0 「개막」 — 위쪽 세 줄(무레나의 예고) ──
-        new EvtTemplate { Id = "story_a0", Icon = "{arena}", Title = "위쪽 세 줄", NeedsFighter = false,
+        new EvtTemplate { Id = "story_a0", Icon = "{arena}", Title = "위쪽 세 줄", NeedsFighter = false, Teach = "gamble",
             Body = _ => "첫 경기가 끝났다. 관중석은 반쯤 찼고, 당신 이름을 부르는 사람은 없었다.\n" +
                 "카토가 관중석 위쪽을 턱으로 가리킨다.\n" +
                 "{speech} 카토: \"저기 위쪽 세 줄, 저 사람들이 판돈을 정리하는 자들입니다. 우리 경기를 보러 온 게 아니라, 우리가 얼마짜리인지 보러 왔지요.\"\n" +
@@ -405,7 +434,7 @@ public sealed partial class Game
                 ("모래만 본다", _ => "카토: \"…그게 낫습니다. 모래는 적어도 정직하니까요.\"") } },
 
         // ── 1막 A3 「빚에 얼굴이 생긴 날」 — 무레나 첫 등장(조작 제안 없음: 첫 번째는 그냥 받아 간다) ──
-        new EvtTemplate { Id = "story_a3", Icon = "{candle}", Title = "빚에 얼굴이 생긴 날", NeedsFighter = false,
+        new EvtTemplate { Id = "story_a3", Icon = "{candle}", Title = "빚에 얼굴이 생긴 날", NeedsFighter = false, Teach = "repay",
             Body = _ => "시즌 첫 상환일. 문 두드리는 소리는 정중했다. 세 번, 고르게. 급한 사람의 소리가 아니었다.\n" +
                 "값비싼 토가를 입은 사내가 들어와 앉는다. 앉기 전에 의자를 손등으로 한 번 훑었다. 먼지를 확인한 게 아니라, 이 방이 어떤 방인지 재는 손이었다.\n" +
                 "{speech} 무레나: \"중개인 무레나라고 합니다. 검은 인장의 일을 봅니다.\"\n" +
@@ -435,7 +464,7 @@ public sealed partial class Game
                     return "무레나: \"제 첫 일이었습니다. …쓸데없는 얘길 했군요. 오늘은 시간으로 적어두지요.\" (빚 +25%)"; }) } },
 
         // ── 1막 A4 「관중의 맛」 — 루킬리우스 등장 ──
-        new EvtTemplate { Id = "story_a4", Icon = "{masks}", Title = "관중의 맛", NeedsFighter = false,
+        new EvtTemplate { Id = "story_a4", Icon = "{masks}", Title = "관중의 맛", NeedsFighter = false, Teach = "fame",
             Body = _ => "흥행이 붙기 시작한 날. 관중석 아래에서 향수 냄새가 나는 남자가 손을 흔든다.\n" +
                 "{speech} 루킬리우스: \"오, 그 유명한 죽은 사람의 아들! 아니 실례, 라니스타. 조영관 루킬리우스입니다. 이 도시의 재미를 발주하는 사람이지요.\"\n" +
                 "{speech} 루킬리우스: \"아, 오다가 저 계단에서 넘어질 뻔했어요. 저거 누가 좀 고쳐야 합니다. 제가 말할 데가 아닌가? 제가 말할 데네요. 하하.\"\n" +
@@ -450,7 +479,7 @@ public sealed partial class Game
                     return "루킬리우스: \"…아, 아버님이랑 똑같이 말씀하시는군요. 그분도 재미없었어요. 재미없는 분들은 이 도시에서 오래 못 가시더라고요.\""; }) } },
 
         // ── 1막 A5 「두 번째 방문」 — 조작 최초 제안(파는 건 두 번째부터) ──
-        new EvtTemplate { Id = "story_a5", Icon = "{candle}", Title = "두 번째 방문", NeedsFighter = false,
+        new EvtTemplate { Id = "story_a5", Icon = "{candle}", Title = "두 번째 방문", NeedsFighter = false, Teach = "loan",
             Body = _ => "두 번째다. 이번엔 문을 두드리지 않았다. 이미 열려 있었기 때문이다 — 누가 열어놨는지는 아무도 말하지 않았다.\n" +
                 "무레나가 증서 뭉치를 탁자에 올려놓는다. 인장은 검다.\n" +
                 "{speech} 무레나: \"지난번엔 숫자만 말씀드렸지요. 오늘은 방법을 말씀드리려고 왔습니다.\"\n" +
@@ -505,7 +534,7 @@ public sealed partial class Game
                     return "그는 더 묻지 않고 나갔다. 문은 조용히 닫혔다. 그날부터 카토의 경기평은 한 줄 더 짧아졌다"; }) } },
 
         // ── 1막 A7 「이름이 불렸다」 — 값이 매겨지기 시작한다 ──
-        new EvtTemplate { Id = "story_a7", Icon = "{horn}", Title = "이름이 불렸다", NeedsFighter = false,
+        new EvtTemplate { Id = "story_a7", Icon = "{horn}", Title = "이름이 불렸다", NeedsFighter = false, Teach = "patron",
             Body = _ => "시장에서 처음으로 누군가 당신 루두스의 이름을 말했다.\n" +
                 "{speech} 카토: \"우리 이름이 들렸습니다. 좋은 쪽으로는 아니었지만, 들리긴 했습니다.\"\n" +
                 "{speech} 카토: \"들리기 시작하면 값이 매겨집니다. 값이 매겨지면 사람들이 찾아오고요.\"\n" +
@@ -513,6 +542,15 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("갑옷걸이를 보러 간다", _ => "전부 걸려 있었다. 전부 닦여 있었다. 그런 날이 있다"),
                 ("하던 일을 계속한다", _ => "카토: \"예. 그것도 대답입니다.\"") } },
+
+        // ── 「남은 것」 — 시즌 하나가 끝난 뒤. 기록실을 여는 짧은 장면(카토) ──
+        new EvtTemplate { Id = "story_records", Icon = "{trophy}", Title = "남은 것", NeedsFighter = false, Teach = "records",
+            Body = _ => "시즌 하나가 지나갔다. 카토가 벽에 새 목판을 하나 건다. 낡은 목판 옆이다.\n" +
+                "{speech} 카토: \"경기는 끝나면 사라집니다. 남는 건 숫자하고, 이름하고, 누가 누구를 이겼다는 말뿐이지요.\"\n" +
+                "{speech} 카토: \"가이우스는 이 벽을 하루에 두 번씩 봤습니다. 아침에 한 번, 자기 전에 한 번.\"",
+            Choices = new (string, Func<Gladiator?, string>)[] {
+                ("목판을 올려다본다", _ => "이름이 몇 개 적혀 있었다. 아직은 몇 개뿐이었다"),
+                ("카토에게 계속 걸어두라 한다", _ => "카토: \"…예. 그러지요. 걸 자리는 넉넉합니다\"") } },
 
         // ── 1막 비트① 「세 가문」 — 개성별 환영 ──
         new EvtTemplate { Id = "story_house_gold", Icon = "{coin}", Title = "재력가의 환영", NeedsFighter = false, Kind = "letter",
@@ -704,7 +742,7 @@ public sealed partial class Game
                     return "명성 +12 — 사절: \"…아버님 아들이시군요. 칭찬으로 드리는 말은 아닙니다.\""; }) } },
 
         // ── 1막 비트② 「첫 원한」 — 지목 격파 도전 ──
-        new EvtTemplate { Id = "story_challenge", Icon = "{swords}", Title = "지목 격파", NeedsFighter = false,
+        new EvtTemplate { Id = "story_challenge", Icon = "{swords}", Title = "지목 격파", NeedsFighter = false, Teach = "watch",
             Body = _ => {
                 var t = _storyCtx != null ? _cast.FirstOrDefault(g => g.Id == _storyCtx) : null;
                 t ??= ChallengeTarget();
@@ -1059,7 +1097,7 @@ public sealed partial class Game
         if (!SeasonActive)
             return "{speech} 카토: \"준비는 끝났습니다. 나머지는 모래가 정하지요.\" → [시즌 개막 ▶]";
         if (_cast.Where(g => g.IsPlayer).All(g => g.CW + g.CL + g.CD == 0))
-            return "{speech} 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 {pause} 일시정지로 전술을 바꿀 수 있습니다(경기당 2회)";
+            return "{speech} 카토: \"당신은 저 아이를 조종할 수 없습니다. 다만 방향을 일러줄 수는 있지요.\" → 내 경기 관전 중 왼쪽 전술 패널에서 실시간으로 전환합니다(경기당 2회)";
         // 1막 — 무레나가 아직 안 왔다면 빚이 먼저 말한다(첫 상환일 예고, [13a] A3)
         if (_storyStage == "act1" && !_storyBeats.Contains("a3") && _debt > 0f)
             return "{speech} 카토: \"상환일이 옵니다. 그때는 사람이 직접 옵니다 — 지금까지는 숫자만 왔지만요.\"";
@@ -1068,6 +1106,7 @@ public sealed partial class Game
 
     private CampaignDoc? BuildCampaignDoc() => _playerless ? null
         : new CampaignDoc(_storyStage, _storyBeats.OrderBy(x => x).ToArray(), StoryHint(),
+            _lessonQueue.FirstOrDefault(), _taught.OrderBy(x => x).ToArray(),
             ClueIds.Where(_storyFlags.Contains).ToArray(),   // 기억의 벽 — 획득한 조각(순서 고정)
             _storyFlags.Contains("cato_exiled") ? "exiled" : "cato",
             _storyFlags.Contains("clue_confess"));

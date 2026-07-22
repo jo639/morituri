@@ -89,6 +89,7 @@ internal static class Program
             "/api/release" when method == "POST" => game.ReleaseJson(StrOf(body ?? "", "id")),
             "/api/fighter" when method == "POST" => game.ProfileJson(StrOf(body ?? "", "id")),
             "/api/choose" when method == "POST" => game.ChooseEventJson(IntOf(body ?? "", "choice")),
+            "/api/lessondone" when method == "POST" => game.LessonDoneJson(StrOf(body ?? "", "id")),
             "/api/newcareer" when method == "POST" => NewCareer(BoolOf(body ?? "", "skip")),
             "/api/slots" when method == "POST" => SlotsJson(),
             "/api/loadslot" when method == "POST" => LoadSlot(IntOf(body ?? "", "n")),

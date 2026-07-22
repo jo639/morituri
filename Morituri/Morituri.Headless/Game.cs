@@ -138,7 +138,9 @@ public sealed partial class Game
         int PreWeek = 0,   // [19] 프리시즌 준비 주간 진척
         int FestStage = 0, List<string>? FestSlots = null,   // {masks} 대항전 단계·진출자
         string? FestRepId = null, string? FestChampion = null,   // {fest} 내 대표 지명·우승자
-        List<string>? StoryFlags = null);   // [13a] 캠페인 선택 플래그(null=구세이브=신규 씬 스킵)
+        List<string>? StoryFlags = null,   // [13a] 캠페인 선택 플래그(null=구세이브=신규 씬 스킵)
+        List<string>? Taught = null,       // 이미 배운 레슨(씬이 가리킨 기능) — null=구세이브=전부 배운 것으로 간주
+        List<string>? LessonQueue = null); // 아직 실행하지 않은 레슨 대기열(씬이 연달아 와도 덮이지 않는다)
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -731,6 +733,7 @@ public sealed partial class Game
         public required Func<string, string> Body;                       // 대상 이름 → 본문
         public required (string Label, Func<Gladiator?, string> Apply)[] Choices;
         public string Kind = "dialogue";                                 // "letter" = 화면 중앙 편지 개봉 UI(초상 없음), "dialogue" = 초상 대화
+        public string? Teach;                                            // 씬이 끝나면 이 화자가 가리킬 기능(레슨 id) — 말한 것을 곧바로 만져보게 한다
     }
 
     /// <summary>스탯을 상한(잠재력 버짓) 내에서 영구 조정 — 여유 없으면 훈련 포인트로 환급. axis: Atk/Def/Rct.</summary>
@@ -993,6 +996,8 @@ public sealed partial class Game
         string outcome = t.Choices[choiceIdx].Apply(subj);
         _story.Add((0, "event_choice", $"{t.Icon} {t.Title} — {outcome}"));
         _pendingEventId = _pendingEventFighter = null;
+        // 씬이 말한 기능을 그 화자가 직접 가리킨다 — 기능이 소리소문없이 열리지 않도록(레슨은 한 번만).
+        if (t.Teach != null) QueueLesson(t.Teach);
         // [13a] 서막은 연쇄한다 — 프리시즌 씬(S0→S1→S3→S4→S5)은 경기를 기다리지 않는다.
         // 1막 이후는 그대로 경기 페이싱(afterMatch)에 맡긴다 — 각본이 플레이를 밀어내지 않도록.
         if (_storyStage == "prologue") MaybeSpawnStoryEvent(afterMatch: false);
@@ -3932,6 +3937,11 @@ public sealed partial class Game
         _storyBeats.Clear(); if (w.StoryBeats != null) foreach (var b in w.StoryBeats) _storyBeats.Add(b);
         _storyCtx = w.StoryCtx; _fixChoice = w.FixChoice;
         _storyFlags.Clear(); if (w.StoryFlags != null) foreach (var f in w.StoryFlags) _storyFlags.Add(f);
+        // 레슨: 구세이브(Taught 없음)는 이미 다 아는 라니스타로 본다 — 진행 중인 커리어에 튜토리얼이 쏟아지지 않게.
+        _taught.Clear();
+        if (w.Taught != null) foreach (var l in w.Taught) _taught.Add(l);
+        else foreach (var l in AllLessons) _taught.Add(l);
+        _lessonQueue.Clear(); if (w.LessonQueue != null) _lessonQueue.AddRange(w.LessonQueue);
         _keepsakes.Clear();
         if (w.Keepsakes != null) _keepsakes.AddRange(w.Keepsakes);
         else if (w.GhostClues != null) foreach (var c in w.GhostClues) AddClue(c);   // 구세이브 유품함 단서 → 보관함 문서 마이그레이션
@@ -4025,7 +4035,9 @@ public sealed partial class Game
             _tbWinnerId, _masterTraitPool, _masterTacticPool, _banquetSeason, 0, 0,
             _pressArchive.Count > 0 ? _pressArchive.ToList() : null, _preWeek,
             _festStage, _festSlots.Count > 0 ? _festSlots.ToList() : null, _festRepId, _festChampion,
-            _storyFlags.Count > 0 ? _storyFlags.ToList() : null), JsonOpts));
+            _storyFlags.Count > 0 ? _storyFlags.ToList() : null,
+            _taught.ToList(),   // 빈 리스트라도 기록한다 — null은 '구세이브(전부 배움)'라는 뜻이라 신규 세계와 구분해야 한다
+            _lessonQueue.Count > 0 ? _lessonQueue.ToList() : null), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,
