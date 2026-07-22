@@ -1222,6 +1222,30 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Story_PrologueReplay_LockedUntilConfession()
+    {
+        // [13a] 오르쿠스의 마지막 경기는 커리어 시작에 틀어주는 프롤로그가 아니라
+        // **카토의 자백으로 얻는 단서**다. 자백 전에는 서버가 기록 자체를 내주지 않는다.
+        TempDir("prologuelock");
+        var g = new Game(1, 401, fresh: true, interactive: false, playerless: false);
+        Assert.That(Parse(g.WatchPrologueJson()).TryGetProperty("error", out _), Is.True,
+            "자백 전에는 그 경기를 볼 수 없다");
+
+        string? body = RunToConfession(g, warm: true);
+        Assert.That(body != null, Is.True, "자백 도달");
+        Assert.That(Parse(g.StateJson()).GetProperty("Campaign").GetProperty("OrcusReplay").GetBoolean(),
+            Is.False, "자백을 '듣기만' 한 시점엔 아직 기록이 없다");
+
+        g.ChooseEventJson(1);   // 처분 — 「당신은 여기 남는다」
+        var after = Parse(g.StateJson());
+        Assert.That(after.GetProperty("Campaign").GetProperty("OrcusReplay").GetBoolean(),
+            Is.True, "처분과 함께 그 경기 기록을 얻는다");
+        var open = Parse(g.WatchPrologueJson());
+        Assert.That(open.TryGetProperty("error", out _), Is.False, "자백 후에는 열린다");
+        Assert.That(open.GetProperty("title").GetString(), Is.EqualTo("오르쿠스의 마지막 경기 · AUC 661"));
+    }
+
+    [Test]
     public void Game_Story_EmperorArc_GatesAndOrder()
     {
         // [13] 후일담 「황제의 게임」: 종막(finale)을 본 커리어 한정, E1(4단계) → E2(특명/총애/컵) → E3(6단계/컵).

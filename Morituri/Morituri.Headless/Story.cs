@@ -32,7 +32,8 @@ public sealed partial class Game
     /// <summary>보관함 문서 — 유서·메모·서신·증서·단서. 클릭 열람용 타입 있는 유품(구 유품함 단서를 승격).</summary>
     private sealed record KeepsakeRec(string Type, string Title, string Body, string From, string When);
     private sealed record CampaignDoc(string Stage, string[] Beats, string? Hint, string[]? Clues = null,
-        string Voice = "cato");   // 경기평의 화자 — 카토를 내치면 "thea"(내 경기)·"lucilius"(AI전)로 갈린다
+        string Voice = "cato",    // 경기평의 화자 — 카토를 내치면 "thea"(내 경기)·"lucilius"(AI전)로 갈린다
+        bool OrcusReplay = false);   // 오르쿠스의 마지막 경기 기록 해금(카토의 자백으로 얻는 단서)
     private sealed record UnrestDoc(int Level, string Stage, string Icon, string Effects);
 
     // ── 신규 세계 / 구세이브 ──
@@ -51,14 +52,14 @@ public sealed partial class Game
     /// 자백(B7) 전에는 「이름 없는 경기」, 자백 후에는 제목이 밝혀진다 — 두 번째 관람이 이 설계의 목적이다.</summary>
     public string WatchPrologueJson()
     {
+        // 진실을 듣기 전에는 이 경기를 볼 수 없다 — 커리어 시작에 틀어주는 프롤로그가 아니라
+        // 카토의 자백으로 얻는 단서다(UI만 숨기면 반쪽이라 서버에서 막는다).
+        if (!_storyFlags.Contains("clue_confess"))
+            return Err("아직 그 경기의 기록을 찾지 못했다");
         PrologueReplay.Write(Path.Combine(AppContext.BaseDirectory, "viewer.json"));
-        bool known = _storyFlags.Contains("clue_confess");
         return JsonSerializer.Serialize(new {
-            ok = true,
-            a = known ? "오르쿠스" : "이름 없는 도끼",
-            b = known ? "스쿠타투스" : "탑방패를 든 자",
-            round = 0, isEvent = true, known,
-            title = known ? "오르쿠스의 마지막 경기 · AUC 661" : "이름 없는 경기 · AUC 661",
+            ok = true, a = "오르쿠스", b = "스쿠타투스", round = 0, isEvent = true, known = true,
+            title = "오르쿠스의 마지막 경기 · AUC 661",
         }, JsonOpts);
     }
 
@@ -629,13 +630,13 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("나가라", _ => {
                     Flag("cato_exiled"); AddRep(10f); ArchiveConfession();
-                    return "그는 목검 하나만 들고 나갔다. 20년 동안 가르친 것들은 두고 갔다. 도끼도 그대로 두었다 — \"저 아이들은 잘못이 없습니다. 그것만 기억해 주십시오. …날은 계속 닦아 주십시오. 부탁입니다.\" (명성 +10 · 훈련 효율 저하 · 경기평의 화자가 바뀐다)"; }),
+                    return "그는 목검 하나만 들고 나갔다. 20년 동안 가르친 것들은 두고 갔다. 도끼도 그대로 두었다 — \"저 아이들은 잘못이 없습니다. 그것만 기억해 주십시오. …날은 계속 닦아 주십시오. 부탁입니다.\" (명성 +10 · 훈련 효율 저하 · 경기평의 화자가 바뀐다) — {play} 그날의 경기 기록을 보관함에 남기고 갔다"; }),
                 ("당신은 여기 남는다", _ => {
                     Flag("cato_kept"); ArchiveConfession();
-                    return "카토: \"…왜입니까. 용서하지 마십시오. 그건 제 몫이 아니라 죽은 사람 몫입니다.\" 당신은 대답하지 않았다 — \"…예. 그럼 계속 가르치겠습니다. 그게 제일 무거운 벌이니까요.\" 그날 이후 그의 경기평에서 '도끼' 이야기는 사라졌다"; }),
+                    return "카토: \"…왜입니까. 용서하지 마십시오. 그건 제 몫이 아니라 죽은 사람 몫입니다.\" 당신은 대답하지 않았다 — \"…예. 그럼 계속 가르치겠습니다. 그게 제일 무거운 벌이니까요.\" 그날 이후 그의 경기평에서 '도끼' 이야기는 사라졌다 — {play} 그날의 경기 기록이 보관함에 남았다"; }),
                 ("지금은 대답하지 않겠다", _ => {
                     Flag("cato_unanswered"); ArchiveConfession();
-                    return "카토: \"…예. 기다리겠습니다.\" 그는 다음 날도 연습장에 있었다. 그 다음 날도. 아무 일 없다는 듯이"; }) } },
+                    return "카토: \"…예. 기다리겠습니다.\" 그는 다음 날도 연습장에 있었다. 그 다음 날도. 아무 일 없다는 듯이 — {play} 다만 그날의 경기 기록은 탁자에 그대로 두고 갔다"; }) } },
 
         // ── 2막 B8 「무레나가 안다는 것」 — 자백 직후 ──
         new EvtTemplate { Id = "story_b_murena", Icon = "{candle}", Title = "무레나가 안다는 것", NeedsFighter = false,
@@ -1004,7 +1005,13 @@ public sealed partial class Game
             "오르쿠스는 이겼다. 방패를 쪼개고 132승째를 가져갔다. 그리고 모래 위에 앉아 일어나지 않았다.\n" +
             "공식 사인은 심장. 사실이었다.\n\n" +
             "그날 밤 가이우스가 죽었다. 전설에는 주인이 필요하고, 주인을 지우면 전설은 소문이 되므로.\n\n" +
-            "— 「검은 인장에 맞서다 사라졌다는 소문만 남았다.」",
+            "— 「검은 인장에 맞서다 사라졌다는 소문만 남았다.」\n\n" +
+            "…\n\n" +
+            "카토는 말을 마치고 낡은 두루마리 하나를 탁자에 올려놓았다.\n" +
+            "「AUC 661 · 오르쿠스 대 스쿠타투스」 — 그날의 경기 기록이다.\n\n" +
+            "\"20년 동안 갖고 있었습니다. 태우지도 못하고, 펴보지도 못했습니다.\"\n" +
+            "\"이제 보십시오. 저 놈이 한 번도 치지 않는 걸 보시면… 아실 겁니다.\"\n\n" +
+            "→ **보관함에서 그 경기를 다시 볼 수 있다.**",
             "교관 카토");
     }
 
@@ -1059,7 +1066,8 @@ public sealed partial class Game
     private CampaignDoc? BuildCampaignDoc() => _playerless ? null
         : new CampaignDoc(_storyStage, _storyBeats.OrderBy(x => x).ToArray(), StoryHint(),
             ClueIds.Where(_storyFlags.Contains).ToArray(),   // 기억의 벽 — 획득한 조각(순서 고정)
-            _storyFlags.Contains("cato_exiled") ? "exiled" : "cato");
+            _storyFlags.Contains("cato_exiled") ? "exiled" : "cato",
+            _storyFlags.Contains("clue_confess"));
 
     /// <summary>보관함 탭 문서 목록 — 최신 편철이 위로.</summary>
     private List<KeepsakeRec>? BuildKeepsakes() => _playerless || _keepsakes.Count == 0 ? null

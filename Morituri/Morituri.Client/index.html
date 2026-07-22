@@ -347,7 +347,9 @@
 .dlg-scene small{ display:block; letter-spacing:.1em; color:var(--dim); font-size:10px; font-weight:400; margin-top:2px }
 @keyframes dlgDrop{ from{opacity:0; transform:translate(-50%,-8px)} to{opacity:1; transform:translate(-50%,0)} }
 .dlg-stage{ position:absolute; left:50%; bottom:36px; transform:translateX(-50%); width:min(940px,94%) }
-.dlg-port{ position:absolute; left:-200px; bottom:100%; margin-bottom:-170px; z-index:2;
+/* 초상은 **무대 바닥**에 선다 — 대화창 상단(bottom:100%)에 매달면 대사가 길어지거나
+   선택지가 뜰 때 박스가 자라면서 초상까지 따라 올라간다(실측 167px 상승). 바닥 기준이면 불변. */
+.dlg-port{ position:absolute; left:-200px; bottom:0; z-index:2;
   filter:drop-shadow(0 6px 18px rgba(0,0,0,.6)); transition:opacity .25s ease }
 .dlg-port.dimmed{ opacity:.35; filter:grayscale(.6) drop-shadow(0 6px 18px rgba(0,0,0,.6)) }
 /* 전신 PNG 초상(카토 기준 튜닝) — 하단 페이드아웃 */
@@ -357,7 +359,7 @@
 /* 무레나 PNG는 캔버스 우측에 치우쳐 있어 대사를 가림 → 왼쪽으로 보정(카토와 얼굴 위치·오른쪽 여백 정렬) */
 .dlg-port[data-who="murena"] img{ margin-left:-58px }
 /* 실루엣 폴백(도형)은 카드형 흉상 — 전신 PNG와 프레이밍이 달라 전용 크기·위치(원래 값 복원) */
-.dlg-port:has(svg){ left:-14px; margin-bottom:-34px }
+.dlg-port:has(svg){ left:-14px; bottom:134px }
 .dlg-port svg{ width:260px; height:260px }
 .dlg-np{ position:absolute; top:-38px; left:250px }
 .dlg-nameplate{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:.12em;
@@ -549,7 +551,7 @@
   <!-- 루두스 = 지휘실(R2): 서브탭 — 지휘실(요약·목표) / 모리튜리(선수단 관리) / 시설·특전 / 시즌(컵·대항전) -->
   <div class="screen" id="ludus"><div class="pad" style="height:100%;display:flex;flex-direction:column;padding-bottom:12px">
     <div style="display:flex;align-items:center;gap:12px;flex:0 0 auto">
-      <span class="seg" id="ldTabs"><button data-v="dash" class="cur">지휘실</button><button data-v="men">모리튜리</button><button data-v="fac">시설·특전</button><button data-v="season">시즌</button></span>
+      <span class="seg" id="ldTabs"><button data-v="dash" class="cur">지휘실</button><button data-v="men">모리튜리</button><button data-v="fac">시설·특전</button></span>
       <span class="note" id="ludusNote"></span>
       <div style="margin-left:auto;display:flex;gap:8px" id="ludusActs">
         <button onclick="hostShow()" class="act glory" style="width:auto;padding:6px 14px" title="골드를 태워 특별 흥행전을 연다 — 리그 최고 명성의 상대를 초청, 출전자는 라니스타가 정한다. 수익은 흥행으로 (골드 120)">{fest} 흥행 개최 ({coin}120)</button>
@@ -563,8 +565,16 @@
         <div id="ludusBrief"></div>
         <div id="preseasonBoard" style="display:none"></div>
       </div>
-      <div style="flex:1;min-width:0;overflow:auto">
+      <div style="flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:10px">
         <div class="fac" id="goalBoard" title="목표 보드 — 흩어진 야망을 한눈에"></div>
+        <details id="cupFold" style="border-top:1px solid #3a2f22;padding-top:6px">
+          <summary style="cursor:pointer;font-family:var(--font-display);letter-spacing:.06em;color:var(--gold);font-size:13px">{trophy} 챔피언십 컵 <span class="note" style="font-weight:400">(정규시즌 후 상위 4인)</span></summary>
+          <div id="cupBox" style="margin-top:6px"></div>
+        </details>
+        <details id="festFold" style="border-top:1px solid #3a2f22;padding-top:6px">
+          <summary style="cursor:pointer;font-family:var(--font-display);letter-spacing:.06em;color:var(--gold);font-size:13px">{masks} 사투르날리아 대항전 <span class="note" style="font-weight:400">(미드시즌 · 대표 1인)</span></summary>
+          <div id="festBox" style="margin-top:6px"></div>
+        </details>
       </div>
     </div>
     <div id="ldMen" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
@@ -578,12 +588,6 @@
       <h2>{laurel} 업적</h2>
       <div id="achGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       <div id="memWall"></div>
-    </div>
-    <div id="ldSeason" class="ldview" hidden style="flex:1;min-height:0;overflow:auto;margin-top:8px">
-      <h2 style="margin-top:0">{trophy} 챔피언십 컵 <span class="note">(정규시즌 후 상위 4인 토너먼트)</span></h2>
-      <div id="cupBox"></div>
-      <h2>{masks} 사투르날리아 대항전 <span class="note">(미드시즌 축제 — 루두스 대표 1인 토너먼트)</span></h2>
-      <div id="festBox"></div>
     </div>
   </div></div>
 
@@ -1206,13 +1210,12 @@ function go(s){
 }
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.s));
 $('lgTabs').onchange = lgPaint;   // 리그 서브탭(일정·순위·기록)
-// 루두스 서브탭(지휘실·모리튜리·시설·시즌)
+// 루두스 서브탭(지휘실·모리튜리·시설) — 시즌(컵·대항전)은 지휘실 우측 열로 통합
 function ldPaint(){
   const v = $('ldTabs').value || 'dash';
   $('ldDash').style.display = v==='dash' ? 'flex' : 'none';
   $('ldMen').style.display = v==='men' ? 'block' : 'none';
   $('ldFac').style.display = v==='fac' ? 'block' : 'none';
-  $('ldSeason').style.display = v==='season' ? 'block' : 'none';
 }
 $('ldTabs').onchange = ldPaint;
 $('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
@@ -1307,39 +1310,31 @@ const KP_META = {
   '증서': {ic:'{quill}', col:'#8a7a5a', label:'증서'},
   '단서': {ic:'{candle}', col:'var(--gold-deep)', label:'단서'},
 };
-// [13a] 프롤로그 리플레이 배너 — 자백(clue_confess) 전엔 「이름 없는 경기」로 잠긴 듯, 후엔 제목이 밝혀진다.
-// 두 번째 관람이 설계의 목적이다: 같은 픽셀, 완전히 다른 경기.
+// [13a] 오르쿠스의 마지막 경기 = **진실이 밝혀진 뒤에 얻는 단서**.
+// 커리어 시작에 틀어주지 않는다 — 카토가 자백(clue_confess)해야 비로소 그 경기를 볼 수 있다.
+// 자백을 듣고 나서 보는 그 경기가 곧 증거다: 방패는 한 번도 치지 않고, 도끼는 숨이 차 간다.
 function prologueBanner(){
   const camp = st.Campaign;
-  // 캠페인 커리어에만 노출(구세이브·각본 없는 시작 제외) — 프롤로그를 본 커리어의 기억이므로
-  if (!camp || camp.Stage==='chronicle' && !(camp.Clues||[]).length) return '';
-  const known = (camp.Clues||[]).includes('clue_confess');
-  const title = known ? '오르쿠스의 마지막 경기 · AUC 661' : '이름 없는 경기 · AUC 661';
-  const sub = known
-    ? '이제 당신은 저 경기에서 무엇을 봤는지 안다. 다시 보겠는가.'
-    : '개막 전에 본 그 경기. 무언가 이상했지만, 무엇이었는지는 아직 모른다.';
+  if (!camp || !camp.OrcusReplay) return '';
   return `<div onclick="watchPrologue()" style="cursor:pointer;margin-bottom:14px;padding:14px 18px;border-radius:10px;
-      background:linear-gradient(135deg,#1a1410,#241a12);border:1px solid ${known?'var(--gold-deep)':'#3a332c'};
+      background:linear-gradient(135deg,#1a1410,#241a12);border:1px solid var(--gold-deep);
       display:flex;gap:14px;align-items:center;transition:transform .12s ease" onmouseover="this.style.transform='translateX(3px)'" onmouseout="this.style.transform=''">
-    <span style="font-size:26px;flex-shrink:0;${known?'':'filter:grayscale(1);opacity:.7'}">{play}</span>
+    <span style="font-size:26px;flex-shrink:0">{play}</span>
     <div style="flex:1;min-width:0">
-      <b style="color:${known?'var(--gold)':'#8a8078'};font-size:14px">${title}</b>
-      <div class="note" style="margin-top:3px">${sub}</div></div>
+      <b style="color:var(--gold);font-size:14px">오르쿠스의 마지막 경기 · AUC 661</b>
+      <div class="note" style="margin-top:3px">카토가 말한 그 경기다. 기록실에 남은 단 하나의 사본 — 이제 당신은 무엇을 보아야 하는지 안다.</div></div>
     <span style="color:var(--gold)">▶</span></div>`;
 }
-// [13a] 프롤로그를 관전 iframe으로 연다(클라이언트를 떠나지 않는다). onDone: 재생 후 콜백(뉴게임 흐름용).
-window.watchPrologue = async (onDone)=>{
+// [13a] 오르쿠스의 마지막 경기를 관전 iframe으로 연다(보관함 단서 — 자백 후에만 열린다).
+window.watchPrologue = async ()=>{
   const r = await api('/api/prologue', {});   // body 전달 = POST(라우트가 POST만 받는다)
   if (r.error){ toast('{warn} '+r.error); return; }
   _replayReturn = document.querySelector('.screen.on')?.id || 'archive';
   if (_replayReturn==='replay') _replayReturn='archive';
-  _prologueDone = onDone || null;
   $('replayCard').textContent = `{play} ${r.title||'프롤로그'}`;
-  if ($('replayBack')) $('replayBack').textContent = onDone ? '20년 후 →' : '← 돌아가기';
   $('watchF').src = 'viewer.html?t='+Date.now();
   go('replay');
 };
-let _prologueDone = null;
 function renderArchive(){
   _kpSeen = (st.Keepsakes||[]).length; renderBadges();
   const body=$('archiveBody'); if(!body) return;
@@ -2713,8 +2708,6 @@ async function loadReplay(apiPath, idx, label){
   go('replay');
 }
 window.closeReplay = ()=>{ $('watchF').src='about:blank';
-  if ($('replayBack')) $('replayBack').textContent='← 돌아가기';
-  if (_prologueDone){ const cb=_prologueDone; _prologueDone=null; cb(); return; }   // [13a] 프롤로그 후 서막 진입
   go(_replayReturn); };
 window.openArchive = (idx)=> loadReplay('/api/watcharchive', idx, '{play} 다시보기');
 window.openGreat = (idx)=> loadReplay('/api/watchgreat', idx, '{play} 명경기');
@@ -2835,6 +2828,10 @@ function renderLudus(){
   $('achGrid').innerHTML = (st.Achievements||[]).map(a=>
     `<div class="chip" title="${a.Desc}" style="padding:6px 10px;${a.Unlocked?'background:rgba(201,168,76,.2);color:var(--gold);border:1px solid var(--gold)':'opacity:.45'}">${a.Unlocked?'{laurel}':'{lock}'} ${a.Name}</div>`).join('');
 
+  // 지휘실 우측: 컵·대항전은 접이식 — 지금 굴러가는 것만 펼친다(목표 보드가 주인공)
+  const cf=$('cupFold'), ff=$('festFold');
+  if (cf) cf.open = !!(cup && cup.length);
+  if (ff) ff.open = !!(fest && (fest.Pickable || fest.Champion || (fest.Bracket && fest.Bracket.length)));
   renderMemWall();
   renderGoalBoard();
   renderLudusBrief();
@@ -3962,11 +3959,9 @@ $('mNew').onclick = async ()=>{
   await refresh();
   _lgDoc=null; _lgMonth=null;   // 새 세계 — 리그 캐시 리셋
   $('menu').style.display='none';
-  const enterProlog = ()=>{ go('market'); maybeAutoStory(); maybeCoach(); };   // 서막 S0 자동 개막
-  // [13a] 프롤로그 「AUC 661」 — 로고 다음, S0(장례) 앞. 이름도 설명도 없이 한 경기를 본다.
-  // 관전 iframe으로 재생하고, [← 돌아가기] 시 서막이 이어진다. 캠페인 생략 시엔 건너뛴다.
-  if (!skip) watchPrologue(enterProlog);
-  else enterProlog();
+  // [13a] 커리어는 곧장 서막(S0 장례)으로 시작한다.
+  // 오르쿠스의 마지막 경기는 **진실이 밝혀진 뒤 보관함에서 얻는 단서**다 — 시작부터 틀어주지 않는다.
+  go('market'); maybeAutoStory(); maybeCoach();
 };
 
 refresh(); renderSlots();
