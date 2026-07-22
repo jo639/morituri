@@ -156,6 +156,9 @@ public sealed class FighterRuntime
     public Directive Dir;                                  // 합성된 유효 지시
     public TacticSwitch[]? Switches;                       // 경기 중 전술 전환 예약(감독 개입) — 입력의 일부(결정론)
     public int SwitchIdx;                                  // 다음 적용할 전환 인덱스
+    public TacticsProfile[]? AdaptPool;                    // 자율 전환 후보(AI 전용) — null이면 평가 자체가 없다
+    public float NextAdaptAt = float.MaxValue;             // 다음 재평가 시각 (풀 없으면 영원히 안 옴)
+    public int AdaptCount;                                 // 이번 경기 전환 횟수 (상한 도달 시 평가 종료)
     public readonly List<ActiveOverride> Overrides = new();
     public readonly Dictionary<string, float> CooldownUntil = new();
     public ActionRequest PendingForced = ActionRequest.None; // ForcedHeavy 인터럽트

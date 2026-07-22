@@ -3028,11 +3028,17 @@ public sealed partial class Game
         return StateJson();
     }
 
-    /// <summary>AI 전술 선택: 상대 무기 사거리 카운터 + 자기 무기 시너지 + 노이즈 → 풀에서 argmax.</summary>
+    /// <summary>AI 전술 선택: 상대 무기 사거리 카운터 + 자기 무기 시너지 + 상대 기질·제 몸 상태·격 차이 + 노이즈 → 풀에서 argmax.
+    /// 판단 재료는 전부 경기 전에 <b>알 수 있는 것</b>만 쓴다 — 무기·평판·소문난 기질·제 몸(숨은 스탯은 안 본다).</summary>
     private static string SelectTacticAi(Gladiator self, Gladiator opp, SimRandom rng)
     {
         float oppRange = WeaponTable.Get(opp.WeaponId).Range;
         float ownRange = WeaponTable.Get(self.WeaponId).Range;
+        // 소문난 기질 — 달려드는 놈인가, 재는 놈인가.
+        bool oppAggr = opp.PersonalityId is "PER_RECKLESS" or "PER_BOLD" or "PER_CRUEL" or "PER_SHOWMAN";
+        bool oppPassive = opp.PersonalityId is "PER_COWARD" or "PER_WARY" or "PER_OPPORTUNIST";
+        bool hurt = self.InjuryMatches > 0 || self.Fatigue >= 70;   // 성한 몸이 아니다
+        float fameGap = opp.Fame - self.Fame;                       // + = 상대가 더 이름났다
         string best = self.TacticPool[0]; float bestScore = float.MinValue;
         foreach (var tid in self.TacticPool)
         {
@@ -3044,6 +3050,12 @@ public sealed partial class Game
             if (oppRange < 3.0f && keep) score += 2f;         // 근접 상대 → 거리·반응
             if (tid is "TAC_BALANCED" or "TAC_DECISION") score += 1f;
             score -= MathF.Abs(t.PreferredDistance - ownRange * 0.8f) * 0.5f;   // 제 무기와 안 맞는 전술 감점
+            if (oppAggr)    score += (t.CounterWindow + t.GuardBias) * 1.2f;    // 먼저 들어오는 놈은 기다렸다 친다
+            if (oppPassive) score += t.Aggression * 1.4f;                       // 재는 놈은 재게 두지 않는다
+            if (hurt)       score += (t.GuardBias + t.StaminaReserve) - t.RiskTolerance * 0.8f;
+            score += (self.Stats.Rct - 70f) / 100f * t.CounterWindow * 1.5f;    // 반응이 빨라야 카운터가 산다
+            score += (self.Stats.Spd - 70f) / 100f * t.Aggression * 1.5f;       // 발이 빨라야 밀어붙일 수 있다
+            if (fameGap > 40f) score += t.RiskTolerance;                        // 격이 다른 상대 — 얌전히 지면 남는 게 없다
             score += rng.Range(0f, 1.5f);                     // 예측불가성
             if (score > bestScore) { bestScore = score; best = tid; }
         }
@@ -3487,7 +3499,10 @@ public sealed partial class Game
         var tr = g.SkillIds.Length > 0 ? g.TraitIds.Concat(g.SkillIds).ToArray() : g.TraitIds;
         return new(g.Name, stats, g.WeaponId, g.TacticId, g.PersonalityId,
             tr.Length > 0 ? tr : null,
-            g.PendingEmotions.Count > 0 ? g.PendingEmotions.ToArray() : null, rel, intensity);
+            g.PendingEmotions.Count > 0 ? g.PendingEmotions.ToArray() : null, rel, intensity,
+            // 라니스타 없는 선수는 경기 중 제 판단으로 전술을 바꾼다(제 풀 안에서만 — 내 선수와 같은 규칙).
+            // 내 모리튜리는 null: 개입은 라니스타의 몫으로 남긴다.
+            AdaptPool: g.IsPlayer ? null : g.TacticPool);
     }
 
     private ViewerEndowment Endow(Gladiator g) => new(

@@ -106,7 +106,9 @@ public sealed record PersonalityDef(
     float GlobalProbMod,      // 냉철함 -0.5: 모든 트리거 발동 확률 ×(1+값)
     ParamMod[] GlobalMods,    // 상시 파라미터 보정
     TriggerRule[] Rules,
-    float CrowdSensitivity = 0f); // 관중 외면(불리) 시 위축 강도 0~1. 쇼맨·오만·겁쟁이만 >0, 그 외는 무관.
+    float CrowdSensitivity = 0f, // 관중 외면(불리) 시 위축 강도 0~1. 쇼맨·오만·겁쟁이만 >0, 그 외는 무관.
+    float AdaptBias = 0f);       // 경기 중 자율 전술 전환 성향 −1~+1. +면 판을 읽고 잘 바꾸고, −면 제 방식을 고집한다.
+                                 // 전환 문턱(margin)에만 곱해진다 — 전투 수치는 건드리지 않는다(decision-only).
 
 /// <summary>성격 12종 (문서[3] 5.2 테이블의 코드화).</summary>
 public static class PersonalityTable
@@ -125,7 +127,7 @@ public static class PersonalityTable
         // 전술적 도발: 우세할 때 상대를 자극해 무리수 유도. GlobalProbMod -0.5 → 실발동 ~0.11 (낮은 빈도, 계산적)
         new TriggerRule("TRG_CALM_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 65f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.22f, 15f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: 0.50f);  // 판을 가장 잘 읽는다 — 문턱 절반
 
     public static readonly PersonalityDef Reckless = new("PER_RECKLESS", 0f, None, new[]
     {
@@ -140,7 +142,7 @@ public static class PersonalityTable
         // 분노형 도발: 맞으면 "이게 다야?" — 피격 분노가 즉각 도발로 폭발 (3회로 빈도 조절, ConsecHits는 3초 무피격 시 리셋)
         new TriggerRule("TRG_RECK_ACT_TAUNT", TriggerCondition.ConsecHitsTaken, 3f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.45f, 12f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: -0.60f);  // 머리로 싸우지 않는다 — 거의 안 바꾼다
 
     public static readonly PersonalityDef Arrogant = new("PER_ARROGANT", 0f, None, new[]
     {
@@ -152,7 +154,8 @@ public static class PersonalityTable
             new[] { Add(TParam.CommitThreshold, -0.15f) }, InterruptAction.None, 0.40f, 6f, 5f, "TAUNT"),
         new TriggerRule("TRG_ARRO_ACT_TAUNT", TriggerCondition.OppHpBelowPct, 50f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.50f, 45f, 1.5f, "TAUNT"),
-    }, 0.5f);  // 관중 외면 시 위축(자존심에 금) — 0.8→0.5 완화: 오만은 외면을 어느정도 무시
+    }, 0.5f, AdaptBias: -0.40f);  // 관중 외면 시 위축(자존심에 금) — 0.8→0.5 완화: 오만은 외면을 어느정도 무시.
+                                  // 전술을 고쳐 잡는 건 제가 틀렸다는 인정 — 잘 안 바꾼다.
 
     public static readonly PersonalityDef Honorable = new("PER_HONORABLE", 0f, None, new[]
     {
@@ -162,7 +165,7 @@ public static class PersonalityTable
         // 경의의 도발: 크게 앞설 때 드물게 상대에 경의를 표함 (오만이 아닌 존중의 제스처)
         new TriggerRule("TRG_HONOR_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 80f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.12f, 20f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: 0.10f);
 
     public static readonly PersonalityDef Coward = new("PER_COWARD", 0f, None, new[]
     {
@@ -178,7 +181,7 @@ public static class PersonalityTable
         // 겁쟁이 도발: 압도적으로 유리할 때만 아주 드물게 (안전 확보 후 허세)
         new TriggerRule("TRG_COW_ACT_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 90f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.07f, 20f, 1.5f, "TAUNT"),
-    }, 0.7f);  // 관중 야유 = 더 겁먹음
+    }, 0.7f, AdaptBias: 0.30f);  // 관중 야유 = 더 겁먹음. 위험하면 곧장 갈아탄다(대개 지키는 쪽으로).
 
     // 쇼맨: 화려한 마무리를 고집하고 우세할 때 관중 반응으로 더 대담해진다. (관중 시스템 없는 Phase 1에서는 자신감 버프로 모델링)
     public static readonly PersonalityDef Showman = new("PER_SHOWMAN", 0f,
@@ -197,7 +200,7 @@ public static class PersonalityTable
         // 쇼맨 도발 B: 피니시 직전 우월감 퍼포먼스. OppHpBelowPct는 죽을 때까지 지속 참 → 긴 쿨타임(30s)으로 스팸 차단.
         new TriggerRule("TRG_SHOW_TAUNT_LOW", TriggerCondition.OppHpBelowPct, 25f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.50f, 30f, 1.5f, "TAUNT"),
-    }, 1.0f);  // 관중이 곧 동력 — 외면받으면 가장 크게 위축
+    }, 1.0f, AdaptBias: -0.20f);  // 관중이 곧 동력 — 외면받으면 가장 크게 위축. 제 쇼를 고집한다.
 
     // 기회주의자: 평소엔 방어적·신중하다가 상대의 정량 허점(가드 붕괴 임박·스태미나 고갈)에 폭발적으로 반응.
     //   잔혹함이 감정적 약자 사냥이라면, 기회주의는 계산적 허점 공략.
@@ -215,7 +218,7 @@ public static class PersonalityTable
         // 가드 붕괴 직전 도발: 허점을 노출하고 심리 교란 (약한 도발 빈도, 계산적 타이밍)
         new TriggerRule("TRG_OPP_ACT_TAUNT", TriggerCondition.OppGuardGaugeBelowPct, 25f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.15f, 15f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: 0.50f);  // 허점을 계산하는 성격 — 판이 바뀌면 즉시 갈아탄다
 
     // 잔혹함 = 상대의 '취약 상태'를 냄새 맡고 덮친다. 특정 약점(가드)이 아니라 약함 그 자체가 방아쇠:
     // 가드 붕괴 / 빈사 / 스태미나 고갈 어느 것이든 공격성을 폭발시킨다. (다운은 즉발 추가타.)
@@ -236,7 +239,7 @@ public static class PersonalityTable
         // OppHpBelowPct는 죽을 때까지 지속 참 → 긴 쿨타임(30s)으로 스팸 차단(cd 10s일 때 경기당 6.6회 스팸 확인).
         new TriggerRule("TRG_CRUEL_TAUNT", TriggerCondition.OppHpBelowPct, 30f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.40f, 30f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: 0.10f);
 
     public static readonly PersonalityDef Bold = new("PER_BOLD", 0f, None, new[]
     {
@@ -246,7 +249,7 @@ public static class PersonalityTable
         // 역전 도발: 지고 있을 때 "아직 안 끝났다" — 기백 도발로 상대를 흔들려는 시도
         new TriggerRule("TRG_BOLD_TAUNT", TriggerCondition.HpDeficitPct, 20f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.22f, 15f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: -0.20f);  // 밀어붙이는 쪽을 택한다 — 물러서는 전환에 인색
 
     public static readonly PersonalityDef Wary = new("PER_WARY", 0f,
         new[] { Add(TParam.CommitThreshold, 0.20f) }, new[]
@@ -256,7 +259,7 @@ public static class PersonalityTable
         // 신중한 도발: 압도적 우세 + 위험 없을 때만 (거의 안 함)
         new TriggerRule("TRG_WARY_TAUNT", TriggerCondition.SelfHpAbovePctAndWinning, 90f, TriggerEffectKind.Interrupt,
             None, InterruptAction.Taunt, 0.07f, 25f, 1.5f, "TAUNT"),
-    });
+    }, AdaptBias: 0.40f);  // 상황이 나빠지면 미련 없이 판을 바꾼다
 
     public static readonly PersonalityDef[] All =
         { Calm, Reckless, Arrogant, Honorable, Coward, Cruel, Bold, Wary, Showman, Opportunist };
@@ -275,7 +278,8 @@ public sealed record FighterDef(string Name, FighterStats Stats, string WeaponId
     string[]? EmotionIds = null,  // T10 감정 (일시적 심리 상태) — 경기 전 주입(EmotionGen.FromResult 산물), 미지정 시 중립
     RelationType? RelationToOpp = null,  // T11 관계 — 상대를 향한 관계(1v1이라 단일). RelationLedger 누적 산물, 미지정 시 없음
     float RelationIntensity = 1f,        // 관계 강도 0~1 (보통 |affinity|/100). 인매치 효과 배율
-    TacticSwitch[]? TacticSwitches = null)  // 경기 중 전술 전환(감독 실시간 개입) — 시각 도달 시 Profile 교체. 입력의 일부 = 결정론 재생 보존
+    TacticSwitch[]? TacticSwitches = null,  // 경기 중 전술 전환(감독 실시간 개입) — 시각 도달 시 Profile 교체. 입력의 일부 = 결정론 재생 보존
+    string[]? AdaptPool = null)   // 자율 전술 전환 후보(라니스타 없는 선수 = AI 전용). null이면 전환 평가 자체가 없다 → 매트릭스·기존 시뮬 완전 불변
 {
     /// <summary>문서[4] 11장 검증 케이스: 버서커 (난전형 + 충동적 + 도끼)</summary>
     public static readonly FighterDef Berserker =

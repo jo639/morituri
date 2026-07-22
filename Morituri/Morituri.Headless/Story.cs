@@ -250,6 +250,9 @@ public sealed partial class Game
         if (_playerless || _storyStage == "chronicle") return;
         bool inTop = _cast.Any(g => g.IsPlayer && g.Division == 1);
         if (!_promotedFlag && !inTop && _seasonsPlayed < 3) return;   // 각본이 샌드박스를 인질로 잡지 않는다(최대 3시즌)
+        // 반대 방향의 보호: 승격이 빠르면 1막이 통째로 잘린다(무레나가 값을 부르기 전에 종막).
+        // 조기 종막은 「두 번째 방문」(A5, 조작 최초 제안)을 본 뒤에만 — 3시즌 상한은 그대로라 인질은 아니다.
+        if (_seasonsPlayed < 3 && !_storyBeats.Contains("a5")) return;
         _storyStage = "chronicle";
         _storyBeats.Add("finale");
         _pendingEventId = "story_finale"; _pendingEventFighter = null; _storyCtx = null;   // 종막은 무엇보다 우선

@@ -355,6 +355,73 @@ public class FairnessRegressionTests
         }
     }
 
+    // ── 자율 전술 전환(AI) ──────────────────────────────────────────────
+    // 라니스타 없는 선수는 경기 중 제 풀 안에서 전술을 갈아탄다. 풀 미지정이면 평가 자체가 없어야 한다.
+
+    private static List<string> AdaptTags(List<SimEvent> ev, int fighter) =>
+        ev.OfType<Decision>().Where(d => d.FighterId == fighter && d.ReasonTag.StartsWith("ADAPT_"))
+          .Select(d => d.ReasonTag).ToList();
+
+    [Test]
+    public void Adapt_WithoutPool_NeverSwitches()
+    {
+        // 매트릭스·기존 시뮬 격리의 계약: AdaptPool을 안 주면 자율 전환은 존재하지 않는다.
+        for (ulong seed = 1; seed <= 20; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, seed, ev);
+            Assert.That(AdaptTags(ev, 0).Count + AdaptTags(ev, 1).Count, Is.EqualTo(0), $"seed {seed}");
+        }
+    }
+
+    [Test]
+    public void Adapt_StaysInPool_AndCapsAtTwoPerMatch()
+    {
+        string[] pool = { "TAC_BRAWLER", "TAC_DEFENDER", "TAC_ZONER" };
+        var a = new FighterDef("적응형", FighterStats.Baseline, "WPN_SWORD", "TAC_BRAWLER", "PER_CALM", AdaptPool: pool);
+        int fired = 0;
+        for (ulong seed = 1; seed <= 30; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(a, FighterDef.Tactician, seed, ev);
+            var tags = AdaptTags(ev, 0);
+            Assert.That(tags.Count, Is.LessThan(3), $"seed {seed}: 경기당 상한 2회");
+            foreach (var t in tags)
+                Assert.That(pool.Contains("TAC_" + t.Substring(6)), Is.True, $"seed {seed}: 풀 밖 전술 {t}");
+            fired += tags.Count;
+        }
+        Assert.That(fired, Is.GreaterThan(0), "30판 중 한 번도 안 바꾸면 기능이 죽은 것");
+    }
+
+    [Test]
+    public void Adapt_ReadsTheSituation_LosingGoesSafe_WinningGoesIn()
+    {
+        // 같은 풀·같은 성격인데 판이 다르면 반대쪽으로 간다 — 이게 '상황을 본다'의 조작적 정의.
+        var weakStats = FighterStats.Baseline with { Atk = 45f, Def = 45f, HpMax = 480f, Spd = 60f, Rct = 55f };
+        var strongStats = FighterStats.Baseline with { Atk = 95f, Def = 90f, HpMax = 900f, Spd = 85f, Rct = 85f };
+        string[] pool = { "TAC_BRAWLER", "TAC_DEFENDER" };
+
+        int safe = 0, aggro = 0;
+        for (ulong seed = 1; seed <= 40; seed++)
+        {
+            // 밀리는 쪽: 난전으로 시작해 얻어맞는다 → 지키는 쪽으로 가야 한다.
+            var underdog = new FighterDef("약자", weakStats, "WPN_SWORD", "TAC_BRAWLER", "PER_CALM", AdaptPool: pool);
+            var bully = new FighterDef("강자", strongStats, "WPN_SWORD", "TAC_PRESSURE", "PER_CRUEL");
+            var e1 = new List<SimEvent>();
+            new MatchSim().Run(underdog, bully, seed, e1);
+            safe += AdaptTags(e1, 0).Count(t => t == "ADAPT_DEFENDER");
+
+            // 압도하는 쪽: 지키기로 시작했지만 상대가 지치고 빈사다 → 들어가야 한다.
+            var closer = new FighterDef("강자", strongStats, "WPN_SWORD", "TAC_DEFENDER", "PER_CALM", AdaptPool: pool);
+            var prey = new FighterDef("약자", weakStats, "WPN_SWORD", "TAC_BRAWLER", "PER_RECKLESS");
+            var e2 = new List<SimEvent>();
+            new MatchSim().Run(closer, prey, seed, e2);
+            aggro += AdaptTags(e2, 0).Count(t => t == "ADAPT_BRAWLER");
+        }
+        Assert.That(safe, Is.GreaterThan(0), "밀리는 쪽이 끝까지 난전을 고집하면 상황을 안 보는 것");
+        Assert.That(aggro, Is.GreaterThan(0), "이기는 쪽이 끝까지 웅크리면 상황을 안 보는 것");
+    }
+
     [Test]
     public void ReplayFrames_DoNotPerturbDeterminism()
     {

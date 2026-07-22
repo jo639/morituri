@@ -1131,7 +1131,9 @@ function render(){
     ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
     const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동 — 모션 없이 라벨로만 인지
     const isPasv=d.tag&&d.tag.startsWith('PASV_');    // 성격 패시브([7]§5) proc
-    const txt=d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
+    const isAdapt=d.tag&&d.tag.startsWith('ADAPT_');  // 상대 진영의 자기 판단 — 라니스타 지시와 구분해 보여준다
+    const txt=isAdapt ? '전술 전환 — '+(TAC['TAC_'+d.tag.slice(6)]||d.tag.slice(6))
+      : d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
       : isSkill ? '스킬 발동 — '+(SKILLKR[d.tag.slice(6)]||d.tag.slice(6))
       : isPasv ? (SKILLKR[d.tag.slice(5)]||d.tag.slice(5))
       : (TAGKR[d.tag]||d.tag); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;

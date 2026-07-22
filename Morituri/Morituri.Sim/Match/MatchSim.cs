@@ -34,6 +34,7 @@ public sealed class MatchSim
     private readonly PerceptSnap[][] _snaps = { new PerceptSnap[SnapRing], new PerceptSnap[SnapRing] };
     private SimRandom _rng = null!;
     private readonly SimRandom[] _decisionRng = new SimRandom[2];  // 선수별 판단주기 지터 전용 파생 스트림(액션 RNG 순서 불변)
+    private readonly SimRandom[] _adaptRng = new SimRandom[2];     // 자율 전술 전환 문턱 노이즈 전용(같은 이유로 파생)
     private List<SimEvent>? _events;
     private float _now;
     private int _tick;
@@ -75,6 +76,8 @@ public sealed class MatchSim
         // 거울매치는 둘이 다른 스트림 → per-game 비대칭이지만 같은 분포라 통계적으로 50/50 수렴(실측 검증 대상).
         _decisionRng[0] = _rng.Derive(0xD1CE05UL);
         _decisionRng[1] = _rng.Derive(0xD1CE06UL);
+        _adaptRng[0] = _rng.Derive(0xADAB70UL);
+        _adaptRng[1] = _rng.Derive(0xADAB71UL);
         _now = 0f; _tick = 0; _crowd = 0f;
 
         int strategyTicks = Math.Max(1, (int)MathF.Round(_c.StrategyTickSec / Dt));
@@ -87,6 +90,7 @@ public sealed class MatchSim
             RecordSnapshots();
             CrowdUpdate();   // 군중게이지 감쇠 + 기세/위축 강도 갱신 (이번 틱 데미지·이속·directive에 반영)
             for (int i = 0; i < 2; i++) ApplyTacticSwitch(_f[i]);   // 감독 실시간 개입(예약 시각 도달 시 전술 교체)
+            for (int i = 0; i < 2; i++) AdaptTick(_f[i], _f[1 - i]); // 자율 전술 전환(AI) — 풀 없으면 즉시 반환
 
             // 처리 순서 교대(_tick & 1): A/B가 같은 난수열에서 순차로 행동을 뽑는 비대칭을
             // 매 틱 상쇄 → disc 근접 고정 난타에서도 거울전 대칭 보존. (결정론은 _tick 기반이라 유지)
@@ -141,6 +145,19 @@ public sealed class MatchSim
             Personality = PersonalityTable.Get(def.PersonalityId),
             Switches = def.TacticSwitches,   // 감독 실시간 개입(시각 예약) — null이면 기존과 완전 동일
         };
+        // 자율 전술 전환 후보(AI 전용). 지정 없으면 rt.AdaptPool = null → AdaptTick이 첫 줄에서 반환(무비용·무영향).
+        if (def.AdaptPool is { Length: > 1 } ids)
+        {
+            var pool = new List<TacticsProfile>();
+            foreach (string id in ids)
+            {
+                var p = _tacticOverride != null && _tacticOverride.TryGetValue(id, out var ov) ? ov
+                      : Array.Find(TacticsTable.All, t => t.Id == id);
+                if (p != null && !pool.Contains(p)) pool.Add(p);
+            }
+            if (pool.Count > 1) { rt.AdaptPool = pool.ToArray(); rt.NextAdaptAt = AdaptFirstSec; }
+        }
+
         rt.HpMax = def.Stats.HpMax;
         rt.StaminaMax = CombatMath.StaminaMax(def.Stats, _c);
         rt.PoiseMax = weapon.PoiseMax;
@@ -1852,6 +1869,72 @@ public sealed class MatchSim
         f.Profile = np;
         f.RebuildDirective(_now);
         Emit(new Decision(_now, f.Index, "TACTIC_" + sw.TacticId.Replace("TAC_", ""), "Strategy", 2.5f));
+    }
+
+    // 자율 전술 전환 튜닝 — 라니스타 없는 선수(AI)만. 첫 평가까지는 개막 전술로 판을 읽는 시간을 준다.
+    private const float AdaptFirstSec = 12f, AdaptEvalSec = 3f, AdaptCooldownSec = 15f, AdaptMarginBase = 0.90f;
+    private const int AdaptMaxSwitches = 2;   // 경기당 상한 — 그 이상은 전술 정체성이 사라지고 난전이 된다
+    private const float AdaptDefensiveExtra = 0.50f;   // 물러서는 전환 전용 가산 문턱(경기 늘어짐 억제)
+
+    /// <summary>
+    /// 라니스타 없는 선수의 자기 판단: 주기적으로 제 전술 풀을 현재 판(체력차·숨·시계·교착·헛스윙·리치)에
+    /// 비춰 재평가하고, 지금 것보다 <b>확실히</b> 나을 때만 갈아탄다. 풀 미지정이면 첫 줄에서 반환 = 완전 무영향.
+    /// </summary>
+    private void AdaptTick(FighterRuntime f, FighterRuntime other)
+    {
+        if (f.AdaptPool == null || _now < f.NextAdaptAt) return;
+        f.NextAdaptAt = _now + AdaptEvalSec;   // 전환 여부와 무관하게 다음 재평가 예약
+
+        var opp = Perceive(f);   // 상대 상태는 인지 지연을 거친 값만 본다 (문서[3] 6.3)
+        float hpLead   = f.HpPct - opp.HpPct;                     // + = 내가 우세
+        float stam     = f.StaminaPct;
+        float timeLeft = _c.MatchTimeSec > 0f ? 1f - _now / _c.MatchTimeSec : 1f;
+        float reach    = other.EffRange - f.EffRange;             // + = 상대 리치 우위 (무기는 눈에 보인다)
+        float stall    = MathF.Min(f.NoHitTimer, other.NoHitTimer); // 마지막 클린히트 이후 경과 = 교착 길이
+        float whiffRate = f.AttackAttempts >= 10 ? (float)f.Whiffs / f.AttackAttempts : 0f;
+        bool pressured = f.ConsecHitsTaken >= 3 && hpLead < -0.10f;
+        bool oppWeak   = opp.IsExhausted || opp.HpPct <= 0.25f;
+        bool winded    = f.IsExhausted || stam < 0.25f;   // 잠깐 숨찬 것 말고 정말 바닥난 것
+
+        var cur = f.Profile;
+        float curScore = Fit(cur);
+        TacticsProfile? best = null; float bestScore = curScore;
+        foreach (var t in f.AdaptPool)
+        {
+            if (t.Id == cur.Id) continue;
+            float s = Fit(t);
+            if (s > bestScore) { bestScore = s; best = t; }
+        }
+        // 히스테리시스: 성격이 전환 문턱을 곱한다(냉철·기회주의는 낮고, 충동·오만은 높다) + 소폭 노이즈.
+        float margin = AdaptMarginBase * (1f - f.Personality.AdaptBias) + _adaptRng[f.Index].Range(-0.05f, 0.15f);
+        // 물러서는 전환(공격성이 내려가는 쪽)은 경기를 늘어지게 한다 — 같은 근거라도 더 확실할 때만 허용(관전 템포).
+        if (best != null && best.Aggression < cur.Aggression) margin += AdaptDefensiveExtra;
+        if (best == null || bestScore < curScore + margin) return;
+
+        f.Profile = best;
+        f.RebuildDirective(_now);
+        f.AdaptCount++;
+        f.NextAdaptAt = f.AdaptCount >= AdaptMaxSwitches ? float.MaxValue : _now + AdaptCooldownSec;
+        Emit(new Decision(_now, f.Index, "ADAPT_" + best.Id.Replace("TAC_", ""), "Strategy", 2.5f));
+
+        // 전술 프로파일 = 그 자체가 성향 벡터(공격성·거리·가드·카운터·위험·비축). 별도 태그표 없이 수치로 재는다.
+        // 각 항은 "이 상황이면 이런 성향이 맞다"는 한 문장 — 상황이 하나도 안 걸리면 전부 0 = 바꿀 이유 없음.
+        float Fit(TacticsProfile t)
+        {
+            float aggr = t.Aggression, dist = t.PreferredDistance / 4.2f, guard = t.GuardBias,
+                  counter = t.CounterWindow, risk = t.RiskTolerance, reserve = t.StaminaReserve;
+            float s = 0f;
+            if (timeLeft < 0.30f && hpLead < -0.05f) s += (aggr + risk) * 1.2f - dist * 0.8f;   // 지는 채로 시계가 간다 → 나가야 한다
+            if (timeLeft < 0.30f && hpLead > 0.10f)  s += (guard + reserve) + dist * 0.6f - aggr * 0.8f;  // 이기는 중 → 지키면 이긴다
+            if (winded)                              s += reserve * 1.5f + dist * 0.4f - aggr;   // 숨이 바닥났다 → 아껴 쓴다
+            if (oppWeak)                             s += aggr * 1.2f + risk * 0.4f - dist * 0.5f;  // 상대가 지쳤다/빈사 → 지금이 창
+            if (pressured)                           s += (guard + counter) * 0.9f + dist * 0.5f - aggr * 0.9f;  // 밀리며 얻어맞는 중 → 끊는다
+            if (whiffRate > 0.55f)                   s += counter + guard * 0.4f - aggr * 0.6f;   // 헛스윙만 난다 → 쫓지 말고 기다린다
+            if (stall > 12f && hpLead <= 0.02f)      s += aggr - dist * 0.9f;                     // 교착인데 앞서지도 못한다 → 들어간다
+            if (reach > 0.6f)                        s += aggr * 0.5f - dist * 0.5f;              // 리치 열세 → 파고든다
+            else if (reach < -0.6f)                  s += dist * 0.5f + counter * 0.5f;           // 리치 우세 → 지킨다
+            return s;
+        }
     }
 
     private void CrowdUpdate()
