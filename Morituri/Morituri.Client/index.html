@@ -128,6 +128,44 @@
   .watchbar .tag{ font-size:11px; color:var(--gold); border:1px solid var(--gold); border-radius:4px; padding:0 6px; }
   .watchbar button{ margin-left:auto; background:#3a2d1d; color:var(--ink); border:1px solid #4a3a26; padding:4px 12px; border-radius:7px; }
   #watch iframe{ padding-top:36px; }
+  /* 다시보기 = 실제 경기화면과 동일한 전체화면(상단탭 숨김·경기 크게). 바는 위에 떠 있는 오버레이(liveTop과 동일). */
+  #replay .watchbar{ background:linear-gradient(180deg,rgba(18,12,6,.94),rgba(18,12,6,0)); border-bottom:none; pointer-events:none; }
+  #replay .watchbar button{ pointer-events:auto; }
+  /* ── 경기 프로그램(달력 대체) — 로마 무네라 명단처럼 세로로 읽는다. '오늘'과 지나간 경기를 한 눈에. ── */
+  .prog{ display:flex; flex-direction:column; height:100%; overflow:auto; padding:2px 6px 16px; }
+  .prog-day{ display:flex; align-items:center; gap:9px; margin:13px 0 5px; }
+  .prog-day:first-child{ margin-top:2px; }
+  .prog-day .dn{ width:27px; height:27px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-display); font-weight:800; font-size:13px; color:#cbb98d;
+    background:radial-gradient(circle at 40% 32%,#3d3225,#241c12); border:1px solid #5a4a30; border-radius:50%;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.55); }
+  .prog-day .dl{ font-family:var(--font-display); letter-spacing:.09em; font-size:12.5px; color:var(--dim); }
+  .prog-day .dr{ flex:1; height:1px; background:linear-gradient(90deg,var(--line-soft),transparent); }
+  .prog-day.today .dn{ color:#1a130c; background:radial-gradient(circle at 40% 32%,#e6c463,#b98a2e);
+    border-color:var(--gold); box-shadow:0 0 11px rgba(210,171,85,.55); }
+  .prog-day.today .dl{ color:var(--gold); font-weight:800; }
+  .prog-day.past{ opacity:.5; }
+  /* '지금 여기' — 붉은 리본이 치러진 경기와 앞으로의 경기를 가른다 */
+  .prog-now{ display:flex; align-items:center; gap:10px; margin:12px 0 7px; font-family:var(--font-display);
+    letter-spacing:.12em; font-size:11.5px; font-weight:800; color:#e0a24c; }
+  .prog-now b{ display:inline-flex; align-items:center; gap:5px; }
+  .prog-now span{ flex:1; height:2px; background:linear-gradient(90deg,transparent,#c9822e,transparent); }
+  .prog-now.future{ color:var(--dim); }
+  .prog-now.future span{ background:linear-gradient(90deg,transparent,var(--line-soft),transparent); }
+  /* 경기 한 줄 — 밀랍판에 적은 대진 */
+  .prog-row{ display:flex; align-items:center; gap:8px; padding:6px 11px; margin:3px 0 3px 9px;
+    border-radius:0 6px 6px 0; background:linear-gradient(90deg,rgba(255,255,255,.03),transparent); font-size:12.5px; }
+  .prog-row .pr-vs{ flex:1; min-width:0; color:var(--ink); }
+  .prog-row .pr-vs .x{ color:var(--dim); font-size:11px; margin:0 3px; }
+  .prog-row.mine .pr-vs{ color:var(--gold); font-weight:700; }
+  .prog-row.done{ cursor:pointer; }
+  .prog-row.done .pr-vs{ color:var(--dim); }
+  .prog-row.done:hover{ background:linear-gradient(90deg,rgba(201,168,76,.13),transparent); }
+  .prog-row .pr-res{ color:var(--grn,#7ec97e); font-weight:700; white-space:nowrap; font-size:11.5px; }
+  .prog-row .pr-next{ color:var(--gold); font-weight:800; white-space:nowrap; }
+  .prog-row .pr-soon{ color:var(--dim); white-space:nowrap; font-size:11.5px; }
+  .prog-row.next{ background:linear-gradient(90deg,rgba(201,168,76,.17),transparent);
+    box-shadow:inset 0 0 0 1px rgba(201,168,76,.4); border-radius:6px; }
   /* 카드 그리드 */
   .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
   .fc{ background:linear-gradient(180deg,rgba(210,171,85,.05),transparent 34%), var(--panel);
@@ -369,8 +407,11 @@
 .dlg-nameplate.murena{ color:#cf8f8a; border-color:#6a3530 }
 .dlg-box{ position:relative; background:linear-gradient(180deg,rgba(44,33,18,.97),rgba(32,24,13,.97));
   border:1px solid var(--gold-deep); border-radius:var(--r3); box-shadow:var(--sh2);
-  padding:18px 26px 16px 272px; min-height:170px; cursor:pointer }
+  padding:18px 26px 16px 272px; min-height:170px }
 .dlg-box.nofig{ padding-left:26px }
+/* 대화창 본문·배경은 클릭 대상이 아니다(타자기 건너뛰기는 부가) — 커서는 기본 화살표.
+   월계수 손 커서는 실제 버튼([다음 ▶]·선택지 = <button>)에서만 뜬다. theme의 [onclick] 규칙을 여기서 덮는다. */
+#dlg .dveil, #dlg .dlg-box{ cursor:var(--cur-arrow) !important }
 .dlg-text{ font-size:19px; line-height:1.75; color:var(--ink); min-height:3.6em; font-weight:500; word-break:keep-all }
 .dlg-text.narr{ font-style:italic; color:#d8c8a8; font-weight:400 }
 .dlg-caret{ display:inline-block; width:9px; height:19px; background:var(--gold); margin-left:2px; vertical-align:-3px; animation:dlgBlink .8s step-end infinite }
@@ -644,9 +685,9 @@
   </div>
 
   <div class="screen" id="replay">
+    <iframe id="watchF" src="about:blank" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     <div class="watchbar" style="z-index:6"><span class="card" id="replayCard">{play} 다시보기</span>
       <button id="replayBack" onclick="closeReplay()">← 돌아가기</button></div>
-    <iframe id="watchF" src="about:blank" allow="autoplay" style="position:absolute;top:54px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 54px);border:0"></iframe>
   </div>
 
   <div class="screen" id="news"><div class="pad">
@@ -872,7 +913,7 @@
         <div class="doit" id="coachDo"></div></div>
     </div>
     <div class="cfoot">
-      <button class="okbtn" style="float:none;margin:0 auto 0 0;border-color:#5a4a30;color:var(--dim)" onclick="lessonSkip()">나중에</button>
+      <button class="okbtn" style="float:none;margin:0 auto 0 0;border-color:#5a4a30;color:var(--dim);padding:3px 11px;font-size:11px" onclick="lessonSkip()">나중에</button>
       <span class="prog" id="coachProg"></span>
     </div>
   </div>
@@ -1095,28 +1136,37 @@ function lgSched(d){
   const months = [...new Set((d.Calendar||[]).map(c=>c.Month))];
   if (!_lgMonth || !months.includes(_lgMonth)) _lgMonth = d.CurMonth && months.includes(d.CurMonth) ? d.CurMonth : (months.find(m=>(d.Calendar||[]).some(c=>c.Month===m&&!c.Winner)) || months[months.length-1]);
   $('lgMonthTabs').innerHTML = months.map(m=>`<button data-v="${m}" ${m===_lgMonth?'class="cur"':''} onclick="_lgMonth='${m}';lgPaint()">${m}</button>`).join('');
-  const es = cal.filter(c=>c.Month===_lgMonth);
+  // 세로 프로그램: 날짜 순으로 읽는 경기 명단. 붉은 리본이 '치러진 경기 / 앞으로의 경기'를 가른다.
+  const es = cal.filter(c=>c.Month===_lgMonth).slice().sort((a,b)=>(a.Day-b.Day)||((a.Idx||0)-(b.Idx||0)));
   $('lgCalSub').textContent = `${es.filter(c=>c.Winner).length}/${es.length}경기` + (d.CurMonth===_lgMonth&&d.CurDay?` · 오늘 ${d.CurDay}일`:'');
-  const byDay = {}; es.forEach(c=>{ (byDay[c.Day]=byDay[c.Day]||[]).push(c); });
-  let cells='';
-  for (let day=1; day<=30; day++){
-    const list = byDay[day]||[];
-    const mine = list.some(c=>c.IsPlayerMatch), isNext = list.some(c=>c.IsNext);
-    const isToday = d.CurMonth===_lgMonth && d.CurDay===day;
-    const bg = mine ? 'rgba(201,168,76,.14)' : isToday ? 'rgba(201,168,76,.08)' : list.length ? 'var(--panel)' : 'rgba(0,0,0,.12)';
-    const border = isNext ? '1px solid var(--gold)' : isToday ? '1px solid var(--gold-deep)' : mine ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--line-soft)';
-    const inner = list.map(c=>{
-      const clickable = !!c.Winner;
-      const kc = lgKindColor(c);
-      const tip = [lgKindName(c), c.Title, !c.Winner&&c.Hype?`흥행 기대치 ${c.Hype}`:'', c.Hot?'연승 걸림':'', clickable?'클릭=재관전':''].filter(Boolean).join(' · ');
-      return `<div ${clickable?`onclick="openWatch(${c.Idx})"`:''} title="${plainTip(tip)}" style="${clickable?'cursor:pointer;':''}border-left:3px solid ${kc==='transparent'?'var(--line-soft)':kc};padding:1px 0 1px 4px;margin:2px 0;border-radius:2px;background:rgba(255,255,255,.02)">
-        <div style="font-size:10.5px;line-height:1.2;${c.IsPlayerMatch?'color:var(--gold);font-weight:700':''}">${lgKindIcon(c)}${c.Hot?'{bolt}':''}${c.A} vs ${c.B}</div>
-        <div style="font-size:9.5px;color:${c.Winner?'var(--grn,#7ec97e)':(c.IsNext?'var(--gold)':'var(--dim)')}">${c.Winner?('{trophy} '+c.Winner):(c.IsNext?'▶ 다음':'예정')}</div></div>`;
-    }).join('');
-    cells += `<div style="min-height:96px;padding:4px;border-radius:6px;background:${bg};border:${border};overflow:hidden">
-      <div style="font-size:10px;${isToday?'color:var(--gold);font-weight:700':'color:var(--dim)'}">${day}${isToday?' ●':''}</div>${inner}</div>`;
-  }
-  $('lgMonth').innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:minmax(96px,1fr);gap:5px;height:100%">${cells}</div>`;
+  const cmi = months.indexOf(d.CurMonth), mi = months.indexOf(_lgMonth);
+  const monthPast = cmi>=0 && mi>=0 && mi<cmi, monthFuture = cmi>=0 && mi>=0 && mi>cmi;
+  const nowRibbon = `<div class="prog-now"><span></span><b>{flame} 지금 여기${d.CurMonth===_lgMonth&&d.CurDay?` · 오늘 ${d.CurDay}일`:''}</b><span></span></div>`;
+  let html='', lastDay=-1, placed=false;
+  if (monthFuture){ html += `<div class="prog-now future"><span></span><b>아직 오지 않은 날들</b><span></span></div>`; placed=true; }
+  es.forEach(c=>{
+    if (!placed && !c.Winner && !monthPast){ html += nowRibbon; placed=true; }   // 첫 미소화 경기 앞 = 현재 위치
+    if (c.Day!==lastDay){ lastDay=c.Day;
+      const dayToday = d.CurMonth===_lgMonth && c.Day===d.CurDay;
+      const dayPast = !dayToday && (monthPast || (d.CurMonth===_lgMonth && c.Day<(d.CurDay||0)));
+      html += `<div class="prog-day ${dayToday?'today':dayPast?'past':''}"><span class="dn">${c.Day}</span><span class="dl">${dayToday?'오늘':'제 '+c.Day+'일'}</span><span class="dr"></span></div>`;
+    }
+    html += progRow(c);
+  });
+  if (!placed && !monthPast) html += nowRibbon;   // 이번 달 경기가 모두 끝난 뒤(다음 달로 넘어가기 직전)
+  if (!es.length) html = `<div class="note" style="padding:24px;text-align:center">이 달엔 예정된 경기가 없다</div>`;
+  $('lgMonth').innerHTML = `<div class="prog">${html}</div>`;
+}
+// 경기 한 줄 — 치러진 경기는 결과+재관전, 다음 경기는 금빛 ▶, 나머지는 예정
+function progRow(c){
+  const done=!!c.Winner, kc=lgKindColor(c);
+  const cls = `prog-row${c.IsPlayerMatch?' mine':''}${c.IsNext?' next':''}${done?' done':''}`;
+  const tip = [lgKindName(c), c.Title, !done&&c.Hype?`흥행 기대치 ${c.Hype}`:'', c.Hot?'연승 걸림':'', done?'클릭=재관전':''].filter(Boolean).join(' · ');
+  const status = done ? `<span class="pr-res">{laurel} ${c.Winner}</span>`
+    : c.IsNext ? `<span class="pr-next">▶ 다음 경기</span>`
+    : `<span class="pr-soon">예정${c.Hype>=70?' · {flame}':c.Hype>=35?' · {glory}':''}</span>`;
+  return `<div class="${cls}" ${done?`onclick="openWatch(${c.Idx})"`:''} title="${plainTip(tip)}" style="border-left:3px solid ${kc==='transparent'?'var(--line-soft)':kc}">
+    <span class="pr-vs">${lgKindIcon(c)}${c.Hot?'{bolt}':''}${c.A} <span class="x">vs</span> ${c.B}</span>${status}</div>`;
 }
 // ── 순위: 부별 순위표(주인공) + 명성 리더보드·컵 대진 ──
 function lgTable(d){
@@ -1201,7 +1251,7 @@ function go(s){
     try{ $('watchF').contentWindow.postMessage({cmd:'stop'},'*'); }catch(_){}
     $('watchF').src='about:blank';
   }
-  $('top').style.display = (s==='livesc') ? 'none' : '';   // 라이브=전용 게임플레이 화면(상단탭 숨김)
+  $('top').style.display = (s==='livesc'||s==='replay') ? 'none' : '';   // 라이브·다시보기=전용 경기화면(상단탭 숨김, 경기 크게)
   document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('on', el.id===s));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.s===s));
   if (s==='league') renderLeague();
