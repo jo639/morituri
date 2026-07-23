@@ -836,12 +836,12 @@
 
 <!-- [13] 스토리 대화 오버레이 (캠페인 전용 — 자동 팝업, 전용 [다음] 버튼) -->
 <div id="dlg">
-  <div class="dveil" onclick="dlgAdvance()"></div>
+  <div class="dveil" onclick="dlgReveal()"></div>
   <div class="dlg-scene" id="dlgScene"></div>
   <div class="dlg-stage">
     <div class="dlg-port" id="dlgPort"></div>
     <div class="dlg-np" id="dlgNp"></div>
-    <div class="dlg-box" id="dlgBox" onclick="dlgAdvance()">
+    <div class="dlg-box" id="dlgBox" onclick="dlgReveal()">
       <div class="dlg-text" id="dlgText"></div>
       <div class="dlg-foot" id="dlgFoot"></div>
     </div>
@@ -2468,6 +2468,12 @@ function dlgShowFoot(){
   $('dlgFoot').innerHTML = pre + `<div class="dlg-choices">` +
     dlgEv.Choices.map((c,i)=>`<button class="dlg-choice" onclick="dlgPick(${i},event)">${i+1}. ${escHtml(c)}</button>`).join('') + `</div>`;
 }
+// 배경·대사창 클릭 = 타자기 즉시 완성만. 줄 넘김은 [다음 ▶] 버튼으로만(라니스타 지시 2026-07-23).
+window.dlgReveal = ()=>{
+  if (dlgLock || !dlgEv || !dlgTyping) return;
+  const L = dlgLines[dlgIdx];
+  clearInterval(dlgTyping); dlgTyping=null; $('dlgText').innerHTML=escHtml(L.text); dlgShowFoot();
+};
 window.dlgAdvance = (ev2)=>{
   if (ev2) ev2.stopPropagation();
   if (dlgLock || !dlgEv) return;
