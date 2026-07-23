@@ -874,7 +874,6 @@
     <div class="cfoot">
       <button class="okbtn" style="float:none;margin:0 auto 0 0;border-color:#5a4a30;color:var(--dim)" onclick="lessonSkip()">나중에</button>
       <span class="prog" id="coachProg"></span>
-      <button class="okbtn" style="float:none;margin:0" id="coachNext" onclick="lessonNext()">다음 →</button>
     </div>
   </div>
 </div>
@@ -2584,22 +2583,25 @@ function replaceOverlays(){
 const LESSONS = {
   archive: { who:'cato', name:'카토 · 교관', steps:[
     { sel:'nav [data-s="archive"]', txt:'유서는 <b>보관함</b>에 넣어두었습니다. 앞으로 오는 서신·유품·단서도 전부 여기 쌓입니다.', act:'보관함을 열어보십시오' },
-    { sel:'#archive .pad', txt:'문서를 누르면 펼쳐 읽을 수 있습니다. …가이우스가 남긴 것도 거기 있고요.' } ]},
+    { sel:'#archive .pad', txt:'문서를 누르면 펼쳐 읽을 수 있습니다. …가이우스가 남긴 것도 거기 있고요.', act:'유품을 눌러 펼쳐 보십시오' } ]},
+  // 클릭 체인 — 짚어주는 버튼을 눌러야 다음으로. 영입(길게 눌러 확정)만 상태(done)로 판정한다.
+  // 코치마크가 nav 탭에 '눌러라'며 눌러붙어 뽑기를 가리는 문제를 없앤다 — 뽑기·영입이 각자 제 단계다.
   recruit: { who:'cato', name:'카토 · 교관', steps:[
-    { sel:'nav [data-s="market"]', txt:'침상이 비어 있으면 시작도 못 합니다. <b>영입</b>에서 사람을 들이십시오. 무료 뽑기가 <b>두 번</b> 있으니, 둘 다 써서 <b>검투사 둘</b>로 시작하시지요.', act:'영입 탭으로' },
-    // done 단계 = 실제로 영입될 때만 넘어간다(길게 눌러 확정한 뒤). 클릭·짧은 탭으로는 안 넘어간다.
-    { sel:'#gachaBtn', txt:'돈이 없으니 무기와 기질만 보고 골라야 합니다. <b>뽑기</b>로 셋을 부르고, 마음에 드는 하나를 <b>길게 눌러</b> 낙인을 찍으십시오.', act:'뽑기 → 길게 눌러 영입', done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
-    // 두 번째 무료 뽑기 — 영입 후 화면이 루두스로 넘어가므로 항상 보이는 nav 탭을 짚는다(뽑기 버튼은 시장 화면에만 있다).
-    { sel:'nav [data-s="market"]', txt:'무료 뽑기가 <b>한 번</b> 더 남았습니다 — 저 아이 곁에 세울 짝을 마저 들이시지요. 둘이면 시작할 수 있습니다.', act:'한 번 더 뽑아 영입', skipIf:(s)=> (s.FreeGachas||0) <= 0, done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
-    { sel:'nav [data-s="codex"]', txt:'무기니 기질이니 하는 말이 낯설거든 <b>도감</b>을 보십시오. 수치까지 전부 적혀 있습니다 — 저보다 정확합니다.' } ]},
+    { sel:'nav [data-s="market"]', txt:'침상이 비어 있으면 시작도 못 합니다. 무료 뽑기가 <b>두 번</b> 있으니, 둘 다 써서 <b>검투사 둘</b>로 시작하시지요.', act:'영입 탭으로' },
+    { sel:'#gachaBtn', txt:'돈이 없으니 무기와 기질만 보고 골라야 합니다. <b>뽑기</b>로 셋을 부르십시오.', act:'뽑기를 눌러보십시오' },
+    // done = 실제로 영입될 때만 넘어간다(길게 눌러 확정). 짧은 탭·클릭으로는 안 넘어간다. 리빌 모달 뜨는 동안 코치는 숨는다.
+    { sel:'#candGrid', txt:'마음에 드는 하나를 <b>길게 눌러</b> 낙인을 찍으십시오 — 손을 떼면 취소됩니다.', act:'길게 눌러 영입', done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
+    { sel:'nav [data-s="market"]', txt:'무료 뽑기가 <b>한 번</b> 더 남았습니다 — 저 아이 곁에 세울 짝을 마저 들이시지요.', act:'영입 탭으로', skipIf:(s)=> (s.FreeGachas||0) <= 0 },
+    { sel:'#gachaBtn', txt:'한 번 더 <b>뽑기</b>로 셋을 부르십시오.', act:'뽑기를 눌러보십시오', skipIf:(s)=> (s.FreeGachas||0) <= 0 },
+    { sel:'#candGrid', txt:'이 아이도 <b>길게 눌러</b> 영입하십시오. 둘이면 시작할 수 있습니다.', act:'길게 눌러 영입', skipIf:(s)=> (s.FreeGachas||0) <= 0 && (s.Candidates||[]).length === 0, done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
+    { sel:'nav [data-s="codex"]', txt:'무기니 기질이니 하는 말이 낯설거든 <b>도감</b>을 보십시오. 수치까지 전부 적혀 있습니다 — 저보다 정확합니다.', act:'도감을 열어보십시오' } ]},
   // 서막에는 도박장이 아직 열리지 않는다(A0 해금) — 궤에서 본 숫자는 상단 금고에 늘 붙어 있는 것으로 가르친다.
   debt: { who:'cato', name:'카토 · 교관', steps:[
-    { sel:'#gold', txt:'궤 안의 숫자는 사라지지 않습니다. <b>금고</b> 옆에 늘 붙어 다니지요 — 저 「빚」이 그겁니다.' },
-    { sel:'#next', txt:'갚는 방법은 하나뿐입니다. 이기는 것. …그 외의 방법을 파는 사람이 언젠가 찾아올 겁니다만.' } ]},
+    { sel:'#gold', txt:'궤 안의 숫자는 사라지지 않습니다. <b>금고</b> 옆의 저 「빚」이 그것이지요 — 갚는 길은 하나, 이기는 것뿐입니다. …그 외의 방법을 파는 자가 언젠가 찾아올 겁니다만.', act:'「빚」을 확인하십시오' } ]},
   train: { who:'cato', name:'카토 · 교관', steps:[
     { sel:'nav [data-s="ludus"]', txt:'무엇을 시킬지가 아니라 <b>무엇을 하게 둘지</b>를 정하는 겁니다. 개막 전 몸은 <b>루두스</b>에서 만듭니다.', act:'루두스로' },
     { sel:'#preseasonBoard', txt:'<b>준비 주간</b>입니다. 매주 하나씩 — 담금질·원정·발굴·협상. 고르는 것이 곧 그 아이가 어떤 검투사가 되는가입니다.', act:'이번 주 활동을 정하십시오' },
-    { sel:'#ldTabs [data-v="men"]', txt:'경기를 치르면 <b>훈련 포인트</b>가 쌓입니다. 그건 여기 <b>모리튜리</b> 명부에서 스탯에 직접 부어 넣으십시오.' } ]},
+    { sel:'#ldTabs [data-v="men"]', txt:'경기를 치르면 <b>훈련 포인트</b>가 쌓입니다. 그건 여기 <b>모리튜리</b> 명부에서 스탯에 직접 부어 넣으십시오.', act:'모리튜리 명부를 열어보십시오' } ]},
   season: { who:'cato', name:'카토 · 교관', steps:[
     { sel:'#next', txt:'시즌이 열렸습니다. 이 버튼 하나가 <b>게임의 한 턴</b>입니다 — AI 경기는 알아서 소화하고 <b>당신이 필요한 곳</b>에서 멈춥니다.', act:'라운드를 진행해 보십시오' } ]},
   live: { who:'cato', name:'카토 · 교관', steps:[
@@ -2615,7 +2617,7 @@ const LESSONS = {
     { sel:'#debtPanel', txt:'미리 갚으시면 신뢰가 오릅니다. 신뢰가 오르면 한도가 오르고요. …물론, 갚지 않으셔도 됩니다. 값은 이름으로 치르시면 되니까.', act:'장부를 펼쳐보십시오' } ]},
   fame: { who:'lucilius', name:'루킬리우스 · 조영관', steps:[
     { sel:'nav [data-s="news"]', txt:'관중은 강한 자를 기억하지 않네. <b>재미있는 자</b>를 기억하지. 세상이 뭐라 떠드는지는 <b>신문</b>에 실린다네.', act:'월보를 펼쳐보게' },
-    { sel:'nav [data-s="roster"]', txt:'<b>인기</b>는 최근의 화제성이고 <b>명성</b>은 지워지지 않는 통산이야. 출전료는 인기를 따라오지 — 명성이 아니라.' } ]},
+    { sel:'nav [data-s="roster"]', txt:'<b>인기</b>는 최근의 화제성이고 <b>명성</b>은 지워지지 않는 통산이야. 출전료는 인기를 따라오지 — 명성이 아니라.', act:'로스터를 열어보게' } ]},
   loan: { who:'murena', name:'무레나 · 중개인', steps:[
     { sel:'nav [data-s="gamble"]', txt:'급히 지는 빚은 원금의 <b>1.5배</b>로 적힙니다. 미리 청하시면 <b>1.2배</b>고요. 차이가 커 보이십니까? 시즌 셋만 지나면 아실 겁니다.', act:'장부로' },
     { sel:'#debtPanel', txt:'한도 안에서는 언제든 <b>빌린다</b>를 누르시면 됩니다. …그리고 제 다른 제안도, 언제든 유효합니다.', act:'장부를 펼쳐보십시오' } ]},
@@ -2657,7 +2659,8 @@ function _lsAdvance(){
 function lessonTick(){
   if (!_ls){ if(_lsTimer){clearInterval(_lsTimer); _lsTimer=null;} return; }
   const s = _ls.steps[_ls.i];
-  if (s && s.done){ try{ if (s.done(st, _ls.mark)){ window.lessonNext(); return; } }catch(_){} }
+  if (!s){ lessonDone(); return; }   // 안전망: 인덱스가 끝을 넘겼는데 아직 안 닫혔으면(렌더 누락) 여기서 완료
+  if (s.done){ try{ if (s.done(st, _ls.mark)){ window.lessonNext(); return; } }catch(_){} }
   const modal = !!document.querySelector('.modal.on');
   if (modal){ if ($('coach').classList.contains('on')) $('coach').classList.remove('on'); }
   else if (!$('coach').classList.contains('on')){ lsRender(); }
@@ -2665,9 +2668,9 @@ function lessonTick(){
 function lsVisible(el){ return el && el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden'; }
 function lsRender(){
   if (!_ls) return;
-  if (document.querySelector('.modal.on')){ $('coach').classList.remove('on'); return; }   // 모달 위에는 그리지 않는다(lessonTick이 닫힌 뒤 되살린다)
   const s = _ls.steps[_ls.i];
-  if (!s) { lessonDone(); return; }
+  if (!s) { lessonDone(); return; }   // 끝 — 모달이 떠 있어도 완료시킨다(과거: 모달 가드가 먼저라 마지막 단계 후 레슨이 멈췄다)
+  if (document.querySelector('.modal.on')){ $('coach').classList.remove('on'); return; }   // 모달 위에는 그리지 않는다(lessonTick이 닫힌 뒤 되살린다)
   const el = document.querySelector(s.sel);
   if (!lsVisible(el)) {
     if (s.done){ $('coach').classList.remove('on'); return; }   // done 단계는 대상이 잠깐 안 보여도(영입 후 루두스로 이동) 상태로 완료를 기다린다
@@ -2678,9 +2681,9 @@ function lsRender(){
   $('coachPort').innerHTML = `<span class="avatar"><img src="story_${_ls.who}.png" onerror="this.parentElement.innerHTML=dlgSilhouette('${_ls.who}')"></span>`;
   $('coachName').textContent = _ls.name;
   $('coachTxt').innerHTML = s.txt;
-  $('coachDo').textContent = s.act ? '→ ' + s.act : '';
+  // 다음 버튼은 없다 — 짚어주는 것을 눌러야 넘어간다(done 단계는 그 행동이 완료돼야). 무엇을 누를지 항상 알려준다.
+  $('coachDo').textContent = s.act ? '→ ' + s.act : (s.done ? '' : '→ 눌러서 계속');
   $('coachProg').textContent = _ls.steps.length>1 ? `${_ls.i+1} / ${_ls.steps.length}` : '';
-  $('coachNext').style.display = (s.act||s.done) ? 'none' : '';   // act·done 단계는 직접 해야 넘어간다
   const r = stageRect(el);
   $('coachSpot').style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
   const bl = Math.max(8, Math.min(r.stageW-376, r.left + r.width/2 - 180));
@@ -2704,7 +2707,7 @@ async function lessonDone(){
 document.addEventListener('click', (e)=>{
   // 모달·대화가 닫히기를 기다리던 레슨은 그 클릭 직후에 뜬다(다음 refresh를 기다리지 않는다)
   if (!_ls){ setTimeout(()=>{ try{ maybeLesson(); }catch(_){} }, 120); return; }
-  const s = _ls.steps[_ls.i]; if (!s || !s.act || s.done) return;   // done 단계는 상태(영입 완료 등)로만 넘어간다 — 짧은 탭·클릭 무시
+  const s = _ls.steps[_ls.i]; if (!s || s.done) return;   // done 단계는 상태(영입 완료 등)로만 — 짚어준 것을 클릭하면 그 단계가 넘어간다(다음 버튼 없음)
   const el = document.querySelector(s.sel);
   if (el && (el === e.target || el.contains(e.target))) setTimeout(()=>window.lessonNext(), 280);
 }, true);
