@@ -1809,12 +1809,15 @@ async function loadGbBoard(){
 // ── 알림 배지: 할 일이 있는 탭에 ● ──
 function renderBadges(){
   const navs = document.querySelectorAll('nav button');
-  // [13] 가벼운 잠금: 도박장은 A0 「위쪽 세 줄」에서 열린다 — 카토가 판돈 정리하는 자들을 가리키는 그 장면이
-  // 곧 해금이고, 씬이 끝나면 그가 직접 탭을 짚어준다(레슨 gamble). 초판은 2막(b3)에 아무 말 없이 나타났다.
+  // [13] 가벼운 잠금: 탭은 캠페인에서 소개되는 씬에서 열린다(소리소문없이 나타나지 않게).
+  //   도박장 = A0 「위쪽 세 줄」(판돈 정리하는 자들) / 신문 = A4 「관중의 맛」(조영관 루킬리우스가 흥행을 말하는 장면).
+  //   씬이 끝나면 그 화자가 직접 탭을 짚어준다(레슨 gamble·fame). chronicle(캠페인 종료·생략) 이후엔 전부 열림.
   const camp = st.Campaign;
   const gambleLocked = camp && camp.Stage!=='chronicle' && !(camp.Beats||[]).includes('a0');
+  const newsLocked   = camp && camp.Stage!=='chronicle' && !(camp.Beats||[]).includes('a4');
   navs.forEach(b=>{
     if (b.dataset.s==='gamble') b.style.display = gambleLocked ? 'none' : '';
+    if (b.dataset.s==='news')   b.style.display = newsLocked ? 'none' : '';
     let need = false;
     if (b.dataset.s==='ludus') need = st.MyFighters.some(f=>f.TrainingPoints>0 || (f.AtCap && st.Glory>=f.BreakthroughCost));
     if (b.dataset.s==='market') need = st.FreeGachas>0;
