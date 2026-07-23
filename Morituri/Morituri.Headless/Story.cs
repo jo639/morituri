@@ -64,12 +64,17 @@ public sealed partial class Game
 
     // ── 신규 세계 / 구세이브 ──
 
+    private const float InheritedDebt = 200f;   // 서막 시작 시 물려받는 빚(가이우스의 유산). A3 첫 상환일에 40% 상환 창.
+
     /// <summary>새 세계의 스토리 초기화 — 서막 개시(장례 S0). CLI(playerless)는 스토리 없음.</summary>
     private void InitStoryNewWorld()
     {
         if (_playerless) { _storyStage = "chronicle"; return; }
         _storyStage = "prologue";
         SeedLegends();
+        // 가이우스가 남긴 빚 — 각본이 처음부터 말하는 "무너진 루두스와 빚"을 실제 장부에도 얹는다(S2 궤 레슨이 가리키는 그 숫자).
+        // 각본 없이 시작(SkipCampaign)하는 커리어에는 붙이지 않는다 — 유산의 무게는 유산을 물려받는 자의 몫.
+        DebtTxn("가이우스가 남긴 빚 — 유산", InheritedDebt);
         SpawnStory("story_s0", "s0");
     }
 
@@ -95,6 +100,8 @@ public sealed partial class Game
         _storyStage = "chronicle";
         _storyBeats.Add("skipped");
         if (_pendingEventId is { } id && id.StartsWith("story_")) { _pendingEventId = null; _pendingEventFighter = null; }
+        // 상속 빚은 유산(서막)의 일부 — 각본을 생략하면 물려받을 이야기도 없다. 방금 얹은 유산 채무를 되돌린다.
+        _debt = 0f; _debtLog.Clear();
         _story.Add((0, "story", "{ludus} 각본 없는 시작 — 모래가 곧 이야기다"));
         SaveWorld();
         return StateJson();

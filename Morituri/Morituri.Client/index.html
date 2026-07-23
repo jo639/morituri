@@ -424,7 +424,7 @@
 #coach.on{ display:block }
 #coach .bub{ pointer-events:auto }
 #coach .cfoot{ display:flex; align-items:center; gap:8px; margin-top:11px }
-#coach .cfoot .prog{ font-size:11.5px; color:var(--dim); margin-right:auto }
+#coach .cfoot .prog{ font-size:11.5px; color:var(--dim) }
 #coach .doit{ font-size:12.5px; font-weight:800; color:var(--gold); margin-top:8px }
 #coach .spot{ position:absolute; border-radius:8px;
   box-shadow:0 0 0 3px var(--gold),0 0 22px 6px rgba(210,171,85,.45),0 0 0 9999px rgba(10,6,2,.6);
@@ -872,8 +872,8 @@
         <div class="doit" id="coachDo"></div></div>
     </div>
     <div class="cfoot">
+      <button class="okbtn" style="float:none;margin:0 auto 0 0;border-color:#5a4a30;color:var(--dim)" onclick="lessonSkip()">나중에</button>
       <span class="prog" id="coachProg"></span>
-      <button class="okbtn" style="float:none;margin:0;border-color:#5a4a30;color:var(--dim)" onclick="lessonSkip()">나중에</button>
       <button class="okbtn" style="float:none;margin:0" id="coachNext" onclick="lessonNext()">다음 →</button>
     </div>
   </div>
@@ -2586,8 +2586,11 @@ const LESSONS = {
     { sel:'nav [data-s="archive"]', txt:'유서는 <b>보관함</b>에 넣어두었습니다. 앞으로 오는 서신·유품·단서도 전부 여기 쌓입니다.', act:'보관함을 열어보십시오' },
     { sel:'#archive .pad', txt:'문서를 누르면 펼쳐 읽을 수 있습니다. …가이우스가 남긴 것도 거기 있고요.' } ]},
   recruit: { who:'cato', name:'카토 · 교관', steps:[
-    { sel:'nav [data-s="market"]', txt:'침상이 비어 있으면 시작도 못 합니다. <b>영입</b>에서 사람을 들이십시오.', act:'영입 탭으로' },
-    { sel:'#gachaBtn', txt:'돈이 없으니 무기와 기질만 보고 골라야 합니다. 전술은 하나만 드러나고, 나머지는 모래가 알려줄 겁니다.', act:'뽑기를 눌러보십시오' },
+    { sel:'nav [data-s="market"]', txt:'침상이 비어 있으면 시작도 못 합니다. <b>영입</b>에서 사람을 들이십시오. 무료 뽑기가 <b>두 번</b> 있으니, 둘 다 써서 <b>검투사 둘</b>로 시작하시지요.', act:'영입 탭으로' },
+    // done 단계 = 실제로 영입될 때만 넘어간다(길게 눌러 확정한 뒤). 클릭·짧은 탭으로는 안 넘어간다.
+    { sel:'#gachaBtn', txt:'돈이 없으니 무기와 기질만 보고 골라야 합니다. <b>뽑기</b>로 셋을 부르고, 마음에 드는 하나를 <b>길게 눌러</b> 낙인을 찍으십시오.', act:'뽑기 → 길게 눌러 영입', done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
+    // 두 번째 무료 뽑기 — 영입 후 화면이 루두스로 넘어가므로 항상 보이는 nav 탭을 짚는다(뽑기 버튼은 시장 화면에만 있다).
+    { sel:'nav [data-s="market"]', txt:'무료 뽑기가 <b>한 번</b> 더 남았습니다 — 저 아이 곁에 세울 짝을 마저 들이시지요. 둘이면 시작할 수 있습니다.', act:'한 번 더 뽑아 영입', skipIf:(s)=> (s.FreeGachas||0) <= 0, done:(s,m)=> (s.MyFighters||[]).length > m.fighters },
     { sel:'nav [data-s="codex"]', txt:'무기니 기질이니 하는 말이 낯설거든 <b>도감</b>을 보십시오. 수치까지 전부 적혀 있습니다 — 저보다 정확합니다.' } ]},
   // 서막에는 도박장이 아직 열리지 않는다(A0 해금) — 궤에서 본 숫자는 상단 금고에 늘 붙어 있는 것으로 가르친다.
   debt: { who:'cato', name:'카토 · 교관', steps:[
@@ -2623,7 +2626,8 @@ const LESSONS = {
   records: { who:'cato', name:'카토 · 교관', steps:[
     { sel:'nav [data-s="records"]', txt:'경기는 끝나면 사라지고 <b>기록</b>만 남습니다. 통산 전적도, 명예의 전당도 여기 걸립니다.', act:'기록실로' } ]},
 };
-let _ls = null;   // {id, i, who, name, steps}
+let _ls = null;   // {id, i, who, name, steps, mark}
+let _lsTimer = null;   // 레슨 진행 중 폴링 — done 단계 완료·모달 개폐에 따른 표시/숨김
 // 서버가 예약한 레슨(씬 종료 시 발행)을 실행 — 대화·서신·메뉴·투어가 열려 있으면 그것들이 먼저다.
 function maybeLesson(){
   const id = st && st.Campaign && st.Campaign.Lesson;
@@ -2633,26 +2637,50 @@ function maybeLesson(){
   if (document.querySelector('.modal.on')) return false;   // 열린 모달(영입 계약 등)이 가리키는 곳을 덮는다 — 닫힌 뒤에
   startLesson(id); return true;
 }
+// done 단계의 완료 판정 기준점 — 단계에 들어설 때의 검투사 수·무료뽑기·후보 수를 찍어둔다.
+function lessonMark(){ return { fighters:(st&&st.MyFighters||[]).length, free:(st&&st.FreeGachas)||0, cands:(st&&st.Candidates||[]).length }; }
 window.startLesson = (id)=>{
   const L = LESSONS[id]; if (!L) return;
-  _ls = { id, i:0, who:L.who, name:L.name, steps:L.steps };
+  _ls = { id, i:0, who:L.who, name:L.name, steps:L.steps, mark:lessonMark() };
   $('coach').classList.add('on');
   lsRender();
+  if (_lsTimer) clearInterval(_lsTimer);
+  _lsTimer = setInterval(lessonTick, 350);
 };
+// 다음 렌더 대상으로 인덱스 이동 — skipIf 단계는 건너뛰고, 기준점(mark)을 새로 찍는다. 렌더는 호출자가 한다.
+function _lsAdvance(){
+  _ls.i++;
+  while (_ls.steps[_ls.i] && _ls.steps[_ls.i].skipIf && _ls.steps[_ls.i].skipIf(st)) _ls.i++;
+  _ls.mark = lessonMark();
+}
+// 폴링: done 단계가 상태로 완료되면 넘기고, 모달이 뜨면 코치를 잠시 숨긴다(리빌이 스스로 안내) → 닫히면 되살린다.
+function lessonTick(){
+  if (!_ls){ if(_lsTimer){clearInterval(_lsTimer); _lsTimer=null;} return; }
+  const s = _ls.steps[_ls.i];
+  if (s && s.done){ try{ if (s.done(st, _ls.mark)){ window.lessonNext(); return; } }catch(_){} }
+  const modal = !!document.querySelector('.modal.on');
+  if (modal){ if ($('coach').classList.contains('on')) $('coach').classList.remove('on'); }
+  else if (!$('coach').classList.contains('on')){ lsRender(); }
+}
 function lsVisible(el){ return el && el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden'; }
 function lsRender(){
   if (!_ls) return;
+  if (document.querySelector('.modal.on')){ $('coach').classList.remove('on'); return; }   // 모달 위에는 그리지 않는다(lessonTick이 닫힌 뒤 되살린다)
   const s = _ls.steps[_ls.i];
   if (!s) { lessonDone(); return; }
   const el = document.querySelector(s.sel);
-  if (!lsVisible(el)) { _ls.i++; lsRender(); return; }   // 이 화면에 없는 단계는 건너뛴다(기능이 아직 안 열린 경우)
+  if (!lsVisible(el)) {
+    if (s.done){ $('coach').classList.remove('on'); return; }   // done 단계는 대상이 잠깐 안 보여도(영입 후 루두스로 이동) 상태로 완료를 기다린다
+    _lsAdvance(); lsRender(); return;   // 읽기·클릭 단계는 대상이 이 화면에 없으면 건너뛴다
+  }
+  $('coach').classList.add('on');
   try{ el.scrollIntoView({block:'nearest'}); }catch(_){}
   $('coachPort').innerHTML = `<span class="avatar"><img src="story_${_ls.who}.png" onerror="this.parentElement.innerHTML=dlgSilhouette('${_ls.who}')"></span>`;
   $('coachName').textContent = _ls.name;
   $('coachTxt').innerHTML = s.txt;
   $('coachDo').textContent = s.act ? '→ ' + s.act : '';
   $('coachProg').textContent = _ls.steps.length>1 ? `${_ls.i+1} / ${_ls.steps.length}` : '';
-  $('coachNext').style.display = s.act ? 'none' : '';   // act 단계는 직접 눌러야 넘어간다
+  $('coachNext').style.display = (s.act||s.done) ? 'none' : '';   // act·done 단계는 직접 해야 넘어간다
   const r = stageRect(el);
   $('coachSpot').style.cssText = `top:${r.top-5}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+10}px`;
   const bl = Math.max(8, Math.min(r.stageW-376, r.left + r.width/2 - 180));
@@ -2662,9 +2690,10 @@ function lsRender(){
   $('coachArrow').style.left = Math.max(12, Math.min(332, r.left + r.width/2 - bl - 8))+'px';
   $('coachArrow').style.display = below ? '' : 'none';
 }
-window.lessonNext = ()=>{ if(!_ls) return; _ls.i++; setTimeout(lsRender, 40); };
+window.lessonNext = ()=>{ if(!_ls) return; _lsAdvance(); setTimeout(lsRender, 40); };
 window.lessonSkip = ()=> lessonDone();
 async function lessonDone(){
+  if (_lsTimer){ clearInterval(_lsTimer); _lsTimer=null; }
   const id = _ls && _ls.id; _ls = null;
   $('coach').classList.remove('on');
   if (id){ st = await api('/api/lessondone',{id}); }
@@ -2675,7 +2704,7 @@ async function lessonDone(){
 document.addEventListener('click', (e)=>{
   // 모달·대화가 닫히기를 기다리던 레슨은 그 클릭 직후에 뜬다(다음 refresh를 기다리지 않는다)
   if (!_ls){ setTimeout(()=>{ try{ maybeLesson(); }catch(_){} }, 120); return; }
-  const s = _ls.steps[_ls.i]; if (!s || !s.act) return;
+  const s = _ls.steps[_ls.i]; if (!s || !s.act || s.done) return;   // done 단계는 상태(영입 완료 등)로만 넘어간다 — 짧은 탭·클릭 무시
   const el = document.querySelector(s.sel);
   if (el && (el === e.target || el.contains(e.target))) setTimeout(()=>window.lessonNext(), 280);
 }, true);
@@ -3342,7 +3371,7 @@ window.build = async (fac)=>{
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 function refreshTop(){
-  $('gold').textContent = `${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'');
+  $('gold').textContent = `${st.Gold}`+(st.FreeGachas>0?` (무료뽑기 ${st.FreeGachas})`:'')+(st.Debt>0?` · 빚 ${st.Debt}`:'');   // refresh()와 동일 — 빚을 지우지 않는다
   $('glory').textContent = st.Glory>0? `${st.Glory}` : '';
   $('gloryWrap').style.display = st.Glory>0? '' : 'none';
 }

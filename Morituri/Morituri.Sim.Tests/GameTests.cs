@@ -1162,6 +1162,23 @@ public class GameTests
     }
 
     [Test]
+    public void Game_Campaign_StartsWithInheritedDebt_ButSkipDoesNot()
+    {
+        // 서막이 처음부터 말하는 "무너진 루두스와 빚"이 실제 장부에도 있어야 한다(S2 궤 레슨이 가리키는 그 숫자).
+        TempDir("inheritdebt");
+        var g = new Game(1, 77, fresh: true, interactive: false, playerless: false);
+        Assert.That(Parse(g.StateJson()).GetProperty("Debt").GetDouble(), Is.GreaterThan(0.0),
+            "캠페인 커리어는 가이우스의 빚을 물려받는다");
+
+        // 각본 없이 시작하는 커리어에는 유산의 무게가 없다.
+        TempDir("inheritdebt_skip");
+        var g2 = new Game(1, 88, fresh: true, interactive: false, playerless: false);
+        g2.SkipCampaignJson();
+        Assert.That(Parse(g2.StateJson()).GetProperty("Debt").GetDouble(), Is.EqualTo(0.0),
+            "각본 생략 = 상속 빚 없음");
+    }
+
+    [Test]
     public void Game_Story_SkipCampaign_UnlocksImmediately()
     {
         // [13] 각본 없이 시작(뉴게임 옵션) — 스토리 이벤트 제거·chronicle 즉시, 이후 정상 진행.
