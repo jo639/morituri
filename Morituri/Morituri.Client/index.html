@@ -189,6 +189,10 @@
               border-left-color:var(--gold); font-weight:700; }
   .cxnav .c{ margin-left:auto; font-size:10px; color:var(--dim); font-variant-numeric:tabular-nums; }
   .cxmain{ flex:1 1 auto; min-width:0; }
+  /* 스크롤 유무로 폭이 달라지지 않게 스크롤바 자리를 항상 예약 — 천부·잠재력(짧은 탭)도 다른 탭과 같은 비율 */
+  #codex{ scrollbar-gutter:stable; }
+  /* 묶어보기 버튼 줄과 아래 도감 내용 사이 유격 (내용 없을 땐 붙지 않게 :not(:empty)) */
+  #codexSub:not(:empty){ margin-bottom:12px; }
   .cxhead{ margin-bottom:12px; }
   .cxhead h2{ margin:0 0 4px; border:0; padding:0; font-family:var(--font-display); font-size:19px;
               letter-spacing:.03em; display:flex; align-items:center; gap:8px; }
@@ -4082,8 +4086,7 @@ const cxCount = c => CODEX[c].items ? CODEX[c].items.length
                                     : CODEX[c].modes.reduce((n,m)=>n+m.items.length,0);
 // 「묶어 보기」 세그먼트 — 현재 값과 선택지를 받아 공통 마크업을 낸다
 window.cxSetMode = (cat, v) => { codexModeBy[cat] = v; renderCodex(); };
-const cxSeg = (cur, opts) => `<span class="lab">묶어 보기</span>
-  <div class="seg">${opts.map(o=>
+const cxSeg = (cur, opts) => `<div class="seg">${opts.map(o=>
     `<button data-v="${o.v}" class="${o.v===cur?'cur':''}" onclick="cxSetMode(codexCat,'${o.v}')">${o.label}</button>`).join('')}</div>`;
 
 function renderCodex(){
