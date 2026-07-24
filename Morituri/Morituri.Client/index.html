@@ -861,7 +861,7 @@
   <div class="rrow"><span>단축키</span><span class="d">ESC = 설정 열기/닫기</span></div>
   <div style="display:flex; gap:8px; margin-top:14px">
     <button class="btn primary" style="flex:1" onclick="doSave()"><svg class="ic"><use href="icons.svg#scroll"/></svg> 저장</button>
-    <button class="btn ghost" style="flex:1" onclick="$('menu').style.display='flex'; $('cfgModal').classList.remove('on')">메인 메뉴</button>
+    <button class="btn ghost" style="flex:1" onclick="openMenu(); $('cfgModal').classList.remove('on')">메인 메뉴</button>
     <button class="btn ghost" style="flex:1" onclick="$('cfgModal').classList.remove('on')">닫기</button>
     <button class="btn danger" style="flex:1" onclick="doQuit()">종료</button>
   </div>
@@ -1280,7 +1280,15 @@ function ldPaint(){
   $('ldFac').style.display = v==='fac' ? 'block' : 'none';
 }
 $('ldTabs').onchange = ldPaint;
-$('logo').onclick=()=>{ $('menu').style.display='flex'; renderSlots(); };
+// 메인 메뉴 열기 — 관전(라이브/리플레이) 중이었다면 뒤에서 계속 재생·소리 나던 뷰어를 먼저 정지.
+window.openMenu = ()=>{
+  try{ $('watchF').contentWindow.postMessage({cmd:'stop'},'*'); }catch(_){}
+  $('watchF').src='about:blank';
+  stopLive();               // liveF 정지 + about:blank
+  liveActive = false;       // 미정산 라이브를 버리고 나가는 것 — 커서 무전진이라 세이브 안전([6]). 안 풀면 복귀 후 탭 이동이 막힌다.
+  $('menu').style.display='flex'; renderSlots();
+};
+$('logo').onclick=()=>openMenu();
 // ── 세이브 슬롯 3개 ──
 async function renderSlots(){
   const r = await api('/api/slots',{});
