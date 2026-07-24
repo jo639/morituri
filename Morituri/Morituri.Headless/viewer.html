@@ -498,7 +498,7 @@ function buildPopups(){
   for (const e of doc.Events){
     switch(e.type){
       case 'HitLanded':
-        popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34, dmg:Math.round(e.Damage),
+        popups.push({t:e.Time, who:e.Defender, life:0.8, dmg:Math.round(e.Damage),
           crit:!!e.IsCrit, counter:!!e.IsCounter, guard:!!e.IsGuarded, armor:!!e.IsArmored}); break;
       case 'PoiseBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'poise'}); break;
       case 'GuardBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'guardbreak'}); break;
@@ -982,14 +982,15 @@ function glyphSwords(cx,cy,r,col){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidt
   ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.moveTo(cx+r,cy-r); ctx.lineTo(cx-r,cy+r); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx-r,cy+0.5*r); ctx.lineTo(cx-0.5*r,cy+r); ctx.moveTo(cx+r,cy+0.5*r); ctx.lineTo(cx+0.5*r,cy+r); ctx.stroke(); ctx.restore(); }
 function drawDamage(x, y, age, life, p){
-  const a = 1-age/life; if (a<=0) return;
+  const u = age/life; if (u>=1) return;
+  const a = u<0.7 ? 1 : (1-u)/0.3;                 // 끝 30%에서만 페이드 — 포물선 낙하가 보이게
   ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.lineJoin='round';
   let size=17, col='#f4ecdd', stroke='rgba(10,7,3,0.7)', sw=3.2, glyph=null, gcol;
   if (p.crit){ size=30; col='#ff5d5d'; stroke='#4a0a0a'; sw=4.2; }
   else if (p.counter){ size=24; col='#ffd24a'; stroke='#4a3200'; sw=3.6; glyph='swords'; gcol='#ffe08a'; }
   else if (p.guard){ size=14; col='#6fa8dc'; stroke='#0c2033'; sw=2.6; glyph='shield'; gcol='#9bc4ec'; ctx.globalAlpha=a*0.92; }
   else if (p.armor){ size=16; col='#9aa3af'; }
-  let scl=1; if (p.crit && a>0.82) scl = 1 + (a-0.82)/0.18*0.28;   // 치명타 스케일 펀치
+  let scl=1; if (p.crit && u<0.12) scl = 1 + (0.12-u)/0.12*0.28;   // 치명타 스케일 펀치(등장 순간)
   const txt='−'+p.dmg;
   ctx.font='bold '+Math.round(size*scl)+'px "Pretendard Variable",system-ui';
   if (glyph){ const w=ctx.measureText(txt).width, glx=x-w/2-size*0.5, gly=y-size*0.34;
@@ -1258,10 +1259,16 @@ function render(){
   ctx.textAlign='center';
   // CC 발생 순간 아이콘 폭발(글자 없음) — 상체 위치
   for (const who of [0,1]){ const s=sp(who); drawStatusBurst(s.x, s.y-58, who); }
-  // 데미지 숫자 — 한글 없이 색·크기·표식만(치명=큰 붉은+스파크 / 카운터=금+교차검 / 가드=청+방패 / 묵직=회색)
+  // 데미지 숫자 — 한글 없이 색·크기·표식만. 캐릭터를 가리지 않게 '바깥쪽 어깨'에서 시작해
+  // 포물선으로 솟았다 낙하. 시작 방향 = 상대 기준 서 있는 쪽(상대 좌측이면 좌측 어깨). u로만 위치 → 스크럽 안전.
   for (const p of popups){ const age=t-p.t; if(age<0||age>p.life)continue;
-    const s=sp(p.who), a=1-age/p.life;
-    drawDamage(s.x, s.y-96-(p.rise*(1-a)), age, p.life, p); }
+    const s=sp(p.who), other=(p.who===0?pb:pa), u=age/p.life;
+    const side = (s.x>=other.x) ? 1 : -1;
+    const jit = ((p.t*137.5)%1) - 0.5;                    // 연타 겹침 방지(결정론적 미세 산개)
+    const shX = s.x + side*(28 + u*15 + jit*7);           // 어깨 → 바깥으로 드리프트
+    const up  = 239*u - 284*u*u;                          // 투사체 포물선(솟았다 낙하)
+    const shY = s.y - 72 - up + jit*5;
+    drawDamage(shX, shY, age, p.life, p); }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
     const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동
     const isPasv=d.tag&&d.tag.startsWith('PASV_');    // 성격 패시브([7]§5) proc
