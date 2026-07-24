@@ -401,8 +401,9 @@
 /* 무레나 PNG는 캔버스 우측에 치우쳐 있어 대사를 가림 → 왼쪽으로 보정(카토와 얼굴 위치·오른쪽 여백 정렬) */
 .dlg-port[data-who="murena"] img{ margin-left:-58px }
 /* 실루엣 폴백(도형)은 카드형 흉상 — 전신 PNG와 프레이밍이 달라 전용 크기·위치(원래 값 복원) */
-.dlg-port:has(svg){ left:-14px; bottom:134px }
-.dlg-port svg{ width:260px; height:260px }
+/* 실루엣 폴백은 카드형 흉상 — 작게, 박스 왼쪽 밖으로. 전신 PNG보다 프레이밍이 달라 대사를 덮기 쉽다. */
+.dlg-port:has(svg){ left:-92px; bottom:120px }
+.dlg-port svg{ width:200px; height:200px }
 .dlg-np{ position:absolute; top:-38px; left:250px }
 .dlg-nameplate{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:.12em;
   color:var(--gold); background:linear-gradient(180deg,var(--panel3),var(--panel)); padding:6px 22px;
@@ -2470,14 +2471,15 @@ const lockEl = (el, ok, why) => { if(!el) return;
   if (ok) el.removeAttribute('data-why'); else el.setAttribute('data-why', why); };
 // 초상: 라니스타 제작 이미지(story_<key>.png — 투명 PNG) 우선, 없으면 실루엣 폴백
 window.dlgSilhouette = who => {
-  // 인물별 실루엣 톤 — 카토(흙·가죽) / 무레나(검은 인장) / 테아(약재·잿빛) / 루킬리우스(자주·과시)
-  const tone = who==='murena' ? '#2e1e26' : who==='thea' ? '#38403c' : who==='lucilius' ? '#4a2c46' : '#5a4630';
-  const face = who==='murena' ? '#c9a88f' : who==='thea' ? '#c2a992' : who==='lucilius' ? '#d2b199' : '#b98a5e';
+  // 인물별 실루엣 톤 — 「로마 프레스코 + 피와 모래」 팔레트 안에서(세피아·골드). 청록·자주로 튀지 않게.
+  // 카토(흙·가죽) / 무레나(검은 인장) / 테아(바랜 약재천·따뜻한 회갈) / 루킬리우스(절제된 자적·황토)
+  const tone = who==='murena' ? '#2e1e26' : who==='thea' ? '#463d34' : who==='lucilius' ? '#4a2f2e' : '#5a4630';
+  const face = who==='murena' ? '#c9a88f' : who==='thea' ? '#c4ab8e' : who==='lucilius' ? '#cba888' : '#b98a5e';
   return `<svg viewBox="0 0 100 100"><rect width="100" height="100" rx="10" fill="var(--panel)" stroke="var(--gold-deep)"/>
     <ellipse cx="50" cy="92" rx="30" ry="24" fill="${tone}"/><circle cx="50" cy="44" r="20" fill="${face}" opacity=".9"/>
     ${who==='murena'?'<path d="M30 52 Q30 20 50 20 Q70 20 70 52 L70 34 Q50 16 30 34 Z" fill="#241820"/>':''}
-    ${who==='thea'?'<path d="M31 46 Q31 22 50 22 Q69 22 69 46 L69 40 Q50 30 31 40 Z" fill="#2b312e"/>':''}
-    ${who==='lucilius'?'<path d="M50 68 L64 74 L50 80 L36 74 Z" fill="#6b3f63" opacity=".85"/>':''}</svg>`;
+    ${who==='thea'?'<path d="M31 46 Q31 22 50 22 Q69 22 69 46 L69 40 Q50 30 31 40 Z" fill="#38302a"/>':''}
+    ${who==='lucilius'?'<path d="M50 68 L64 74 L50 80 L36 74 Z" fill="#7a4a3e" opacity=".8"/>':''}</svg>`;
 };
 const dlgPortrait = who => who==='none' ? '' :
   `<img src="story_${who}.png" onerror="this.parentElement.innerHTML=dlgSilhouette('${who}')">`;
