@@ -172,7 +172,7 @@ setInterval(()=>{
 }, 400);
 // 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
 const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
-let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], duration = 0;
+let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], statuses = [], duration = 0;
 // 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
 const VENUES = {
   arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'콜로세움' },
@@ -491,24 +491,27 @@ function fillEndow(id, e){
 }
 
 // 이벤트 → 시간창 팝업 (스크럽해도 상태 무관하게 t로부터 재계산)
+// 데미지 숫자는 한글 접두어 없이 색·크기·표식만으로 구분(치명/카운터/가드/묵직) — drawDamage가 렌더.
+// 상태이상(다운·자세붕괴·가드파괴·탈진)은 떠다니는 글자 대신 롤식 아이콘 스트립(statuses)으로.
 function buildPopups(){
-  popups = []; decisions = [];
-  const flavor = e => e.IsArmored ? ['묵직',' #9aa3af'] : e.IsGuarded ? ['가드','#6fa8dc']
-        : e.IsCounter ? ['카운터','#ffd24a'] : e.IsCrit ? ['치명','#ff5d5d'] : ['','#ffffff'];
+  popups = []; decisions = []; statuses = [];
   for (const e of doc.Events){
     switch(e.type){
-      case 'HitLanded':{ const [ic,col]=flavor(e);
-        popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34,
-          text:`${ic?ic+' ':''}-${Math.round(e.Damage)}`, col}); break; }
-      case 'PoiseBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'자세붕괴', col:'#cbd2dc'}); break;
-      case 'GuardBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'가드파괴!', col:'#6fa8dc'}); break;
-      case 'KnockedDown':  popups.push({t:e.Time, who:e.FighterId, life:1.2, rise:26, text:'다운!', col:'#ff8a4a'}); break;
-      case 'StaminaExhausted': popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'탈진', col:'#d9b15a'}); break;
+      case 'HitLanded':
+        popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34, dmg:Math.round(e.Damage),
+          crit:!!e.IsCrit, counter:!!e.IsCounter, guard:!!e.IsGuarded, armor:!!e.IsArmored}); break;
+      case 'PoiseBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'poise'}); break;
+      case 'GuardBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'guardbreak'}); break;
+      case 'KnockedDown':      statuses.push({t:e.Time, who:e.FighterId, kind:'down'}); break;
+      case 'StaminaExhausted': statuses.push({t:e.Time, who:e.FighterId, kind:'stam'}); break;
       case 'Decision': decisions.push({t:e.Time, who:e.FighterId,
           dur:Math.min(Math.max(e.Duration,0.9),2.5), tag:e.ReasonTag, layer:e.SourceLayer}); break;
     }
   }
 }
+// 상태이상 표시 규격(발동만 있고 지속시간이 없어 표시용 고정 윈도우) + 카테고리색
+const STATDUR = {down:1.6, poise:1.0, guardbreak:1.2, stam:1.6};
+const STATCOL = {down:'#ff8a4a', poise:'#b7bfca', guardbreak:'#6fa8dc', stam:'#d9b15a', bleed:'#d0473b'};
 
 // ── 하이라이트 모드: 임팩트 구간만 이어 재생 (조용한 대치는 점프) ──
 let hlMode = SET.highlight === true, hlWins = [];
@@ -966,11 +969,140 @@ function drawBleed(fx, fy, sc, stacks){
     ctx.fillStyle='#c0241c';
     ctx.beginPath(); ctx.ellipse(dx, dy, 2.0*sc, 3.0*sc, 0,0,7); ctx.fill();
   }
-  // 스택 점(머리 위 핏색 도트)
-  ctx.globalAlpha=1; ctx.fillStyle='#e0382c';
-  for(let i=0;i<stacks;i++){ ctx.beginPath(); ctx.arc(fx-(stacks-1)*3*sc+i*6*sc, fy-104*sc, 2.2*sc, 0,7); ctx.fill(); }
+  // (머리 위 핏색 도트는 제거 — 스택 수는 HP바 아래 디버프 아이콘이 보여준다)
   ctx.restore();
 }
+
+// ── 전투 피드백 픽토그램·표식 (캔버스 벡터, 스크럽 안전) ──
+// 데미지 숫자: 한글 없이 색·크기·표식·스파크만으로 종류 구분
+function glyphShield(cx,cy,r,col){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.8; ctx.lineJoin='round';
+  ctx.beginPath(); ctx.moveTo(cx,cy-r); ctx.lineTo(cx+0.75*r,cy-0.6*r); ctx.lineTo(cx+0.6*r,cy+0.5*r);
+  ctx.quadraticCurveTo(cx,cy+1.05*r,cx-0.6*r,cy+0.5*r); ctx.lineTo(cx-0.75*r,cy-0.6*r); ctx.closePath(); ctx.stroke(); ctx.restore(); }
+function glyphSwords(cx,cy,r,col){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.8; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.moveTo(cx+r,cy-r); ctx.lineTo(cx-r,cy+r); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx-r,cy+0.5*r); ctx.lineTo(cx-0.5*r,cy+r); ctx.moveTo(cx+r,cy+0.5*r); ctx.lineTo(cx+0.5*r,cy+r); ctx.stroke(); ctx.restore(); }
+function drawDamage(x, y, age, life, p){
+  const a = 1-age/life; if (a<=0) return;
+  ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.lineJoin='round';
+  let size=17, col='#f4ecdd', stroke='rgba(10,7,3,0.7)', sw=3.2, glyph=null, gcol;
+  if (p.crit){ size=30; col='#ff5d5d'; stroke='#4a0a0a'; sw=4.2; }
+  else if (p.counter){ size=24; col='#ffd24a'; stroke='#4a3200'; sw=3.6; glyph='swords'; gcol='#ffe08a'; }
+  else if (p.guard){ size=14; col='#6fa8dc'; stroke='#0c2033'; sw=2.6; glyph='shield'; gcol='#9bc4ec'; ctx.globalAlpha=a*0.92; }
+  else if (p.armor){ size=16; col='#9aa3af'; }
+  let scl=1; if (p.crit && a>0.82) scl = 1 + (a-0.82)/0.18*0.28;   // 치명타 스케일 펀치
+  const txt='−'+p.dmg;
+  ctx.font='bold '+Math.round(size*scl)+'px "Pretendard Variable",system-ui';
+  if (glyph){ const w=ctx.measureText(txt).width, glx=x-w/2-size*0.5, gly=y-size*0.34;
+    if (glyph==='swords') glyphSwords(glx,gly,size*0.44,gcol); else glyphShield(glx,gly,size*0.42,gcol); }
+  ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.strokeText(txt, x, y);
+  if (p.crit){ ctx.shadowColor='rgba(255,70,70,0.7)'; ctx.shadowBlur=10; }
+  ctx.fillStyle=col; ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+// 상태이상·무기 픽토그램 — 중심(cx,cy), 반경 r, 색 col
+function statGlyph(kind, cx, cy, r, col){ ctx.save(); ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.8; ctx.lineCap='round'; ctx.lineJoin='round';
+  switch(kind){
+    case 'down':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.85*r); ctx.lineTo(cx,cy+0.3*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.5*r,cy-0.15*r); ctx.lineTo(cx,cy+0.4*r); ctx.lineTo(cx+0.5*r,cy-0.15*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.8*r,cy+0.85*r); ctx.lineTo(cx+0.8*r,cy+0.85*r); ctx.stroke(); break;
+    case 'bleed':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.95*r);
+      ctx.bezierCurveTo(cx+0.9*r,cy+0.15*r, cx+0.55*r,cy+0.95*r, cx,cy+0.95*r);
+      ctx.bezierCurveTo(cx-0.55*r,cy+0.95*r, cx-0.9*r,cy+0.15*r, cx,cy-0.95*r); ctx.fill(); break;
+    case 'guardbreak':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.9*r); ctx.lineTo(cx+0.72*r,cy-0.55*r); ctx.lineTo(cx+0.58*r,cy+0.5*r);
+      ctx.quadraticCurveTo(cx,cy+1.02*r,cx-0.58*r,cy+0.5*r); ctx.lineTo(cx-0.72*r,cy-0.55*r); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.12*r,cy-0.6*r); ctx.lineTo(cx+0.16*r,cy-0.05*r); ctx.lineTo(cx-0.14*r,cy+0.22*r); ctx.lineTo(cx+0.1*r,cy+0.7*r); ctx.stroke(); break;
+    case 'poise':
+      ctx.beginPath(); ctx.moveTo(cx-0.6*r,cy-0.35*r); ctx.lineTo(cx,cy-0.85*r); ctx.lineTo(cx+0.6*r,cy-0.35*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.6*r,cy+0.4*r); ctx.lineTo(cx,cy-0.1*r); ctx.lineTo(cx+0.6*r,cy+0.4*r); ctx.stroke(); break;
+    case 'stam':
+      for (let i=-1;i<=1;i++){ const yy=cy+i*0.5*r; ctx.beginPath(); ctx.moveTo(cx-0.85*r,yy); ctx.lineTo(cx+0.45*r,yy);
+        ctx.arc(cx+0.45*r,yy-0.2*r,0.2*r,1.57,-1.57,true); ctx.stroke(); } break;
+  }
+  ctx.restore(); }
+function wpnGlyph(w, cx, cy, r, col){ ctx.save(); ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.7; ctx.lineCap='round'; ctx.lineJoin='round';
+  const L=(a,b,c,d)=>{ctx.beginPath();ctx.moveTo(cx+a*r,cy+b*r);ctx.lineTo(cx+c*r,cy+d*r);ctx.stroke();};
+  switch(w){
+    case 'WPN_HAMMER': ctx.beginPath(); ctx.rect(cx-0.75*r,cy-0.95*r,1.5*r,0.55*r); ctx.fill(); L(0,-0.4,0,0.95); break;
+    case 'WPN_AXE': ctx.beginPath(); ctx.moveTo(cx-0.05*r,cy-0.95*r); ctx.quadraticCurveTo(cx+0.95*r,cy-0.7*r,cx+0.5*r,cy+0.1*r);
+      ctx.lineTo(cx-0.05*r,cy-0.05*r); ctx.closePath(); ctx.fill(); L(-0.05,-0.95,-0.05,0.95); break;
+    case 'WPN_SWORD': L(0,-0.95,0,0.5); L(-0.4,0.5,0.4,0.5); L(0,0.5,0,0.95); break;
+    case 'WPN_GREATSWORD': ctx.lineWidth=2.6; L(0,-0.98,0,0.45); ctx.lineWidth=1.7; L(-0.5,0.45,0.5,0.45); L(0,0.45,0,0.98); break;
+    case 'WPN_DUALBLADES': L(-0.65,-0.9,-0.65,0.55); L(0.65,-0.9,0.65,0.55); break;
+    case 'WPN_SPEAR': L(0,-0.98,0,0.98); ctx.beginPath(); ctx.moveTo(cx,cy-0.98*r); ctx.lineTo(cx-0.28*r,cy-0.55*r); ctx.lineTo(cx+0.28*r,cy-0.55*r); ctx.closePath(); ctx.fill(); break;
+    case 'WPN_WHIP': ctx.beginPath(); ctx.moveTo(cx-0.8*r,cy-0.6*r); ctx.quadraticCurveTo(cx+0.65*r,cy-0.3*r,cx-0.15*r,cy+0.3*r);
+      ctx.quadraticCurveTo(cx-0.85*r,cy+0.7*r,cx+0.75*r,cy+0.9*r); ctx.stroke(); break;
+    case 'WPN_SHIELD': ctx.beginPath(); ctx.moveTo(cx,cy-0.9*r); ctx.lineTo(cx+0.72*r,cy-0.55*r); ctx.lineTo(cx+0.58*r,cy+0.5*r);
+      ctx.quadraticCurveTo(cx,cy+1.02*r,cx-0.58*r,cy+0.5*r); ctx.lineTo(cx-0.72*r,cy-0.55*r); ctx.closePath(); ctx.stroke(); break;
+    case 'star': ctx.beginPath(); for(let i=0;i<10;i++){ const ang=-1.5708+i*Math.PI/5, rr=(i%2?0.42:1)*r;
+      ctx.lineTo(cx+Math.cos(ang)*rr, cy+Math.sin(ang)*rr);} ctx.closePath(); ctx.fill(); break;
+    default: ctx.beginPath(); ctx.arc(cx,cy,0.4*r,0,7); ctx.fill();
+  }
+  ctx.restore(); }
+// 롤식 디버프 아이콘 스트립 (HP바 아래) — 방사형 쿨다운 스윕 + 스택 + 카테고리 테두리색
+function drawStatusStrip(cx, hpTopY, bleed, who){
+  const list=[];
+  for (const s of statuses){ if (s.who!==who) continue; const age=t-s.t, dur=STATDUR[s.kind]||1.2;
+    if (age<0||age>dur) continue; list.push({kind:s.kind, rem:1-age/dur, age}); }
+  if (bleed>0) list.push({kind:'bleed', rem:-1, stack:bleed, age:1});
+  if (!list.length) return;
+  const sz=15, gap=3, total=list.length*sz+(list.length-1)*gap;
+  let x=Math.round(cx-total/2), y=Math.round(hpTopY+11);
+  ctx.save(); ctx.textBaseline='alphabetic';
+  for (const it of list){ const col=STATCOL[it.kind];
+    const pop = it.age<0.2 ? 1+(1-it.age/0.2)*0.6 : 1;   // 등장 슬램
+    const s2=sz*pop, ox=x-(s2-sz)/2, oy=y-(s2-sz)/2;
+    ctx.fillStyle='#160f08'; roundRect(ox,oy,s2,s2,3); ctx.fill();
+    ctx.save(); roundRect(ox,oy,s2,s2,3); ctx.clip();
+    statGlyph(it.kind, ox+s2/2, oy+s2/2, s2*0.42, col);
+    if (it.rem>=0){ const el=1-it.rem; ctx.beginPath(); ctx.moveTo(ox+s2/2,oy+s2/2);
+      ctx.arc(ox+s2/2, oy+s2/2, s2, -1.5708, -1.5708+el*6.2832); ctx.closePath();
+      ctx.fillStyle='rgba(6,4,2,0.60)'; ctx.fill(); }
+    ctx.restore();
+    ctx.lineWidth=1.5; ctx.strokeStyle=col; roundRect(ox+0.75,oy+0.75,s2-1.5,s2-1.5,2.5); ctx.stroke();
+    if (it.stack>1){ ctx.textAlign='right'; ctx.font='bold 9px "Pretendard Variable",system-ui';
+      ctx.lineWidth=2.4; ctx.strokeStyle='#000'; ctx.strokeText(it.stack, ox+s2, oy+s2+1);
+      ctx.fillStyle='#fff'; ctx.fillText(it.stack, ox+s2, oy+s2+1); }
+    x+=sz+gap;
+  }
+  ctx.restore(); }
+// CC 발생 순간 — 아이콘이 크게 터진다(글자 없음). 상체 위치에서 링과 함께.
+function drawStatusBurst(px_, py_, who){
+  for (const s of statuses){ if (s.who!==who) continue; const age=t-s.t; if (age<0||age>0.5) continue;
+    const col=STATCOL[s.kind]; if (!col) continue;
+    const pr=age/0.5, al=(1-pr)*0.95;
+    ctx.save(); ctx.globalAlpha=al; ctx.strokeStyle=col; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(px_, py_, 9+pr*26, 0, 7); ctx.stroke();
+    statGlyph(s.kind, px_, py_, 16*(0.5+pr*0.8), col);
+    ctx.restore();
+  } }
+// 스킬 컷인 — 각진 플레이트 + 무기 다이아 배지 + 금빛 와이프 (Zone 4, 시전자 위)
+function drawCutin(cx, yTop, who, name, weapon, pasv, age, dur){
+  const inP=Math.min(1, age/0.16), outP=age>dur-0.35?Math.max(0,(dur-age)/0.35):1, al=Math.min(inP,outP);
+  if (al<=0) return;
+  const acc = pasv?'#9bc4ec':'#d2ab55', h = pasv?22:28, skew=6;
+  const kind = pasv?'패시브':(WPN[weapon]||'무기');
+  ctx.save(); ctx.globalAlpha=al; ctx.textBaseline='alphabetic';
+  ctx.font='bold '+(pasv?12:14)+'px "Noto Serif KR","Pretendard Variable",serif';
+  const nameW=ctx.measureText(name).width, badgeW=h, padL=9, padR=15, plateW=padL+nameW+padR, totalW=badgeW+plateW;
+  const slide=(1-inP)*18*(who===0?-1:1);
+  let x0=Math.round(cx-totalW/2+slide);
+  const bcx=x0+badgeW/2, bcy=yTop+h/2;
+  ctx.fillStyle='#161009'; ctx.strokeStyle=acc; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(bcx,yTop-2); ctx.lineTo(x0+badgeW+2,bcy); ctx.lineTo(bcx,yTop+h+2); ctx.lineTo(x0-2,bcy); ctx.closePath(); ctx.fill(); ctx.stroke();
+  wpnGlyph(pasv?'star':weapon, bcx, bcy, h*0.26, acc);
+  const px0=x0+badgeW-1;
+  ctx.beginPath(); ctx.moveTo(px0+skew,yTop); ctx.lineTo(px0+plateW+skew,yTop); ctx.lineTo(px0+plateW-skew,yTop+h); ctx.lineTo(px0-skew,yTop+h); ctx.closePath();
+  ctx.fillStyle='rgba(20,14,7,0.95)'; ctx.fill(); ctx.strokeStyle=acc; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.textAlign='left'; ctx.fillStyle=acc; ctx.globalAlpha=al*0.85; ctx.font='bold 8px "Pretendard Variable",system-ui';
+  ctx.fillText(kind, px0+padL, yTop+9);
+  ctx.globalAlpha=al; ctx.fillStyle='#f4ecdd'; ctx.font='bold '+(pasv?12:14)+'px "Noto Serif KR","Pretendard Variable",serif';
+  ctx.fillText(name, px0+padL, yTop+h-6);
+  const wipeW=(plateW-4)*Math.min(1, age/0.4);
+  ctx.strokeStyle=acc; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px0-skew+2,yTop+h-1); ctx.lineTo(px0-skew+2+wipeW,yTop+h-1); ctx.stroke();
+  ctx.restore(); }
 
 // ── 렌더 ──
 function render(){
@@ -1097,6 +1229,7 @@ function render(){
     else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
     unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
     if (u.bleed > 0) drawBleed(u.p.x, u.p.y, sc, u.bleed);
+    drawStatusStrip(u.p.x, u.p.y - 100*sc - 16, u.bleed, u.who);   // 롤식 디버프 아이콘 스트립 (HP바 아래)
   }
   // 승리 오버레이
   if (postGame && doc.Result.Winner >= 0){
@@ -1123,22 +1256,26 @@ function render(){
   // 팝업 / Decision 핀 (HUD 위로)
   const sp = who => who===0?pa:pb;
   ctx.textAlign='center';
+  // CC 발생 순간 아이콘 폭발(글자 없음) — 상체 위치
+  for (const who of [0,1]){ const s=sp(who); drawStatusBurst(s.x, s.y-58, who); }
+  // 데미지 숫자 — 한글 없이 색·크기·표식만(치명=큰 붉은+스파크 / 카운터=금+교차검 / 가드=청+방패 / 묵직=회색)
   for (const p of popups){ const age=t-p.t; if(age<0||age>p.life)continue;
-    const a=1-age/p.life, s=sp(p.who);
-    ctx.globalAlpha=a; ctx.fillStyle=p.col; ctx.font='bold 15px "Pretendard Variable",system-ui';
-    ctx.fillText(p.text, s.x, s.y-96-(p.rise*(1-a))); ctx.globalAlpha=1; }
+    const s=sp(p.who), a=1-age/p.life;
+    drawDamage(s.x, s.y-96-(p.rise*(1-a)), age, p.life, p); }
   for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
-    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
-    const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동 — 모션 없이 라벨로만 인지
+    const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동
     const isPasv=d.tag&&d.tag.startsWith('PASV_');    // 성격 패시브([7]§5) proc
+    // 스킬·패시브 = 각진 컷인 플레이트(무기 다이아 배지). 지시·전환·감정과 시각 언어를 분리.
+    if (isSkill || isPasv){
+      const wpn = d.who===0?doc.Meta.A.Weapon:doc.Meta.B.Weapon;
+      const nm  = isSkill ? (SKILLKR[d.tag.slice(6)]||d.tag.slice(6)) : (SKILLKR[d.tag.slice(5)]||d.tag.slice(5));
+      drawCutin(s.x, s.y-142, d.who, nm, wpn, isPasv, t-d.t, d.dur); ctx.globalAlpha=1; continue;
+    }
+    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.95;
     const isAdapt=d.tag&&d.tag.startsWith('ADAPT_');  // 상대 진영의 자기 판단 — 라니스타 지시와 구분해 보여준다
     const txt=isAdapt ? '전술 전환 — '+(TAC['TAC_'+d.tag.slice(6)]||d.tag.slice(6))
       : d.tag&&d.tag.startsWith('TACTIC_') ? '라니스타 지시 — '+(TAC[d.tag.slice(7)]||d.tag.slice(7))
-      : isSkill ? '스킬 발동 — '+(SKILLKR[d.tag.slice(6)]||d.tag.slice(6))
-      : isPasv ? (SKILLKR[d.tag.slice(5)]||d.tag.slice(5))
       : (TAGKR[d.tag]||d.tag); ctx.font='bold 12px "Pretendard Variable",system-ui'; const w=ctx.measureText(txt).width+14;
-    if (isSkill) ctx.fillStyle='#c9a84c';   // 액티브 = 금빛 배지 — 지시·감정과 구분
-    else if (isPasv) ctx.fillStyle='#9bc4ec';   // 패시브 = 푸른 배지
     roundRect(s.x-w/2, s.y-124, w, 19, 6); ctx.fill();
     ctx.fillStyle='#1a130c'; ctx.fillText(txt, s.x, s.y-110); ctx.globalAlpha=1; }
 
