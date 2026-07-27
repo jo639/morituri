@@ -1339,6 +1339,19 @@ public sealed class MatchSim
             Emit(new Decision(_now, f.Index, "PASV_" + ps.ReasonTag, "Passive", MathF.Max(2f, dur)));
     }
 
+    /// <summary>
+    /// 상시조건형 패시브 가시화 — 조건에 <b>진입</b>할 때만 1회 라벨을 낸다([7] 가시화 원칙).
+    /// 효과 자체는 손대지 않는다(수치·RNG 불변 → 매트릭스 영향 없음). 판단 틱 지터(최대 0.32s)로
+    /// 조건이 잠깐 끊겨도 재알림하지 않도록 유예를 둔다.
+    /// </summary>
+    private const float SustainedLabelGraceSec = 1.5f;
+    private void AnnounceSustained(FighterRuntime f, PassiveState pst)
+    {
+        bool fresh = _now >= pst.LabelUntil;
+        pst.LabelUntil = _now + SustainedLabelGraceSec;
+        if (fresh) Emit(new Decision(_now, f.Index, "PASV_" + pst.Spec.ReasonTag, "Passive", 2f));
+    }
+
     /// <summary>[7]§5 성격 패시브 — 판단 틱마다 조건 평가(상시조건형은 매 틱 갱신, 이산 proc은 쿨다운).</summary>
     private void TickPassives(FighterRuntime f, FighterRuntime opp)
     {
@@ -1363,18 +1376,18 @@ public sealed class MatchSim
                 }
                 break;
             case PassiveTrigger.SelfHpBelow:                                  // 최후의 발악(상시조건)
-                if (f.HpPct <= ps.Threshold) pst.BuffUntil = _now + 0.25f;
+                if (f.HpPct <= ps.Threshold) { pst.BuffUntil = _now + 0.25f; AnnounceSustained(f, pst); }
                 break;
             case PassiveTrigger.SelfHpAboveWinning:                           // 여유
-                if (f.HpPct >= ps.Threshold && f.HpPct > opp.HpPct) pst.BuffUntil = _now + 0.25f;
+                if (f.HpPct >= ps.Threshold && f.HpPct > opp.HpPct) { pst.BuffUntil = _now + 0.25f; AnnounceSustained(f, pst); }
                 break;
             case PassiveTrigger.HpDeficit:                                    // 기사도의 보답
-                if (opp.HpPct - f.HpPct >= ps.Threshold) pst.BuffUntil = _now + 0.25f;
+                if (opp.HpPct - f.HpPct >= ps.Threshold) { pst.BuffUntil = _now + 0.25f; AnnounceSustained(f, pst); }
                 break;
             case PassiveTrigger.TimeLowAndLosing:                             // 역전의 영웅
                 if (_c.MatchTimeSec > 0f
                     && (_c.MatchTimeSec - _now) / _c.MatchTimeSec <= ps.Threshold
-                    && f.HpPct < opp.HpPct) pst.BuffUntil = _now + 0.25f;
+                    && f.HpPct < opp.HpPct) { pst.BuffUntil = _now + 0.25f; AnnounceSustained(f, pst); }
                 break;
             case PassiveTrigger.OppHeavyWindup:                               // 생존 본능
                 if (ready && !f.IsExhausted && f.Stamina >= ps.StCost
@@ -1702,9 +1715,9 @@ public sealed class MatchSim
         dmg *= PassiveMul(atk, x => x.DmgDealtMult);
         if (crit) dmg *= PassiveMul(atk, x => x.CritDmgMult);
         dmg *= PassiveMul(def, x => x.DmgTakenMult);                                 // 최후의 발악: 받피 +25%
-        if (PassiveWith(atk, PassiveTrigger.OppVulnerable)?.Spec is { } pex             // 약점 포착(상시조건)
+        if (PassiveWith(atk, PassiveTrigger.OppVulnerable) is { } pexS                  // 약점 포착(상시조건)
             && (def.GuardDisabled || def.IsExhausted || def.State == FighterState.Stagger))
-            dmg *= pex.DmgDealtMult;
+        { dmg *= pexS.Spec.DmgDealtMult; AnnounceSustained(atk, pexS); }
         // 흡수 쉴드: 잔량만큼 먼저 흡수 (선취점·향후 액티브)
         if (def.ShieldHp > 0f && _now < def.ShieldExpiry)
         {

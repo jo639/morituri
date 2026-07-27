@@ -165,7 +165,8 @@ public static class SkillTable
             Passive: new PassiveSpec("LEISURE", PassiveTrigger.SelfHpAboveWinning, Threshold: 0.60f, IdleRegenMult: 1.5f)),
         new(new TraitDef("SKL_IMPERIAL", "황제의 위압(스킬)"), "PER_ARROGANT", 2,
             "조롱이 곧 권위다 — 도발 성공 직후 5초간 크리율 +15%, 상대 분노 2배 (集정관+ · 主ATK)",
-            Passive: new PassiveSpec("IMPERIAL", PassiveTrigger.AfterTaunt, Duration: 5f, CritAdd: 0.15f)),
+            // ProcCdSec=5(=Duration): 지속 중 재발동으로 라벨이 겹치지 않게. CD가 있어야 발동 라벨이 방출된다(ProcPassive).
+            Passive: new PassiveSpec("IMPERIAL", PassiveTrigger.AfterTaunt, ProcCdSec: 5f, Duration: 5f, CritAdd: 0.15f)),
         // 고결
         new(new TraitDef("SKL_FAIRFIGHT", "정정당당(스킬)", GuardDamageMult: 0.75f, PoiseMaxMult: 1.20f), "PER_HONORABLE", 1,
             "정면으로만 이긴다 — 가드 효율 +25%·포이즈 +20% / 다운·빈사 상대 처형 거부 (主DEF)",

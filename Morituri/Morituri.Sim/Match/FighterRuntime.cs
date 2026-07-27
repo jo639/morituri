@@ -35,6 +35,7 @@ public sealed class PassiveState
     public float BuffUntil = -1f;     // 시한 효과 만료
     public int   Stacks;              // 투지·관중몰이 스택
     public float StackExpiry;         // 스택 만료(투지)
+    public float LabelUntil = -1f;    // 상시조건형 라벨 재알림 억제(가시화 전용 — 효과와 무관)
 }
 
 public sealed class FighterRuntime
