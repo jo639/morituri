@@ -249,8 +249,12 @@ const TAUNT_DUR = 3.0;
 const TAGKR = { SHOWTIME:'쇼타임 · 화려한 강공', TAUNT:'도발', ENRAGED:'격노', RAGED:'도발에 격노',
   RECKLESS:'폭주', FEAR:'위축', FLINCH:'주춤', CRUEL:'잔혹', EXPLOIT:'허점 공략', HONOR:'경의',
   BOLD:'결단', COOL:'냉정', WARY:'신중',
+  HUNT:'사냥 본능', VENGE:'복수의 도발', DREAD:'천적 공포',   // 전술·관계 트리거([3]4.2 / RelationTable)
   REL_NEMESIS:'원수', REL_FEAR:'두려움', REL_ENVY:'질투', REL_OBSESSION:'집착',
-  REL_RIVAL:'라이벌', REL_RESPECT:'존경', REL_FRIEND:'친구' };
+  REL_RIVAL:'라이벌', REL_RESPECT:'존경', REL_FRIEND:'친구',
+  // 이월 감정 8종([10] EmotionTable의 공식 이름과 일치시킬 것)
+  EMO_CONFIDENT:'자신감', EMO_HUBRIS:'자만', EMO_PRESSURE:'부담감', EMO_INFERIOR:'열등감',
+  EMO_MOTIVATED:'동기부여', EMO_FRUSTRATED:'좌절', EMO_TRAUMA:'트라우마' };
 // 무기 액티브([7]§4) reasonTag → 한글 — 발동 가시화(금빛 배지)
 const SKILLKR = { SUNDER:'분쇄 일격', BERSERK:'광전사의 도끼', UNBROKEN:'불퇴의 자세',
   COMBO:'연격', CHARGE:'쇄도 베기', FLURRY:'난무', MIRAGE:'그림자 보',
@@ -1108,9 +1112,9 @@ function drawCutin(cx, yTop, who, name, weapon, pasv, age, dur){
   ctx.restore(); }
 // 감정 색 분류 — 공격/자신=붉음, 위축/신중=청, 과시/기회=금, 그 외=바랜 오커
 function emoColor(tag){
-  if (/ENRAGED|RAGED|RECKLESS|CRUEL|NEMESIS/.test(tag)) return '#e0685f';
-  if (/FEAR|FLINCH|WARY|REL_FEAR/.test(tag))            return '#9bc4ec';
-  if (/SHOWTIME|BOLD|EXPLOIT|TAUNT|RIVAL|ENVY|OBSESSION/.test(tag)) return '#d2ab55';
+  if (/ENRAGED|RAGED|RECKLESS|CRUEL|NEMESIS|HUNT|VENGE|CONFIDENT/.test(tag)) return '#e0685f';
+  if (/FEAR|FLINCH|WARY|DREAD|PRESSURE|INFERIOR|TRAUMA/.test(tag))           return '#9bc4ec';
+  if (/SHOWTIME|BOLD|EXPLOIT|TAUNT|RIVAL|ENVY|OBSESSION|HUBRIS|MOTIVATED/.test(tag)) return '#d2ab55';
   return '#c9b189';
 }
 // 감정·의도 칩 (Zone 3) — 머리 위 작은 반투명 칩, 감정색 도트. 최하 우선순위(작고 조용).
