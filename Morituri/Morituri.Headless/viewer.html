@@ -1086,40 +1086,43 @@ function drawStatusBurst(px_, py_, who){
     ctx.restore();
   } }
 // 스킬 컷인 — 각진 플레이트 + 무기 다이아 배지 + 금빛 와이프 (Zone 4, 시전자 위)
-// ax=어깨 바깥 앵커, side=+1이면 오른쪽으로 뻗음. 작게·강조(액센트 글로우 + 등장 섬광).
+// ax=어깨 바깥 앵커, side=+1이면 오른쪽으로 뻗음.
+// 강조는 장식(글로우·섬광)이 아니라 '진입 모션 자체'로 — 더 멀리서·더 길게·감속하며 들어오고,
+// 투명하게 시작해 도착하면서 또렷해진다(이동이 눈에 밟히게).
 function drawCutin(ax, yTop, side, name, weapon, pasv, age, dur){
-  const inP=Math.min(1, age/0.16), outP=age>dur-0.35?Math.max(0,(dur-age)/0.35):1, al=Math.min(inP,outP);
+  const travelT=0.34;                                   // 진입 시간(길수록 잘 보인다)
+  const inP=Math.min(1, age/travelT), ease=1-Math.pow(1-inP,3);   // 감속(ease-out)
+  const fadeIn=Math.min(1, age/0.14);                   // 투명 → 또렷
+  const outP=age>dur-0.35?Math.max(0,(dur-age)/0.35):1;
+  const al=Math.min(fadeIn,outP)*(0.55+0.45*ease);      // 이동 중엔 살짝 투명, 도착하면 100%
   if (al<=0) return;
   const acc = pasv?'#9bc4ec':'#d2ab55', h = pasv?18:22, skew=5;
-  const nameFont='bold '+(pasv?11:12.5)+'px "Noto Serif KR","Pretendard Variable",serif';
+  const nameFont='bold '+(pasv?10:11.5)+'px "Noto Serif KR","Pretendard Variable",serif';
   ctx.save(); ctx.globalAlpha=al; ctx.textBaseline='alphabetic';
   ctx.font=nameFont;
   const nameW=ctx.measureText(name).width, badgeW=h, padL=7, padR=11;
   const plateW=padL+nameW+padR, totalW=badgeW+plateW;
-  const slide=(1-inP)*20*side;                       // 바깥에서 안으로 스윽
+  const slide=(1-ease)*46*side;                         // 바깥 먼 곳에서 스윽 (20 → 46px)
   const x0=Math.round((side>0 ? ax : ax-totalW) + slide);
   const bcx=x0+badgeW/2, bcy=yTop+h/2, px0=x0+badgeW-1;
-  const plate=()=>{ ctx.beginPath(); ctx.moveTo(px0+skew,yTop); ctx.lineTo(px0+plateW+skew,yTop);
-    ctx.lineTo(px0+plateW-skew,yTop+h); ctx.lineTo(px0-skew,yTop+h); ctx.closePath(); };
-  ctx.shadowColor=acc; ctx.shadowBlur=pasv?7:12;      // 강조: 액센트 글로우
-  ctx.fillStyle='#161009'; ctx.strokeStyle=acc; ctx.lineWidth=1.8;
+  ctx.fillStyle='#161009'; ctx.strokeStyle=acc; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.moveTo(bcx,yTop-2); ctx.lineTo(x0+badgeW+2,bcy); ctx.lineTo(bcx,yTop+h+2); ctx.lineTo(x0-2,bcy); ctx.closePath(); ctx.fill(); ctx.stroke();
-  plate(); ctx.fillStyle='rgba(20,14,7,0.95)'; ctx.fill(); ctx.strokeStyle=acc; ctx.lineWidth=1.8; ctx.stroke();
-  ctx.shadowBlur=0;
+  ctx.beginPath(); ctx.moveTo(px0+skew,yTop); ctx.lineTo(px0+plateW+skew,yTop);
+  ctx.lineTo(px0+plateW-skew,yTop+h); ctx.lineTo(px0-skew,yTop+h); ctx.closePath();
+  ctx.fillStyle='rgba(20,14,7,0.95)'; ctx.fill(); ctx.strokeStyle=acc; ctx.lineWidth=1.5; ctx.stroke();
   wpnGlyph(pasv?'star':weapon, bcx, bcy, h*0.26, acc);
   ctx.textAlign='left';
-  if (pasv){                                          // 패시브는 이름만(작게) — 청색이 이미 종류를 말한다
+  if (pasv){                                            // 패시브는 이름만(작게) — 청색이 이미 종류를 말한다
     ctx.textBaseline='middle'; ctx.fillStyle='#f4ecdd'; ctx.font=nameFont;
     ctx.fillText(name, px0+padL, bcy); ctx.textBaseline='alphabetic';
   } else {
-    ctx.globalAlpha=al*0.85; ctx.fillStyle=acc; ctx.font='bold 7.5px "Pretendard Variable",system-ui';
+    ctx.globalAlpha=al*0.85; ctx.fillStyle=acc; ctx.font='bold 7px "Pretendard Variable",system-ui';
     ctx.fillText(WPN[weapon]||'무기', px0+padL, yTop+8);
     ctx.globalAlpha=al; ctx.fillStyle='#f4ecdd'; ctx.font=nameFont;
     ctx.fillText(name, px0+padL, yTop+h-5);
   }
   const wipeW=(plateW-4)*Math.min(1, age/0.4);
   ctx.strokeStyle=acc; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px0-skew+2,yTop+h-1); ctx.lineTo(px0-skew+2+wipeW,yTop+h-1); ctx.stroke();
-  if (age<0.14){ ctx.globalAlpha=al*(1-age/0.14)*0.5; ctx.fillStyle='#fff'; plate(); ctx.fill(); }   // 강조: 등장 섬광
   ctx.restore(); }
 // 감정 색 분류 — 공격/자신=붉음, 위축/신중=청, 과시/기회=금, 그 외=바랜 오커
 function emoColor(tag){
@@ -1337,12 +1340,14 @@ function render(){
       const wpn = d.who===0?doc.Meta.A.Weapon:doc.Meta.B.Weapon;
       const nm  = isSkill ? (SKILLKR[d.tag.slice(6)]||d.tag.slice(6)) : (SKILLKR[d.tag.slice(5)]||d.tag.slice(5));
       const other = d.who===0?pb:pa, side = (s.x>=other.x) ? 1 : -1;   // 상대 반대편 = 어깨 바깥
-      // 연속 발동 겹침 방지: 나보다 나중에 시작한 같은 선수의 활성 컷인 수만큼 위로 밀어 쌓는다
-      // (최신이 항상 어깨 높이, 이전 것이 위로 올라간다. t 파생이라 스크럽 안전)
-      let up=0;
-      for (const o of decisions){
-        if (o===d || o.who!==d.who || !o.tag || !/^(SKILL_|PASV_)/.test(o.tag)) continue;
-        if (t>=o.t && t<=o.t+o.dur && o.t>d.t) up++;
+      // 연속 발동 겹침 방지: 먼저 뜬 컷인은 자리를 지키고, 새로 뜬 것이 그 위로 쌓인다.
+      // (나보다 먼저 시작한 같은 선수의 활성 컷인 수 = 내가 올라갈 층. t 파생이라 스크럽 안전)
+      let up=0; const di=decisions.indexOf(d);
+      for (let oi=0; oi<decisions.length; oi++){
+        const o=decisions[oi];
+        if (oi===di || o.who!==d.who || !o.tag || !/^(SKILL_|PASV_)/.test(o.tag)) continue;
+        if (t<o.t || t>o.t+o.dur) continue;                       // 활성인 것만
+        if (o.t < d.t || (o.t===d.t && oi<di)) up++;               // 먼저 시작 → 내가 그 위로
       }
       drawCutin(s.x + side*34, s.y-92 - up*27, side, nm, wpn, isPasv, t-d.t, d.dur); ctx.globalAlpha=1; continue;
     }
