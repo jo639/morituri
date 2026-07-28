@@ -1414,8 +1414,12 @@ public sealed class MatchSim
                         ActiveKind.Strike, DashIn: true, StrikeHeavy: true));
                 }
                 break;
-            case PassiveTrigger.CrowdStackFull:                               // 쇼타임(군중 5스택 소모)
-                if (ready && pst.Stacks >= 5) { pst.Stacks = 0; ProcPassive(f, pst, ps.Duration); }
+            // 쇼타임(Ⅱ)은 자기 스택이 아니라 관중몰이(Ⅰ)가 쌓은 군중 스택을 태운다([7]§5 쇼맨 조합).
+            // 예전엔 pst.Stacks(=아무도 쌓지 않는 값)를 봐서 영원히 발동하지 못했다.
+            case PassiveTrigger.CrowdStackFull:
+                if (ready && PassiveWith(f, PassiveTrigger.OnCritOrHeavyOrTaunt) is { } crowd
+                    && crowd.Spec.StackMax > 0 && crowd.Stacks >= crowd.Spec.StackMax)
+                { crowd.Stacks = 0; ProcPassive(f, pst, ps.Duration); }
                 break;
         }
     }

@@ -49,7 +49,8 @@ public static class SkillProbe
         ("SKL_VULTURE",   "WPN_SWORD","TAC_HUNTER","PER_OPPORTUNIST",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_BLOODLUST", "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_TERROR",    "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_NERVE",     "WPN_SWORD","TAC_PRESSURE","PER_BOLD",        "WPN_SWORD","TAC_BALANCED","PER_CALM"),
+        // 배짱은 '강공 뒤 후딜' 스킬 — 검/압박은 강공을 한 번도 안 쓴다(71스윙 전부 약공). 중량 무기로 대진 교정.
+        ("SKL_NERVE",     "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_COMEBACK",  "WPN_SWORD","TAC_BALANCED","PER_BOLD",        "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_GUARDED",   "WPN_SWORD","TAC_DEFENDER","PER_WARY",        "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_FORESEE",   "WPN_SWORD","TAC_COUNTER","PER_WARY",         "WPN_SWORD","TAC_BALANCED","PER_CALM"),
@@ -73,11 +74,13 @@ public static class SkillProbe
             {
                 ulong seed = (ulong)(g * 7919 + 13);
                 var opp = new FighterDef("상대", FighterStats.Baseline, c.OW, c.OT, c.OP);
-                // 대조군
+                // 대조군 — 선행 스킬이 있으면 그것만 장착해서 Δ가 '이 스킬의 순수 기여'가 되게 한다
+                var pre = Prereq(c.Skill);
                 var baseF = new FighterDef("본인", FighterStats.Baseline, c.W, c.T, c.P);
+                if (pre.Length > 0) baseF = baseF with { TraitIds = pre };
                 if (Winner(baseF, opp, seed) == 0) winBase++;
                 // 스킬 장착
-                var withF = baseF with { TraitIds = new[] { c.Skill } };
+                var withF = baseF with { TraitIds = pre.Append(c.Skill).ToArray() };
                 var (w, n) = WinnerAndProcs(withF, opp, seed);
                 if (w == 0) winSkill++;
                 procs += n;
@@ -89,6 +92,16 @@ public static class SkillProbe
         Console.WriteLine("\n※ 대진은 그 스킬이 의미를 갖는 상성으로 고정 — 절대 승률이 아니라 Δ만 본다.");
         Console.WriteLine("※ 발동 0회면 트리거가 이 대진에서 안 열린 것(코스트·조건). 수치가 아니라 조건 문제.");
     }
+
+    /// <summary>
+    /// 선행 스킬 — 이게 없으면 조건 자체가 열리지 않아 측정이 불가능한 상위 스킬용.
+    /// 쇼타임은 관중몰이가 쌓은 군중 스택을 태운다([7]§5 쇼맨 Ⅰ→Ⅱ 조합).
+    /// </summary>
+    private static string[] Prereq(string skill) => skill switch
+    {
+        "SKL_SHOWTIME" => new[] { "SKL_CROWD" },
+        _ => Array.Empty<string>(),
+    };
 
     private static int Winner(FighterDef a, FighterDef b, ulong seed)
     {
