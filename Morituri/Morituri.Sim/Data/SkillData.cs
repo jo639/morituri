@@ -257,10 +257,15 @@ public static class SkillTable
                 StCost: 0f, GapMinM: 1.6f, GapMaxM: 4.2f,
                 RangeAddM: 0.4f, SelfDodgeOut: true), GateWeapon: "WPN_SPEAR"),
         new(new TraitDef("SKL_ZONELOCK", "공간 지배(스킬)"), "", 2,
-            "이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제(약공 ×0.6 / 0.8s) + 카이팅 ST 면제 (CD만 / 26s · 主SPD)",
-            new ActiveSpec("ZONELOCK", SkillTrigger.GapBand, 0f, 0.6f, 6f, 26f,
+            "이 원 안은 내 것이다 — 3초간 카이팅 스태미나 면제 (CD만 / 26s · 主SPD)",
+            // 자동 견제 삭제. 행동도 스태미나도 안 쓰고 회피도 못 하는 '공짜 딜'이라 수치로는 못 잡혔다 —
+            // ×0.6/0.8s든 ×0.3/3.0s든 승률이 똑같이 천장에 붙었다(계단형). 측정 가능한 대진(대조 36%)에서
+            // 원본은 +63%p, 견제만 빼면 +20.8%p, 지속 6→3초까지 줄여 +13.5%p 정상.
+            // ⚠ 원래 대진(대검 68%)에선 +31%p로 보였으나 천장에 눌린 값이었다. 실제로는 승률 0~2% 대진도
+            //   91~100%로 뒤집던 최악의 이상치였다.
+            new ActiveSpec("ZONELOCK", SkillTrigger.GapBand, 0f, 0.6f, 3f, 26f,
                 GapMinM: 0f, GapMaxM: 5.0f, KiteExempt: true,
-                AutoPokeMult: 0.6f, AutoPokeIntervalSec: 0.8f), GateWeapon: "WPN_SPEAR"),
+                AutoPokeMult: 0f, AutoPokeIntervalSec: 0f), GateWeapon: "WPN_SPEAR"),
         // 도끼
         // 버프형(다음 강공 강화)이었으나 관전 결과 강화만 하고 강공을 안 쳐 헛도는 일이 잦아
         // 즉발 타격으로 전환(라니스타 지시) — 발동 즉시 가드를 부수고 출혈을 남긴다.

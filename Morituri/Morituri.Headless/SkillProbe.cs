@@ -19,7 +19,8 @@ public static class SkillProbe
         ("SKL_COMBO",       "WPN_SWORD","TAC_HUNTER","PER_CALM",        "WPN_DUALBLADES","TAC_BRAWLER","PER_BOLD"),
         ("SKL_GUARDSTANCE", "WPN_SWORD","TAC_DEFENDER","PER_WARY",      "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
         ("SKL_REACHPUSH",   "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
-        ("SKL_ZONELOCK",    "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        // 공간 지배는 승률 0~2% 대진도 91~100%로 뒤집는다 — 대조 37%인 이 대진만 천장/바닥에 안 눌려 조정이 가능하다.
+        ("SKL_ZONELOCK",    "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_DUALBLADES","TAC_HUNTER","PER_CALM"),
         ("SKL_SUNDER",      "WPN_AXE","TAC_HUNTER","PER_CRUEL",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_BERSERK",     "WPN_AXE","TAC_BRAWLER","PER_CRUEL",        "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
         ("SKL_CHARGE",      "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD", "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
