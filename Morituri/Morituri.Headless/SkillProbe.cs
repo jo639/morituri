@@ -16,44 +16,45 @@ public static class SkillProbe
     private static readonly (string Skill, string W, string T, string P, string OW, string OT, string OP)[] Cases =
     {
         // ── 무기 액티브 ──
-        ("SKL_COMBO",       "WPN_SWORD","TAC_HUNTER","PER_CALM",        "WPN_SHIELD","TAC_DEFENDER","PER_WARY"),
-        ("SKL_GUARDSTANCE", "WPN_SWORD","TAC_DEFENDER","PER_WARY",      "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
-        ("SKL_REACHPUSH",   "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
-        ("SKL_ZONELOCK",    "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
-        ("SKL_SUNDER",      "WPN_AXE","TAC_HUNTER","PER_CRUEL",         "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
-        ("SKL_BERSERK",     "WPN_AXE","TAC_BRAWLER","PER_CRUEL",        "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_CHARGE",      "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD", "WPN_WHIP","TAC_ZONER","PER_WARY"),
-        ("SKL_UNBROKEN",    "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD", "WPN_HAMMER","TAC_BRAWLER","PER_CRUEL"),
-        ("SKL_FLURRY",      "WPN_DUALBLADES","TAC_PRESSURE","PER_BOLD", "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
+        ("SKL_COMBO",       "WPN_SWORD","TAC_HUNTER","PER_CALM",        "WPN_DUALBLADES","TAC_BRAWLER","PER_BOLD"),
+        ("SKL_GUARDSTANCE", "WPN_SWORD","TAC_DEFENDER","PER_WARY",      "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
+        ("SKL_REACHPUSH",   "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_ZONELOCK",    "WPN_SPEAR","TAC_ZONER","PER_WARY",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_SUNDER",      "WPN_AXE","TAC_HUNTER","PER_CRUEL",         "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_BERSERK",     "WPN_AXE","TAC_BRAWLER","PER_CRUEL",        "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
+        ("SKL_CHARGE",      "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD", "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_UNBROKEN",    "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD", "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_FLURRY",      "WPN_DUALBLADES","TAC_PRESSURE","PER_BOLD", "WPN_SWORD","TAC_EVADER","PER_COWARD"),
         ("SKL_MIRAGE",      "WPN_DUALBLADES","TAC_HUNTER","PER_CALM",   "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
-        ("SKL_SMASH",       "WPN_HAMMER","TAC_PRESSURE","PER_BOLD",     "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
-        ("SKL_EXECUTE",     "WPN_HAMMER","TAC_PRESSURE","PER_CRUEL",    "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_LASH",        "WPN_WHIP","TAC_ZONER","PER_WARY",          "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
-        ("SKL_ENTANGLE",    "WPN_WHIP","TAC_ZONER","PER_WARY",          "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
-        ("SKL_CARRY",       "WPN_SHIELD","TAC_PRESSURE","PER_BOLD",     "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
-        ("SKL_SHIELDBASH",  "WPN_SHIELD","TAC_PRESSURE","PER_BOLD",     "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
+        ("SKL_SMASH",       "WPN_HAMMER","TAC_PRESSURE","PER_BOLD",     "WPN_HAMMER","TAC_PRESSURE","PER_CRUEL"),
+        ("SKL_EXECUTE",     "WPN_HAMMER","TAC_PRESSURE","PER_CRUEL",    "WPN_HAMMER","TAC_PRESSURE","PER_CRUEL"),
+        ("SKL_LASH",        "WPN_WHIP","TAC_ZONER","PER_WARY",          "WPN_WHIP","TAC_ZONER","PER_WARY"),
+        ("SKL_ENTANGLE",    "WPN_WHIP","TAC_ZONER","PER_WARY",          "WPN_WHIP","TAC_ZONER","PER_WARY"),
+        ("SKL_CARRY",       "WPN_SHIELD","TAC_PRESSURE","PER_BOLD",     "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
+        ("SKL_SHIELDBASH",  "WPN_SHIELD","TAC_PRESSURE","PER_BOLD",     "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
         // ── 성격 패시브 ──
-        ("SKL_COMPOSE",   "WPN_SWORD","TAC_BALANCED","PER_CALM",        "WPN_SWORD","TAC_PRESSURE","PER_ARROGANT"),
-        ("SKL_READ",      "WPN_SWORD","TAC_COUNTER","PER_CALM",         "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_FERVOR",    "WPN_AXE","TAC_BRAWLER","PER_RECKLESS",       "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_LASTSTAND", "WPN_AXE","TAC_BRAWLER","PER_RECKLESS",       "WPN_SWORD","TAC_BALANCED","PER_CALM"),
+        // 침착은 '분노·도발 해제'라 도발하는 상대(오만)가 아니면 의미가 없다 — 평범한 상대로 바꾸니 발동 0회였다.
+        ("SKL_COMPOSE",   "WPN_SWORD","TAC_BALANCED","PER_CALM",        "WPN_SWORD","TAC_BALANCED","PER_ARROGANT"),
+        ("SKL_READ",      "WPN_SWORD","TAC_COUNTER","PER_CALM",         "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
+        ("SKL_FERVOR",    "WPN_AXE","TAC_BRAWLER","PER_RECKLESS",       "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
+        ("SKL_LASTSTAND", "WPN_AXE","TAC_BRAWLER","PER_RECKLESS",       "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
         ("SKL_LEISURE",   "WPN_SWORD","TAC_BALANCED","PER_ARROGANT",    "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_IMPERIAL",  "WPN_SWORD","TAC_PRESSURE","PER_ARROGANT",    "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_FAIRFIGHT", "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE",   "WPN_AXE","TAC_BRAWLER","PER_CRUEL"),
+        ("SKL_IMPERIAL",  "WPN_SWORD","TAC_PRESSURE","PER_ARROGANT",    "WPN_DUALBLADES","TAC_BRAWLER","PER_BOLD"),
+        ("SKL_FAIRFIGHT", "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE",   "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"),
         // 기사도는 'HP 15%p 열세'에서만 켜진다 — 도끼/난전 상대는 100% 이겨서 뒤질 일이 없었다(조건 미개방).
-        ("SKL_CHIVALRY",  "WPN_SWORD","TAC_BALANCED","PER_HONORABLE",   "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_CHIVALRY",  "WPN_SWORD","TAC_BALANCED","PER_HONORABLE",   "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
         ("SKL_SURVIVE",   "WPN_SWORD","TAC_EVADER","PER_COWARD",        "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
-        ("SKL_BACKSTAB",  "WPN_SWORD","TAC_HUNTER","PER_COWARD",        "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_BACKSTAB",  "WPN_SWORD","TAC_HUNTER","PER_COWARD",        "WPN_DUALBLADES","TAC_BRAWLER","PER_BOLD"),
         ("SKL_CROWD",     "WPN_SWORD","TAC_BALANCED","PER_SHOWMAN",     "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_SHOWTIME",  "WPN_SWORD","TAC_PRESSURE","PER_SHOWMAN",     "WPN_SWORD","TAC_BALANCED","PER_CALM"),
+        ("SKL_SHOWTIME",  "WPN_SWORD","TAC_PRESSURE","PER_SHOWMAN",     "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_EXPLOIT",   "WPN_SWORD","TAC_HUNTER","PER_OPPORTUNIST",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_VULTURE",   "WPN_SWORD","TAC_HUNTER","PER_OPPORTUNIST",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_BLOODLUST", "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_TERROR",    "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_SWORD","TAC_BALANCED","PER_CALM"),
+        ("SKL_BLOODLUST", "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
+        ("SKL_TERROR",    "WPN_AXE","TAC_BRAWLER","PER_CRUEL",          "WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
         // 배짱은 '강공 뒤 후딜' 스킬 — 검/압박은 강공을 한 번도 안 쓴다(71스윙 전부 약공). 중량 무기로 대진 교정.
-        ("SKL_NERVE",     "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
+        ("SKL_NERVE",     "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD",   "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_COMEBACK",  "WPN_SWORD","TAC_BALANCED","PER_BOLD",        "WPN_SWORD","TAC_BALANCED","PER_CALM"),
-        ("SKL_GUARDED",   "WPN_SWORD","TAC_DEFENDER","PER_WARY",        "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
+        ("SKL_GUARDED",   "WPN_SWORD","TAC_DEFENDER","PER_WARY",        "WPN_SPEAR","TAC_COUNTER","PER_CALM"),
         // 함정 간파는 '상대 액티브 직후'가 조건 — 상대에게 연격을 물려야 조건이 열린다(OppEquip)
         ("SKL_FORESEE",   "WPN_SWORD","TAC_COUNTER","PER_WARY",         "WPN_SWORD","TAC_BALANCED","PER_CALM"),
     };
@@ -120,6 +121,56 @@ public static class SkillProbe
         "SKL_FORESEE" => new[] { "SKL_COMBO" },  // 연격: 검 상대가 자주 쓰는 액티브(대진 균형 유지)
         _ => Array.Empty<string>(),
     };
+
+
+    /// <summary>
+    /// 대진 건강검진 — 대조군 승률이 바닥/천장에 붙은 케이스는 스킬을 얹어도 Δ가 구조적으로 0이라
+    /// '정상' 판정이 무의미하다(무측정). 그런 케이스에 대해 후보 상대를 훑어 50%에 가까운 대안을 제시한다.
+    /// 사용: dotnet run -- matchfind [경기수]
+    /// </summary>
+    public static void FindMatchups(int games)
+    {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        (string W, string T, string P)[] pool =
+        {
+            ("WPN_SWORD","TAC_BALANCED","PER_CALM"),      ("WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
+            ("WPN_SWORD","TAC_DEFENDER","PER_HONORABLE"), ("WPN_SWORD","TAC_COUNTER","PER_CALM"),
+            ("WPN_SWORD","TAC_EVADER","PER_COWARD"),      ("WPN_AXE","TAC_BRAWLER","PER_RECKLESS"),
+            ("WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"), ("WPN_HAMMER","TAC_PRESSURE","PER_CRUEL"),
+            ("WPN_SPEAR","TAC_COUNTER","PER_CALM"),       ("WPN_WHIP","TAC_ZONER","PER_WARY"),
+            ("WPN_DUALBLADES","TAC_BRAWLER","PER_BOLD"),  ("WPN_SHIELD","TAC_DEFENDER","PER_WARY"),
+        };
+        Console.WriteLine($"=== 대진 건강검진 (케이스당 {games}경기) — 대조 승률이 20% 미만/80% 초과면 무측정 ===");
+        foreach (var c in Cases)
+        {
+            float cur = ControlWr(c, (c.OW, c.OT, c.OP), games);
+            if (cur >= 20f && cur <= 80f) continue;
+            var sk = SkillTable.Exists(c.Skill) ? SkillTable.Get(c.Skill) : null;
+            Console.WriteLine($"{sk?.Def.Name.Replace("(스킬)", "") ?? c.Skill,-12} 현재 {c.OW.Replace("WPN_","")}/{c.OT.Replace("TAC_","")} → 대조 {cur,3:F0}%  (포화)");
+            var ranked = pool.Select(o => (o, wr: ControlWr(c, o, games)))
+                             .OrderBy(x => MathF.Abs(x.wr - 50f));
+            foreach (var (o, wr) in ranked)
+                Console.WriteLine($"    후보 {o.W.Replace("WPN_",""),-11}/{o.T.Replace("TAC_",""),-9}/{o.P.Replace("PER_",""),-11} → {wr,3:F0}%");
+        }
+    }
+
+    private static float ControlWr((string Skill, string W, string T, string P, string OW, string OT, string OP) c,
+                                   (string W, string T, string P) o, int games)
+    {
+        var pre = Prereq(c.Skill);
+        int win = 0;
+        for (int g = 0; g < games; g++)
+        {
+            ulong seed = (ulong)(g * 7919 + 13);
+            var me = new FighterDef("본인", FighterStats.Baseline, c.W, c.T, c.P);
+            if (pre.Length > 0) me = me with { TraitIds = pre };
+            var opp = new FighterDef("상대", FighterStats.Baseline, o.W, o.T, o.P);
+            var oppSk = OppEquip(c.Skill);
+            if (oppSk.Length > 0) opp = opp with { TraitIds = oppSk };
+            if (Winner(me, opp, seed) == 0) win++;
+        }
+        return 100f * win / games;
+    }
 
     private static int Winner(FighterDef a, FighterDef b, ulong seed)
     {
