@@ -304,13 +304,20 @@ public static class SkillTable
                 StCost: 8f, TeleportBehind: true, NextLightCritSec: 3f), GateWeapon: "WPN_DUALBLADES"),
         // 망치
         new(new TraitDef("SKL_SMASH", "대지 강타(스킬)"), "", 1,
-            "땅째 부수는 일격 — 강공 ×1.3 + 가드관통 50% + 명중 시 스태거 (ST22 / 11s · 主ATK)",
+            "땅째 부수는 일격 — 강공 ×0.6 + 가드관통 50% + 명중 시 스태거 (ST22 / 11s · 主ATK)",
+            // 배수 1.3 → 0.6. 이 스킬의 값어치는 배수가 아니라 '선딜 없는 확정 강공'이다 —
+            // 상대가 반응할 창이 없어 망치 한 방이 그대로 꽂히고 스태거로 후속까지 붙는다.
+            // 패널 측정(대진당 200 × 비거울 9): 원본 +30.2%p !!위험 → 0.6배 +9.6%p 정상.
+            // 레버별 기여: 배수 −10.6%p · 스태거 −7%p · 가드관통 ~0. 스태거는 망치 정체성이라 유지.
             new ActiveSpec("SMASH", SkillTrigger.InRange, 0f, 0.5f, 0f, 11f, ActiveKind.Strike,
-                StCost: 22f, StrikeHeavy: true, StrikeDmgMult: 1.3f, GuardPierce: 0.5f, StaggerOnHitSec: 0.8f), GateWeapon: "WPN_HAMMER"),
+                StCost: 22f, StrikeHeavy: true, StrikeDmgMult: 0.6f, GuardPierce: 0.5f, StaggerOnHitSec: 0.8f), GateWeapon: "WPN_HAMMER"),
         new(new TraitDef("SKL_EXECUTE", "심판의 일격(스킬)"), "", 2,
-            "빈사의 상대에게 심판이 내린다 — 1.2초 무방비 차지 후 강공 ×2.5, HP 15% 미만이면 즉사 (CD만 / 28s · 主ATK, 고결은 거부)",
+            "빈사의 상대에게 심판이 내린다 — 1.2초 무방비 차지 후 강공 ×1.6, HP 15% 미만이면 즉사 (CD만 / 28s · 主ATK, 고결은 거부)",
+            // 배수 2.5 → 1.6 (패널 +15.2%p ★ → +10.7%p 정상).
+            // ⚠ 즉사(ExecuteKillPct)는 Δ에 전혀 기여하지 않는다 — 켜든 끄든 +10.7%p로 동일했다.
+            //   ×1.6 망치 강타가 이미 HP 15% 상대를 죽이기 때문. 연출·서사용으로만 남긴다.
             new ActiveSpec("EXECUTE", SkillTrigger.OppExecutable, 0.35f, 0.8f, 1.2f, 28f, ActiveKind.Charge,
-                ChargeSec: 1.2f, ExecuteDmgMult: 2.5f, ExecuteKillPct: 0.15f, VetoExecution: true), GateWeapon: "WPN_HAMMER"),
+                ChargeSec: 1.2f, ExecuteDmgMult: 1.6f, ExecuteKillPct: 0.15f, VetoExecution: true), GateWeapon: "WPN_HAMMER"),
         // 채찍 — 카이터 복원 핵심([7])
         new(new TraitDef("SKL_LASH", "채찍 후리기(스킬)"), "", 1,
             "가죽이 다리를 훑는다 — 피해 + 3초간 이동 속도 −25% (ST18 / 10s · 主SPD)",
