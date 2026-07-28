@@ -40,7 +40,8 @@ public static class SkillProbe
         ("SKL_LEISURE",   "WPN_SWORD","TAC_BALANCED","PER_ARROGANT",    "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_IMPERIAL",  "WPN_SWORD","TAC_PRESSURE","PER_ARROGANT",    "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_FAIRFIGHT", "WPN_SWORD","TAC_DEFENDER","PER_HONORABLE",   "WPN_AXE","TAC_BRAWLER","PER_CRUEL"),
-        ("SKL_CHIVALRY",  "WPN_SWORD","TAC_BALANCED","PER_HONORABLE",   "WPN_AXE","TAC_BRAWLER","PER_CRUEL"),
+        // 기사도는 'HP 15%p 열세'에서만 켜진다 — 도끼/난전 상대는 100% 이겨서 뒤질 일이 없었다(조건 미개방).
+        ("SKL_CHIVALRY",  "WPN_SWORD","TAC_BALANCED","PER_HONORABLE",   "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_SURVIVE",   "WPN_SWORD","TAC_EVADER","PER_COWARD",        "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_BACKSTAB",  "WPN_SWORD","TAC_HUNTER","PER_COWARD",        "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD"),
         ("SKL_CROWD",     "WPN_SWORD","TAC_BALANCED","PER_SHOWMAN",     "WPN_SWORD","TAC_BALANCED","PER_CALM"),
@@ -53,6 +54,7 @@ public static class SkillProbe
         ("SKL_NERVE",     "WPN_GREATSWORD","TAC_PRESSURE","PER_BOLD",   "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_COMEBACK",  "WPN_SWORD","TAC_BALANCED","PER_BOLD",        "WPN_SWORD","TAC_BALANCED","PER_CALM"),
         ("SKL_GUARDED",   "WPN_SWORD","TAC_DEFENDER","PER_WARY",        "WPN_SWORD","TAC_PRESSURE","PER_BOLD"),
+        // 함정 간파는 '상대 액티브 직후'가 조건 — 상대에게 연격을 물려야 조건이 열린다(OppEquip)
         ("SKL_FORESEE",   "WPN_SWORD","TAC_COUNTER","PER_WARY",         "WPN_SWORD","TAC_BALANCED","PER_CALM"),
     };
 
@@ -74,6 +76,8 @@ public static class SkillProbe
             {
                 ulong seed = (ulong)(g * 7919 + 13);
                 var opp = new FighterDef("상대", FighterStats.Baseline, c.OW, c.OT, c.OP);
+                var oppSk = OppEquip(c.Skill);
+                if (oppSk.Length > 0) opp = opp with { TraitIds = oppSk };
                 // 대조군 — 선행 스킬이 있으면 그것만 장착해서 Δ가 '이 스킬의 순수 기여'가 되게 한다
                 var pre = Prereq(c.Skill);
                 var baseF = new FighterDef("본인", FighterStats.Baseline, c.W, c.T, c.P);
@@ -81,7 +85,7 @@ public static class SkillProbe
                 if (Winner(baseF, opp, seed) == 0) winBase++;
                 // 스킬 장착
                 var withF = baseF with { TraitIds = pre.Append(c.Skill).ToArray() };
-                var (w, n) = WinnerAndProcs(withF, opp, seed);
+                var (w, n) = WinnerAndProcs(withF, opp, seed, sk.Active?.ReasonTag ?? sk.Passive?.ReasonTag ?? "");
                 if (w == 0) winSkill++;
                 procs += n;
             }
@@ -103,18 +107,32 @@ public static class SkillProbe
         _ => Array.Empty<string>(),
     };
 
+    /// <summary>
+    /// 상대에게 물릴 스킬 — '상대가 액티브를 쓴 직후'가 조건인 함정 간파는
+    /// 상대가 무장하지 않으면 조건이 영원히 안 열린다(측정 불가). 대조군 상대도 동일하게 맞춘다.
+    /// </summary>
+    private static string[] OppEquip(string skill) => skill switch
+    {
+        "SKL_FORESEE" => new[] { "SKL_COMBO" },  // 연격: 검 상대가 자주 쓰는 액티브(대진 균형 유지)
+        _ => Array.Empty<string>(),
+    };
+
     private static int Winner(FighterDef a, FighterDef b, ulong seed)
     {
         var res = new MatchSim().Run(a, b, seed, null, null);
         return res.Winner;
     }
 
-    private static (int Winner, int Procs) WinnerAndProcs(FighterDef a, FighterDef b, ulong seed)
+    /// <summary>
+    /// 발동 횟수는 <b>검사 대상 스킬의 태그</b>로 센다. FighterId로 세면 선행 스킬(관중몰이)이 섞이고,
+    /// 공포 군림처럼 <b>피격자에게</b> 붙는 이벤트를 0으로 오독한다.
+    /// </summary>
+    private static (int Winner, int Procs) WinnerAndProcs(FighterDef a, FighterDef b, ulong seed, string tag)
     {
         var events = new List<Morituri.Sim.Events.SimEvent>();
         var res = new MatchSim().Run(a, b, seed, events, null);
-        int procs = events.Count(e => e is Morituri.Sim.Events.Decision d
-            && d.FighterId == 0 && (d.ReasonTag.StartsWith("SKILL_") || d.ReasonTag.StartsWith("PASV_")));
+        int procs = tag.Length == 0 ? 0 : events.Count(e => e is Morituri.Sim.Events.Decision d
+            && (d.ReasonTag == "SKILL_" + tag || d.ReasonTag == "PASV_" + tag));
         return (res.Winner, procs);
     }
 }

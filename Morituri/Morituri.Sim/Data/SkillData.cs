@@ -202,9 +202,9 @@ public static class SkillTable
             // [7] 초안은 +30% — 상시조건이 자주 참이라 skillprobe Δ +42.5%p(위험). 절반으로 낮춰 정상권.
             Passive: new PassiveSpec("EXPLOIT", PassiveTrigger.OppVulnerable, DmgDealtMult: 1.08f)),
         new(new TraitDef("SKL_VULTURE", "어부지리(스킬)"), "PER_OPPORTUNIST", 2,
-            "빈사의 살점을 채간다 — 상대 HP 20% 이하에서 처형 대시 강공 (ST25 / CD18s · 集정관+ · 主SPD)",
+            "빈사의 살점을 채간다 — 상대 HP 20% 이하에서 처형 대시 강공 (ST16 / CD18s · 集정관+ · 主SPD)",
             Passive: new PassiveSpec("VULTURE", PassiveTrigger.OppHpBelow, Threshold: 0.20f, Prob: 0.7f,
-                ProcCdSec: 18f, StCost: 25f, DashStrike: true)),
+                ProcCdSec: 18f, StCost: 16f, DashStrike: true)),
         // 잔혹
         new(new TraitDef("SKL_BLOODLUST", "피의 갈증(스킬)"), "PER_CRUEL", 1,
             "피를 마신다 — 출혈 중이거나 HP 30% 이하인 상대를 가격하면 피해의 20% 흡혈 (proc CD 3s · 主ATK)",

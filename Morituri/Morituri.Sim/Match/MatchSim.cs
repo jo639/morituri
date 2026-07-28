@@ -1739,6 +1739,8 @@ public sealed class MatchSim
         {
             pblS.ReadyAt = _now + pblS.Spec.ProcCdSec;
             atk.Hp = MathF.Min(atk.HpMax, atk.Hp + dmg * pblS.Spec.LifestealPct);
+            // 흡혈이 조용히 일어나던 것을 가시화([7] 가시화 원칙). ProcCdSec(3s)이 이미 빈도를 막아준다.
+            Emit(new Decision(_now, atk.Index, "PASV_" + pblS.Spec.ReasonTag, "Passive", 2f));
         }
         // 공포 군림([7]§5 잔혹): 상대 HP가 임계 단위로 깎일 때마다 공포 1단(공격성↓, 최대 3단)
         if (PassiveWith(atk, PassiveTrigger.OppHpStep)?.Spec is { } pt && !def.TraitFearImmune   // 겁없는자([7]§6.2): 공포 완전 면역
