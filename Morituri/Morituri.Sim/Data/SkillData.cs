@@ -248,9 +248,13 @@ public static class SkillTable
                 CounterOnGuard: true), GateWeapon: "WPN_SWORD"),
         // 창 — 카이터 복원 핵심([7])
         new(new TraitDef("SKL_REACHPUSH", "긴 창(스킬)"), "", 1,
-            "창대를 고쳐 쥔다 — 4초간 리치 +0.4, 발동 즉시 새 사거리 밖으로 몸을 뺀다(무적 회피·소모 없음) (ST20 / 12s · 主SPD)",
+            "창대를 고쳐 쥔다 — 4초간 리치 +0.4, 발동 즉시 사거리 끝으로 몸을 뺀다(무적 회피) (CD 12s · 主SPD)",
+            // ST 20 → 0. 이 스킬은 경기당 11회 발동해서 ST20이면 220 소모(최대치 ~95) = 확정 탈진이었다.
+            // 측정(400경기): ST20 −50%p !!위험 → ST8 −16%p → ST4 −20%p → ST0 −7%p 정상.
+            // 발동이 이미 '전술 행동 1회'를 먹으므로 그게 값이다(생존 본능의 선불 폐지와 같은 논리).
+            // ⚠ ST0에서도 −3~−7%p로 여전히 소폭 손해 — 효과가 행동 1회 값어치를 못 한다. 설계 재검토 대상.
             new ActiveSpec("REACHPUSH", SkillTrigger.GapBand, 0f, 0.6f, 4f, 12f,
-                StCost: 20f, GapMinM: 1.6f, GapMaxM: 4.2f,
+                StCost: 0f, GapMinM: 1.6f, GapMaxM: 4.2f,
                 RangeAddM: 0.4f, SelfDodgeOut: true), GateWeapon: "WPN_SPEAR"),
         new(new TraitDef("SKL_ZONELOCK", "공간 지배(스킬)"), "", 2,
             "이 원 안은 내 것이다 — 6초간 사거리 진입자 자동 견제(약공 ×0.6 / 0.8s) + 카이팅 ST 면제 (CD만 / 26s · 主SPD)",

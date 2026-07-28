@@ -1539,7 +1539,9 @@ public sealed class MatchSim
                 {
                     Vec2 away = f.Pos - opp.Pos; float d = away.Length;
                     away = d > 1e-4f ? away * (1f / d) : new Vec2(1f, 0f);
-                    float want = f.EffRange + 0.3f;              // 새 리치가 이미 반영된 값
+                    // 물러나되 '자기 사거리 끝'까지만 — 예전엔 EffRange+0.3(자기 사거리 밖)이라
+                    // 뺀 뒤 공격을 못 하고 템포만 내줬다. 카이터는 최대한 멀되 찌를 수 있는 자리가 최적.
+                    float want = f.EffRange * 0.88f;
                     Vec2 target = f.Pos + away * MathF.Max(0f, want - d);
                     if (target.Length > _c.ArenaRadius - 0.5f)   // 벽이면 접선으로 미끄러진다(일반 회피와 같은 규칙)
                         target = f.Pos + (away + away.Perp() * f.CircleSign).Normalized() * MathF.Max(0f, want - d);
