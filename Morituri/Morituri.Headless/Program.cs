@@ -33,7 +33,9 @@ if (args.Length > 0 && args[0] == "oddsprobe")
 
 if (args.Length > 0 && args[0] == "skillprobe")
 {
-    SkillProbe.Run(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 60);
+    // dotnet run -- skillprobe [경기수] [스킬필터]  — 필터를 주면 그 스킬만(반복 튜닝용)
+    SkillProbe.Run(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 60,
+                   args.Length > 2 ? args[2] : null);
     return;
 }
 

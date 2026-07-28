@@ -58,7 +58,7 @@ public static class SkillProbe
         ("SKL_FORESEE",   "WPN_SWORD","TAC_COUNTER","PER_WARY",         "WPN_SWORD","TAC_BALANCED","PER_CALM"),
     };
 
-    public static void Run(int games)
+    public static void Run(int games, string? only = null)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         Console.WriteLine($"=== 스킬 약식 검수: 케이스당 {games}경기 (대조군 = 같은 빌드·같은 시드, 스킬만 제거) ===");
@@ -68,6 +68,7 @@ public static class SkillProbe
 
         foreach (var c in Cases)
         {
+            if (only != null && !c.Skill.Contains(only, StringComparison.OrdinalIgnoreCase)) continue;
             var sk = SkillTable.Exists(c.Skill) ? SkillTable.Get(c.Skill) : null;
             if (sk == null) { Console.WriteLine($"{c.Skill,-16}  (없는 스킬)"); continue; }
 
@@ -95,6 +96,9 @@ public static class SkillProbe
         }
         Console.WriteLine("\n※ 대진은 그 스킬이 의미를 갖는 상성으로 고정 — 절대 승률이 아니라 Δ만 본다.");
         Console.WriteLine("※ 발동 0회면 트리거가 이 대진에서 안 열린 것(코스트·조건). 수치가 아니라 조건 문제.");
+        Console.WriteLine($"※ 표본 주의: {games}경기 = 1경기당 {100f / games:F2}%p. ±15%p 판정선이 {(int)MathF.Ceiling(15f * games / 100f)}경기 차이라"
+                        + " 경계 근처는 표본에 따라 뒤집힌다(60경기에서 ★였던 생존 본능이 800경기에선 +10p 정상)."
+                        + " 판정 전 400경기 이상으로 재확인할 것 — 예: skillprobe 400 MIRAGE");
     }
 
     /// <summary>

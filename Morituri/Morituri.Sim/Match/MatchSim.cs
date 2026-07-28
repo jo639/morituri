@@ -1590,7 +1590,9 @@ public sealed class MatchSim
         {
             Vec2 dir = f.Pos - opp.Pos; float d = dir.Length;
             dir = d > 1e-4f ? dir * (1f / d) : new Vec2(1f, 0f);
-            Vec2 np = opp.Pos - dir * 1.8f;
+            // 착지 거리는 '자기 사거리 안'이어야 한다 — 고정 1.8m는 게이트 무기인 쌍검(리치 1.65)의
+            // 사거리 밖이라, 배후로 가고도 후속 확정 크리를 못 넣고 ST만 버리는 자리였다(skillprobe Δ −16%p).
+            Vec2 np = opp.Pos - dir * MathF.Max(0.6f, f.EffRange * 0.80f);   // 사거리 판정(×0.88) 안쪽
             if (np.Length > maxR) np *= maxR / np.Length;
             f.Pos = np;
             if (sp.NextLightCritSec > 0f) f.SkillNextLightCritUntil = _now + sp.NextLightCritSec;

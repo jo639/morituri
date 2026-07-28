@@ -177,14 +177,17 @@ public static class SkillTable
                 DmgDealtMult: 1.12f, MoveMult: 1.12f, AtkSpeedMult: 1.12f)),
         // 겁쟁이
         new(new TraitDef("SKL_SURVIVE", "생존 본능(스킬)"), "PER_COWARD", 1,
-            "죽음의 냄새를 먼저 맡는다 — 상대 강공 선딜 인지 시 회피 무적 0.45초·성공 시 스태미나 50% 환급 (proc CD 4s·ST15 · 主SPD)",
+            "죽음의 냄새를 먼저 맡는다 — 상대 강공 선딜 인지 시 회피 무적 +0.15초·성공 시 스태미나 50% 환급 (proc CD 4s · 主SPD)",
             // [7] 초안 ST15 선불 — 창만 열고 회피가 안 나오면 순손해(skillprobe Δ −22.5%p)라 선불 폐지.
             // 비용은 회피 자체가 이미 치르고, 이 패시브는 '성공 시 환급'만 준다(문서의 이득 부분 유지).
             Passive: new PassiveSpec("SURVIVE", PassiveTrigger.OppHeavyWindup, ProcCdSec: 4f, Duration: 1.2f,
                 DodgeIFrameAdd: 0.15f, DodgeRefundPct: 0.5f)),
         new(new TraitDef("SKL_BACKSTAB", "기회의 일격(스킬)"), "PER_COWARD", 2,
-            "등을 노리는 데 부끄러움은 없다 — 상대 후딜에 기습 확정 크리 ×1.6 (CD 14s · 集정관+ · 主ATK)",
+            "등을 노리는 데 부끄러움은 없다 — 상대 후딜에 기습 확정 크리 (CD 22s · 集정관+ · 主ATK)",
             // [7] 초안 ×2 — skillprobe Δ +25%p(과함). 확정 크리 자체가 이미 강해 배수만 낮춤.
+            // ⚠ CritDmgMult는 현재 효과가 없다: ForceCrit 소비가 BuffUntil을 즉시 닫아(MatchSim 크리 판정부)
+            //   뒤에서 읽는 PassiveMul(CritDmgMult)이 이 패시브를 못 본다. 1.4/1.2/1.0 모두 Δ +13.8p로 동일(400경기).
+            //   확정 크리만으로 이미 Δ +13.8p라 지금이 균형점 — 배수를 되살리려면 함께 하향 재튜닝이 필요하다.
             Passive: new PassiveSpec("BACKSTAB", PassiveTrigger.OppRecovery, ProcCdSec: 22f, Duration: 1.5f,
                 ForceCrit: true, CritDmgMult: 1.4f)),
         // 쇼맨
@@ -282,9 +285,9 @@ public static class SkillTable
             new ActiveSpec("FLURRY", SkillTrigger.OppVulnerable, 0f, 0.55f, 0f, 10f, ActiveKind.Strike,
                 StCost: 28f, StrikeDmgMult: 0.5f, StrikeHits: 5), GateWeapon: "WPN_DUALBLADES"),
         new(new TraitDef("SKL_MIRAGE", "그림자 보(스킬)"), "", 2,
-            "그림자만 남기고 사라진다 — 상대 배후로 이동 + 다음 약공 확정 크리 (ST20 / 20s · 主SPD)",
+            "그림자만 남기고 사라진다 — 상대 배후로 이동 + 다음 약공 확정 크리 (ST8 / 20s · 主SPD)",
             new ActiveSpec("MIRAGE", SkillTrigger.OppHeavyWindupOrRecovery, 0f, 0.6f, 0f, 20f, ActiveKind.Strike,
-                StCost: 20f, TeleportBehind: true, NextLightCritSec: 3f), GateWeapon: "WPN_DUALBLADES"),
+                StCost: 8f, TeleportBehind: true, NextLightCritSec: 3f), GateWeapon: "WPN_DUALBLADES"),
         // 망치
         new(new TraitDef("SKL_SMASH", "대지 강타(스킬)"), "", 1,
             "땅째 부수는 일격 — 강공 ×1.3 + 가드관통 50% + 명중 시 스태거 (ST22 / 11s · 主ATK)",
