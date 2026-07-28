@@ -31,12 +31,6 @@ if (args.Length > 0 && args[0] == "oddsprobe")
     return;
 }
 
-if (args.Length > 0 && args[0] == "matchfind")
-{
-    SkillProbe.FindMatchups(args.Length > 1 && int.TryParse(args[1], out int mf) ? mf : 60);
-    return;
-}
-
 if (args.Length > 0 && args[0] == "skillprobe")
 {
     // dotnet run -- skillprobe [경기수] [스킬필터]  — 필터를 주면 그 스킬만(반복 튜닝용)
