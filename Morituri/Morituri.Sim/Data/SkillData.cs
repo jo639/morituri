@@ -276,9 +276,14 @@ public static class SkillTable
             new ActiveSpec("SUNDER", SkillTrigger.OppGuarding, 0f, 0.6f, 0f, 11f, ActiveKind.Strike,
                 StCost: 22f, StrikeDmgMult: 0.7f, BashBreak: true, SunderNextHeavy: true), GateWeapon: "WPN_AXE"),
         new(new TraitDef("SKL_BERSERK", "광전사의 도끼(스킬)"), "", 2,
-            "제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 +0.8%/(부족 HP%p) 최대 +40%·받는 피해 +25% (26s · 主ATK)",
+            "제 피를 값으로 치른다 — HP 5% 자해, 8초간 공격력 +0.8%/(부족 HP%p) 최대 +40% (26s · 主ATK)",
+            // 받는 피해 +25% 삭제. HP 50% 이하에서 켜지는 스킬이라 '더 맞는' 페널티가 죽음의 나선이었다.
+            // 400경기 측정: 위험/보상이 완전히 비대칭 — 공격 버프 전체의 값어치는 +1.0%p인데
+            // 받피 +25%는 −25%p, +10%도 −11%p를 먹었다. 자해 5%(정체성)만 남겨 −3.3%p 정상.
+            // ⚠ 공격 보상을 2배로 키워도(+0.8→+1.6%/캡 40→80%) Δ가 −10.5%p로 요지부동이었다.
+            //   버프가 실제로는 거의 작동하지 않는다는 신호 — 별도 조사 대상.
             new ActiveSpec("BERSERK", SkillTrigger.SelfHpBelow, 0.50f, 0.7f, 8f, 26f,
-                SelfHpPctCost: 0.05f, DmgTakenMult: 1.25f, AtkPerMissingHpPct: 0.008f, AtkCap: 0.40f), GateWeapon: "WPN_AXE"),
+                SelfHpPctCost: 0.05f, DmgTakenMult: 1.0f, AtkPerMissingHpPct: 0.008f, AtkCap: 0.40f), GateWeapon: "WPN_AXE"),
         // 대검
         new(new TraitDef("SKL_CHARGE", "쇄도 베기(스킬)"), "", 1,
             "거리를 지우는 돌진 — 상대에게 짓쳐들어 강공 일격 (ST22 / 10s · 主ATK)",
