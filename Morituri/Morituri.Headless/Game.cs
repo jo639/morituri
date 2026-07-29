@@ -2474,7 +2474,7 @@ public sealed partial class Game
 
     // ── 진행 ──
 
-    /// <summary>다음 경기 1판. 프리시즌이면 시즌 개막만(경기 안 침 — 라니스타이 1경기부터 전술을 고를 수 있게).
+    /// <summary>다음 경기 1판. 프리시즌이면 시즌 개막만(경기 안 침 — 라니스타가 1경기부터 전술을 고를 수 있게).
     /// tacticId = 내 선수의 이번 경기 전술(선택). prep = 경기 전 방침(C1: forge/rest/show — 시뮬 무영향, 메타만).</summary>
     public MatchSummary PlayNext(string? tacticId = null, string? prep = null)
     {
@@ -2626,7 +2626,7 @@ public sealed partial class Game
 
     /// <summary>
     /// 다음 경기가 없으면 다음 페이즈를 편성: 정규 소진 → 이벤트 빅매치 → 챔피언십 컵(4강→결승).
-    /// 각 단계는 라니스타이 전술을 고를 수 있게 한 페이즈씩 채운다. 시즌 종료 판정 = 컵까지 끝(_cupStage==3).
+    /// 각 단계는 라니스타가 전술을 고를 수 있게 한 페이즈씩 채운다. 시즌 종료 판정 = 컵까지 끝(_cupStage==3).
     /// </summary>
     private void EnsureSchedule()
     {

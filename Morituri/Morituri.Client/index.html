@@ -2841,7 +2841,7 @@ window.chooseEvent = async (i)=>{
 function showProposal(){
   const pr = st && st.PendingProposal; if (!pr) return;
   $('propBody').innerHTML = (pr.Execution?`<b style="color:var(--b)">{skull} 원수의 처형전 도전장!</b> `:'') +
-    `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 라니스타이 결정한다(전시 경기${pr.Execution?' — <b style="color:var(--b)">패자는 죽을 수 있다, 보상 ×3</b>':''}).</span>`;
+    `도전장이 도착했다 — <b style="color:var(--b)">${pr.OppName}</b> · ${w(pr.OppWeapon)} · ${p(pr.OppPersonality)} · ${pr.OppAge}세 · 통산 ${pr.OppCareer} · 명성 ${pr.OppFame}. <span class="note">누구를 내보낼지 라니스타가 결정한다(전시 경기${pr.Execution?' — <b style="color:var(--b)">패자는 죽을 수 있다, 보상 ×3</b>':''}).</span>`;
   $('propRoster').innerHTML = pr.Roster.map(f=>
     `<button class="tacbtn" onclick="pickProposal('${f.Id}')"><b>${f.Name}</b> <span class="d">${w(f.Weapon)} · ${p(f.Personality)}${f.Injured?' {medic}':''} · 피로 ${f.Fatigue}</span></button>`).join('');
   $('propModal').classList.add('on');
@@ -3164,7 +3164,7 @@ window.mastery = async (id,track)=>{
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
-// ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 라니스타이 결정한다 ──
+// ── 의무실 수술(DDD·B1): 내가 굴리는 주사위 — 확률을 보고 라니스타가 결정한다 ──
 window.askSurgery = (id,name,mrec)=>{
   const heal = Math.min(94, 72 + 8*((st.MedicalLv||1)-1) + 4*(mrec||0));
   $('rvBox').innerHTML = `<h3 style="color:#e0a0d8;text-align:center;margin:0">{medic} 수술대 — ${name}</h3>
