@@ -798,7 +798,7 @@ public sealed partial class Game
     private List<EvtTemplate> EvtTemplates() => new()
     {
         new EvtTemplate { Id = "training", Icon = "{fist}", Title = "혹독한 훈련", NeedsFighter = true,
-            Body = n => $"{n}이(가) 땀에 젖은 채 훈련장에 남아 라니스타을 노려본다.\n{{speech}} {n}: \"더 강해질 수 있습니다. 몸이 부서지더라도 — 허락해 주십시오.\"",
+            Body = n => $"{Ga(n)} 땀에 젖은 채 훈련장에 남아 라니스타를 노려본다.\n{{speech}} {n}: \"더 강해질 수 있습니다. 몸이 부서지더라도 — 허락해 주십시오.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("강행군 (훈련 포인트 +2, 인기 −5)", g => { g!.TrainingPoints += 2; g.Popularity = MathF.Max(0, g.Popularity - 5); return $"{g.Name} 훈련 포인트 +2, 인기 −5"; }),
                 ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
@@ -811,13 +811,13 @@ public sealed partial class Game
 
         // ── 신규 미션(#13) — 수락/거절 · 대사 포함(#9) · 일부는 후원 관계(#7) 변동 ──
         new EvtTemplate { Id = "fix", Icon = "{dice}", Title = "승부조작 제안", NeedsFighter = true,
-            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n{{speech}} 복면인: \"다음 경기, {n}이(가) 져주기만 하면 되네. 보수는 지고 나서. 허튼짓하면… 알지?\"",
+            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n{{speech}} 복면인: \"다음 경기, {Ga(n)} 져주기만 하면 되네. 보수는 지고 나서. 허튼짓하면… 알지?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 // 선입금 없음 — 실제로 그 선수가 다음 경기에서 져야 보수 지급(발각 리스크). 이기면 뒷돈 주인의 보복.
                 ("가담한다 (다음 경기에서 져야 골드 +150 · 이기면 보복)", g => {
                     if (!SeasonActive) return "시즌이 시작되면 다시 오라 — 던질 경기가 없다";
                     _fixFighterId = g!.Id; _fixReward = 150f;
-                    return $"{{dice}} 검은 거래 성립 — {g.Name}이(가) 다음 경기를 던져야 한다. 이기거나 비기면 뒷돈의 주인이 가만있지 않는다"; }),
+                    return $"{{dice}} 검은 거래 성립 — {Ga(g.Name)} 다음 경기를 던져야 한다. 이기거나 비기면 뒷돈의 주인이 가만있지 않는다"; }),
                 ("거절 (명성 +15, 후원 +10)", g => { AddRep(15f); Patron(10f); return "명성 +15, 후원 +10 — \"청렴한 라니스타라, 흔치 않지.\""; }) } },
 
         new EvtTemplate { Id = "tribute", Icon = "{ludus}", Title = "총독의 조공 요구", NeedsFighter = false,
@@ -860,11 +860,11 @@ public sealed partial class Game
                 var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
                 var foe = self != null ? PickGrudgeTarget(self) : null;
                 string fn = foe?.Name ?? "한 모리튜리";
-                return $"광장에서 {fn}이(가) {n}을(를) 향해 침을 뱉으며 비웃는다.\n{{speech}} {fn}: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\""; },
+                return $"광장에서 {Ga(fn)} {Reul(n)} 향해 침을 뱉으며 비웃는다.\n{{speech}} {fn}: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("맞받아친다 (인기 +6, 라이벌에게 원한을 새긴다)", g => { g!.Popularity += 6f;
                     var t = PickGrudgeTarget(g);
-                    if (t != null) { _ledger.DeepenGrudge(g.Id, t.Id, 20f); return $"{g.Name} 인기 +6 — {t.Name}을(를) 숙적으로 새겼다 (원한)"; }
+                    if (t != null) { _ledger.DeepenGrudge(g.Id, t.Id, 20f); return $"{g.Name} 인기 +6 — {Reul(t.Name)} 숙적으로 새겼다 (원한)"; }
                     return $"{g.Name} 인기 +6"; }),
                 ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
 
@@ -1100,6 +1100,20 @@ public sealed partial class Game
     }
     private static int StableHash(string s) { int h = 0; foreach (char c in s) h = h * 31 + c; return h & 0x7fffffff; }
 
+    // ── 조사 — 이름 뒤에 「이(가)」를 병기하지 않는다. 이름은 런타임에 이미 알고 있으므로 받침으로 고른다. ──
+    /// <summary>마지막 글자의 받침 유무로 조사를 고른다. 한글 음절이 아니면(숫자·라틴) 받침 없는 쪽.</summary>
+    private static string Josa(string w, string jong, string noJong)
+    {
+        if (string.IsNullOrEmpty(w)) return noJong;
+        char c = w[^1];
+        if (c < '가' || c > '힣') return noJong;
+        return (c - '가') % 28 != 0 ? jong : noJong;
+    }
+    private static string Ga(string n) => n + Josa(n, "이", "가");
+    private static string Reul(string n) => n + Josa(n, "을", "를");
+    private static string Neun(string n) => n + Josa(n, "은", "는");
+    private static string Wa(string n) => n + Josa(n, "과", "와");
+
     /// <summary>특성 1개 추가 부여 — 배타 축을 지키며 아직 없는 것 중에서.
     /// 결정론: 세계 시드 + 선수 id + 나이로 고정해 같은 세계는 늘 같은 특성을 준다([7]§6.1).</summary>
     private void GrantExtraTrait(Gladiator g, string why)
@@ -1114,7 +1128,7 @@ public sealed partial class Game
         var add = pool[Math.Min(pool.Length - 1, (int)(trng.NextFloat01() * pool.Length))];
         g.TraitIds = g.TraitIds.Append(add.Id).ToArray();
         if (g.IsPlayer)
-            _story.Add((_rounds + 1, "trait", $"{{sprout}} {g.Name}({g.Age}세) — {why}: 「{add.Name}」을(를) 얻었다"));
+            _story.Add((_rounds + 1, "trait", $"{{sprout}} {g.Name}({g.Age}세) — {why}: 「{add.Name}」{Josa(add.Name, "을", "를")} 얻었다"));
     }
 
     // ── [18] 살아있는 검투소 명부 — 라니스타 인물·후원자 정치·시즌 동향 ──
@@ -1372,7 +1386,7 @@ public sealed partial class Game
                 string from = LudusNameOf(target.LudusId);
                 target.LudusId = buyer.Id;
                 AddRivalRep(buyer.Id, 6f);
-                _story.Add((0, "transfer", $"{{handshake}} 라이벌 이적 — {buyer.Name}, {from}의 간판 {target.Name}을(를) 사들였다 (\"{buyer.Motto}\")"));
+                _story.Add((0, "transfer", $"{{handshake}} 라이벌 이적 — {buyer.Name}, {from}의 간판 {Reul(target.Name)} 사들였다 (\"{buyer.Motto}\")"));
             }
         }
 
@@ -1401,7 +1415,7 @@ public sealed partial class Game
             if (nemesis != null && pRng.Roll(PersonaOf(nemesis.LudusId) == "blood" ? 0.75f : 0.5f))
             {
                 _pendingProposalOpp = nemesis.Id; _proposalExec = true;
-                _story.Add((0, "proposal", $"{{skull}} 도전장 — 원수 {nemesis.Name}이(가) 처형전을 요구한다!"));
+                _story.Add((0, "proposal", $"{{skull}} 도전장 — 원수 {Ga(nemesis.Name)} 처형전을 요구한다!"));
             }
             else if (pRng.Roll(0.6f))
                 _pendingProposalOpp = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault()?.Id;
@@ -1434,17 +1448,17 @@ public sealed partial class Game
             "DUALBLADES" => "쌍검", "HAMMER" => "망치", "WHIP" => "채찍", "SHIELD" => "방패", _ => "무기",
         };
         string text =
-            next.Kind == "fest_final" ? $"{{horn}} 예고 — 축제의 왕관이 한 경기 앞: {mine.Name}, 결승에서 {opp.Name}과(와) 맞선다" :
-            next.Kind.StartsWith("fest_") ? $"{{horn}} 예고 — 사투르날리아의 모래 위, {mine.Name}이(가) 루두스의 명예를 걸고 {opp.Name}을(를) 만난다" :
+            next.Kind == "fest_final" ? $"{{horn}} 예고 — 축제의 왕관이 한 경기 앞: {mine.Name}, 결승에서 {Wa(opp.Name)} 맞선다" :
+            next.Kind.StartsWith("fest_") ? $"{{horn}} 예고 — 사투르날리아의 모래 위, {Ga(mine.Name)} 루두스의 명예를 걸고 {Reul(opp.Name)} 만난다" :
             next.Kind == "cup_final" ? $"{{horn}} 예고 — 챔피언십 컵 결승! {opp.Name}만 넘으면 왕관이다" :
             next.Kind == "cup_sf" ? $"{{horn}} 예고 — 컵 4강 대진 공개: {opp.Name}. 관중석이 벌써 뜨겁다" :
             next.Format == "execution" ? $"{{skull}} 예고 — 처형전이 잡혔다. {opp.Name}… 패자는 모래를 떠나지 못할 수도 있다" :
-            type == RelationType.Nemesis ? $"{{skull}} 예고 — 원수 {opp.Name}이(가) 기다린다. 관중이 피의 재대결을 외친다" :
-            type == RelationType.Rival ? $"{{flame}} 예고 — 라이벌 {opp.Name}과(와)의 재대결이 공개됐다. 도시가 술렁인다" :
+            type == RelationType.Nemesis ? $"{{skull}} 예고 — 원수 {Ga(opp.Name)} 기다린다. 관중이 피의 재대결을 외친다" :
+            type == RelationType.Rival ? $"{{flame}} 예고 — 라이벌 {Wa(opp.Name)}의 재대결이 공개됐다. 도시가 술렁인다" :
             rel.Losses > rel.Wins ? $"{{swords}} 예고 — 다음 상대는 {opp.Name} (상대전적 {rel.Wins}승 {rel.Losses}패). 갚아야 할 빚이 있다" :
-            opp.CW + opp.CL + opp.CD == 0 ? $"{{sprout}} 예고 — 신예 {opp.Name}이(가) {mine.Name}에게 공개 도전장을 보냈다" :
-            opp.Fame >= 40f ? $"{{crown}} 예고 — {wpn}의 명수 {opp.Name}과(와)의 빅카드. 황제의 사자가 경기장을 찾는다는 소문이 돈다" :
-            $"{{horn}} 예고 — 다음 상대 공개: {wpn}을(를) 쓰는 {opp.Name} ({LudusNameOf(opp.LudusId)})";
+            opp.CW + opp.CL + opp.CD == 0 ? $"{{sprout}} 예고 — 신예 {Ga(opp.Name)} {mine.Name}에게 공개 도전장을 보냈다" :
+            opp.Fame >= 40f ? $"{{crown}} 예고 — {wpn}의 명수 {Wa(opp.Name)}의 빅카드. 황제의 사자가 경기장을 찾는다는 소문이 돈다" :
+            $"{{horn}} 예고 — 다음 상대 공개: {Reul(wpn)} 쓰는 {opp.Name} ({LudusNameOf(opp.LudusId)})";
         _story.Add((round, "tease", text));
     }
 
@@ -1457,7 +1471,7 @@ public sealed partial class Game
         {
             var fixName = _cast.FirstOrDefault(g => g.Id == _fixFighterId)?.Name ?? "그 모리튜리";
             _ludusRep = MathF.Max(0f, _ludusRep - 25f); DebtTxn("검은 인장의 협박 채무", _fixReward);
-            _story.Add((_rounds + 1, "fix", $"{{dice}} 미이행 — {fixName}이(가) 끝내 경기를 던지지 않았다. 뒷돈의 주인이 배신으로 여긴다 (명성 −25·협박 채무 +{_fixReward:F0})"));
+            _story.Add((_rounds + 1, "fix", $"{{dice}} 미이행 — {Ga(fixName)} 끝내 경기를 던지지 않았다. 뒷돈의 주인이 배신으로 여긴다 (명성 −25·협박 채무 +{_fixReward:F0})"));
             _fixFighterId = null; _fixReward = 0f;
         }
         var standings = Standings(1);                       // 리그 챔피언 = 1부 우승자
@@ -1674,7 +1688,7 @@ public sealed partial class Game
         var star = _cast.Where(x => x.IsPlayer && x.Id != g.Id).OrderByDescending(x => x.Fame).FirstOrDefault();
         if (star != null) _ledger.DeepenGrudge(g.Id, star.Id, 25f);   // 버림받은 자의 원한 — 모래 위에서 갚는다
         _ludusRep = MathF.Max(0f, _ludusRep - 5f);
-        _story.Add((0, "release", $"{{thumbdown}} 방출 — {g.Name}, 짐을 싸기도 전에 {dest.Name}이(가) 주워갔다. 그는 잊지 않을 것이다 (루두스 명성 −5)"));
+        _story.Add((0, "release", $"{{thumbdown}} 방출 — {g.Name}, 짐을 싸기도 전에 {Ga(dest.Name)} 주워갔다. 그는 잊지 않을 것이다 (루두스 명성 −5)"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return StateJson();
@@ -1845,7 +1859,7 @@ public sealed partial class Game
             case 1:
                 var star = _cast.Where(g => !g.IsPlayer).OrderByDescending(g => g.Fame).FirstOrDefault();
                 if (star == null) return;
-                _edict = new EdictRec("beat", star.Id, 0, $"{star.Name}을(를) 모래 위에 꿇려라"); break;
+                _edict = new EdictRec("beat", star.Id, 0, $"{Reul(star.Name)} 모래 위에 꿇려라"); break;
             case 2:
                 _edict = new EdictRec("streak", null, 3, "3연승으로 군중을 열광시켜라"); break;
             default:
@@ -1925,12 +1939,12 @@ public sealed partial class Game
                 g.PotentialBudget += removed;
                 g.PermInjuries.Remove(chosen);
                 g.Fatigue = Math.Min(100, g.Fatigue + 10); healed = true;
-                outcome = $"{{medic}} 대수술 성공 — {g.Name}, {k.Name}을(를) 딛고 일어섰다 (부위 스탯·상한 복원 · 피로 +10)";
+                outcome = $"{{medic}} 대수술 성공 — {g.Name}, {Reul(k.Name)} 딛고 일어섰다 (부위 스탯·상한 복원 · 피로 +10)";
             }
             else if (roll < heal + 0.50f * (1f - heal))   // 남은 확률의 절반은 단순 실패
             {
                 g.Fatigue = Math.Min(100, g.Fatigue + 12);
-                outcome = $"{{medic}} 대수술 실패 — {k.Name}은(는) 그대로다. 돈과 체력만 잃었다 (피로 +12)";
+                outcome = $"{{medic}} 대수술 실패 — {Neun(k.Name)} 그대로다. 돈과 체력만 잃었다 (피로 +12)";
             }
             else   // 나머지는 악화 — 칼이 더 깊이 들어갔다
             {
@@ -1995,7 +2009,7 @@ public sealed partial class Game
         {
             g.Popularity += 12f;
             if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated);
-            note = $"{{mug}} {g.Name}이(가) {target.Name}을(를) 길거리에서 눕혔다 — 인기 +12 · {target.Name}이(가) 이를 갈다";
+            note = $"{{mug}} {Ga(g.Name)} {Reul(target.Name)} 길거리에서 눕혔다 — 인기 +12 · {Ga(target.Name)} 이를 갈다";
         }
         else
         {
@@ -2003,7 +2017,7 @@ public sealed partial class Game
             if (res.StatsA.MinHpPct <= 0.20f && rng.Roll(0.40f)) { g.InjuryMatches = Math.Max(g.InjuryMatches, 1); note = $"{{mug}} {g.Name}, {target.Name}과의 난투에서 밀렸다 — 부상(1경기) · 인기 +4"; }
             else note = $"{{mug}} {g.Name} vs {target.Name} 난투 — {(res.Winner < 0 ? "팽팽했다" : "졌다")} · 인기 +4";
         }
-        _story.Add((0, "brawl", note + $" ({target.Name}이(가) {g.Name}에게 원한을 품었다)"));
+        _story.Add((0, "brawl", note + $" ({Ga(target.Name)} {g.Name}에게 원한을 품었다)"));
         SaveWorld();
         if (_interactive) WriteSeasonJson();
         return JsonSerializer.Serialize(new { ok = true, note, target = target.Name, won = win, venue = "street", a = g.Name, b = target.Name }, JsonOpts);
@@ -2268,7 +2282,7 @@ public sealed partial class Game
         if (opp == null) return Err("초청할 상대가 없다");
         _gold -= HostShowCost;
         _pendingProposalOpp = opp.Id; _proposalExec = false;
-        _story.Add((_rounds + 1, "event", $"{{fest}} 흥행 개최 — 광장에 방이 붙었다: {LudusNameOf(opp.LudusId)}의 {opp.Name}을(를) 초청하는 특별 흥행전 ({{coin}}−{HostShowCost:F0}, 출전자를 정하라)"));
+        _story.Add((_rounds + 1, "event", $"{{fest}} 흥행 개최 — 광장에 방이 붙었다: {LudusNameOf(opp.LudusId)}의 {Reul(opp.Name)} 초청하는 특별 흥행전 ({{coin}}−{HostShowCost:F0}, 출전자를 정하라)"));
         SaveWorld();
         return StateJson();
     }
@@ -2514,7 +2528,7 @@ public sealed partial class Game
         {
             var tbW = res.Winner == 0 ? A : B;
             _tbWinnerId = tbW.Id;
-            _story.Add((s.Round, "season", $"{{scales}} 우승 결정전 — {tbW.Name}이(가) 동률의 저울을 갈랐다! 시즌 순위 1위 확정"));
+            _story.Add((s.Round, "season", $"{{scales}} 우승 결정전 — {Ga(tbW.Name)} 동률의 저울을 갈랐다! 시즌 순위 1위 확정"));
         }
 
         // 컵 결승: 우승자 확정 + 상금·명성·업적
@@ -2537,7 +2551,7 @@ public sealed partial class Game
         else if (s.Kind.StartsWith("fest_"))   // {masks} 대항전: 승자 진출(무승부 = 상위 시드 A), 결승 = 왕관
         {
             var fw = res.Winner == 1 ? B : A;
-            if (res.Winner < 0) _story.Add((s.Round, "festival", $"{{masks}} 무승부 — 시드 우위의 {fw.Name}이(가) 진출한다"));
+            if (res.Winner < 0) _story.Add((s.Round, "festival", $"{{masks}} 무승부 — 시드 우위의 {Ga(fw.Name)} 진출한다"));
             fw.Popularity += 3f;   // 축제의 함성 — 흥행 메타만(전투 무영향)
             int slot = _festSlots.FindIndex(x => x.Length == 0);
             if (slot >= 0) _festSlots[slot] = fw.Id;
@@ -3112,9 +3126,9 @@ public sealed partial class Game
             var priorRel = prior.Classify(win.PersonalityId);
             revenge = prior.Losses > prior.Wins && priorRel is RelationType.Nemesis or RelationType.Fear;
             if (revenge)
-                _story.Add((round, "revenge", $"R{round} {{swords}} 복수! {win.Name}이(가) 숙적 {lose.Name}에게 설욕 (그간 {prior.Wins}승 {prior.Losses}패)"));
+                _story.Add((round, "revenge", $"R{round} {{swords}} 복수! {Ga(win.Name)} 숙적 {lose.Name}에게 설욕 (그간 {prior.Wins}승 {prior.Losses}패)"));
             else if (upset)
-                _story.Add((round, "upset", $"R{round} ★ 이변! {win.Name}이(가) 상위 {lose.Name}을(를) 격파"));
+                _story.Add((round, "upset", $"R{round} ★ 이변! {Ga(win.Name)} 상위 {Reul(lose.Name)} 격파"));
             if (comeback)
                 _story.Add((round, "comeback", $"R{round} {{flame}} 대역전! {win.Name} 사선(HP{winStats.MinHpPct * 100:F0}%)에서 {lose.Name} 제압"));
 
@@ -3206,12 +3220,12 @@ public sealed partial class Game
                     _ludusRep = MathF.Max(0f, _ludusRep - 40f); Patron(-25f); _favor = Math.Max(0, _favor - 1);
                     _lastFixNote = $"{{dice}} 승부조작 발각! {fx.Name}의 석연찮은 패배가 들통났다 — 골드 +{_fixReward:F0}이나 명성 −40·후원 −25·총애 −1"; _lastFixBad = true;
                 }
-                else { _lastFixNote = $"{{dice}} 검은 거래 완수 — {fx.Name}이(가) 조용히 던졌다. 골드 +{_fixReward:F0} (아무도 눈치채지 못했다)"; _lastFixBad = false; }
+                else { _lastFixNote = $"{{dice}} 검은 거래 완수 — {Ga(fx.Name)} 조용히 던졌다. 골드 +{_fixReward:F0} (아무도 눈치채지 못했다)"; _lastFixBad = false; }
             }
             else   // 이기거나 비겼다 — 약속을 어겼다
             {
                 _ludusRep = MathF.Max(0f, _ludusRep - 30f); Patron(-20f); DebtTxn("검은 인장의 협박 채무", _fixReward);
-                _lastFixNote = $"{{dice}} 약속을 어겼다 — {fx.Name}이(가) 지지 않았다. 뒷돈의 주인이 이를 간다: 명성 −30·후원 −20·협박 채무 +{_fixReward:F0}"; _lastFixBad = true;
+                _lastFixNote = $"{{dice}} 약속을 어겼다 — {Ga(fx.Name)} 지지 않았다. 뒷돈의 주인이 이를 간다: 명성 −30·후원 −20·협박 채무 +{_fixReward:F0}"; _lastFixBad = true;
             }
             _story.Add((round, "fix", _lastFixNote));
             _fixFighterId = null; _fixReward = 0f;
@@ -3745,7 +3759,7 @@ public sealed partial class Game
                 var rl = rivals.Count > 0 ? rivals[(int)(rRng.NextUInt64() % (ulong)rivals.Count)] : default;
                 o.IsPlayer = false; o.LudusId = rl.Id ?? "RIV"; o.Division = 2;
                 _cast.Add(o); joinedRival = rl.Name ?? "라이벌 검투소";
-                _story.Add((0, "recruit", $"{{person}} 놓친 원석 — {o.Name}이(가) {joinedRival}에 합류했다"));
+                _story.Add((0, "recruit", $"{{person}} 놓친 원석 — {Ga(o.Name)} {joinedRival}에 합류했다"));
             }
             _lastReveal.Add(new RevealDoc(o.Name, o.WeaponId.Replace("WPN_", ""), o.PersonalityId.Replace("PER_", ""),
                 o.Age, ViewerExport.TalentName(o.Talent), ViewerExport.PotentialName(o.Potential),
@@ -4237,7 +4251,7 @@ public sealed partial class Game
             var rng = new SimRandom(SeasonSeed ^ 0x2E75_1E77UL + (ulong)(season * 13 + mo) * 97UL);
             var ordered = stories.Where(s => MonthOf(s.Round) == mo).OrderByDescending(s => NewsPri(s.Kind)).ToList();
             var results = _matchLog.Select((m, i) => (m, i)).Where(x => MonthOfIdx(x.i) == mo && x.m.Winner != "무승부")
-                .Select(x => new NewsArt($"{{swords}} {x.m.Winner}, {(x.m.Winner == x.m.AName ? x.m.BName : x.m.AName)}을(를) 꺾다"
+                .Select(x => new NewsArt($"{{swords}} {x.m.Winner}, {Reul((x.m.Winner == x.m.AName ? x.m.BName : x.m.AName))} 꺾다"
                     + (x.m.Reason == "KO" ? " (KO)" : " (판정)"), ArticleBody("match", rng))).ToList();
             string headline, headBody;
             var arts = new List<NewsArt>();

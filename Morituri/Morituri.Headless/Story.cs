@@ -299,6 +299,10 @@ public sealed partial class Game
 
     private string CtxLudusName => _storyCtx != null ? LudusNameOf(_storyCtx) : "경쟁 검투소";
     private Gladiator? MyFirst => _cast.FirstOrDefault(g => g.IsPlayer);
+    /// <summary>실제로 경기를 던진 그 아이의 이름. A6 「검을 닦지 않은 밤」이 엉뚱한 선수를 부르지 않게 —
+    /// _fixFighterId는 그 경기가 끝나면 지워지므로, 거래를 받은 순간 이름을 플래그에 남겨 둔다(영속).</summary>
+    private string FixedFighterName() =>
+        _storyFlags.FirstOrDefault(f => f.StartsWith("fix_who:"))?[8..] ?? MyFirst?.Name ?? "그 아이";
     /// <summary>남은 일정에 경기가 있는 내 선수(승부조작 예약 대상) — 없으면 첫 선수.</summary>
     private Gladiator? MyNextFighter()
     {
@@ -329,7 +333,7 @@ public sealed partial class Game
                 "남은 둘에도 사람은 없다 — 담요만 개켜져 있다. 개켠 방식이 똑같다. 같은 사람이 개켰다는 뜻이다.\n" +
                 "{speech} 카토: \"작년 겨울에 둘, 봄에 셋. 나머지 하나는 팔았습니다. 값은 빚으로 갔고요.\"\n" +
                 "{speech} 카토: \"담요는 제가 갭니다. 아무도 없는데도 갭니다.\"\n" +
-                "{speech} 카토: \"가이우스는 여덟을 다 채우고도 빚을 졌습니다. 당신은 둘로 시작하시는군요. …어느 쪽이 나은지는 저도 모르겠습니다.\"\n" +
+                "{speech} 카토: \"가이우스는 여덟을 다 채우고도 빚을 졌습니다. 당신은 저 빈 침상부터 채우셔야 하고요. …어느 쪽이 나은지는 저도 모르겠습니다.\"\n" +
                 "연습장 쪽 벽에 도끼가 한 자루 걸려 있다. 자루가 손때로 검다. 날은 녹슬지 않았다 — 누군가 계속 닦고 있다는 뜻이다.",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("저 도끼는 누구 것인지 묻는다", _ => {
@@ -496,8 +500,8 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +160)", _ => {
                     var f = MyNextFighter(); if (f == null) return "던질 모리튜리가 없다 — 무레나가 조용히 증서를 거뒀다";
-                    _fixFighterId = f.Id; _fixReward = 160f; _fixChoice = "accept"; Flag("fixed_once");
-                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"현명하십니다. 아버님보다 훨씬.\" 카토의 갑옷은 끝내 다 닦이지 않았다"; }),
+                    _fixFighterId = f.Id; _fixReward = 160f; _fixChoice = "accept"; Flag("fixed_once"); Flag("fix_who:" + f.Name);
+                    return $"{{candle}} 검은 거래 — {Ga(f.Name)} 다음 경기를 던져야 한다. 무레나: \"현명하십니다. 아버님보다 훨씬.\" 카토의 갑옷은 끝내 다 닦이지 않았다"; }),
                 ("증서를 밀어낸다 (명성 +8)", _ => {
                     AddRep(8f); _fixChoice = "refuse"; Flag("refused_fix");
                     AddClue("무레나 — \"당신 아버지는 8년을 거절했습니다. 8년이요. 그리고 딱 한 번, 거절할 수 없는 게 왔지요. 그는 그것도 이겼습니다. …그래서 뭘 얻었습니까?\"");
@@ -514,8 +518,8 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +200)", _ => {
                     var f = MyNextFighter(); if (f == null) return "던질 모리튜리가 없다 — 무레나가 조용히 증서를 거뒀다";
-                    _fixFighterId = f.Id; _fixReward = 200f; _fixChoice = "accept"; Flag("fixed_once");
-                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. 무레나: \"거래는 언제나 두 번째가 쉽지요.\""; }),
+                    _fixFighterId = f.Id; _fixReward = 200f; _fixChoice = "accept"; Flag("fixed_once"); Flag("fix_who:" + f.Name);
+                    return $"{{candle}} 검은 거래 — {Ga(f.Name)} 다음 경기를 던져야 한다. 무레나: \"거래는 언제나 두 번째가 쉽지요.\""; }),
                 ("거절한다 (명성 +8)", _ => {
                     AddRep(8f); _fixChoice = "refuse"; Flag("refused_fix");
                     return "명성 +8 — 무레나: \"…예. 값만 알고 안 사는 분도 있지요. 제일 위험한 손님입니다.\""; }) } },
@@ -523,7 +527,7 @@ public sealed partial class Game
         // ── 1막 A6 「검을 닦지 않은 밤」 — 조작의 꼬리(fixed_once일 때만) ──
         new EvtTemplate { Id = "story_a6", Icon = "{speech}", Title = "검을 닦지 않은 밤", NeedsFighter = false,
             Body = _ => "조작 경기로부터 사흘. 카토가 밤에 찾아왔다. 그는 밤에 오지 않는 사람이다.\n" +
-                $"{{speech}} 카토: \"{MyFirst?.Name ?? "그 아이"}이(가) 묻더군요. 왜 자기만 이기지 못하냐고.\"\n" +
+                $"{{speech}} 카토: \"{Ga(FixedFighterName())} 묻더군요. 왜 자기만 이기지 못하냐고.\"\n" +
                 "{speech} 카토: \"자기 몸이 잘못된 건지, 제가 잘못 가르친 건지 알고 싶답니다.\"\n" +
                 "{speech} 카토: \"…그 녀석, 오늘 밤엔 검을 닦지 않고 그냥 누웠습니다. 2년 동안 하루도 안 빼먹던 녀석인데요.\"\n" +
                 "{speech} 카토: \"자기가 왜 검을 닦아야 하는지 모르는 눈이었습니다.\"\n" +
@@ -568,7 +572,7 @@ public sealed partial class Game
                 ("금화를 돌려보낸다 (명성 +8)", _ => { AddRep(8f); return "명성 +8 — \"돈으로 안 되는 라니스타라… 비싸지겠군.\""; }) } },
 
         new EvtTemplate { Id = "story_house_youth", Icon = "{sprout}", Title = "육성가의 환영", NeedsFighter = false,
-            Body = _ => $"{CtxLudusName}의 노(老)스카우터가 훈련장을 말없이 둘러보다 입을 연다.\n" +
+            Body = _ => $"{CtxLudusName}의 늙은 스카우터가 훈련장을 말없이 둘러보다 입을 연다.\n" +
                 $"{{speech}} 스카우터: \"원석은 눈이 아니라 인내로 캡니다. 당신이 놓친 원석, 우리가 주워갈 겁니다 — 서로 좋은 경쟁이 되길.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("경쟁을 받아들인다 (인기 +4)", g => { var f = MyFirst; if (f != null) f.Popularity += 4f; return "군중이 두 양성소의 경쟁을 반긴다 — 인기 +4"; }),
@@ -621,8 +625,8 @@ public sealed partial class Game
                 "{speech} 테아: \"다만 다음 주엔 그 아이의 숨통 대신 당신의 골드를 모래 위에 세우셔야 할 겁니다.\"\n" +
                 "{speech} 테아: \"…찢어진 살은 꿰맵니다. 터지기 직전인 심장은 못 바꾸고요.\"\n" +
                 "그녀가 문 쪽으로 가다가 멈춰 선다.\n" +
-                "{speech} 테아: \"20년 전에 이 방에서 똑같은 걸 봤습니다. 그때 그 사람 숨소리가 이랬지요.\"\n" +
-                "{speech} 테아: \"그때는 아무도 저한테 안 물었습니다. 저는 그냥 세기만 했고요.\"",
+                "{speech} 테아: \"이 방에서 그런 숨소리를 낸 사람이 하나 있었다고 들었습니다. 제가 오기 전 해에요.\"\n" +
+                "{speech} 테아: \"그 사람 자리에 제가 앉은 겁니다. 그 뒤로는 세기만 했고요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("당분간 쉬게 한다", _ => {
                     Flag("rested_tired");
@@ -631,10 +635,10 @@ public sealed partial class Game
                     return "피로 −40 — 테아: \"…예. 그럼 세겠습니다. 세는 게 제 일이니까요.\" 그날 그녀는 항아리를 하나 새로 채웠다"; }),
                 ("이번 시즌만 버틴다", _ => {
                     Flag("overworked");
-                    return "테아: \"알겠습니다. …한 가지만요. 그 사람도 '한 시즌만'이라고 했습니다.\" 그 말이 왜 그렇게 무거웠는지는 나중에 알게 된다"; }),
-                ("20년 전 무슨 일이었는지 묻는다", _ => {
+                    return "테아: \"알겠습니다. …한 가지만요. 그 사람도 '한 시즌만'이라고 했답니다.\""; }),
+                ("그 전 해에 무슨 일이었는지 묻는다", _ => {
                     Flag("clue_thea");
-                    AddKeepsake("단서", "테아가 본 것", "테아: \"…제 입으로 할 얘기가 아닙니다.\"\n\n" +
+                    AddKeepsake("단서", "테아가 들은 것", "테아: \"…제 입으로 할 얘기가 아닙니다.\"\n\n" +
                         "테아: \"저 사람한테 물으십시오. 그게 순서고요.\"\n\n" +
                         "그녀는 '저 사람'이 누구인지 말하지 않았다. 말할 필요가 없었다.", "약제사 테아");
                     return "테아: \"…제 입으로 할 얘기가 아닙니다. 저 사람한테 물으십시오. 그게 순서고요.\""; }) } },
@@ -670,7 +674,7 @@ public sealed partial class Game
                 ("거절한다 (후원 −15 · 인기 −10)", _ => {
                     Flag("exec_refused"); Patron(-15f);
                     var f = MyFirst; if (f != null) f.Popularity = MathF.Max(0f, f.Popularity - 10f);
-                    return "루킬리우스: \"아쉽네요. 진심으로. 아버님도 딱 그 표정이셨습니다. 그때도 저는 아쉬웠고요.\" 그 말이 왜 위협처럼 들렸는지는 나중에 알게 된다"; }) } },
+                    return "루킬리우스: \"아쉽네요. 진심으로. 아버님도 딱 그 표정이셨습니다. 그때도 저는 아쉬웠고요.\""; }) } },
 
         // ── 2막 B7 「20년」 — 카토의 자백. 사실은 하나, 태도는 에토스가 정한다 ──
         new EvtTemplate { Id = "story_b_confess", Icon = "{candle}", Title = "20년", NeedsFighter = false,
@@ -732,7 +736,7 @@ public sealed partial class Game
         // ── 3막 C1 「값이 매겨진 밤」 — 간판을 사겠다는 제안 ──
         new EvtTemplate { Id = "story_c_offer", Icon = "{coin}", Title = "값이 매겨진 밤", NeedsFighter = false,
             Body = _ => "라이벌 가문이 사절을 보냈다.\n" +
-                $"{{speech}} 사절: \"{MyFirst?.Name ?? "당신 간판"}을(를) 사겠습니다. 빚을 전부 덮고도 남는 값입니다.\"\n" +
+                $"{{speech}} 사절: \"{Reul(MyFirst?.Name ?? "당신 간판")} 사겠습니다. 빚을 전부 덮고도 남는 값입니다.\"\n" +
                 (_storyFlags.Contains("exec_refused")
                     ? "{speech} 루킬리우스: \"제가 다리를 놨습니다. 저번엔 아쉬웠으니, 이번엔 잘해 드리려고요.\"\n" : "") +
                 (_storyFlags.Contains("cato_exiled")
@@ -753,18 +757,18 @@ public sealed partial class Game
             Body = _ => {
                 var t = _storyCtx != null ? _cast.FirstOrDefault(g => g.Id == _storyCtx) : null;
                 t ??= ChallengeTarget();
-                return $"광장에 방이 붙었다 — {(t != null ? $"{LudusNameOf(t.LudusId)}의 {t.Name}" : "경쟁 검투소의 간판")}이(가) 당신의 루두스를 콕 집어 도전을 걸었다.\n" +
+                return $"광장에 방이 붙었다 — {(t != null ? Ga($"{LudusNameOf(t.LudusId)}의 {t.Name}") : "경쟁 검투소의 간판이")} 당신의 루두스를 콕 집어 도전을 걸었다.\n" +
                     $"{{speech}} 카토: \"받아들이면 저 녀석은 오늘을 잊지 않을 겁니다. …당신도요. 원한이란 그렇게 시작되지요.\"";
             },
             Choices = new (string, Func<Gladiator?, string>)[] {
-                ("도전을 받는다 (전시 경기 — 출전자는 라니스타이 고른다)", _ => {
+                ("도전을 받는다 (전시 경기 — 출전자는 라니스타가 고른다)", _ => {
                     var t = _storyCtx != null ? _cast.FirstOrDefault(g => g.Id == _storyCtx) : null;
                     t ??= ChallengeTarget();
                     var f = MyFirst;
                     if (t == null || f == null) return "성사되지 못했다 — 상대가 없다";
                     _pendingProposalOpp = t.Id; _proposalExec = false;
                     _ledger.DeepenGrudge(f.Id, t.Id, 18f);
-                    return $"{{swords}} 도전 성사 — {t.Name}과(와)의 전시 경기. 출전자를 정하라 (관계 원장이 움직이기 시작했다)"; }),
+                    return $"{{swords}} 도전 성사 — {Wa(t.Name)}의 전시 경기. 출전자를 정하라 (관계 원장이 움직이기 시작했다)"; }),
                 ("무시한다 (명성 +5)", _ => { AddRep(5f); return "명성 +5 — 방은 비에 젖어 떨어졌다. 하지만 군중은 기억한다"; }) } },
 
         // ── 1막 비트③ 「시대의 소음」 — 반란 지수 점화 ──
@@ -803,7 +807,7 @@ public sealed partial class Game
                 ("고개를 끄덕인다 (다음 경기를 던지면 골드 +200)", _ => {
                     var f = MyNextFighter(); if (f == null) return "던질 경기가 없다 — 무레나가 혀를 차며 사라졌다";
                     _fixFighterId = f.Id; _fixReward = 200f;
-                    return $"{{candle}} 검은 거래 — {f.Name}이(가) 다음 경기를 던져야 한다. \"영광은 다음에도 살 수 있습니다.\""; }),
+                    return $"{{candle}} 검은 거래 — {Ga(f.Name)} 다음 경기를 던져야 한다. \"영광은 다음에도 살 수 있습니다.\""; }),
                 ("문을 닫는다 (명성 +15)", _ => { AddRep(15f);
                     return "명성 +15 — 문틈으로 목소리가 스몄다. \"가이우스도 꼭 그렇게 문을 닫았지요.\""; }) } },
 
@@ -825,7 +829,9 @@ public sealed partial class Game
         // E1 「총애의 초대」 — 명문 루두스가 되자 궁정이 눈을 돌린다
         new EvtTemplate { Id = "story_e1", Icon = "{eye}", Title = "총애의 초대", NeedsFighter = false,
             Body = _ => "특명 두루마리에 낯선 봉랍이 하나 더 붙어 있다. 황제의 것이 아니다.\n" +
-                "{speech} 카토: \"요즘 궁정에서 당신 이름이 오르내린답니다. …가이우스도 딱 이만큼 올라갔을 때부터 그랬지요.\"\n" +
+                (_storyFlags.Contains("cato_exiled")
+                    ? "{speech} 테아: \"봉랍이 둘이군요. 저는 이런 건 모릅니다만, 둘이면 값도 둘입니다.\"\n"
+                    : "{speech} 카토: \"요즘 궁정에서 당신 이름이 오르내린답니다. …가이우스도 딱 이만큼 올라갔을 때부터 그랬지요.\"\n") +
                 "{speech} 무레나: \"축하드립니다, 라니스타. 이제 '총애'가 무엇인지 배우실 차례군요. 그건 하사되는 게 아닙니다 — 팔리는 거지요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"총애를 파는 자가 누구지?\"", _ => {
@@ -840,7 +846,9 @@ public sealed partial class Game
             Body = _ => "특명을 완수한 밤, 무레나가 축하주도 없이 찾아왔다. 처음 보는 얼굴을 하고서.\n" +
                 "{speech} 무레나: \"특명이 어디서 오는지 아십니까? 황제는 서명만 합니다. 문장을 고르는 건 — 총애를 파는 손이지요.\"\n" +
                 "{speech} 무레나: \"가이우스가 거절한 그 경기. 돈은 검은 인장에서 나오지 않았습니다. 그 손에서 나왔지요. 나는… 심부름꾼이었을 뿐입니다.\"\n" +
-                "{speech} 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\"",
+                (_storyFlags.Contains("cato_exiled")
+                    ? "{speech} 무레나: \"…여기까지가 제 몫입니다. 나머지 반쪽은 콜로세움 꼭대기에 있고, 저는 거기까지 못 올라갑니다.\""
+                    : "{speech} 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\""),
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"왜 이제 와서 말하지?\"", _ => {
                     AddClue("무레나 — \"심부름꾼도 늙습니다. 그리고 늙은 심부름꾼은… 빚을 갚고 싶어지지요.\"");
@@ -854,7 +862,9 @@ public sealed partial class Game
             Body = _ => "콜로세움 최상단, 자줏빛 차양 아래. 이름을 대지 않는 원로원의 손이 당신을 초대했다.\n" +
                 "{speech} 원로원의 손: \"가이우스는 좋은 라니스타였습니다. 셈이 나빴을 뿐. 경기 하나의 값과 목숨 하나의 값을 저울질하지 못했지요.\"\n" +
                 "{speech} 원로원의 손: \"독은 빠르고, 조용하고, 정확합니다. 셈이 빠른 사람은 그걸 마실 일이 없지요. — 당신은 셈이 빠르다고 들었습니다.\"\n" +
-                "{speech} 카토: \"(낮게) …저 자입니다. 이제 당신이 정하십시오. 가이우스의 아들로서가 아니라 — 라니스타로서.\"",
+                (_storyFlags.Contains("cato_exiled")
+                    ? "옆에 아무도 없다. 이 자리에서 당신 귀에 대고 무어라 말해 줄 사람은 하나뿐이었고, 그를 내보낸 것도 당신이다."
+                    : "{speech} 카토: \"(낮게) …저 자입니다. 이제 당신이 정하십시오. 가이우스의 아들로서가 아니라 — 라니스타로서.\""),
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("모든 것을 폭로한다 (명성 +40 {glory}+10 · 검은 인장의 보복 리스크)", _ => {
                     AddRep(40f); AddGlory(10f);
@@ -866,10 +876,14 @@ public sealed partial class Game
                         _story.Add((0, "story", $"{{flame}} 보복 — 그날 밤 루두스 창고에 불이 났다 (골드 −{loss:F0})"));
                         return $"{{ludus}} 폭로 — 원로원이 뒤집혔다. 명성 +40 {{glory}}+10. …그리고 그날 밤, 창고에 불이 났다 (골드 −{loss:F0})";
                     }
-                    return "{ludus} 폭로 — 원로원이 뒤집혔다. 명성 +40 {glory}+10. 카토: \"가이우스가 오늘 밤은 편히 자겠군요.\""; }),
+                    return "{ludus} 폭로 — 원로원이 뒤집혔다. 명성 +40 {glory}+10. " + (_storyFlags.Contains("cato_exiled")
+                        ? "이 소식을 전할 사람이 하나 있었는데, 그는 여기 없다"
+                        : "카토: \"가이우스가 오늘 밤은 편히 자겠군요.\""); }),
                 ("침묵을 판다 (골드 +250)", _ => { _gold += 250f;
                     AddClue("진실 — 가이우스는 독살당했다. 나는 그 값을 받았다.");
-                    return "{coin} 입막음의 값 +250 — 카토는 그날 밤 훈련장 갈퀴질을 평소보다 오래 했다"; }),
+                    return "{coin} 입막음의 값 +250 — " + (_storyFlags.Contains("cato_exiled")
+                        ? "그날 밤 훈련장에서는 갈퀴질 소리가 나지 않았다"
+                        : "카토는 그날 밤 훈련장 갈퀴질을 평소보다 오래 했다"); }),
                 ("그 손을 잡는다 (총애 +2 · 명성 −20)", _ => { _favor += 2; _ludusRep = MathF.Max(0f, _ludusRep - 20f);
                     AddClue("진실 — 가이우스는 독살당했다. 나는 그 손을 잡았다.");
                     return "{eye} 총애 +2, 명성 −20 — \"현명하시군요. 가이우스보다.\" 어디서 들어본 말이었다"; }) } },
@@ -911,7 +925,7 @@ public sealed partial class Game
         // 자수 — 그는 앉지 않는다. 나갈 거리를 재고 있다.
         "cold" =>
             "그는 앉지 않았다. 문 쪽에 서 있다. 나갈 수 있는 거리를 재고 있는 사람의 자세다.\n" +
-            "{speech} 카토: \"오르쿠스라고, 아실 겁니다. 제가 길렀습니다. 열다섯에 받아서 128승까지 봤습니다.\"\n" +
+            "{speech} 카토: \"오르쿠스라고, 아실 겁니다. 제가 길렀습니다. 열다섯에 받아서 끝까지 봤습니다.\"\n" +
             "{speech} 카토: \"그 사람은 8년을 거절했습니다. 거절하고도 계속 이겼고요. 저쪽에서는 그게 제일 곤란했지요.\"\n" +
             "{speech} 카토: \"그해 봄에 갈비뼈가 부러졌습니다. 조각이 폐를 찔렀고요. 안 붙었습니다.\"\n" +
             "{speech} 카토: \"서너 라운드 넘어가면 심장이 터지는 몸이 됐습니다. 저만 알았고요.\"\n" +
@@ -935,7 +949,7 @@ public sealed partial class Game
             "카토가 먼저 찾아온 것은 두 번째다. 그는 앉았고, 앉자마자 고개를 숙였다. 이 사람이 고개를 숙이는 것을 본 적이 없다.\n" +
             "{speech} 카토: \"…미리 말씀드리겠습니다. 저는 지금 겁이 납니다.\"\n" +
             "{speech} 카토: \"당신이 화내실까 봐가 아니라, …용서하실까 봐 겁이 납니다.\"\n" +
-            "{speech} 카토: \"오르쿠스라고, 아실 겁니다. 제가 길렀습니다. 열다섯에 받아서 128승까지 봤습니다.\"\n" +
+            "{speech} 카토: \"오르쿠스라고, 아실 겁니다. 제가 길렀습니다. 열다섯에 받아서 끝까지 봤습니다.\"\n" +
             "그가 벽 쪽을 본다. 도끼가 걸려 있다. 날은 여전히 녹슬지 않았다.\n" +
             "{speech} 카토: \"그 사람은 8년 동안 거절했습니다. 거절해도 살아남는 사람이 하나 있으면 다른 루두스들이 계산을 시작하거든요. 저쪽에서는 그게 제일 곤란했습니다.\"\n" +
             "{speech} 카토: \"그해 봄 대련에서 갈비뼈가 부러졌습니다. 다들 붙었다고 생각했지요. 저도 그런 줄 알았고요.\"\n" +
@@ -1261,7 +1275,7 @@ public sealed partial class Game
                         "카토가 경기평 끝에 흘리듯 덧붙인 이름이다.\n" +
                         "승수의 대부분이 KO다. 빨리 끝내는 선수였다는 뜻이다.", "전설 명부");
                 }
-                return $"이 녀석… 옛날의 {match.Name}을(를) 닮았군요. 「{match.Epithet}」 — {match.Record}. …끝이 어땠는지는, 기록을 찾아보시지요.";
+                return $"이 녀석… 옛날의 {Reul(match.Name)} 닮았군요. 「{match.Epithet}」 — {match.Record}. …끝이 어땠는지는, 기록을 찾아보시지요.";
             }
         }
 
@@ -1282,7 +1296,7 @@ public sealed partial class Game
         if (ko && lose.PersonalityId == "PER_RECKLESS") pool.Add("저 성미로는 언젠가 이런 밤이 옵니다. 오늘이 그 밤이었을 뿐.");
         if (ko) pool.Add($"깨끗한 끝이었습니다. 군중은 {win.Name}의 이름을 오래 기억할 겁니다.");
         if (!ko) pool.Add("판정은 군중의 몫입니다만 — 모래는 누가 더 절실했는지 압니다.");
-        if (win.WeaponId is "WPN_SPEAR" or "WPN_WHIP") pool.Add($"{win.Name}은(는) 발이 빠르군요. 거리가 곧 목숨인 무기라서요.");
+        if (win.WeaponId is "WPN_SPEAR" or "WPN_WHIP") pool.Add($"{Neun(win.Name)} 발이 빠르군요. 거리가 곧 목숨인 무기라서요.");
         if (win.WeaponId is "WPN_HAMMER" or "WPN_GREATSWORD") pool.Add("무거운 무기는 서두르지 않습니다. 오늘은 기다림이 이겼군요.");
         if (win.WeaponId == "WPN_SHIELD") pool.Add("방패가 이기는 밤은 조용합니다. 군중은 몰라도, 저는 압니다.");
         if (win.WeaponId == "WPN_DUALBLADES") pool.Add("쌍검은 숨 쉴 틈을 안 줍니다. 진 쪽은 아직도 못 셌을 겁니다 — 몇 대 맞았는지.");

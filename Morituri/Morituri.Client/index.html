@@ -959,6 +959,9 @@ const TAC={BALANCED:'균형',PRESSURE:'압박',COUNTER:'카운터',ZONER:'견제
 const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 사냥',COUNTER:'거리 유지·후딜 반격',ZONER:'최장거리 견제',BRAWLER:'초근접 난타',DEFENDER:'가드 중심 수비',DECISION:'신중한 판정 노림',HUNTER:'약해진 사냥감 추적',GAMBLER:'고위험 도박',EVADER:'회피 중심'};
 const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
+// 조사 — 이름의 받침으로 고른다(「이(가)」 병기 금지). 마크업이 이름과 조사 사이에 끼므로 조사만 돌려준다.
+const jo=(s,jong,no)=>{ const c=(s||'').slice(-1).charCodeAt(0);
+  return (c>=0xAC00 && c<=0xD7A3 && (c-0xAC00)%28) ? jong : no; };
 const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
 const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
 const fatColor=v=> v<40?'var(--grn)': v<70?'#d8b24a':'var(--b)';   // 피로도: 낮을수록 좋음(초록)
@@ -1458,7 +1461,7 @@ const catoLine = (c, mine) => { if(!c) return '';
 function renderFixBar(){
   const fb=$('fixBar'); if(!fb) return;
   if (st.FixTarget){ fb.style.display='block';
-    fb.innerHTML = `{dice} <b>검은 거래 진행 중</b> — <b style="color:#ffb0b0">${st.FixTarget}</b>이(가) 다음 경기를 <b>져야</b> 한다. 이기거나 비기면 뒷돈의 주인이 보복한다 <span class="note" style="color:#c08080">(전술·라이브로 패배를 만들어라)</span>`;
+    fb.innerHTML = `{dice} <b>검은 거래 진행 중</b> — <b style="color:#ffb0b0">${st.FixTarget}</b>${jo(st.FixTarget,"이","가")} 다음 경기를 <b>져야</b> 한다. 이기거나 비기면 뒷돈의 주인이 보복한다 <span class="note" style="color:#c08080">(전술·라이브로 패배를 만들어라)</span>`;
   } else fb.style.display='none';
 }
 // ── 이명 토스트(DDD): 이명은 조용히 붙으면 컬렉션 욕구가 안 생긴다 — 획득의 '순간'을 만든다 ──
@@ -1916,8 +1919,8 @@ function hypeLabel(h){ return h>=120?'{flame} 초대박 흥행':h>=70?'대흥행
 // ── 대이변 잭팟(DDD): 배당 3배+ 언더독 승리 = 전용 연출 ──
 function isJackpot(m){ return (m.WinnerOdds||0)>=3 && m.Winner && m.Winner!=='무승부'; }
 function jackpotBanner(m){
-  if (isJackpot(m)) return `<div class="rv-jackpot" style="padding:9px 12px;border:1px solid var(--gold);border-radius:9px;margin-bottom:8px;text-align:center;font-weight:800;color:var(--gold);background:rgba(201,168,76,.10)">{bolt} 대이변! 배당 <b>${m.WinnerOdds.toFixed(2)}배</b>의 언더독 ${m.Winner}이(가) 해냈다!<div class="note" style="font-weight:400">역사는 이런 밤을 기억한다</div></div>`;
-  if (m.Upset && m.Winner && m.Winner!=='무승부') return `<div class="rrow" style="color:var(--gold)"><span>★ 이변</span><span>${m.Winner}이(가) 상위 상대를 격파했다</span></div>`;
+  if (isJackpot(m)) return `<div class="rv-jackpot" style="padding:9px 12px;border:1px solid var(--gold);border-radius:9px;margin-bottom:8px;text-align:center;font-weight:800;color:var(--gold);background:rgba(201,168,76,.10)">{bolt} 대이변! 배당 <b>${m.WinnerOdds.toFixed(2)}배</b>의 언더독 ${m.Winner}${jo(m.Winner,"이","가")} 해냈다!<div class="note" style="font-weight:400">역사는 이런 밤을 기억한다</div></div>`;
+  if (m.Upset && m.Winner && m.Winner!=='무승부') return `<div class="rrow" style="color:var(--gold)"><span>★ 이변</span><span>${m.Winner}${jo(m.Winner,"이","가")} 상위 상대를 격파했다</span></div>`;
   return '';
 }
 // ── 운명 봉인 리빌(DDD): {scroll} 두루마리 클릭 개봉 — 긴장 한 박자 ──
@@ -1952,7 +1955,7 @@ function nextHook(){
     const oppN = nm.Opp ? nm.Opp.Name : (nm.AName===nm.MyName?nm.BName:nm.AName);
     if (nm.MyRelation==='원수') bits.push(`{swords} 숙적 ${oppN} — 복수의 시간이다`);
     else if (nm.MyRelation==='라이벌') bits.push(`{flame} 라이벌 ${oppN}과의 자존심 대결`);
-    else if (nm.MyRelation==='두려움') bits.push(`{skull} 악몽 같은 상대 ${oppN}을(를) 극복할 기회`);
+    else if (nm.MyRelation==='두려움') bits.push(`{skull} 악몽 같은 상대 ${oppN}${jo(oppN,"을","를")} 극복할 기회`);
     const s0 = stkOf(nm.MyName);
     if (s0>=3) bits.push(`${s0}연승이 걸린 일전 — 지면 여기서 끝난다`);
     if (nm.MyWinPct<40) bits.push(`배당 ${nm.MyOdds.toFixed(2)}배의 도전 — 이변을 만들라`);
@@ -3296,7 +3299,7 @@ window.gangbrawl = async (myId, myName)=>{
 window.retire = (id,name,fame,ckow)=>{
   ckow = ckow||0;
   const manuCost = Math.round(150 + fame*1.5);
-  $('retTitle').textContent = `{ludus} ${name}을(를) 떠나보내기 (명성 ${Math.round(fame)} · 통산 KO ${ckow})`;
+  $('retTitle').textContent = `{ludus} ${name}${jo(name,"을","를")} 떠나보내기 (명성 ${Math.round(fame)} · 통산 KO ${ckow})`;
   const opt = (act,icon,title,crit,eff,ok,color)=>
     `<button class="tacbtn" ${ok?`onclick="${act}"`:'disabled'} style="text-align:left;${ok?'':'opacity:.45'}${color?';border-left:3px solid '+color:''}">
       <b>${icon} ${title}</b> ${ok?'':`<span class="d" style="color:var(--b)">자격 미달</span>`}
@@ -3429,7 +3432,7 @@ window.manumit = async (id,name,fame)=>{
   $('ludusErr').textContent=''; st=r; renderLudus(); refreshTop();
 };
 window.release = async (id,name)=>{
-  if (!await askConfirm({title:'방출', body:`${name}을(를) 방출할까?\n방출은 은퇴와 다르다 — 라이벌 검투소가 주워가 리그에 남고, 그는 이 루두스를 잊지 않는다 (루두스 명성 −5).`, label:'내보낸다', hold:true})) return;
+  if (!await askConfirm({title:'방출', body:`${name}${jo(name,"을","를")} 방출할까?\n방출은 은퇴와 다르다 — 라이벌 검투소가 주워가 리그에 남고, 그는 이 루두스를 잊지 않는다 (루두스 명성 −5).`, label:'내보낸다', hold:true})) return;
   const r = await api('/api/release',{id});
   if (r.error){ $('ludusErr').textContent=r.error; return; }
   $('retireModal').classList.remove('on');
@@ -3484,7 +3487,7 @@ async function renderTransfers(){
      <div class="bd">${w(b.Weapon)} · ${p(b.Personality)} · ${b.Age}세 · ${b.Division}부 · 명성 ${b.Fame}</div>
      <button class="recruit" onclick="buyT('${b.Id}',${b.Price})" ${lock(st.Gold>=b.Price, `금고가 모자란다 — ${b.Price} 필요, 지금 ${Math.round(st.Gold)}`)}>{handshake} 인수 ({coin}${b.Price})</button></div>`).join('');
   const sell = r.SellOffer ? `<div class="fc" style="border-top-color:var(--b)"><h3>{letter} 인수 제안</h3>
-     <div class="bd"><b>${r.SellOffer.Buyer}</b>이(가) <b style="color:var(--gold)">${r.SellOffer.Name}</b>을(를) 원한다</div>
+     <div class="bd"><b>${r.SellOffer.Buyer}</b>${jo(r.SellOffer.Buyer,"이","가")} <b style="color:var(--gold)">${r.SellOffer.Name}</b>${jo(r.SellOffer.Name,"을","를")} 원한다</div>
      <button class="recruit" onclick="sellT('${r.SellOffer.Id}','${r.SellOffer.Name}',${r.SellOffer.Offer})">{coin} 판다 (+${r.SellOffer.Offer})</button></div>` : '';
   $('transferBox').innerHTML = `<div class="grid">${buy}${sell}</div>` || '<div class="note">매물 없음.</div>';
 }
@@ -3495,7 +3498,7 @@ window.buyT = async (id,price)=>{
   $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
 };
 window.sellT = async (id,name,offer)=>{
-  if (!await askConfirm({title:'이적 매각', body:`${name}을(를) {coin}${offer}에 넘길까? 전력을 잃는다.`, label:'넘긴다', hold:true})) return;
+  if (!await askConfirm({title:'이적 매각', body:`${name}${jo(name,"을","를")} {coin}${offer}에 넘길까? 전력을 잃는다.`, label:'넘긴다', hold:true})) return;
   const r = await api('/api/sell',{id});
   if (r.error){ $('marketErr').textContent=r.error; return; }
   $('marketErr').textContent=''; st=r; renderMarket(); refreshTop();
