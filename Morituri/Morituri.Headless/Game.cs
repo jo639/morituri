@@ -525,16 +525,16 @@ public sealed partial class Game
     /// <summary>성격별 전투 직전 대사 풀(#4) — 쇼맨=화려·고결=예의·잔혹=살벌. 관계·감정이 없을 때의 기본.</summary>
     private static string[] PersonaQuotes(string pid) => pid switch
     {
-        "PER_SHOWMAN"   => new[] { "관중이여, 오늘 최고의 쇼를 보여주마!", "피와 환호 — 그것이 나의 무대다!", "눈을 떼지 마라. 순식간에 끝날 테니!" },
-        "PER_HONORABLE" => new[] { "정정당당한 승부를 바라오.", "모리튜리의 명예를 걸고 싸우겠소.", "그대의 무운을 빈다 — 모래 위에서 만나지." },
-        "PER_CRUEL"     => new[] { "오늘 반드시 죽이겠다.", "네 비명이 벌써 들리는군.", "천천히… 아주 천천히 끝내주마." },
-        "PER_CALM"      => new[] { "그는 내 상대가 아니다.", "감정은 필요 없다. 오직 검뿐.", "끝은 이미 정해져 있다." },
+        "PER_SHOWMAN"   => new[] { "다들 보고 있나?", "짧게 끝내면 표값을 못 한다.", "손 흔들 시간은 남겨 두지.", "눈을 떼지 마라. 순식간에 끝날 테니!" },
+        "PER_HONORABLE" => new[] { "먼저 준비되면 말해라.", "네 이름은 외웠다.", "정정당당한 승부를 바라오." },
+        "PER_CRUEL"     => new[] { "오늘 반드시 죽이겠다.", "네 비명이 벌써 들리는군.", "천천히… 아주 천천히 끝내주마.", "오래 걸릴 거다.", "네 갑옷, 어디가 헐거운지 안다." },
+        "PER_CALM"      => new[] { "그는 내 상대가 아니다.", "감정은 필요 없다. 오직 검뿐.", "끝은 이미 정해져 있다.", "말은 됐다.", "준비됐다." },
         "PER_RECKLESS"  => new[] { "다 덤벼! 상관없다!", "몸이 근질거린다!", "생각 따윈 필요 없어 — 부딪칠 뿐!" },
-        "PER_ARROGANT"  => new[] { "감히 나와 같은 모래를 밟다니.", "이 몸의 상대가 될 줄 알았나?", "무릎 꿇을 준비는 됐나?" },
-        "PER_COWARD"    => new[] { "제발… 무사히 끝나기를.", "왜 하필 나란 말인가…", "살아남는 게 이기는 거다." },
-        "PER_BOLD"      => new[] { "난 아직 끝나지 않았다.", "물러설 곳은 없다. 나아갈 뿐.", "두려움? 그런 건 버린 지 오래다." },
+        "PER_ARROGANT"  => new[] { "감히 나와 같은 모래를 밟다니.", "이 몸의 상대가 될 줄 알았나?", "무릎 꿇을 준비는 됐나?", "이름은 안 외웠다.", "네가 오늘 상대냐.", "손목만 쓰겠다." },
+        "PER_COWARD"    => new[] { "제발… 무사히 끝나기를.", "왜 하필 나란 말인가…", "살아남는 게 이기는 거다.", "…저 문으로 걸어 나가기만 하면 된다." },
+        "PER_BOLD"      => new[] { "물러설 자리는 안 봐 뒀다.", "난 아직 끝나지 않았다." },
         "PER_WARY"      => new[] { "방심은 금물. 한 수 한 수 신중히.", "상대의 빈틈을 놓치지 않겠다.", "서두를 이유가 없다." },
-        _               => new[] { "기회는 한 번. 놓치지 않는다.", "네 실수가 곧 나의 승리다.", "언제 찌를지는 내가 정한다." },   // OPPORTUNIST·기타
+        _               => new[] { "기회는 한 번. 놓치지 않는다.", "네 실수가 곧 나의 승리다.", "언제 찌를지는 내가 정한다.", "네 숨이 짧아질 때까지." },   // OPPORTUNIST·기타
     };
 
     /// <summary>전투 직전 대사(#4) — 관계(원수·라이벌·두려움·친구) &gt; 감정(자만·트라우마·동기부여·자신감) &gt; 성격 순으로 유기적 선택. 연출 전용(Sim 무관).</summary>
@@ -804,36 +804,36 @@ public sealed partial class Game
                 ("휴식 (인기 +5)", g => { g!.Popularity += 5; return $"{g.Name} 인기 +5"; }) } },
 
         new EvtTemplate { Id = "patron", Icon = "{coin}", Title = "후원자의 제안", NeedsFighter = false,
-            Body = _ => "부유한 원로원 의원 그라쿠스가 두둑한 금화 주머니를 탁자에 던진다.\n{speech} 그라쿠스: \"자네 루두스의 이름을 내 연회에 좀 빌리세. 서로 좋은 거래 아닌가?\"",
+            Body = _ => "원로원 의원 그라쿠스가 금화 주머니를 탁자에 올려놓는다. 세어 보라는 뜻이다.\n{speech} 그라쿠스: \"연회에 걸 이름이 하나 필요합니다. 댁의 루두스면 적당하겠더군요.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("받는다 (골드 +80, 명성 −15, 후원 +15)", _ => { _gold += 80f; _ludusRep = MathF.Max(0, _ludusRep - 15f); Patron(15f); return "골드 +80, 명성 −15, 후원 +15"; }),
-                ("거절한다 (명성 +20, 후원 −10)", _ => { AddRep(20f); Patron(-10f); return "명성 +20, 후원 −10 — \"고집스러운 친구로군.\""; }) } },
+                ("거절한다 (명성 +20, 후원 −10)", _ => { AddRep(20f); Patron(-10f); return "명성 +20, 후원 −10 — 그라쿠스: \"…그럼 다른 집을 알아보지요.\""; }) } },
 
         // ── 신규 미션(#13) — 수락/거절 · 대사 포함(#9) · 일부는 후원 관계(#7) 변동 ──
         new EvtTemplate { Id = "fix", Icon = "{dice}", Title = "승부조작 제안", NeedsFighter = true,
-            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n{{speech}} 복면인: \"다음 경기, {Ga(n)} 져주기만 하면 되네. 보수는 지고 나서. 허튼짓하면… 알지?\"",
+            Body = n => $"복면의 사내가 도박장의 뒷돈 냄새를 풍기며 다가온다.\n{{speech}} 복면인: \"다음 경기, {Ga(n)} 져 주면 됩니다. 돈은 지고 나서 드리고요. …이런 건 서로 말 안 하는 게 좋습니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 // 선입금 없음 — 실제로 그 선수가 다음 경기에서 져야 보수 지급(발각 리스크). 이기면 뒷돈 주인의 보복.
                 ("가담한다 (다음 경기에서 져야 골드 +150 · 이기면 보복)", g => {
                     if (!SeasonActive) return "시즌이 시작되면 다시 오라 — 던질 경기가 없다";
                     _fixFighterId = g!.Id; _fixReward = 150f;
                     return $"{{dice}} 검은 거래 성립 — {Ga(g.Name)} 다음 경기를 던져야 한다. 이기거나 비기면 뒷돈의 주인이 가만있지 않는다"; }),
-                ("거절 (명성 +15, 후원 +10)", g => { AddRep(15f); Patron(10f); return "명성 +15, 후원 +10 — \"청렴한 라니스타라, 흔치 않지.\""; }) } },
+                ("거절 (명성 +15, 후원 +10)", g => { AddRep(15f); Patron(10f); return "명성 +15, 후원 +10 — 복면인: \"…깨끗한 집이라고 적어 두겠습니다.\""; }) } },
 
         new EvtTemplate { Id = "tribute", Icon = "{ludus}", Title = "총독의 조공 요구", NeedsFighter = false,
-            Body = _ => "속주 총독의 전령이 두루마리를 펼친다.\n{speech} 전령: \"총독께서 검투 흥행세를 인상하셨소. 성의를 보이는 게 좋을 거요.\"",
+            Body = _ => "속주 총독의 전령이 두루마리를 펼친다.\n{speech} 전령: \"총독께서 흥행세를 올리셨습니다. 오늘 성의를 보이신 집은 따로 적어 갑니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("바친다 (골드 −70 · 부족분 빚, 후원 +20)", _ => { var pay = SpendOrDebt(70f); Patron(20f); return $"{pay}, 후원 +20 — 총독의 눈에 들었다"; }),
-                ("버틴다 (후원 −20, 다음 시즌 압박)", _ => { Patron(-20f); return "후원 −20 — \"기억해 두겠소.\" (관계 악화)"; }) } },
+                ("버틴다 (후원 −20, 다음 시즌 압박)", _ => { Patron(-20f); return "후원 −20 — 전령: \"…적어는 두겠습니다.\" (관계 악화)"; }) } },
 
         new EvtTemplate { Id = "duel", Icon = "{swords}", Title = "결투 신청", NeedsFighter = true,
-            Body = n => $"경쟁 검투소의 투사가 {n}의 면전에 장갑을 던진다.\n{{speech}} 도전자: \"소문난 실력, 모래 위에서 증명해보시지. 겁이 나거든 물러서든가.\"",
+            Body = n => $"경쟁 검투소의 투사가 {n}의 면전에 장갑을 던진다.\n{{speech}} 도전자: \"소문은 들었다. 모래에서 보자. 안 나오면 그것도 답이고.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("받아들인다 (인기 +14, 다음 경기 '투지')", g => { g!.Popularity += 14f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +14, 다음 경기 '투지'"; }),
                 ("품위있게 거절 (명성 +5, 인기 −4)", g => { g!.Fame += 5f; g.Popularity = MathF.Max(0, g.Popularity - 4f); return $"{g.Name} 명성 +5, 인기 −4"; }) } },
 
         new EvtTemplate { Id = "brawl", Icon = "{mug}", Title = "술집 시비", NeedsFighter = true,
-            Body = n => $"선술집에서 취객 무리가 {n}의 탁자를 걷어찬다.\n{{speech}} 취객: \"검투장 밖에선 별 것 아니구만? 어디 한 번 놀아보자고!\"",
+            Body = n => $"선술집에서 취객 무리가 {n}의 탁자를 걷어찬다.\n{{speech}} 취객: \"밖에서는 그냥 사람이네? 어디 한번 보자.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("주먹으로 답한다 (인기 +10, 부상 위험)", g => {
                     var rng = new SimRandom(SeasonSeed ^ 0xB4A_1234UL + (ulong)_matchIdx * 17UL);
@@ -844,13 +844,13 @@ public sealed partial class Game
                 ("자리를 뜬다 (인기 −4)", g => { g!.Popularity = MathF.Max(0, g.Popularity - 4f); return $"{g.Name} 조용히 물러났다 — 인기 −4"; }) } },
 
         new EvtTemplate { Id = "temple", Icon = "{ludus}", Title = "신전 봉헌", NeedsFighter = false,
-            Body = _ => "마르스 신전의 사제가 향을 피우며 청한다.\n{speech} 사제: \"승리의 신께 봉헌하라, 라니스타여. 신들은 관대한 자를 굽어살피신다.\"",
+            Body = _ => "마르스 신전의 사제가 향을 피운다.\n{speech} 사제: \"마르스께 한 몫 올리시지요. 신들은 셈이 밝습니다.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("봉헌한다 (골드 −50 · 부족분 빚, {{glory}}+3)", _ => { var pay = SpendOrDebt(50f); AddGlory(3f); return $"{pay}, {{glory}}+3 — 신들의 가호"; }),
                 ("검약한다 (골드 보존)", _ => "정중히 향만 올렸다.") } },
 
         new EvtTemplate { Id = "crowd", Icon = "{masks}", Title = "군중의 갈망", NeedsFighter = true,
-            Body = n => $"관중석에서 {n}의 이름을 연호하는 함성이 터진다.\n{{speech}} 흥행주: \"군중이 피와 볼거리를 원하네! 자네 모리튜리, 쇼를 보여줄 수 있겠나?\"",
+            Body = n => $"관중석에서 {n}의 이름을 연호하는 함성이 터진다.\n{{speech}} 흥행주: \"군중이 목말라합니다. 댁의 아이, 오늘 뭐라도 보여줄 수 있습니까?\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("응한다 (인기 +12, 다음 경기 흥분)", g => { g!.Popularity += 12f; if (SeasonActive) g.PendingEmotions.Add(EmotionTable.Motivated); return $"{g.Name} 인기 +12, 다음 경기 '동기부여'"; }),
                 ("침착하게 (명성 +8)", g => { g!.Fame += 8f; return $"{g.Name} 명성 +8"; }) } },
@@ -860,7 +860,7 @@ public sealed partial class Game
                 var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
                 var foe = self != null ? PickGrudgeTarget(self) : null;
                 string fn = foe?.Name ?? "한 모리튜리";
-                return $"광장에서 {Ga(fn)} {Reul(n)} 향해 침을 뱉으며 비웃는다.\n{{speech}} {fn}: \"{n}? 겁쟁이한테 붙은 과분한 이름이지. 모래 위에서 울게 해주마.\""; },
+                return $"광장에서 {Ga(fn)} {Reul(n)} 향해 침을 뱉으며 비웃는다.\n{{speech}} {fn}: \"{n}? 이름만 컸지. 오늘 확인하자.\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("맞받아친다 (인기 +6, 라이벌에게 원한을 새긴다)", g => { g!.Popularity += 6f;
                     var t = PickGrudgeTarget(g);
@@ -869,7 +869,7 @@ public sealed partial class Game
                 ("무시한다 (명성 +6)", g => { g!.Fame += 6f; return $"{g.Name} 명성 +6"; }) } },
 
         new EvtTemplate { Id = "mentor", Icon = "{scroll}", Title = "노장의 지도", NeedsFighter = true,
-            Body = n => $"한쪽 눈에 흉터가 있는 늙은 모리튜리가 {n}을 지켜보다 입을 연다.\n{{speech}} 노장: \"자네, 재능은 있군. 허나 다듬지 않은 검은 무디지. 며칠만 내게 맡겨보게 — 공짜는 아니네만.\"",
+            Body = n => $"한쪽 눈에 흉터가 있는 늙은 모리튜리가 {n}을 지켜보다 입을 연다.\n{{speech}} 노장: \"재능은 있군. 쥐는 법을 아직 모를 뿐이고. 며칠 맡겨 봐. 공짜는 아니야.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("수련한다 (골드 −40 · 부족분은 빚)", g => { var pay = SpendOrDebt(40f); var r = NudgeStat(g!, "Rct", 3f); return $"{pay}, {g!.Name} {r}"; }),
                 ("사양한다", g => "정중히 사양했다.") } },
@@ -880,14 +880,14 @@ public sealed partial class Game
                 var self = _cast.FirstOrDefault(g => g.Id == _pendingEventFighter);
                 var foe = self != null ? PickGrudgeTarget(self, b.Id) : null;
                 string fn = foe?.Name ?? "간판 모리튜리";
-                return $"{ln}의 인장이 찍힌 서신이 도착했다 — {fn}의 이름으로 온 도발이다.\n{{speech}} {fn}: \"{n} 따위를 모리튜리라 부르나? 우리 모래 위에선 한 합도 못 버틸 것을. — {fn}, {ln}\""; },
+                return $"{ln}의 인장이 찍힌 서신이 도착했다 — {fn}의 이름으로 온 도발이다.\n{{speech}} {fn}: \"{n}을 모리튜리라고 부른다더군. 우리 모래에 한 번 세워 봐라. — {fn}, {ln}\""; },
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("공개 답신으로 맞받아친다 (인기 +8, 그 검투소에 원한)", g => { g!.Popularity += 8f;
                     var bl = ActiveRivalLudi.FirstOrDefault(r => r.Persona == "blood");
                     var t = PickGrudgeTarget(g, bl.Id);
                     if (t != null) { _ledger.DeepenGrudge(g.Id, t.Id, 22f); return $"{g.Name} 인기 +8 — {t.Name}({LudusNameOf(t.LudusId)})에게 원한을 품었다"; }
                     return $"{g.Name} 인기 +8 — 관중이 두 검투소의 신경전을 즐긴다"; }),
-                ("품위를 지킨다 (루두스 명성 +8)", _ => { AddRep(8f); return "루두스 명성 +8 — \"짖는 개는 물지 않는 법.\""; }) } },
+                ("품위를 지킨다 (루두스 명성 +8)", _ => { AddRep(8f); return "루두스 명성 +8 — 답장은 보내지 않았다"; }) } },
 
         new EvtTemplate { Id = "blackmarket", Icon = "{sword}", Title = "암시장 무기상", NeedsFighter = true,
             Body = n => $"후드를 쓴 상인이 천을 걷어 시퍼런 칼날을 드러낸다.\n{{speech}} 무기상: \"{n}에게 딱이지. 규정보다 조금… 예리할 뿐이야. 심판이 눈치채지만 않으면 돼.\"",
