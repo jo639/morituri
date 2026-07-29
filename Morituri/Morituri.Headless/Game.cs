@@ -140,7 +140,8 @@ public sealed partial class Game
         string? FestRepId = null, string? FestChampion = null,   // {fest} 내 대표 지명·우승자
         List<string>? StoryFlags = null,   // [13a] 캠페인 선택 플래그(null=구세이브=신규 씬 스킵)
         List<string>? Taught = null,       // 이미 배운 레슨(씬이 가리킨 기능) — null=구세이브=전부 배운 것으로 간주
-        List<string>? LessonQueue = null); // 아직 실행하지 않은 레슨 대기열(씬이 연달아 와도 덮이지 않는다)
+        List<string>? LessonQueue = null,  // 아직 실행하지 않은 레슨 대기열(씬이 연달아 와도 덮이지 않는다)
+        int ReactCount = 0, int ReactLastIdx = -99); // [13a 부록B] 리액티브 비트 시즌 발화 수·쿨다운 기준
     private sealed record LudusRepRec(string Id, float Rep);
     private sealed record DebtTxnRec(string Reason, float Delta, int Season);   // 채무 원장 항목(영속)
 
@@ -268,7 +269,14 @@ public sealed partial class Game
         bool BetWon = false, string? BetNote = null,      // 이 경기 베팅 정산(결과 카드 연계)
         ExecVerdict? Exec = null,                         // {skull}처형전 엄지 판정(격전 패배 시)
         string? FixNote = null, bool FixBad = false,      // 승부조작 결말(가담 선수 경기 시)
-        string? Cato = null);                             // 카토의 한 줄 평([13] 상시 코멘터리)
+        string? Cato = null,                              // 경기평 한 줄([13] 상시 코멘터리)
+        string? CatoWho = null);                          // 그 줄의 화자 — cato/thea/lucilius (null = 커리어 기본 화자)
+
+    /// <summary>경기평 한 줄 + 화자. [13a] 부록B의 리액티브 비트는 트리거마다 말하는 사람이 다르다
+    /// (몸·값은 테아, 흥행·시장은 루킬리우스) — 카토가 있는 세계에서도 그렇다.</summary>
+    private sealed record Commentary(string Text, string Who);
+    /// <summary>출전 시점의 몸 상태 — 경기 처리로 덮이기 전에 떠 두는 사실.</summary>
+    private readonly record struct PreMatchFacts(bool AInjured, bool BInjured, int AFatigue, int BFatigue);
 
     /// <summary>{skull}처형전 엄지 판정 — 죽음은 주사위가 아니라 '군중과 황제의 마음'. 인기·드라마가 자비를 부른다.</summary>
     public sealed record ExecVerdict(string Loser, int DeathPct, bool Spared, string Factors);
@@ -1362,7 +1370,7 @@ public sealed partial class Game
         _cupStage = 0; _cupSeeds = new(); _cupChampion = null; _seasonNewAch.Clear(); _oddsCache.Clear();
         _seasonBetNet = 0f; _gauntletStage = 0; _gauntletWins = 0; _tbWinnerId = null;
         _festStage = 0; _festSlots = new(); _festRepId = null; _festChampion = null;   // {masks} 대항전 리셋(대표는 시즌마다 지명)
-        _promotedFlag = false; _legendRefs = 0;   // [13] 종막 게이트·카토 전설 참조(시즌 2회) 리셋
+        _promotedFlag = false; _legendRefs = 0; _reactCount = 0;   // [13] 종막 게이트·전설 참조·리액티브 비트(시즌 한도) 리셋
         _preWeek = 0;   // [19] 프리시즌 준비 주간 리셋(개막 시)
         // 관전 아카이브(#1): 직전 시즌 경기를 시즌 태그와 함께 영속 보관(재관전용). 최근 400경기로 롤링(파일 비대 방지)
         foreach (var e in _matchLog) _archive.Add(new ArchRec(Math.Max(1, _seasonsPlayed), e));
@@ -2498,6 +2506,9 @@ public sealed partial class Game
 
         var s = _schedule[_cursor++];
         var A = ById(s.A); var B = ById(s.B);
+        // [13a 부록B] 경기 전 몸 상태 — 부상 회복 카운터와 피로는 경기 처리 중에 바뀐다.
+        // 「부상 복귀 첫 경기」·「피로 80+ 출전」은 출전 시점의 사실이라 여기서 떠 둔다.
+        var pre = new PreMatchFacts(A.InjuryMatches > 0, B.InjuryMatches > 0, A.Fatigue, B.Fatigue);
 
         // 전술 결정: 내 선수 = 라니스타 선택(이번 요청 or 기존 유지) / AI = 상대 맞춤 휴리스틱 + 시드 노이즈
         var tacRng = new SimRandom(SeasonSeed ^ 0x7AC7_1C5EUL + (ulong)_matchIdx * 31UL);
@@ -2607,7 +2618,8 @@ public sealed partial class Game
         bool last = _cursor >= _schedule.Count && _cupStage == 3;
         if (!last) MaybeSpawnEvent(A.IsPlayer ? A : B.IsPlayer ? B : null);   // 내 경기 후 서사 이벤트(2b)
         if (!last && (A.IsPlayer || B.IsPlayer)) TeaseNext(s.Round);   // {horn} 예고 — 내 경기 직후, 다음 경기의 기대감
-        string? cato = CatoComment(A, B, res.Winner, res.Reason, A.IsPlayer || B.IsPlayer);   // [13] 저장 전(참조 카운터 영속)
+        var cmt = CatoComment(A, B, res, A.IsPlayer || B.IsPlayer, pre);   // [13] 저장 전(참조 카운터 영속)
+        string? cato = cmt?.Text;
         if (last) FinalizeSeason();
         else SaveWorld();
         if (_interactive) WriteSeasonJson();
@@ -2621,7 +2633,7 @@ public sealed partial class Game
             _lastFates.Count > 0 ? _lastFates.ToList() : null,
             _lastHype, _lastInjuries.Count > 0 ? _lastInjuries.ToList() : null,
             _lastUpset, winnerOdds, betWon, betNote, _lastExec, _lastFixNote, _lastFixBad,
-            Cato: cato);   // [13] 카토의 한 줄 평
+            Cato: cato, CatoWho: cmt?.Who);   // [13] 경기평 + 화자([13a] 부록B는 줄마다 화자가 다르다)
     }
 
     /// <summary>
@@ -2787,7 +2799,8 @@ public sealed partial class Game
     /// <summary>내 경기 직전(전술 선택 기회) 또는 시즌 종료까지 AI 경기 자동 시뮬. 프리시즌이면 개막부터.</summary>
     /// <summary>라운드 진행의 한 줄 — AI 경기를 건너뛰되 무슨 일이 있었는지는 남긴다(신문 문체).</summary>
     private sealed record RoundLine(string A, string B, string Winner, bool Ko, float Hype,
-        bool Upset, string? Cato, string? BetNote, bool BetWon, List<string>? Fates, List<string>? Injuries);
+        bool Upset, string? Cato, string? BetNote, bool BetWon, List<string>? Fates, List<string>? Injuries,
+        string? CatoWho = null);
 
     /// <summary>[UX] 라운드 단위 진행 — 버튼 1회 = 게임의 한 턴.
     /// 한 칸씩 넘기면 내 경기까지 예닐곱 번 연타해야 했다(라니스타 피드백). 라운드를 소화하되
@@ -2815,10 +2828,13 @@ public sealed partial class Game
             if (ById(s.A).IsPlayer || ById(s.B).IsPlayer) { stop = "mine"; break; }   // 내 경기는 라니스타가 본다
             var m = PlayNext();
             lines.Add(new RoundLine(m.A, m.B, m.Winner, m.Reason == "KO", m.Hype, m.Upset,
-                m.Cato, m.BetNote, m.BetWon, m.Fates, m.Injuries));
+                m.Cato, m.BetNote, m.BetWon, m.Fates, m.Injuries, m.CatoWho));
             if (m.SeasonCompleted) { stop = "season"; break; }
         }
-        return JsonSerializer.Serialize(new { opened = false, stop, round, lines }, JsonOpts);
+        // [13a 부록C] 막간 — 이 라운드에 사람 사는 소리 한 줄(라운드당 최대 1회, 게임 상태 무변경)
+        var itl = Interlude(round);
+        return JsonSerializer.Serialize(new { opened = false, stop, round, lines,
+            interlude = itl == null ? null : new { who = itl.Who, text = itl.Text } }, JsonOpts);
     }
 
     public string PlayUntilMineJson()
@@ -3966,6 +3982,7 @@ public sealed partial class Game
         _tbWinnerId = w.TiebreakWinner; _banquetSeason = w.BanquetSeason; _preWeek = w.PreWeek;
         _pressArchive.Clear(); if (w.PressArchive != null) _pressArchive.AddRange(w.PressArchive);
         _unrest = w.Unrest; _legendRefs = w.LegendRefs; _favorAtE1 = w.FavorAtE1;
+        _reactCount = w.ReactCount; _reactLastIdx = w.ReactLastIdx;
         _legends.Clear();
         if (w.Legends != null) _legends.AddRange(w.Legends);
         else if (!_playerless) SeedLegends();
@@ -4054,7 +4071,8 @@ public sealed partial class Game
             _festStage, _festSlots.Count > 0 ? _festSlots.ToList() : null, _festRepId, _festChampion,
             _storyFlags.Count > 0 ? _storyFlags.ToList() : null,
             _taught.ToList(),   // 빈 리스트라도 기록한다 — null은 '구세이브(전부 배움)'라는 뜻이라 신규 세계와 구분해야 한다
-            _lessonQueue.Count > 0 ? _lessonQueue.ToList() : null), JsonOpts));
+            _lessonQueue.Count > 0 ? _lessonQueue.ToList() : null,
+            _reactCount, _reactLastIdx), JsonOpts));
     }
 
     private static GladRec ToRec(Gladiator g) => new(g.Id, g.Name, g.WeaponId, g.PersonalityId,

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Morituri.Sim.Core;
 using Morituri.Sim.Data;
+using Morituri.Sim.Match;
 
 namespace Morituri.Headless;
 
@@ -24,6 +25,8 @@ public sealed partial class Game
     private float _unrest;                                  // 반란 지수 0~100
     private readonly List<LegendRec> _legends = new();      // 전설 카탈로그
     private int _legendRefs;                                // 이번 시즌 카토 전설 참조 횟수(≤2)
+    private int _reactCount;                                // [부록B] 이번 시즌 리액티브 비트 발화 수(≤5)
+    private int _reactLastIdx = -99;                        // [부록B] 마지막 발화 경기 인덱스(쿨다운 3경기)
     private bool _promotedFlag;                             // 이번 시즌 내 모리튜리 승격(종막 게이트, 시즌 내 한정)
     private int _favorAtE1;                                 // E1 발화 시점의 총애 — E2 게이트("E1 후 특명 완수") 기준점
 
@@ -1256,17 +1259,150 @@ public sealed partial class Game
 
     // ── 카토 코멘터리 (상시 어시스턴트 — 매 경기 한 줄 평) ──
 
+    private static Commentary Say(string text, string who) => new(text, who);
+
+    // ── [13a 부록C] 막간 대화 — 선택지 없는 두어 줄. 라운드당 최대 1회 ──
+    // 사건이 없는 라운드에도 이 집에 사람이 살고 있다는 신호. 게임플레이 효과 0.
+    private static readonly (string Who, string Text)[] InterludeCato =
+    {
+        ("cato", "신참이 밤에 혼자 나무 인형을 치고 있더군요. 말리지 않았습니다."),
+        ("cato", "비가 오면 모래가 무거워집니다. 무거운 모래에선 느린 놈이 삽니다."),
+        ("cato", "가이우스는 경기 전날 항상 잠을 못 잤습니다. 저는 잘 잤고요. 그게 차이였겠지요."),
+        ("cato", "오늘 아이들이 당신 흉을 보더군요. 좋은 신호입니다. 무서운 주인은 흉도 못 봅니다."),
+        ("cato", "저 아이 어깨가 조금 내려갔습니다. 아직 본인은 모르고요."),
+        ("cato", "검투사한테 제일 위험한 건 상대가 아니라 자기 기록입니다. 지키려고 들거든요."),
+        ("cato", "목검 손잡이가 또 부러졌습니다. 쥐는 힘이 아직 잘못돼서요. 손이 아니라 어깨로 쥐는 겁니다."),
+        ("cato", "어제 갑옷걸이가 다 차 있더군요. 다 닦여 있었고요. 그런 날이 있습니다."),
+        ("cato", "이 도시에서 20년 있었는데 아직도 여름이 적응이 안 됩니다."),
+    };
+    /// <summary>자백 뒤 남기로 한 카토 — 같은 사람이 다른 것을 말하기 시작한다.</summary>
+    private static readonly (string Who, string Text)[] InterludeCatoKept =
+    {
+        ("cato", "어제 벽을 닦았습니다. 이름이 스물셋이더군요. 세어본 건 처음입니다."),
+        ("cato", "요즘 잠을 잡니다. …그게 옳은 건지는 모르겠습니다."),
+        ("cato", "아무것도 안 물어보시는군요. 고맙습니다."),
+        ("cato", "도끼는 오늘도 닦았습니다. 이제 숨기지 않고 닦습니다."),
+    };
+    private static readonly (string Who, string Text)[] InterludeOthers =
+    {
+        ("thea", "붕대가 떨어졌습니다. 다음 주까지는 버팁니다. 그 다음은 그때 말씀드리지요."),
+        ("thea", "저 아이는 통증을 숨깁니다. 숨기는 아이가 오래 못 갑니다."),
+        ("thea", "여기 온 아이들은 처음엔 다 안 아프다고 합니다. 두 번째부터는 정직해지고요."),
+        ("thea", "가이우스는 이 방에 오면 항상 문턱에 섰습니다. 안 들어오시더군요. 이유는 안 물었습니다."),
+        ("thea", "오늘 물집을 봤습니다. 손바닥이 아니라 손가락 마디에요. 검을 잘못 쥐는 겁니다. 아니면 너무 오래 쥐었거나."),
+        ("lucilius", "표가 잘 나갑니다! 아, 당신 몫은 아니고요. 제 몫이요."),
+        ("lucilius", "군중이 요즘 창을 좋아합니다. 이유요? 몰라요. 유행이란 게 그렇죠."),
+        ("lucilius", "제가 어제 누구 이름을 외웠는지 아십니까? 아무도요. 그게 제 재능입니다."),
+        ("murena", "도시가 흉흉하면 저희 같은 사람은 바빠집니다. 슬픈 직업이지요."),
+        ("murena", "오늘 경기 재미있더군요. 재미있는 경기는 값이 안 맞습니다만."),
+    };
+    /// <summary>반란 국면에서만 열리는 두 줄 — 시대가 막사 안까지 들어온다.</summary>
+    private static readonly (string Who, string Text)[] InterludeUnrest =
+    {
+        ("cato", "어제 남쪽에서 불이 났답니다. 훈련소라더군요. 사고였다고 하고요."),
+        ("thea", "약재 값이 두 배가 됐습니다. 도시가 앓으면 값이 먼저 압니다."),
+    };
+
+    /// <summary>이번 라운드의 막간 한 마디 — 없으면 null. 결정론(시즌 시드 + 라운드), 게임 상태 무변경.
+    /// 서막에는 오지 않는다: 그때는 씬이 이미 말하고 있고, 막간이 끼면 페이싱이 흐려진다.</summary>
+    private int _itlRound = -1;   // 막간을 이미 흘린 라운드 — 「라운드당 최대 1회」
+    private Commentary? Interlude(int round)
+    {
+        if (_playerless || _storyStage == "prologue") return null;
+        // 한 라운드가 내 경기에서 끊겼다 재개되면 이 함수는 같은 라운드로 다시 불린다.
+        // 시드가 라운드 기반이라 그대로 두면 같은 대사가 연달아 두 번 나온다(실플레이에서 확인).
+        if (round == _itlRound) return null;
+        _itlRound = round;
+        var rng = new SimRandom(SeasonSeed ^ 0x1D7E_1D7EUL + (ulong)round * 131UL);
+        if (!rng.Roll(0.45f)) return null;
+        bool exiled = _storyFlags.Contains("cato_exiled");
+        var pool = new List<(string Who, string Text)>(InterludeOthers);
+        if (!exiled)
+        {
+            pool.AddRange(InterludeCato);
+            if (_storyFlags.Contains("cato_kept")) pool.AddRange(InterludeCatoKept);
+        }
+        if (_unrest >= 50f) pool.AddRange(exiled ? InterludeUnrest.Where(x => x.Who != "cato") : InterludeUnrest);
+        // 무레나는 빚이 남아 있을 때만 어슬렁거린다 — 다 갚은 집에 중개인이 올 이유가 없다.
+        if (_debt <= 0f) pool.RemoveAll(x => x.Who == "murena");
+        if (pool.Count == 0) return null;
+        var pick = pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
+        return new Commentary(pick.Text, pick.Who);
+    }
+
+    /// <summary>[13a 부록B] 리액티브 비트 — 이 경기에서 실제로 일어난 일에 사람이 반응한다.
+    /// 신규 연산 0: 전부 MatchResult·Gladiator의 기존 사실을 읽을 뿐이다.
+    /// 화자가 트리거마다 다르다 — 몸은 테아, 흥행은 루킬리우스, 나머지는 카토.
+    /// 남발 방지: 시즌당 5회 · 쿨다운 3경기(둘 다 영속 — 세이브/로드가 같은 결과를 내야 한다).</summary>
+    private Commentary? ReactiveBeat(Gladiator A, Gladiator B, MatchResult res, bool myMatch, PreMatchFacts pre)
+    {
+        if (!myMatch || _reactCount >= 5 || _matchIdx - _reactLastIdx < 3) return null;
+        bool exiled = _storyFlags.Contains("cato_exiled");
+        var mine = A.IsPlayer ? A : B;
+        bool minePre = A.IsPlayer ? pre.AInjured : pre.BInjured;
+        int minePreFat = A.IsPlayer ? pre.AFatigue : pre.BFatigue;
+        var opp = A.IsPlayer ? B : A;
+        var (win, lose) = res.Winner < 0 ? (null, null) : res.Winner == 0 ? (A, B) : (B, A);
+        bool mineWon = win != null && win.IsPlayer;
+        bool confessed = _storyFlags.Contains("clue_confess");
+
+        Commentary? Fire(string text, string who)
+        {
+            // 카토를 내친 세계에서 그가 말할 수는 없다 — 테아가 받을 수 있는 말만 남기고 나머지는 침묵.
+            if (who == "cato" && exiled) return null;
+            _reactCount++; _reactLastIdx = _matchIdx;
+            return new Commentary(text, who);
+        }
+
+        // ── 몸 (테아) — 카토가 있어도 이 말은 그녀가 한다 ──
+        if (minePre)
+            return Fire("돌아왔군요. 저는 아직 그 이름 안 지웠습니다.", "thea");
+        if (minePreFat >= 80)
+            return Fire("오늘은 세지 않겠습니다. 셀 게 뻔해서요.", "thea");
+        if (mineWon && mine.Fatigue >= 90)
+            return Fire("숨소리 좀 들어보십시오. 저는 저 소리를 압니다.", "thea");
+
+        // ── 흥행 (루킬리우스) ──
+        if (_lastUpset && mineWon)
+            return Fire("저 아이 이름이 뭐라고 했죠? 아, 안 물어봤네요. 지금 물어볼게요.", "lucilius");
+
+        // ── 카토 ──
+        if (mine.Streak <= -3)
+            return Fire("방식을 바꾸시겠습니까, 사람을 바꾸시겠습니까. …둘 다 답입니다.", "cato");
+        if (mineWon && mine.Streak == 5)
+            return Fire("이쯤 되면 다들 우리를 연구합니다. 이제부터가 진짜입니다.", "cato");
+        if (mineWon && mine.CW == 100)
+            return Fire(_storyFlags.Contains("cato_kept")
+                ? "백 승입니다. …그 사람은 백서른둘이었습니다. 아직 멀었어요."
+                : "백 승입니다. 이 집에서 그 숫자를 본 건 오랜만이군요.", "cato");
+        if (lose != null && lose.IsPlayer && lose.CL == 1 && lose.CW >= 5)
+            return Fire("드디어 졌군요. 이제야 가르칠 게 생겼습니다.", "cato");
+        // 방패 상대 장기전 — 「싸우지 않고 기다리는 경기」. 자백 뒤에는 같은 장면이 다른 뜻이 된다.
+        if (opp.WeaponId == "WPN_SHIELD" && res.DurationSec >= 100f)
+            return Fire(confessed
+                ? "저 방패 보이십니까. 20년 전에도 저렇게 서 있었습니다. 하루 종일요."
+                : "…저런 경기가 제일 나쁩니다. 상대가 이기려는 게 아니라 그냥 기다리는 거니까요.", "cato");
+        if (_unrest >= 50f)
+            return Fire("담장을 한 번 더 보고 오겠습니다. 요즘은 밖이 더 위험합니다.", "cato");
+        return null;
+    }
+
     /// <summary>경기 후 카토의 한 줄 — 내 경기 100% · AI전 35%. 규칙 기반(MatchSummary 사실 → 텍스트 풀), 신규 연산 없음.
     /// [13a] 카토를 내친 커리어(cato_exiled)에서는 화자가 바뀐다 — 내 경기는 테아(몸·값), AI전은 루킬리우스(흥행·시장).
     /// 페널티는 수치가 아니라 어휘의 상실이다: 이 세계가 검투사를 몸값과 흥행 항목으로만 말하게 된다.</summary>
-    private string? CatoComment(Gladiator A, Gladiator B, int winner, string reason, bool myMatch)
+    private Commentary? CatoComment(Gladiator A, Gladiator B, MatchResult res, bool myMatch, PreMatchFacts pre)
     {
         if (_playerless) return null;
+        int winner = res.Winner; string reason = res.Reason;
         var rng = new SimRandom(SeasonSeed ^ 0xCA70_CA70UL + (ulong)_matchIdx * 71UL);
-        if (!myMatch && !rng.Roll(0.35f)) return null;
-        if (_storyFlags.Contains("cato_exiled")) return ExiledComment(A, B, winner, reason, myMatch, rng);
 
-        if (winner < 0) return "모래도 가끔은 답을 미룹니다.";
+        // [13a 부록B] 리액티브 비트 — 확률 풀보다 먼저. 이 경기에서 '실제로 일어난 일'이 있으면 그것부터 말한다.
+        if (ReactiveBeat(A, B, res, myMatch, pre) is { } beat) return beat;
+
+        if (!myMatch && !rng.Roll(0.35f)) return null;
+        if (_storyFlags.Contains("cato_exiled")) return Say(ExiledComment(A, B, winner, reason, myMatch, rng), myMatch ? "thea" : "lucilius");
+
+        if (winner < 0) return Say("모래도 가끔은 답을 미룹니다.", "cato");
         var (win, lose) = winner == 0 ? (A, B) : (B, A);
         bool ko = reason == "KO";
 
@@ -1286,7 +1422,7 @@ public sealed partial class Game
                         "카토가 경기평 끝에 흘리듯 덧붙인 이름이다.\n" +
                         "승수의 대부분이 KO다. 빨리 끝내는 선수였다는 뜻이다.", "전설 명부");
                 }
-                return $"이 녀석… 옛날의 {Reul(match.Name)} 닮았군요. 「{match.Epithet}」 — {match.Record}. …끝이 어땠는지는, 기록을 찾아보시지요.";
+                return Say($"이 녀석… 옛날의 {Reul(match.Name)} 닮았군요. 「{match.Epithet}」 — {match.Record}. …끝이 어땠는지는, 기록을 찾아보시지요.", "cato");
             }
         }
 
@@ -1321,8 +1457,7 @@ public sealed partial class Game
         if (pool.Count == 0) pool.Add(rng.Roll(0.5f)
             ? "오늘은 거리 싸움이었습니다. 반 보 차이가 전부였지요."
             : "볼 만했습니다. 그 이상은 말씀드릴 게 없군요.");
-        pool.Add("좋은 경기였습니다. 내일이면 아무도 기억 못 하겠지만 — 그게 모래지요.");
-        return pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
+        return Say(pool[(int)(rng.NextUInt64() % (ulong)pool.Count)], "cato");
     }
 
     /// <summary>카토가 없는 세계의 경기평 — 테아는 몸을 세고, 루킬리우스는 표를 센다.

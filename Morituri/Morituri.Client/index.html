@@ -1451,11 +1451,15 @@ window.openKeepsake = (i)=>{
 // ── [13] 카토의 한 줄 평 (결과 카드) ──
 // [13a] 경기평의 화자 — 카토를 내친 커리어에서는 내 경기=테아, AI전=루킬리우스.
 // 페널티는 수치가 아니라 어휘의 상실이다(설계 부록 A).
-const catoVoice = mine => (st && st.Campaign && st.Campaign.Voice==='exiled')
-  ? (mine ? {name:'테아', col:'#a8bdb0', bar:'#5a7a68'} : {name:'루킬리우스', col:'#d9b7d2', bar:'#7a5a72'})
-  : {name:'카토', col:'#cbb98d', bar:'#8a7a5a'};
-const catoLine = (c, mine) => { if(!c) return '';
-  const v = catoVoice(mine !== false);
+const VOICES = { cato:{name:'카토', col:'#cbb98d', bar:'#8a7a5a'}, thea:{name:'테아', col:'#a8bdb0', bar:'#5a7a68'},
+  lucilius:{name:'루킬리우스', col:'#d9b7d2', bar:'#7a5a72'}, murena:{name:'무레나', col:'#c9b09a', bar:'#7a6450'} };
+// who가 오면 그 사람이 말한 것이다(부록B 리액티브 비트·부록C 막간). 없으면 커리어 기본 화자.
+const catoVoice = (mine, who) => VOICES[who] ||
+  ((st && st.Campaign && st.Campaign.Voice==='exiled')
+    ? (mine ? VOICES.thea : VOICES.lucilius)
+    : VOICES.cato);
+const catoLine = (c, mine, who) => { if(!c) return '';
+  const v = catoVoice(mine !== false, who);
   return `<div style="margin-top:8px;padding:7px 10px;border-left:3px solid ${v.bar};background:var(--panel2);border-radius:6px;font-size:12px;font-style:italic;color:${v.col}">{speech} ${v.name} — “${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}”</div>`; };
 // ── 승부조작 진행 배너: 가담한 선수가 다음 경기를 던져야 함을 상기 ──
 function renderFixBar(){
@@ -1873,9 +1877,13 @@ $('next').onclick = async ()=>{
   } finally { nx.disabled=false; }
 };
 // ── 라운드 다이제스트: 지나간 AI 경기를 한 줄씩(승자·KO·흥행·베팅·운명 + 카토 한 줄) ──
+// [13a 부록C] 다이제스트가 열리지 않는 라운드의 막간 — 조용히 지나가되 사라지지는 않게
+function interludeToast(itl){ const v = catoVoice(true, itl.who);
+  toast('<span style="color:'+v.col+';font-weight:600;font-style:italic">{speech} '+v.name+' \u2014 \u201C'+escHtml(itl.text)+'\u201D</span>'); }
 function showRoundDigest(r){
   const lines = (r && r.lines) || [];
-  if (!lines.length){ go('league'); return; }   // 소화한 게 없다(바로 내 경기·이벤트) — 조용히 넘어간다
+  // 소화한 게 없으면(바로 내 경기·이벤트) 모달을 띄우지 않는다. 막간 한 마디는 남아 있으니 토스트로 흘린다.
+  if (!lines.length){ if (r && r.interlude && r.interlude.text) interludeToast(r.interlude); go('league'); return; }
   const stopWord = { mine:'다음은 내 경기다', event:'무언가 당신을 기다린다', season:'시즌이 끝났다', round:'라운드가 끝났다' }[r.stop] || '';
   $('mrTitle').textContent = `R${r.round} · 모래 위의 하루 (${lines.length}경기)`;
   let html = `<div style="display:flex;flex-direction:column;gap:7px">` + lines.map(m=>{
@@ -1888,8 +1896,12 @@ function showRoundDigest(r){
       <div><b style="color:var(--gold)">${escHtml(m.Winner||'무승부')}</b>${ko}${up}
         <span class="note"> — ${escHtml(m.A)} vs ${escHtml(m.B)}</span></div>
       ${bet}${inj}${fates}
-      ${m.Cato?`<div class="note" style="margin-top:3px;font-style:italic;color:#cbb98d">{speech} ${escHtml(m.Cato)}</div>`:''}</div>`;
+      ${m.Cato?(v=>`<div class="note" style="margin-top:3px;font-style:italic;color:${v.col}">{speech} ${v.name} — ${escHtml(m.Cato)}</div>`)(catoVoice(false, m.CatoWho)):''}</div>`;
   }).join('') + `</div>`;
+  if (r && r.interlude && r.interlude.text){
+    const v = catoVoice(true, r.interlude.who);
+    html = `<div style="margin-bottom:9px;padding:9px 12px;border-left:3px solid ${v.bar};background:var(--panel3);border-radius:6px;font-size:12.5px;font-style:italic;color:${v.col}">{speech} ${v.name} — “${escHtml(r.interlude.text)}”</div>` + html;
+  }
   if (stopWord) html += `<div class="note" style="margin-top:10px;text-align:center;color:var(--gold)">${stopWord}</div>`;
   html += nextHook();
   $('mrBody').innerHTML = html;
@@ -1908,7 +1920,7 @@ function showMatchResult(m){
   if (m.Injuries&&m.Injuries.length) html += `<div class="rrow" style="color:#e0a89f"><span>{medic} 부상</span><span>${m.Injuries.join(' · ')}</span></div>`;
   html += execTheater(m);
   html += sealedFates(fatesFor(m));
-  html += catoLine(m.Cato, !!m.WasPlayerMatch);
+  html += catoLine(m.Cato, !!m.WasPlayerMatch, m.CatoWho);
   html += nextHook();
   $('mrBody').innerHTML = html;
   $('mrModal').classList.add('on');
