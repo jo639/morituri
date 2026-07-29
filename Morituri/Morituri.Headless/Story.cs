@@ -102,7 +102,7 @@ public sealed partial class Game
         if (_pendingEventId is { } id && id.StartsWith("story_")) { _pendingEventId = null; _pendingEventFighter = null; }
         // 상속 빚은 유산(서막)의 일부 — 각본을 생략하면 물려받을 이야기도 없다. 방금 얹은 유산 채무를 되돌린다.
         _debt = 0f; _debtLog.Clear();
-        _story.Add((0, "story", "{ludus} 각본 없는 시작 — 모래가 곧 이야기다"));
+        _story.Add((0, "story", "{ludus} 각본 없는 시작 — 기록은 오늘부터다"));
         SaveWorld();
         return StateJson();
     }
@@ -167,6 +167,9 @@ public sealed partial class Game
         if (!_storyBeats.Contains("a6") && _storyFlags.Contains("fixed_once")) return SpawnStory("story_a6", "a6");
         // A7 이름이 불렸다 — 값이 매겨지기 시작한다(B5·C1 예고)
         if (!_storyBeats.Contains("a7") && LudusTier() >= 1) return SpawnStory("story_a7", "a7");
+        // 「진상의 반쪽」 — 술 취한 전직 라니스타. 무레나 위에 손이 하나 더 있다는 첫 신호(E아크 복선).
+        // A5에서 무레나의 얼굴을 본 뒤라야 "돈을 댄 건 무레나가 아니다"라는 말이 뜻을 갖는다.
+        if (!_storyBeats.Contains("cl")) return SpawnStory("story_clue", "cl");
         // 「남은 것」 — 시즌이 하나 끝나야 셀 것이 생긴다. 기록실·명예의 전당을 여는 짧은 장면.
         if (!_storyBeats.Contains("rc") && _seasonsPlayed >= 1) return SpawnStory("story_records", "rc");
         // ── 2막 「대가」 — 값이 청구되기 시작한다. 그리고 끝에서 카토가 무너진다 ──
@@ -286,9 +289,10 @@ public sealed partial class Game
         if (_playerless || _storyStage == "chronicle") return;
         bool inTop = _cast.Any(g => g.IsPlayer && g.Division == 1);
         if (!_promotedFlag && !inTop && _seasonsPlayed < 3) return;   // 각본이 샌드박스를 인질로 잡지 않는다(최대 3시즌)
-        // 반대 방향의 보호: 승격이 빠르면 1막이 통째로 잘린다(무레나가 값을 부르기 전에 종막).
-        // 조기 종막은 「두 번째 방문」(A5, 조작 최초 제안)을 본 뒤에만 — 3시즌 상한은 그대로라 인질은 아니다.
-        if (_seasonsPlayed < 3 && !_storyBeats.Contains("a5")) return;
+        // 반대 방향의 보호: 승격이 빠르면 각본이 통째로 잘린다(무레나가 값을 부르기도, 카토가 무너지기도 전에 종막).
+        // 조기 종막은 2막의 정점인 자백(B7)까지 본 뒤에만 — 3시즌 상한은 그대로라 샌드박스를 인질로 잡지 않는다.
+        // 1시즌 승격 커리어가 자백을 건너뛰면 후일담이 「반쪽」을 아는 척하게 된다(그 반쪽을 들은 적이 없는데).
+        if (_seasonsPlayed < 3 && !_storyBeats.Contains("cf")) return;
         _storyStage = "chronicle";
         _storyBeats.Add("finale");
         _pendingEventId = "story_finale"; _pendingEventFighter = null; _storyCtx = null;   // 종막은 무엇보다 우선
@@ -682,7 +686,7 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("나가라", _ => {
                     Flag("cato_exiled"); AddRep(10f); ArchiveConfession();
-                    return "그는 목검 하나만 들고 나갔다. 20년 동안 가르친 것들은 두고 갔다. 도끼도 그대로 두었다 — \"저 아이들은 잘못이 없습니다. 그것만 기억해 주십시오. …날은 계속 닦아 주십시오. 부탁입니다.\" (명성 +10 · 훈련 효율 저하 · 경기평의 화자가 바뀐다) — {play} 그날의 경기 기록을 보관함에 남기고 갔다"; }),
+                    return "그는 목검 하나만 들고 나갔다. 20년 동안 가르친 것들은 두고 갔다. 도끼도 그대로 두었다 — \"저 아이들은 잘못이 없습니다. 그것만 기억해 주십시오. …날은 계속 닦아 주십시오. 부탁입니다.\" (명성 +10 · 훈련 포인트가 3경기마다에서 4경기마다로 · 경기평의 화자가 바뀐다) — {play} 그날의 경기 기록을 보관함에 남기고 갔다"; }),
                 ("당신은 여기 남는다", _ => {
                     Flag("cato_kept"); ArchiveConfession();
                     return "카토: \"…왜입니까. 용서하지 마십시오. 그건 제 몫이 아니라 죽은 사람 몫입니다.\" 당신은 대답하지 않았다 — \"…예. 그럼 계속 가르치겠습니다. 그게 제일 무거운 벌이니까요.\" 그날 이후 그의 경기평에서 '도끼' 이야기는 사라졌다 — {play} 그날의 경기 기록이 보관함에 남았다"; }),
@@ -783,14 +787,16 @@ public sealed partial class Game
 
         // ── 1막 비트④ 「진상의 반쪽」 ──
         new EvtTemplate { Id = "story_clue", Icon = "{candle}", Title = "진상의 반쪽", NeedsFighter = false,
-            Body = _ => "몰락한 전직 라니스타가 술에 절어 당신의 소매를 붙잡는다. 가이우스의 이름에 그의 눈이 또렷해진다.\n" +
-                "{speech} 전직 라니스타: \"가이우스가 거부한 그 경기… 돈을 댄 건 무레나가 아니야. 그 위야. 1부를 쥔 손. …1부에 올라가면 알게 될 거요.\"",
+            Body = _ => "시장 뒷골목. 몰락한 전직 라니스타가 당신의 소매를 붙잡는다. 술 냄새가 났다.\n" +
+                "가이우스의 이름을 듣자 그의 눈이 잠깐 또렷해졌다.\n" +
+                "{speech} 전직 라니스타: \"그 경기 말이야. 돈을 댄 건 무레나가 아니야. 그 위야.\"\n" +
+                "{speech} 전직 라니스타: \"…1부를 쥔 손이지. 올라가 보면 알아.\"",
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("술값을 쥐여주고 더 캐묻는다 (골드 −20)", _ => { var pay = SpendOrDebt(20f);
                     AddClue("전직 라니스타 — \"그 경기의 돈줄은 1부를 쥔 손. 콜로세움 위의 관람석.\"");
-                    return $"{pay} — 단서를 유품함에 적어 두었다. 승격하라. 답은 1부에 있다"; }),
-                ("취객의 헛소리로 넘긴다", _ => { AddClue("취객의 말 — \"1부에 올라가면 알게 될 거요.\"");
-                    return "돌아서는 등 뒤로 그가 외쳤다 — \"가이우스도 그렇게 웃었지!\""; }) } },
+                    return $"{pay} — 보관함에 적어 두었다. 답은 1부에 있다"; }),
+                ("취객의 헛소리로 넘긴다", _ => { AddClue("취객의 말 — \"1부에 올라가면 알게 된다.\"");
+                    return "돌아서는 등 뒤로 그가 외쳤다 — \"가이우스도 딱 그 얼굴이었어!\""; }) } },
 
         // ── 1막 비트⑤ 「승격 결전 전야」 ──
         new EvtTemplate { Id = "story_showdown", Icon = "{candle}", Title = "결전 전야", NeedsFighter = false,
@@ -836,10 +842,10 @@ public sealed partial class Game
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"총애를 파는 자가 누구지?\"", _ => {
                     AddClue("무레나 — \"총애는 하사되는 게 아니라 팔리는 것. 파는 손은 콜로세움 꼭대기에 있다.\"");
-                    return "무레나는 웃기만 했다 — \"더 올라오십시오. 그 높이에선 보입니다.\" (유품함에 기록)"; }),
+                    return "무레나는 웃기만 했다 — \"더 올라오십시오. 그 높이에선 보입니다.\" (보관함에 기록)"; }),
                 ("무레나를 내쫓는다 (명성 +5)", _ => { AddRep(5f);
                     AddClue("낯선 봉랍 — 황제의 것이 아닌 인장이 특명에 붙어 있었다.");
-                    return "명성 +5 — 문가에서 그가 말했다. \"가이우스도 처음엔 내쫓았습니다.\" (유품함에 기록)"; }) } },
+                    return "명성 +5 — 문가에서 그가 말했다. \"가이우스도 처음엔 내쫓았습니다.\" (보관함에 기록)"; }) } },
 
         // E2 「특명 뒤의 손」 — 특명의 진짜 발신인
         new EvtTemplate { Id = "story_e2", Icon = "{candle}", Title = "특명 뒤의 손", NeedsFighter = false,
@@ -848,6 +854,11 @@ public sealed partial class Game
                 "{speech} 무레나: \"가이우스가 거절한 그 경기. 돈은 검은 인장에서 나오지 않았습니다. 그 손에서 나왔지요. 나는… 심부름꾼이었을 뿐입니다.\"\n" +
                 (_storyFlags.Contains("cato_exiled")
                     ? "{speech} 무레나: \"…여기까지가 제 몫입니다. 나머지 반쪽은 콜로세움 꼭대기에 있고, 저는 거기까지 못 올라갑니다.\""
+                 // 3시즌 소프트 종막으로 자백(B7)을 못 들은 커리어 — 「반쪽이 맞춰졌다」고 하면 안 된다.
+                 // 듣지 못한 반쪽이 카토에게 아직 남아 있다는 것만 흘린다.
+                 : !_storyFlags.Contains("clue_confess")
+                    ? "{speech} 카토: \"…나머지는 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\"\n" +
+                      "{speech} 카토: \"…그리고 제 몫으로 남은 이야기가 하나 더 있습니다. 그건 언젠가 제가 말씀드리지요.\""
                     : "{speech} 카토: \"…반쪽이 맞춰졌군요. 나머지 반쪽은 콜로세움 꼭대기에 있습니다. 올라가면, 만나게 될 겁니다.\""),
             Choices = new (string, Func<Gladiator?, string>)[] {
                 ("\"왜 이제 와서 말하지?\"", _ => {
@@ -1309,7 +1320,7 @@ public sealed partial class Game
         if (myMatch && lose.IsPlayer && !win.IsPlayer) pool.Add("괜찮습니다. 오늘 죽은 건 우리가 아니라, 기대였을 뿐입니다.");
         if (pool.Count == 0) pool.Add(rng.Roll(0.5f)
             ? "오늘은 거리 싸움이었습니다. 반 보 차이가 전부였지요."
-            : "모래는 오늘도 정직했습니다. 그 위의 인간들이 문제일 뿐.");
+            : "볼 만했습니다. 그 이상은 말씀드릴 게 없군요.");
         pool.Add("좋은 경기였습니다. 내일이면 아무도 기억 못 하겠지만 — 그게 모래지요.");
         return pool[(int)(rng.NextUInt64() % (ulong)pool.Count)];
     }

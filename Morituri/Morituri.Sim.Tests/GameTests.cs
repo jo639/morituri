@@ -1112,6 +1112,10 @@ public class GameTests
         Assert.That(seen.Contains("story_a0"), Is.True, "1막 A0 개막 발화");
         Assert.That(seen.Contains("story_a3"), Is.True, "1막 A3 무레나 첫 방문(돈만)");
         Assert.That(seen.Contains("story_a5"), Is.True, "1막 A5 조작 최초 제안");
+        // 「진상의 반쪽」은 템플릿만 있고 어디서도 스폰되지 않아 죽어 있었다(E아크가 참조할 복선이 사라진 채로).
+        Assert.That(seen.Contains("story_clue"), Is.True, "1막 「진상의 반쪽」 발화 — E아크의 유일한 사전 복선");
+        // 종막이 2막의 정점을 건너뛰면 후일담이 듣지도 못한 「반쪽」을 아는 척하게 된다.
+        Assert.That(seen.Contains("story_b_confess"), Is.True, "종막 전에 자백(B7)이 반드시 선다");
         Assert.That(fin.GetProperty("Campaign").GetProperty("Clues").ValueKind, Is.EqualTo(JsonValueKind.Array),
             "기억의 벽 — 조각 배열 노출");
         Assert.That(fin.GetProperty("Legends").EnumerateArray().Any(l => l.GetProperty("Name").GetString() == "오르쿠스"),
