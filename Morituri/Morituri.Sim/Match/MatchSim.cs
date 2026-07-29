@@ -743,9 +743,11 @@ public sealed class MatchSim
         // 안 A: '쌍방 장기 무교전'(교착)에서는 근접에도 개방 — 수비형 짝(카운터/방어)의 180초 동결 해소.
         // stall = 마지막 클린히트 이후 경과(min NoHitTimer). 정상 근접전은 유예를 못 넘겨 게이트 0 → 대조군 불변.
         float stall = MathF.Min(_f[0].NoHitTimer, _f[1].NoHitTimer);
+        float crowd = CrowdPressure;   // 경기 시계 기반 — 명중해도 리셋되지 않는다
         float meleeGate = f.Weapon.Range >= _c.MinLongRange ? 1f
-            : Math.Clamp((stall - _c.StalemateGraceSec) / _c.StalemateRampSec, 0f, 1f);
-        float impulse = (1f - f.Patience / _c.PatienceMax) * meleeGate;  // 0(인내)~1(소진)
+            : MathF.Max(Math.Clamp((stall - _c.StalemateGraceSec) / _c.StalemateRampSec, 0f, 1f), crowd);
+        // 인내심은 교전하는 순간 회복되므로 그것만으로는 고리가 안 끊긴다 → 압박을 하한으로 깐다.
+        float impulse = MathF.Max((1f - f.Patience / _c.PatienceMax) * meleeGate, crowd);  // 0(인내)~1(소진)
         if (reachWeaponCramped) { float p = 0.35f + 0.65f * impulse; light *= p; heavy *= p; }
         // 인내심 충동: 바닥날수록 공격↑ + 카이팅(선회/후퇴)↓ → 대치를 끝내고 달려든다(거울전 영원 대치 해소).
         if (impulse > 0f)
@@ -756,6 +758,10 @@ public sealed class MatchSim
             score[(int)ActionRequest.Strafe] *= damp;
             score[(int)ActionRequest.Retreat] *= damp;
         }
+        // 군중의 압박: 늦어질수록 '가드만 붙잡고 버티기'를 깎는다.
+        // 수비형 짝은 공격이 아예 최선으로 뽑히지 않아(방어vs방어 Guard 79%) 공격 게이트까지 가지도 못했다 —
+        // 충동을 아무리 올려도 Guard 점수를 못 이기면 3분간 8번만 친다. 경기 시계 기반이라 짧은 경기엔 무영향.
+        if (crowd > 0f) score[(int)ActionRequest.Guard] *= 1f - _c.CrowdPressureGuardCut * crowd;
         // [접촉 핀 해소 실험] 서로 사거리 이내(상호 타격 가능) + 내 선호거리가 상대보다 큰 쪽(=거리를 더 원하는 쪽)만
         // 데드밴드·감쇠 무시하고 후퇴. 둘 다 빠지지 않고 카이터(높은 pref)만 빠져 → 상대(공격형)는 추격, 거리 분화.
         bool bothInRange = dist <= f.EffRange && dist <= oppRt.EffRange;
@@ -812,7 +818,9 @@ public sealed class MatchSim
 
         var bestAction = (ActionRequest)best;
         bool isAttack = bestAction is ActionRequest.AttackLight or ActionRequest.AttackHeavy or ActionRequest.Feint;
-        if (isAttack && score[best] < f.Dir.CommitThreshold * _c.AttackGateScale)
+        // 군중의 압박: 경기가 길어질수록 '확신이 덜해도 지른다' — 공격 채택 요구치를 깎는다.
+        float gateScale = _c.AttackGateScale * (1f - _c.CrowdPressureGateCut * CrowdPressure);
+        if (isAttack && score[best] < f.Dir.CommitThreshold * gateScale)
         {
             // 확신도 미달 → 차순위 비공격 행동 (신중함이 공격을 아끼는 메커니즘)
             int alt = (int)ActionRequest.Approach;
@@ -1309,6 +1317,31 @@ public sealed class MatchSim
     {
         foreach (var st in f.Passives) if (_now < st.BuffUntil && pred(st.Spec)) return st;
         return null;
+    }
+
+    /// <summary>
+    /// 군중의 압박([10]) — 경기가 길어질수록 관중이 결단을 강요한다. 0(유예 이내) ~ 1(램프 끝).
+    /// <b>경기 시계만 본다</b>: 기존 교착 장치는 NoHitTimer/인내심에 묶여 있어 '치는 순간 리셋'되고
+    /// 다시 20초를 기다렸다(수비형 짝 180초 타임아웃 100%, 3분간 공격 8회). 이 값은 리셋되지 않는다.
+    /// 짧은 경기는 유예 안에서 끝나므로 0 → 매트릭스 대조군 불변.
+    /// </summary>
+    private bool _crowdLatched;   // 이 경기가 교착으로 확정됐는가(래치)
+
+    private float CrowdPressure
+    {
+        get
+        {
+            if (_c.CrowdPressureRampSec <= 0f) return 0f;
+            float t = Math.Clamp((_now - _c.CrowdPressureGraceSec) / _c.CrowdPressureRampSec, 0f, 1f);
+            if (t <= 0f) return 0f;
+            // 저교전 정도 — 이 시각까지 '정상이라면' 났을 피해 대비 실제 누적. 정상 경기는 1을 넘겨 0이 된다.
+            float expected = _now * _c.CrowdPressureDpsRef;
+            if (expected <= 0f) return 0f;
+            float lag = Math.Clamp(1f - (_f[0].DamageDealt + _f[1].DamageDealt) / expected, 0f, 1f);
+            float p = t * lag;
+            if (p >= _c.CrowdPressureLatchAt) _crowdLatched = true;   // 교착 확정 — 이후엔 안 풀린다
+            return _crowdLatched ? MathF.Max(p, _c.CrowdPressureLatchMin) : p;
+        }
     }
 
     /// <summary>투지·관중몰이 스택 배율(만료 시 0) — 보유 패시브 전부를 곱한다.</summary>

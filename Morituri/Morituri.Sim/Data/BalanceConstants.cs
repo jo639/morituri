@@ -132,6 +132,21 @@ public readonly record struct BalanceConstants
     // 정상 근접전은 유예를 못 넘겨 무영향 → 검 거울(매트릭스 대조군) 불변.
     public float StalemateGraceSec     { get; init; }  // 이 시간까지의 무교전은 정상 수싸움 — 충동 억제
     public float StalemateRampSec      { get; init; }  // 유예 후 이 폭에 걸쳐 근접 충동 0→1 램프
+    // 군중의 압박([10]): 위 안 A는 '치는 순간 NoHitTimer가 리셋'돼 스스로를 무력화했다 —
+    // 20초 대기 → 1회 공격 → 리셋 → 반복(수비형 짝 180초 타임아웃 100%, 3분간 공격 8회).
+    // 이 항은 <b>경기 시계</b> 기반이라 명중해도 리셋되지 않아 그 고리를 끊는다.
+    // 유예 이내(짧은 경기)에는 값이 0 → 매트릭스 대조군 불변.
+    public float CrowdPressureGraceSec { get; init; }  // 이 시각까지는 압박 0 (정상 경기는 여기서 끝난다)
+    public float CrowdPressureRampSec  { get; init; }  // 유예 후 이 폭에 걸쳐 압박 0→1
+    public float CrowdPressureGateCut  { get; init; }  // 압박 1일 때 공격 채택 요구치를 이 비율만큼 깎는다
+    public float CrowdPressureGuardCut { get; init; }  // 압박 1일 때 Guard 점수를 이 비율만큼 깎는다(버티기 억제)
+    // 압박 = 시간램프 × '저교전 정도'. 정상 경기는 피해가 정상 속도로 쌓여 저교전항이 0 → 압박 0(매트릭스 안전).
+    // 교착은 시간이 가도 피해가 안 쌓여 압박이 커진다. 누적 피해라 명중해도 리셋되지 않는다.
+    public float CrowdPressureDpsRef   { get; init; }  // '정상이라면' 양측 합계 초당 피해 — 이만큼 쌓였으면 압박 0
+    // 래치: 한 번 교착으로 판정되면 그 경기 내내 압박을 유지한다. 없으면 자기제한 고리가 생긴다 —
+    // 조금 치면 피해가 쌓여 압박이 풀리고 다시 굳는다(기존 NoHitTimer 리셋 문제의 재발).
+    public float CrowdPressureLatchAt  { get; init; }  // 압박이 이 값을 넘으면 그 경기는 '교착'으로 확정
+    public float CrowdPressureLatchMin { get; init; }  // 확정 후 유지할 최소 압박
     public float UtilityNoise      { get; init; }  // ε = 0.10 — 이변의 원천 1
     public float AttackGateScale   { get; init; }  // Commit 게이트: 공격 채택 요구 점수 = Commit × 이 값
     public float CancelWindowRatio { get; init; }  // 선딜 중 캔슬 가능 비율 0.7
@@ -264,6 +279,13 @@ public readonly record struct BalanceConstants
         PatienceImpulseScale = 2.0f,  // 인내심 0 → 공격 점수 ×3 (reachAdvantage ×2.2 수준의 결단)
         StalemateGraceSec = 12f,      // 정상 근접전은 12초 무교전에 도달 안 함 → 대조군 보존
         StalemateRampSec = 8f,        // 12→20초 교착서 근접 충동 0→1 (수비형 짝 ~20초 내 개전)
+        CrowdPressureGraceSec = 8f,   // 초반 8초 간 보기는 정상 — 그 뒤부터 램프
+        CrowdPressureRampSec = 20f,   // 8→28초에 걸쳐 시간항 0→1 (압박 = 시간항 × 저교전항)
+        CrowdPressureGateCut = 0.6f,  // 압박 최대 시 공격 채택 요구치 절반
+        CrowdPressureGuardCut = 0.6f, // 압박 최대 시 Guard 점수 40%로 — 버티기가 더는 최선이 아니게
+        CrowdPressureDpsRef = 6f,     // 정상 경기 ~9(압박vs방어) / 교착 ~1.9 → 교착만 걸린다
+        CrowdPressureLatchAt = 0.5f,  // 정상 경기는 여기 못 닿는다
+        CrowdPressureLatchMin = 1f,   // 교착 확정 시 최대 압박 유지
         UtilityNoise = 0.10f,
         AttackGateScale = 0.9f,   // 1.6은 카운터형이 영원히 공격 못 하는 값이었음 (M2 디버깅으로 발견)
         CancelWindowRatio = 0.7f,
