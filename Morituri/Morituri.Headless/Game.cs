@@ -1114,6 +1114,8 @@ public sealed partial class Game
     {
         if (string.IsNullOrEmpty(w)) return noJong;
         char c = w[^1];
+        // 숫자로 끝나는 이름(「쌍검1」)은 읽는 소리로 판정한다 — 1=일·3=삼·6=육·7=칠·8=팔·0=영은 받침이 있다.
+        if (c is >= '0' and <= '9') return "1360" .Contains(c) || c is '7' or '8' ? jong : noJong;
         if (c < '가' || c > '힣') return noJong;
         return (c - '가') % 28 != 0 ? jong : noJong;
     }

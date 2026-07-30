@@ -207,9 +207,24 @@
   // 구세이브·구서버가 만든 문자열의 이모지를 {토큰}으로 바꾼다.
   // api() 응답을 이 관문에 통과시키면 클라이언트 파싱 로직은 {토큰}만 알면 된다.
   var RXS = new RegExp('(' + keys.join('|') + ')\\uFE0F?', 'g');
+  // 구세이브의 서사 로그에는 「티투스이(가)」식 조사 병기가 박제돼 있다(서버가 고쳐진 뒤에도
+  // 이미 저장된 문자열은 그대로다). 받침을 보고 맞는 조사 하나만 남긴다.
+  var RXJ = /([\uAC00-\uD7A3\d])(?:이\(가\)|가\(이\)|을\(를\)|를\(을\)|은\(는\)|는\(은\)|과\(와\)|와\(과\))/g;
+  function josaOf(ch, pair){
+    // 숫자 끝 이름(「쌍검1」)은 읽는 소리로 — 1·3·6·7·8·0이 받침
+    var jong = ch >= '0' && ch <= '9' ? '136780'.indexOf(ch) >= 0
+             : (ch.charCodeAt(0) - 0xAC00) % 28 !== 0;
+    return jong ? pair[0] : pair[1];
+  }
   window.normLegacy = function(s){
     if (typeof s !== 'string') return s;
-    return s.replace(RXS, function(_, raw){ return EMO[raw] ? '{' + EMO[raw] + '}' : (raw in TXT ? TXT[raw] : raw); });
+    s = s.replace(RXS, function(_, raw){ return EMO[raw] ? '{' + EMO[raw] + '}' : (raw in TXT ? TXT[raw] : raw); });
+    return s.replace(RXJ, function(m, ch){
+      var pair = m.indexOf('이') >= 0 || m.indexOf('가') >= 0 ? ['이','가']
+               : m.indexOf('을') >= 0 || m.indexOf('를') >= 0 ? ['을','를']
+               : m.indexOf('은') >= 0 || m.indexOf('는') >= 0 ? ['은','는'] : ['과','와'];
+      return ch + josaOf(ch, pair);
+    });
   };
   // 툴팁 등 속성 텍스트용 — 아이콘 토큰을 제거한 순수 문장 (속성은 DOM 관문이 못 고친다)
   window.plainTip = function(s){ return String(s == null ? '' : s).replace(/\{[a-z]+\}/g, '').replace(/  +/g, ' ').trim(); };

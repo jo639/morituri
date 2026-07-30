@@ -695,9 +695,13 @@
       <button id="replayBack" onclick="closeReplay()">← 돌아가기</button></div>
   </div>
 
-  <div class="screen" id="news"><div class="pad">
-    <h2>{news} 콜로세움 뉴스 <span class="note">매주 발행 — 모래 위에서 벌어진 일들</span></h2>
-    <div id="newsBody" style="display:flex;flex-direction:column;gap:14px;margin-top:10px"></div>
+  <!-- 신문: 전 호를 세로로 쌓던 것(3.0× 스크롤)을 호(號) 단위 지면 넘김으로. 신문은 긁어내리는 게 아니라 넘기는 물건이다. -->
+  <div class="screen" id="news"><div class="pad" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h2 style="margin:0">{news} 콜로세움 월보 <span class="note">신문철 — 지면을 넘겨 지난 호를 읽는다</span></h2>
+      <div id="newsNav" style="margin-left:auto;display:flex;align-items:center;gap:8px"></div>
+    </div>
+    <div id="newsBody" style="flex:1;min-height:0;margin-top:8px"></div>
   </div></div>
 
   <!-- 도박장: 좌 = 장부·이력 레일 / 우 = 베팅 카드(주인공, 상단 정렬 — 스크롤 없이 한 화면) -->
@@ -960,7 +964,9 @@ const TACD={BALANCED:'범용 만능형',PRESSURE:'근접 압박 — 카이터 �
 const w=k=>WPN[k]||k, p=k=>PER[k]||k, t=k=>TAC[k]||k;
 const $=id=>document.getElementById(id);
 // 조사 — 이름의 받침으로 고른다(「이(가)」 병기 금지). 마크업이 이름과 조사 사이에 끼므로 조사만 돌려준다.
-const jo=(s,jong,no)=>{ const c=(s||'').slice(-1).charCodeAt(0);
+const jo=(s,jong,no)=>{ const t=(s||'').slice(-1), c=t.charCodeAt(0);
+  // 숫자로 끝나는 이름(「쌍검1」)은 읽는 소리로 — 1·3·6·7·8·0은 받침이 있다(일·삼·육·칠·팔·영)
+  if (t>='0' && t<='9') return '136780'.indexOf(t)>=0 ? jong : no;
   return (c>=0xAC00 && c<=0xD7A3 && (c-0xAC00)%28) ? jong : no; };
 const epi=arr=>(arr&&arr.length)?`<div class="chips" style="margin:2px 0 4px">${arr.map(x=>`<span class="chip" style="background:rgba(201,168,76,.16);color:var(--gold);border:1px solid rgba(201,168,76,.4)">${x}</span>`).join('')}</div>`:'';
 const STATH={Atk:'공격력 — 타격 데미지',Def:'방어력 — 피해 경감',Hp:'체력 — 최대 HP',Spd:'이동속도 — 거리 조절·추격',Aspd:'공격속도 — 연타·후딜',Rct:'반응속도 — 회피·반격 타이밍'};
@@ -1628,40 +1634,67 @@ function gambleFighterCard(f, side){
 }
 // ── 도박장 탭(#32): 통계 · 다음 경기 베팅 · 이력 ──
 // ── 콜로세움 뉴스(#11): 라운드별 서사 → 세피아 신문 ──
+// ── 신문: 호(號) 단위 지면 넘김 ──
+// 초판은 40호를 한 통에 세로로 쌓아 3.0× 스크롤이었다. 한 번에 한 지면만 펼치고 좌우로 넘긴다.
+// _newsIssues는 서버 순서(최신 시즌·최신 월 먼저) 그대로 — idx가 클수록 과거다.
+let _newsIssues = [], _newsIdx = 0;
 async function renderNews(){
   const r = await api('/api/news',{});
-  const body = $('newsBody');
-  if (!body) return;
-  if (!r || r.error || !r.issues || !r.issues.length){
+  _newsIssues = (r && !r.error && r.issues) ? r.issues : [];
+  if (_newsIdx >= _newsIssues.length) _newsIdx = 0;
+  paintNews(0);
+}
+// d>0 = 과거로(지난 호), d<0 = 최근으로
+window.newsFlip = (d)=>{ const n = _newsIdx + d;
+  if (n < 0 || n >= _newsIssues.length) return;
+  _newsIdx = n; paintNews(d); sfxScroll(); };   // 지면 넘김 = 두루마리 펼침음
+function paintNews(dir){
+  const body = $('newsBody'), nav = $('newsNav'); if (!body) return;
+  if (!_newsIssues.length){
+    if (nav) nav.innerHTML = '';
     body.innerHTML = '<div class="note">아직 발행된 소식이 없다 — 경기가 치러지면 신문이 나온다.</div>'; return;
   }
-  // 시즌별로 묶어 표제(신문철) 아래 각 월호를 신문 형식으로 — 최신 시즌 먼저
-  const bySeason = {};
-  r.issues.forEach(is=>{ (bySeason[is.Season]=bySeason[is.Season]||[]).push(is); });
-  const seasons = Object.keys(bySeason).map(Number).sort((a,b)=>b-a);
-  const art = a => typeof a==='string' ? {Header:a, Body:''} : a;
-  body.innerHTML = seasons.map(sn=>{
-    const issues = bySeason[sn].sort((a,b)=>b.Month-a.Month);
-    const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px"><h3 style="color:var(--gold);margin:0">{scroll} 시즌 ${sn} 신문철 <span class="note" style="font-weight:400">AUC ${issues[0].Auc||680+sn} · ${issues.length}호</span></h3></div>`;
-    return head + issues.map(is=>`
-      <article style="background:linear-gradient(180deg,#efe6cf,#e4d6b2);color:#241c10;border:1px solid #b9a06a;border-radius:8px;padding:16px 20px;box-shadow:0 4px 14px rgba(0,0,0,.32);margin-bottom:12px">
-        <div style="text-align:center;border-bottom:3px double #6b5427;padding-bottom:4px;margin-bottom:2px">
-          <div style="font-family:var(--font-display);letter-spacing:.22em;font-size:19px;font-weight:900;color:#3a2c12">ACTA COLOSSEI</div>
-          <div style="font-size:10px;color:#6b5b38;letter-spacing:.1em">콜로세움 월보 · 원로원과 로마 인민의 허가 아래</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a6f3c;border-bottom:1px solid #b9a06a;padding-bottom:5px;margin-bottom:10px;letter-spacing:.05em">
-          <span>제 ${is.Season}시즌 · ${is.MonthName||''}월호</span><span>AUC ${is.Auc||''}</span><span>한 부 2아스(As)</span></div>
-        <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:23px;margin:2px 0 4px;color:#2a1d0c;line-height:1.3;text-align:center;border-bottom:1px solid #cbb98d;padding-bottom:6px">${is.Headline}</h3>
-        ${is.HeadBody?`<p style="font-size:14px;color:#33240f;line-height:1.65;margin:8px 0 12px;text-indent:1em">${is.HeadBody}</p>`:''}
-        <div style="columns:2;column-gap:22px;column-rule:1px solid #cbb98d">
-          ${(is.Articles&&is.Articles.length)? is.Articles.map(art).map(a=>
-            `<div style="break-inside:avoid;margin-bottom:11px"><b style="font-family:'Noto Serif KR',serif;font-size:13.5px;color:#241c10;line-height:1.35;display:block;margin-bottom:2px">${a.Header}</b>${a.Body?`<span style="font-size:12px;color:#4a3a20;line-height:1.5">${a.Body}</span>`:''}</div>`).join('')
-            : '<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 모래는 조용했다.</div>'}
-        </div>
-        ${is.Flavor?`<div style="margin-top:6px;padding-top:8px;border-top:2px solid #6b5427;font-size:12.5px;color:#4a3a20;line-height:1.55"><b style="font-size:10px;letter-spacing:.1em;color:#6b5427;display:block;margin-bottom:2px">◆ 경기장 밖에서</b>${is.Flavor}</div>`:''}
-        ${is.Ad?`<div style="margin-top:9px;font-size:11px;color:#7a5f30;font-style:italic;text-align:center;border:1px dashed #b9a06a;border-radius:4px;padding:5px 8px">${is.Ad}</div>`:''}
-      </article>`).join('');
-  }).join('');
+  const is = _newsIssues[_newsIdx];
+  if (nav) nav.innerHTML =
+    `<button class="btn ghost" ${lock(_newsIdx < _newsIssues.length-1, '신문철의 첫 호다 — 더 지난 호는 없다')} onclick="newsFlip(1)">← 지난 호</button>`
+    + `<span class="note" style="min-width:132px;text-align:center">시즌 ${is.Season} · ${is.MonthName||''}월호 <b style="color:var(--gold)">${_newsIdx+1}</b>/${_newsIssues.length}</span>`
+    + `<button class="btn ghost" ${lock(_newsIdx > 0, '가장 최근 호다 — 다음 호는 아직 나오지 않았다')} onclick="newsFlip(-1)">다음 호 ▶</button>`;
+  body.innerHTML = newsPaper(is);
+  // 지면 넘김 — 프리뷰 웹뷰가 CSS 키프레임을 0%에 얼리는 사례가 있어 인라인 트랜지션으로만 구동
+  const pg = body.firstElementChild;
+  if (pg && dir){
+    pg.style.transition = 'none';
+    pg.style.opacity = '0'; pg.style.transform = `translateX(${dir > 0 ? 20 : -20}px)`;
+    // rAF로 걸면 창이 가려졌을 때(백그라운드 탭·미표시 웹뷰) 콜백이 멈춰 지면이 투명한 채로 얼어붙는다.
+    // 타이머는 가려져도 돌기 때문에 내용이 사라지는 일이 없다.
+    setTimeout(()=>{
+      pg.style.transition = 'opacity var(--dur-mid) var(--ease-out), transform var(--dur-mid) var(--ease-out)';
+      pg.style.opacity = '1'; pg.style.transform = 'translateX(0)';
+    }, 16);
+  }
+}
+// 한 지면 — 지면이 화면을 채운다(기사단이 남은 높이를 먹는다)
+function newsPaper(is){
+  const art = a => typeof a === 'string' ? {Header:a, Body:''} : a;
+  return `<article style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+      background:linear-gradient(180deg,#efe6cf,#e4d6b2);color:#241c10;border:1px solid #b9a06a;border-radius:8px;
+      padding:14px 22px 16px;box-shadow:0 4px 14px rgba(0,0,0,.32)">
+    <div style="text-align:center;border-bottom:3px double #6b5427;padding-bottom:4px;margin-bottom:2px">
+      <div style="font-family:var(--font-display);letter-spacing:.22em;font-size:19px;font-weight:900;color:#3a2c12">ACTA COLOSSEI</div>
+      <div style="font-size:10px;color:#6b5b38;letter-spacing:.1em">콜로세움 월보 · 원로원과 로마 인민의 허가 아래</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a6f3c;border-bottom:1px solid #b9a06a;padding-bottom:5px;margin-bottom:8px;letter-spacing:.05em">
+      <span>제 ${is.Season}시즌 · ${is.MonthName||''}월호</span><span>AUC ${is.Auc||''}</span><span>한 부 2아스(As)</span></div>
+    <h3 style="font-family:'Noto Serif KR',serif;font-weight:900;font-size:23px;margin:2px 0 4px;color:#2a1d0c;line-height:1.3;text-align:center;border-bottom:1px solid #cbb98d;padding-bottom:6px">${is.Headline}</h3>
+    ${is.HeadBody?`<p style="font-size:14px;color:#33240f;line-height:1.65;margin:8px 0 10px;text-indent:1em">${is.HeadBody}</p>`:''}
+    <div style="flex:1;min-height:0;overflow:auto;columns:2;column-gap:22px;column-rule:1px solid #cbb98d">
+      ${(is.Articles&&is.Articles.length)? is.Articles.map(art).map(a=>
+        `<div style="break-inside:avoid;margin-bottom:11px"><b style="font-family:'Noto Serif KR',serif;font-size:13.5px;color:#241c10;line-height:1.35;display:block;margin-bottom:2px">${a.Header}</b>${a.Body?`<span style="font-size:12px;color:#4a3a20;line-height:1.5">${a.Body}</span>`:''}</div>`).join('')
+        : '<div style="font-size:12px;color:#6b5b38;font-style:italic">— 그 밖에 별다른 일은 없었다.</div>'}
+    </div>
+    ${is.Flavor?`<div style="margin-top:6px;padding-top:8px;border-top:2px solid #6b5427;font-size:12.5px;color:#4a3a20;line-height:1.55"><b style="font-size:10px;letter-spacing:.1em;color:#6b5427;display:block;margin-bottom:2px">◆ 경기장 밖에서</b>${is.Flavor}</div>`:''}
+    ${is.Ad?`<div style="margin-top:8px;font-size:11px;color:#7a5f30;font-style:italic;text-align:center;border:1px dashed #b9a06a;border-radius:4px;padding:5px 8px">${is.Ad}</div>`:''}
+  </article>`;
 }
 
 // ── 빚 상세 (검은 인장의 장부) — 출처·셈법·신용·대출 한도 + 대출/상환 ──
@@ -2140,6 +2173,13 @@ document.querySelectorAll('.modal.dismissable').forEach(m=>{
 
 // 단축키: ESC = 설정 열기/닫기 (그 외 단축키 없음)
 window.addEventListener('keydown', e=>{
+  // 신문은 넘기는 물건이다 — 좌우 키로도 지면을 넘긴다(다른 화면·모달·입력 중에는 관여하지 않는다)
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && document.getElementById('news').classList.contains('on')
+      && !document.querySelector('.modal.on') && $('menu').style.display === 'none'
+      && !/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'')){
+    newsFlip(e.key === 'ArrowLeft' ? 1 : -1); e.preventDefault(); return;
+  }
   if (e.key === 'Escape'){
     if ($('menu').style.display !== 'none') return;   // 타이틀 메뉴 열림 = 무시
     const other = document.querySelector('.modal.on:not(#cfgModal)');
