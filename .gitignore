@@ -50,3 +50,6 @@ publish/
 # ── 파이썬 도구 캐시 (tools/build_cursors.py) ──
 __pycache__/
 *.pyc
+
+# ── 스프라이트 베이크 원본 3D 에셋 (Mixamo 라이선스·28MB — 산출된 시트만 추적) ──
+Morituri/tools/spritebake/source/
