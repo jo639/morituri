@@ -2515,7 +2515,7 @@ const DLG_SCENES = {
   story_records:'1막 「모래 위의 도시」|시즌 하나가 지나간 뒤',
   story_challenge:'2막 「대가」|지목 격파',
   story_unrest:'2막 「대가」|시대의 소음',
-  story_clue:'2막 「대가」|진상의 반쪽',
+  story_clue:'1막 「빚」|진상의 반쪽',   // 1막 체인(A7 앞)에 붙는 씬 — 라벨도 1막이어야 한다
   story_c_trial:'3막 「승격」|공개 석상의 도발',
   story_c_offer:'3막 「승격」|값이 매겨진 밤',
   story_showdown:'3막 「승격」|결전 전야',
@@ -2660,7 +2660,7 @@ function showLetter(ev){
        <div class="seal">${seal.g}</div>
        <div class="ttl">서신이 도착했다</div>
        <div class="from">발신 — ${escHtml(from)}</div>
-       <div class="hint">{letter} 봉인을 뜯으려면 누르시오</div>
+       <div class="hint">{letter} 봉인을 뜯으려면 누르십시오</div>
      </div>`;
 }
 window.ltOpen = ()=>{
