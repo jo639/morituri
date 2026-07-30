@@ -148,11 +148,17 @@ const W = 940, H = 440, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 
 // 이러면 스프라이트 배율이 깊이원근 때문에 비정수여도 화면 픽셀은 전부 PX×PX로 균일하다.
 // UI·글자는 확대 대상이 아니라 풀해상 본 캔버스에 따로 그린다(안 그러면 이름·데미지가 뭉갠다).
 //
-// PX와 FIGH는 묶여 있다: 화면상 검투사 키 = 스프라이트 원본 px × PX.
-// 원본 96px + PX 2 → FIGH 192여야 1:1로 다 쓴다. FIGH를 120에 두면 저해상 공간에서 60px로
-// 줄여 그리게 되어 96px 원본이 실질 60px 아트가 된다.
-let PX   = +(new URLSearchParams(location.search).get('px')   || 1);   // 1 = 픽셀화 없음(기존 동작)
-let FIGH = +(new URLSearchParams(location.search).get('figh') || 120); // 화면상 검투사 키(px)
+// 배율은 FIGH가 아니라 **카메라 줌**으로 만든다. FIGH로 스프라이트만 키우면 아레나는 그대로라
+// 비율이 깨지고, 아레나를 같이 키우면 배경 프리렌더(940×440)를 관중석이 넘어가 잘린다.
+// 줌은 아레나·스프라이트·배경을 한 변환으로 같이 키우므로 둘 다 공짜로 해결된다.
+//
+// 저해상 공간에서 스프라이트가 앉는 크기 = (FIGH/PX) × 줌. PX=2·FIGH=120·줌1.6 → 96px,
+// 즉 96px 원본과 정확히 1:1. 이 셋은 한 세트로 움직인다.
+const _qs = new URLSearchParams(location.search);
+let PX   = +(_qs.get('px')   || 2);     // 저해상 월드 캔버스 배율. 1 = 픽셀화 없음(옛 동작)
+let FIGH = +(_qs.get('figh') || 120);   // 화면상 검투사 키(px, 줌 1배 기준)
+const ZoomFollow = +(_qs.get('zoom') || 1.6);   // 추적 카메라 배율
+const SHEET = _qs.get('sheet') || 'sprites.json';   // 스프라이트 시트 교체(룩 비교용)
 const wcv = document.createElement('canvas');
 const wctx = wcv.getContext('2d');
 function fitWorldCanvas(){
@@ -398,7 +404,7 @@ function playSfxRange(t0, t1){
 let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
 let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 시각 (실시간 전술 변경 연속성)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
-let viewMode = 'basic', camX = null, camY = null, camZoom = 1;
+let viewMode = (_qs.get('view') || 'zoom'), camX = null, camY = null, camZoom = 1;
 let focusIdx = null;   // #11 전사·성격변화 시 쓰러진 패자(0=A/1=B) 줌인 연출 · #5 경기장 인트로 줌인도 재사용
 let introMode = false, introTimers = [];   // #5 경기 직전 대사 — 각 모리튜리 줌인+자막 시퀀스
 
@@ -844,7 +850,7 @@ async function loadSpriteSet(jsonFile){
   }catch(e){ return null; } // 시트 없음
 }
 // 공유 기본 시트 로드 (sprites.json). 없으면 실루엣 폴백.
-async function loadDefaultSprites(){ defaultSprite = await loadSpriteSet('sprites.json'); }
+async function loadDefaultSprites(){ defaultSprite = await loadSpriteSet(SHEET); }
 // 두 선수 무기의 전용 시트 확보. 무기 ID당 한 번만 시도하고, 없으면 기본 시트로 폴백 등록.
 async function ensureWeaponSprites(weapons){
   for (const w of weapons){
@@ -1242,7 +1248,7 @@ function render(){
       my=((cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck)+(cf.f.By+(cf.g.By-cf.f.By)*ck))/2;
     }
     const tgt = (focusIdx!==null||viewMode==='zoom') ? proj(mx,my) : {x:CX,y:CY};
-    const zTgt = focusIdx!==null ? (introMode?2.3:2.9) : viewMode==='zoom' ? 1.9 : 1.0;   // 인트로는 조금 넉넉히
+    const zTgt = focusIdx!==null ? (introMode?2.3:2.9) : viewMode==='zoom' ? ZoomFollow : 1.0;   // 인트로는 조금 넉넉히
     const lerp = focusIdx!==null ? 0.06 : 0.12;   // 줌인은 더 천천히
     // ▼ 줌인 프레이밍 노브: 발밑(바닥점)이 아니라 전신이 담기게 타겟을 위로. 값=발이 화면 중앙에서 내려갈 px.
     const FocusLiftPx = introMode ? 100 : 55;
@@ -1542,6 +1548,8 @@ if (SET.speed){ speed = parseFloat(SET.speed) || 1;
   const sel = document.getElementById('speed'); if ([...sel.querySelectorAll('button')].some(o=>o.dataset.v==String(SET.speed))) sel.value = String(SET.speed); }
 document.getElementById('viewmode').onclick = e=>{ viewMode = viewMode==='basic' ? 'zoom' : 'basic';
   e.target.textContent = viewMode==='zoom' ? '줌 추적' : '기본 화면'; };
+// 기본이 줌 추적이라 버튼 라벨도 초기 상태에 맞춘다
+document.getElementById('viewmode').textContent = viewMode==='zoom' ? '줌 추적' : '기본 화면';
 const fileEl = document.getElementById('file');
 document.getElementById('drop').onclick = ()=> fileEl.click();
 fileEl.onchange = e=>{ const f=e.target.files[0]; if(f) f.text().then(load); };
