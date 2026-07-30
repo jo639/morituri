@@ -1142,7 +1142,7 @@ public sealed partial class Game
     // ── [18] 살아있는 검투소 명부 — 라니스타 인물·후원자 정치·시즌 동향 ──
     private static readonly (string Trait, string Quote)[] LanistaTraits =
     {
-        ("냉혹한 계산가", "\"검투사는 자산이다. 감정은 장부에 적지 않지.\""),
+        ("냉혹한 계산가", "\"모리튜리는 자산이다. 감정은 장부에 적지 않지.\""),
         ("허영에 찬 귀족", "\"내 검투소의 이름값이 곧 로마의 취향이다.\""),
         ("피에 굶주린 흥행사", "\"관중은 피를 원해. 나는 그저 공급할 뿐.\""),
         ("노회한 노예상", "\"싸구려를 사서 챔피언으로 판다 — 그게 장사지.\""),
@@ -1172,8 +1172,8 @@ public sealed partial class Game
         var pool = new (string Icon, string Title, string Desc, float Rep)[]
         {
             ("{coin}", "영입 공세", "노예 시장을 휩쓸며 별들을 쓸어 담는다 — 이번 시즌 야심이 크다", +8f),
-            ("{chart}", "재정난", "금고가 얇아졌다. 급여 체불 소문에 검투사들이 동요한다", -7f),
-            ("{star}", "간판의 각성", "간판 검투사가 물이 올랐다 — 검투소가 그 등에 올라탄다", +6f),
+            ("{chart}", "재정난", "금고가 얇아졌다. 급여 체불 소문에 모리튜리들이 동요한다", -7f),
+            ("{star}", "간판의 각성", "간판 모리튜리가 물이 올랐다 — 검투소가 그 등에 올라탄다", +6f),
             ("{news}", "추문", "라니스타의 승부조작 소문이 포룸을 돈다 — 이름값이 깎인다", -8f),
             ("{crown}", "후원자의 영광", "후원자가 궁정에서 승진했다 — 뒷배가 든든해졌다", +5f),
             ("{dove}", "간판의 은퇴", "노장 간판이 목검을 받았다 — 세대교체의 진통", -4f),
@@ -4282,7 +4282,7 @@ public sealed partial class Game
                 arts.AddRange(ordered.Skip(1).Take(5).Select(s => new NewsArt(NewsClean(s.Text), ArticleBody(s.Kind, rng))));
             }
             else if (results.Count > 0) { headline = results[^1].Header.Replace("{swords} ", ""); headBody = results[^1].Body; results.RemoveAt(results.Count - 1); }
-            else { headline = "조용한 한 달 — 모래만 뜨거웠다"; headBody = "큰 사건 없는 한 달이었다. 라니스타들은 다음 흥행을 셈했고, 검투사들은 상처를 다스렸다."; }
+            else { headline = "조용한 한 달 — 모래만 뜨거웠다"; headBody = "큰 사건 없는 한 달이었다. 라니스타들은 다음 흥행을 셈했고, 모리튜리들은 상처를 다스렸다."; }
             arts.AddRange(results.AsEnumerable().Reverse().Take(4));   // 경기 결과 읽을거리
             var pool = StreetNews[Math.Min(StreetNews.Length - 1, UnrestStageIdx)];
             return new PressIssue(season, mo + 1, RomanMonths[mo], auc, headline, headBody, arts.Take(6).ToList(),
