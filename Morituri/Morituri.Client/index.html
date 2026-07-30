@@ -99,7 +99,8 @@
   .grave-name{ font-family:var(--font-display); font-weight:800; }
   /* R3: 반응성 — 진행 중(busy)엔 상단 금빛 진행선 + 이중 클릭 차단, 클릭 타겟 어포던스 */
   #stage.busy{ cursor:progress; }
-  #stage.busy button{ pointer-events:none; }
+  /* 이중 클릭 차단은 버튼에만 걸려 있었다 — 카드·행(role=button)은 POST 중에도 눌렸다(실측). */
+  #stage.busy button, #stage.busy [onclick]{ pointer-events:none; }
   #stage.busy::after{ content:''; position:absolute; top:0; left:0; right:0; height:2px; z-index:200; pointer-events:none;
     background:linear-gradient(90deg,transparent,var(--gold),transparent);
     animation:busybar .9s linear infinite; }
