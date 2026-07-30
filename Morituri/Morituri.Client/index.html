@@ -686,7 +686,17 @@
       <input id="watchSearch" placeholder="선수명 검색…" oninput="renderWatch()" style="background:var(--panel);color:var(--ink);border:1px solid #4a3a26;border-radius:6px;padding:4px 10px;width:150px;flex-shrink:0">
       <label class="note" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0"><button class="sw" id="watchMineOnly" onchange="renderWatch()"></button> 내 경기만</label>
       <button onclick="go('league')">리그로 →</button></div>
-    <div id="watchBody" style="position:absolute;top:54px;left:0;right:0;bottom:0;overflow:auto;padding:12px 16px 24px"></div>
+    <!-- 전 시즌을 한 통에 쌓아 10.7× 스크롤이던 것을 R2 패턴(좌 레일 + 우 서가)으로. 시즌 하나씩, 2열. -->
+    <div style="position:absolute;top:54px;left:0;right:0;bottom:0;display:flex;gap:14px;padding:12px 16px 16px;box-sizing:border-box">
+      <div style="flex:0 0 262px;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div id="watchSeasons" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <h3 style="color:#e0a0d8;margin:2px 0 5px;font-size:13px">{play} 명경기 보관함</h3>
+          <div id="watchGreat" style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
+      <div id="watchBody" style="flex:1;min-width:0;overflow:auto"></div>
+    </div>
   </div>
 
   <div class="screen" id="replay">
@@ -2911,6 +2921,11 @@ async function openWatch(idx){   // league.html 달력 클릭 → 전체화면 �
 }
 // 관전탭 = 경기 기록실 (#1): 전 시즌 아카이브, 시즌별 그룹, 선수 검색, 새 탭 리플레이
 let _archiveCache = null;
+// ── 경기 기록실 = 서가 ──
+// 초판은 전 시즌 600여 경기를 한 통에 쌓아 내부 스크롤 10.7×였다(감사표 「웹 게시판 감」).
+// 좌 레일에 시즌·명경기를 두고, 우측엔 고른 시즌 하나만 2열로 편다.
+let _watchSeason = null;   // null = 최신 시즌
+window.watchPickSeason = (sn)=>{ _watchSeason = sn; renderWatch(); };
 async function renderWatch(){
   if (!st) return;
   const body = $('watchBody');
@@ -2918,28 +2933,44 @@ async function renderWatch(){
     const r = await api('/api/archive',{}); _archiveCache = (r && r.matches) ? r : {matches:[]}; }
   const q = ($('watchSearch').value||'').trim().toLowerCase();
   const mineOnly = $('watchMineOnly').checked;
-  let rows = _archiveCache.matches.filter(m=>
-    (!mineOnly || m.Mine) && (!q || m.A.toLowerCase().includes(q) || m.B.toLowerCase().includes(q)));
-  // 명경기 보관함 상단
-  const great = (st.Greatest||[]).filter(g=>!q || g.A.toLowerCase().includes(q)||g.B.toLowerCase().includes(q))
-    .map(g=>`<button class="chip" style="cursor:pointer;border:1px solid #c94ca8;color:#e0a0d8" title="드라마 ${g.Drama}" onclick="openGreat(${g.Idx})">{play} ${g.A} vs ${g.B} · ${g.Winner}</button>`).join('');
-  // 시즌별 그룹(최신 시즌 먼저), 그 안에서 라운드/경기 순
-  const bySeason = {};
-  rows.forEach(m=>{ (bySeason[m.Season]=bySeason[m.Season]||[]).push(m); });
-  const seasons = Object.keys(bySeason).map(Number).sort((a,b)=>b-a);
+  const hit = (a,b)=> !q || a.toLowerCase().includes(q) || b.toLowerCase().includes(q);
+  const all = _archiveCache.matches.filter(m=> (!mineOnly || m.Mine) && hit(m.A, m.B));
+
+  // 좌 레일 ①: 시즌 선택 — 검색 중이면 결과가 있는 시즌만 나온다
+  const seasons = [...new Set(all.map(m=>m.Season))].sort((x,y)=>y-x);
+  if (_watchSeason === null || !seasons.includes(_watchSeason)) _watchSeason = seasons[0] ?? null;
+  const rail = $('watchSeasons');
+  if (rail) rail.innerHTML = seasons.length
+    ? `<div class="note" style="width:100%;margin-bottom:1px">시즌 서가</div>` + seasons.map(sn=>{
+        const n = all.filter(m=>m.Season===sn).length, cur = sn===_watchSeason;
+        return `<button class="chip" onclick="watchPickSeason(${sn})" style="cursor:pointer;${cur
+          ?'border:1px solid var(--gold);color:var(--gold);background:rgba(201,168,76,.14)'
+          :'border:1px solid #4a3a26;color:var(--dim)'}">시즌 ${sn} <span style="opacity:.65">${n}</span></button>`;
+      }).join('')
+    : '<div class="note">기록이 없다.</div>';
+
+  // 좌 레일 ②: 명경기 보관함
+  const great = (st.Greatest||[]).filter(g=>hit(g.A, g.B));
+  const gel = $('watchGreat');
+  if (gel) gel.innerHTML = great.length ? great.map(g=>
+    `<button onclick="openGreat(${g.Idx})" title="드라마 ${g.Drama}" style="cursor:pointer;text-align:left;background:var(--panel2);border:1px solid #6a3560;border-left:3px solid #c94ca8;border-radius:6px;padding:6px 9px;color:#e0a0d8;font-size:12px">
+      <b>${g.A}</b> <span class="note">vs</span> <b>${g.B}</b>
+      <div class="note" style="margin-top:1px">{trophy} ${g.Winner} · 드라마 ${g.Drama}</div></button>`).join('')
+    : '<div class="note">아직 없다 — 명경기는 드라마가 높은 경기에 붙는다.</div>';
+
+  // 우 서가: 고른 시즌만, 2열
+  const list = all.filter(m=>m.Season===_watchSeason).slice().reverse();
   const kindTag = m => m.IsEvent?'{fest}':'R'+m.Round;
-  let html = great ? `<h3 style="color:#e0a0d8;margin:4px 0">{play} 명경기 보관함</h3><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${great}</div>` : '';
-  html += seasons.map(sn=>{
-    const list = bySeason[sn].slice().reverse();
-    return `<h3 style="color:var(--gold);border-bottom:1px solid #4a3a26;padding-bottom:3px;margin:10px 0 6px">시즌 ${sn} <span class="note" style="font-weight:400">${list.length}경기 · AUC ${680+sn}</span></h3>
-    <div style="display:flex;flex-direction:column;gap:3px">${list.map(m=>
-      `<div onclick="openArchive(${m.Idx})" style="cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:3px 8px;border-radius:5px;font-size:13px;${m.Mine?'border-left:2px solid var(--gold);color:var(--gold);':'border-left:2px solid #3a2d1d;'}background:var(--panel2)">
-        <span class="note" style="min-width:34px">${kindTag(m)}</span>
-        <span>${m.A} <span class="note">vs</span> ${m.B}</span>
-        <span style="margin-left:auto;color:var(--dim)">${m.Winner==='무승부'?'무승부':'{trophy} '+m.Winner} · ${m.Reason}</span>
-        <span style="color:var(--gold)">▶</span></div>`).join('')}</div>`;
-  }).join('') || '<div class="note">기록이 없다.</div>';
-  body.innerHTML = html;
+  body.innerHTML = list.length ? `
+    <h3 style="color:var(--gold);border-bottom:1px solid #4a3a26;padding-bottom:3px;margin:0 0 7px">시즌 ${_watchSeason}
+      <span class="note" style="font-weight:400">${list.length}경기 · AUC ${680+_watchSeason}</span></h3>
+    <div style="columns:2;column-gap:12px">${list.map(m=>
+      `<div onclick="openArchive(${m.Idx})" style="break-inside:avoid;cursor:pointer;display:flex;gap:7px;align-items:baseline;padding:4px 9px;margin-bottom:3px;border-radius:5px;font-size:12.5px;${m.Mine?'border-left:2px solid var(--gold);color:var(--gold);':'border-left:2px solid #3a2d1d;'}background:var(--panel2)">
+        <span class="note" style="min-width:30px">${kindTag(m)}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.A} <span class="note">vs</span> ${m.B}</span>
+        <span style="color:var(--dim);white-space:nowrap">${m.Winner==='무승부'?'무승부':'{trophy} '+m.Winner}</span>
+        <span style="color:var(--gold)">▶</span></div>`).join('')}</div>`
+    : '<div class="note">이 시즌엔 남은 기록이 없다.</div>';
 }
 // 리플레이(#1): 기존 창 전체를 리플레이 화면으로 전환(새 창 아님). viewer.json 갱신 후 replay 스크린 표시
 let _replayReturn = 'watch';
