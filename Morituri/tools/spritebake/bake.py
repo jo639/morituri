@@ -53,6 +53,8 @@ def parse_args():
                    help="Freestyle 윤곽선 굵기(px). 0=끔. 해상도에 비례해 올려야 인상이 같다")
     p.add_argument("--toon", action="store_true",
                    help="Principled→Toon BSDF 교체. 계조가 끊겨 셀 셰이딩이 된다")
+    p.add_argument("--supersample", type=int, default=1,
+                   help="N배로 렌더 후 축소. 윤곽선 굵기 하한(1px)을 우회해 저해상에서 선을 얇게 앉힌다")
     p.add_argument("--keep-root-motion", action="store_true",
                    help="루트 모션 보정을 끈다(캐릭터가 화면을 가로질러 간다)")
     return p.parse_args(argv)
@@ -279,6 +281,22 @@ def write_rgba(path, arr):
     bpy.data.images.remove(img)
 
 
+def downsample(arr, k):
+    """k배 박스 축소. 알파 프리멀티플라이 후 평균 — 안 하면 투명 픽셀의 검정이 섞여 가장자리가 어두워진다."""
+    if k <= 1:
+        return arr
+    h, w, _ = arr.shape
+    h2, w2 = h // k, w // k
+    a = arr[:h2 * k, :w2 * k].astype(np.float32)
+    al = a[:, :, 3:4] / 255.0
+    pre = np.concatenate([a[:, :, :3] * al, al], axis=2)
+    avg = pre.reshape(h2, k, w2, k, 4).mean(axis=(1, 3))
+    out_al = avg[:, :, 3:4]
+    rgb = np.divide(avg[:, :, :3], np.maximum(out_al, 1e-6))
+    out = np.concatenate([rgb, out_al * 255.0], axis=2)
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
 def alpha_bbox(arr):
     ys, xs = np.nonzero(arr[:, :, 3])
     if len(xs) == 0:
@@ -335,10 +353,12 @@ def main():
     # 직립 높이가 목표 px가 되도록 화면 크기 역산 + 여유 1.8배(무기 스윙·팔 벌림)
     res = int(math.ceil(a.height * 1.8 / 2) * 2)
     view_size = stand_h * res / a.height
-    cam = setup_render(res, view_size, center, a.azimuth, a.elevation,
+    # 수퍼샘플: 화각(view_size)은 최종 해상도 기준 그대로 두고 픽셀 수만 늘린다 → 프레이밍 불변.
+    ss = max(1, a.supersample)
+    cam = setup_render(res * ss, view_size, center, a.azimuth, a.elevation,
                        a.exposure, a.samples, a.rim, a.contrast)
     if a.lines > 0:
-        setup_lines(a.lines)
+        setup_lines(a.lines * ss)   # 굵기는 최종 공간 기준으로 받아 렌더 공간으로 환산
     if a.toon:
         make_toon()
     cam_home = cam.location.copy()
@@ -353,7 +373,7 @@ def main():
         p = os.path.join(tmp, f"{name}_{i:02d}.png")
         sc.render.filepath = p
         bpy.ops.render.render(write_still=True)
-        cells.append(read_rgba(p))
+        cells.append(downsample(read_rgba(p), ss))
 
     boxes = [b for b in (alpha_bbox(c) for c in cells) if b]
     if not boxes:
