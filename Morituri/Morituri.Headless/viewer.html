@@ -173,10 +173,19 @@ fitWorldCanvas();
 // ※ CamTilt는 스프라이트 베이크의 --elevation과 한 세트다: elevation = asin(CamTilt).
 //    0.34→20° · 0.26→15° · 0.20→11.5°. 여기만 눕히고 스프라이트를 그대로 두면 바닥은 눕고
 //    캐릭터만 내려다본 각도로 남아 어긋난다. 바꾸면 반드시 다시 굽는다.
-const CamHeight = 0.50, CamTilt = +(_qs.get('tilt') || 0.34);
+// 부각은 **모드별로 다르다** ([15]§2.4): 기본 20°, 줌 추적 15°. 줌 배율에 연동해 연속 보간하므로
+// 전환 순간 바닥이 튀지 않는다. 스프라이트는 20° 한 벌만 쓴다 — 96px에서 5° 차이는 윤곽선 위
+// 1px 이동으로만 나타나 인지되지 않는다(측정: 차이 픽셀의 전부가 외곽선). 두 벌은 영구 2배
+// 유지비와 전환 팝을 부르는데 얻는 게 없다.
+const CamHeight = 0.50;
+const TiltBasic = +(_qs.get('tilt')     || 0.34);   // 부각 20° — 스프라이트 베이크 각도와 일치
+const TiltZoom  = +(_qs.get('tiltzoom') || 0.26);   // 부각 15° — 바닥만 눕는다
+let CamTilt = TiltBasic;
+let zoomFrac = 0;   // 0=기본 · 1=줌 (배경 크로스페이드와 부각 보간에 공용)
 // 줌 추적 시 발밑이 화면 중앙에 오면 머리 위가 답답하다 — 추적 중심을 이만큼 내려 상단 여백을 만든다.
 const ZoomLiftPx = +(_qs.get('lift') || 46);
-const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
+const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD;
+let RY = RX*CamTilt;   // 부각이 모드에 따라 변하므로 let
 // 캔버스 백킹을 표시 크기×DPR에 맞춤 → 전체화면·리사이즈에서도 크리스프 (좌표계는 W×H 논리 고정)
 let CANVAS_S = 1;   // 논리 좌표 → 물리 픽셀 배율. 월드층 합성 후 이 값으로 되돌려야 한다.
 function fitCanvas(){
@@ -225,10 +234,14 @@ const VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUE
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 // ── 아레나 배경 프리렌더(1회): 관중석 점묘·모래 질감·벽 그림자 — 런타임 코스트 = drawImage 1장 ──
 const BGS = 2;   // 프리렌더 해상도 배율(줌 시 선명)
-const bgcv = document.createElement('canvas'); bgcv.width = 940*BGS; bgcv.height = 440*BGS;
-function buildArenaBg(){
-  const c = bgcv.getContext('2d'); c.setTransform(BGS,0,0,BGS,0,0);
-  const _CX=CX, _CY=CY, _RX=RX, _RY=RY;   // 투영 단일 출처 — 하드코딩 금지([15]§2.3: 0.58이 박혀 있어 35px 어긋났다)
+// 부각이 모드별로 다르므로 배경도 두 벌 굽는다. 매 프레임 다시 굽는 건 너무 비싸고,
+// 전환 중에는 두 장을 알파로 겹쳐 중간 각도를 근사한다(배경은 drawImage 1장이라 2장도 싸다).
+const mkbg = () => { const cv2 = document.createElement('canvas'); cv2.width = 940*BGS; cv2.height = 440*BGS; return cv2; };
+const bgBasic = mkbg(), bgZoom = mkbg();
+function buildArenaBg(target, tiltV){
+  const c = target.getContext('2d'); c.setTransform(BGS,0,0,BGS,0,0);
+  c.clearRect(0,0,940,440);
+  const _CX=CX, _CY=CY, _RX=RX, _RY=RX*tiltV;   // 투영 단일 출처 — 하드코딩 금지([15]§2.3: 0.58이 박혀 있어 35px 어긋났다)
   let sd = 987654321; const rnd = ()=>{ sd^=sd<<13; sd^=sd>>>17; sd^=sd<<5; return ((sd>>>0)%100000)/100000; };
   const V = VENUE, isArena = V === VENUES.arena;
   const ell=(rx,ry,fill,stroke,lw)=>{ c.beginPath(); c.ellipse(_CX,_CY,rx,ry,0,0,7);
@@ -283,7 +296,7 @@ function buildArenaBg(){
   c.strokeStyle=V.ring; c.lineWidth=1.5;
   c.beginPath(); c.ellipse(_CX,_CY,_RX*0.88,_RY*0.88,0,0,7); c.stroke();
 }
-buildArenaBg();
+buildArenaBg(bgBasic, TiltBasic); buildArenaBg(bgZoom, TiltZoom);
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 // 성격 지시(Decision) 태그 → 가독 라벨. 관중게이지 버프와 별개인 '행동 지시'임을 명확히.
@@ -1263,6 +1276,11 @@ function render(){
     camLift = focusIdx!==null ? FocusLiftPx : (viewMode==='zoom' ? ZoomLiftPx : 0);
     if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
     camZoom += (zTgt-camZoom)*lerp;
+    // 부각을 줌 배율에 연동 — 줌이 부드럽게 들어가는 동안 바닥도 같이 눕는다(전환 팝 없음).
+    // 패자 줌인(2.9배)은 1로 클램프되어 가장 낮은 시점이 된다.
+    zoomFrac = Math.max(0, Math.min(1, (camZoom - 1) / Math.max(0.001, ZoomFollow - 1)));
+    CamTilt = TiltBasic + (TiltZoom - TiltBasic) * zoomFrac;
+    RY = RX * CamTilt;
     camX += (tgt.x-camX)*lerp; camY += (tgt.y-camY)*lerp;
     // 화면 밖(아레나 void)이 과하게 보이지 않게 추적 중심을 아레나 안으로 클램프
     const halfW=(W/2)/camZoom, halfH=(H/2)/camZoom;
@@ -1278,8 +1296,11 @@ function render(){
   ctx.scale(1/PX, 1/PX);
   ctx.save(); ctx.translate(shx, shy);
   ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
-  // 경기장 배경 — 프리렌더 1장 (관중석·모래 질감·벽, buildArenaBg)
-  ctx.drawImage(bgcv, 0, 0, W, H);
+  // 경기장 배경 — 부각별 프리렌더 2장을 zoomFrac으로 겹친다(전환 중 중간 각도 근사)
+  ctx.drawImage(bgBasic, 0, 0, W, H);
+  if (zoomFrac > 0.001){
+    ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
+  }
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
   if (stains.length){
     ctx.save();
