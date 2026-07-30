@@ -1382,6 +1382,12 @@ public sealed partial class Game
             return Fire(confessed
                 ? "저 방패 보이십니까. 20년 전에도 저렇게 서 있었습니다. 하루 종일요."
                 : "…저런 경기가 제일 나쁩니다. 상대가 이기려는 게 아니라 그냥 기다리는 거니까요.", "cato");
+        // 갑옷 미정비 — 「장비를 닦는다」는 이 각본의 사기 지표다(S1 도끼·A6 검·A7 갑옷걸이·B5 침묵).
+        // 설계의 「3경기 연속」은 정비 상태를 추적하는 데이터가 없어 셀 수 없다. 대신 지금 이 집이
+        // 지쳐 있는지를 본다 — 선수단 평균 피로. 카토는 숫자 대신 갑옷걸이로 그것을 말한다.
+        var roster = _cast.Where(g => g.IsPlayer).ToList();
+        if (roster.Count > 0 && roster.Average(g => g.Fatigue) >= 70f)
+            return Fire("요즘 갑옷걸이가 지저분합니다. 그건 게을러서가 아닙니다.", "cato");
         if (_unrest >= 50f)
             return Fire("담장을 한 번 더 보고 오겠습니다. 요즘은 밖이 더 위험합니다.", "cato");
         return null;
