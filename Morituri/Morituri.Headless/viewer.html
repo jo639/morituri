@@ -138,6 +138,12 @@
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
 const W = 940, H = 440, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 그리기 기준) — 불변
+// ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
+// ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
+//    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
+// ※ 배경 프리렌더(buildArenaBg)가 이 값을 읽는다 — 반드시 그보다 위에서 정의할 것. [15]§2.3
+const CamHeight = 0.50, CamTilt = 0.34;
+const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
 // 캔버스 백킹을 표시 크기×DPR에 맞춤 → 전체화면·리사이즈에서도 크리스프 (좌표계는 W×H 논리 고정)
 function fitCanvas(){
   const rw = cv.clientWidth || W;
@@ -187,7 +193,7 @@ const BGS = 2;   // 프리렌더 해상도 배율(줌 시 선명)
 const bgcv = document.createElement('canvas'); bgcv.width = 940*BGS; bgcv.height = 440*BGS;
 function buildArenaBg(){
   const c = bgcv.getContext('2d'); c.setTransform(BGS,0,0,BGS,0,0);
-  const _CX=940/2, _CY=440*0.58, _RX=940/2-70, _RY=(940/2-70)*0.34;
+  const _CX=CX, _CY=CY, _RX=RX, _RY=RY;   // 투영 단일 출처 — 하드코딩 금지([15]§2.3: 0.58이 박혀 있어 35px 어긋났다)
   let sd = 987654321; const rnd = ()=>{ sd^=sd<<13; sd^=sd>>>17; sd^=sd<<5; return ((sd>>>0)%100000)/100000; };
   const V = VENUE, isArena = V === VENUES.arena;
   const ell=(rx,ry,fill,stroke,lw)=>{ c.beginPath(); c.ellipse(_CX,_CY,rx,ry,0,0,7);
@@ -753,11 +759,7 @@ function frameAt(time){
   const a=F[lo], b=F[hi], span=b.Time-a.Time;
   return {f:a, g:b, k: span>0 ? (time-a.Time)/span : 0};
 }
-// ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
-// ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
-//    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
-const CamHeight = 0.50, CamTilt = 0.34;
-const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
+// 카메라 노브(CamHeight/CamTilt)와 CX/CY/RX/RY는 배경 프리렌더보다 먼저 필요해 상단으로 옮겼다. [15]§2.3
 const R = () => doc.Meta.ArenaRadius;
 const proj = (sx, sy) => ({ x: CX + (sx/R())*RX, y: CY + (sy/R())*RY });
 const mPx = () => RX/R();              // 가로 m→px
