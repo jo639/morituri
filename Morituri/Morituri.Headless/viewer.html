@@ -170,7 +170,12 @@ fitWorldCanvas();
 // ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
 //    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
 // ※ 배경 프리렌더(buildArenaBg)가 이 값을 읽는다 — 반드시 그보다 위에서 정의할 것. [15]§2.3
-const CamHeight = 0.50, CamTilt = 0.34;
+// ※ CamTilt는 스프라이트 베이크의 --elevation과 한 세트다: elevation = asin(CamTilt).
+//    0.34→20° · 0.26→15° · 0.20→11.5°. 여기만 눕히고 스프라이트를 그대로 두면 바닥은 눕고
+//    캐릭터만 내려다본 각도로 남아 어긋난다. 바꾸면 반드시 다시 굽는다.
+const CamHeight = 0.50, CamTilt = +(_qs.get('tilt') || 0.34);
+// 줌 추적 시 발밑이 화면 중앙에 오면 머리 위가 답답하다 — 추적 중심을 이만큼 내려 상단 여백을 만든다.
+const ZoomLiftPx = +(_qs.get('lift') || 46);
 const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
 // 캔버스 백킹을 표시 크기×DPR에 맞춤 → 전체화면·리사이즈에서도 크리스프 (좌표계는 W×H 논리 고정)
 let CANVAS_S = 1;   // 논리 좌표 → 물리 픽셀 배율. 월드층 합성 후 이 값으로 되돌려야 한다.
@@ -405,6 +410,9 @@ let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림
 let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 시각 (실시간 전술 변경 연속성)
 // 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
 let viewMode = (_qs.get('view') || 'zoom'), camX = null, camY = null, camZoom = 1;
+// 화면 구도용 세로 오프셋(머리 위 여백). 추적 대상이 아니라 프레이밍이므로 아레나 클램프 '뒤'에
+// 적용한다 — 클램프 안에서 tgt.y를 건드리면 아레나가 화면보다 작을 때(mgnY=0) 통째로 먹힌다.
+let camLift = 0;
 let focusIdx = null;   // #11 전사·성격변화 시 쓰러진 패자(0=A/1=B) 줌인 연출 · #5 경기장 인트로 줌인도 재사용
 let introMode = false, introTimers = [];   // #5 경기 직전 대사 — 각 모리튜리 줌인+자막 시퀀스
 
@@ -1252,7 +1260,7 @@ function render(){
     const lerp = focusIdx!==null ? 0.06 : 0.12;   // 줌인은 더 천천히
     // ▼ 줌인 프레이밍 노브: 발밑(바닥점)이 아니라 전신이 담기게 타겟을 위로. 값=발이 화면 중앙에서 내려갈 px.
     const FocusLiftPx = introMode ? 100 : 55;
-    if (focusIdx!==null) tgt.y -= FocusLiftPx/zTgt;   // 스크린px → 월드px 환산(줌 배율로 나눔)
+    camLift = focusIdx!==null ? FocusLiftPx : (viewMode==='zoom' ? ZoomLiftPx : 0);
     if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
     camZoom += (zTgt-camZoom)*lerp;
     camX += (tgt.x-camX)*lerp; camY += (tgt.y-camY)*lerp;
@@ -1269,7 +1277,7 @@ function render(){
   ctx.clearRect(0, 0, wcv.width, wcv.height);
   ctx.scale(1/PX, 1/PX);
   ctx.save(); ctx.translate(shx, shy);
-  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
   // 경기장 배경 — 프리렌더 1장 (관중석·모래 질감·벽, buildArenaBg)
   ctx.drawImage(bgcv, 0, 0, W, H);
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
@@ -1355,7 +1363,7 @@ function render(){
   ctx.drawImage(wcv, 0, 0, W, H);
   ctx.imageSmoothingEnabled = true;           // UI·글자는 다시 부드럽게
   ctx.save(); ctx.translate(shx, shy);
-  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
   // 간격선 — 11px 글자라 저해상으로 내려가면 못 읽는다. 월드층에서 UI층으로 옮겼다(선이 발밑 위로 온다).
   ctx.save(); ctx.globalAlpha=.35; ctx.strokeStyle='#5a4129'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();

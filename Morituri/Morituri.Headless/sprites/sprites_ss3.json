@@ -1,7 +1,7 @@
 {
   "image": "gladiator.png",
   "facing": "right",
-  "note": "창(트라이던트) 검투사. 9포즈 정적 + walk/dash/attack/hit 다중프레임 애니. 모두 오른쪽 향함. refH = 그 그림의 직립 환산 키(px) — 화면 키 일관성용.",
+  "note": "수퍼샘플 3 비교본 · elevation 20",
   "frames": {
     "idle": {
       "x": 475,
@@ -69,7 +69,7 @@
   },
   "animations": {
     "walk_fwd": {
-      "image": "bake/walk_fwd.png",
+      "image": "bake/walk_fwd_ss3.png",
       "fps": 10,
       "refH": 93,
       "baseSpeed": 2.0,
