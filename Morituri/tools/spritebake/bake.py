@@ -45,6 +45,14 @@ def parse_args():
     p.add_argument("--exposure", type=float, default=1.0,
                    help="노출 보정 EV. 어두운 갑옷 기준값이라 밝은 캐릭터는 낮출 것")
     p.add_argument("--samples", type=int, default=96, help="Cycles 샘플 수")
+    p.add_argument("--rim", type=float, default=0.0,
+                   help="역광(림라이트) 세기. 어두운 배경에서 실루엣을 떼어낸다. 0=끔")
+    p.add_argument("--contrast", type=float, default=1.0,
+                   help="조명비. 키를 올리고 필·앰비를 내려 명암을 벌린다(후처리 대비와 달리 입체감이 남는다)")
+    p.add_argument("--lines", type=float, default=0.0,
+                   help="Freestyle 윤곽선 굵기(px). 0=끔. 해상도에 비례해 올려야 인상이 같다")
+    p.add_argument("--toon", action="store_true",
+                   help="Principled→Toon BSDF 교체. 계조가 끊겨 셀 셰이딩이 된다")
     p.add_argument("--keep-root-motion", action="store_true",
                    help="루트 모션 보정을 끈다(캐릭터가 화면을 가로질러 간다)")
     return p.parse_args(argv)
@@ -97,6 +105,55 @@ def build_scene(char_path, anim_path):
     return meshes, (arms[0] if arms else None)
 
 
+def setup_lines(thickness):
+    """Freestyle 윤곽선 — 실루엣·경계·크리스만. 3D 위에 2D 선을 얹는 '아케인'류 인상의 핵심."""
+    sc = bpy.context.scene
+    sc.render.use_freestyle = True
+    # ABSOLUTE 모드에서 굵기는 linestyle.thickness 하나로만 준다.
+    # render.line_thickness까지 같이 주면 곱해져서 선이 형체를 덮는다(실측).
+    sc.render.line_thickness_mode = "ABSOLUTE"
+    vl = sc.view_layers[0]
+    vl.use_freestyle = True
+    fs = vl.freestyle_settings
+    for old in list(fs.linesets):
+        fs.linesets.remove(old)
+    lineset = fs.linesets.new("outline")
+    lineset.select_silhouette = True
+    lineset.select_border = True
+    # 크리스는 끈다. 8000버텍스 캐릭터에선 내부 모서리마다 선이 그어져 저해상에선 형체가
+    # 선으로 덮여 갈색 진흙이 된다(실측). 내부 선이 필요하면 crease_angle을 크게 잡고 따로 켤 것.
+    lineset.select_crease = False
+    st = lineset.linestyle
+    # 순수 검정. 어두운 값이라도 선형이면 노출·sRGB 변환에 들려 갈색으로 뜬다(실측).
+    st.color = (0.0, 0.0, 0.0)
+    st.thickness = thickness
+
+
+def make_toon():
+    """Principled를 Toon BSDF로 갈아끼운다. 베이스 컬러 텍스처는 그대로 물려 색은 유지."""
+    for m in bpy.data.materials:
+        if not m.use_nodes or not m.node_tree:
+            continue
+        nt = m.node_tree
+        bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+        if not bsdf or not out:
+            continue
+        toon = nt.nodes.new("ShaderNodeBsdfToon")
+        try:
+            toon.component = "DIFFUSE"
+            toon.inputs["Size"].default_value = 0.5
+            toon.inputs["Smooth"].default_value = 0.05
+        except (KeyError, TypeError):
+            pass
+        src = bsdf.inputs["Base Color"]
+        if src.is_linked:
+            nt.links.new(src.links[0].from_socket, toon.inputs["Color"])
+        else:
+            toon.inputs["Color"].default_value = src.default_value
+        nt.links.new(toon.outputs["BSDF"], out.inputs["Surface"])
+
+
 def root_bone(arm):
     """Mixamo 루트(Hips) = 부모 없는 첫 본."""
     if not arm:
@@ -139,7 +196,7 @@ def world_bbox(meshes, depsgraph):
     return lo, hi
 
 
-def setup_render(res, view_size, center, azimuth, elevation, exposure, samples):
+def setup_render(res, view_size, center, azimuth, elevation, exposure, samples, rim, contrast):
     sc = bpy.context.scene
 
     # Cycles CPU 고정. EEVEE는 headless에서 GPU 컨텍스트를 타는데 이 환경의 Intel 드라이버가
@@ -176,19 +233,25 @@ def setup_render(res, view_size, center, azimuth, elevation, exposure, samples):
 
     # 조명 리그: 확산 반사는 알베도×조도/π라, 갑옷처럼 알베도가 낮은 재질은 태양 하나로는 새까맣게 나온다.
     # 키(카메라 쪽) + 필(반대편) + 흰 앰비언트 3단으로 실루엣 안쪽 형태가 읽히게 만든다.
-    for label, energy, zrot in (("key", 7.0, azimuth + 40), ("fill", 2.5, azimuth - 140)):
+    # 림(역광)은 카메라 반대편에서 쏴 실루엣 가장자리만 밝힌다 — 어두운 아레나에서 형체를 떼어낸다.
+    # 평면 먹선보다 나은 이유: 배경이 어두울 때 어두운 외곽선은 오히려 배경에 먹힌다.
+    c = max(0.1, contrast)
+    rig = [("key", 7.0 * math.sqrt(c), azimuth + 40, 55), ("fill", 2.5 / c, azimuth - 140, 70)]
+    if rim > 0:
+        rig.append(("rim", rim, azimuth + 180, 35))
+    for label, energy, zrot, xrot in rig:
         ld = bpy.data.lights.new(label, type="SUN")
         ld.energy = energy
         o = bpy.data.objects.new(label, ld)
         sc.collection.objects.link(o)
-        o.rotation_euler = (math.radians(55 if label == "key" else 70), 0, math.radians(zrot))
+        o.rotation_euler = (math.radians(xrot), 0, math.radians(zrot))
 
     world = bpy.data.worlds.new("w")
     if not world.use_nodes:
         world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs[0].default_value = (1, 1, 1, 1)      # 새 월드 기본색은 거의 검정이라 흰색으로
-    bg.inputs[1].default_value = 0.8
+    bg.inputs[1].default_value = 0.8 / c
     sc.world = world
     return cam
 
@@ -272,7 +335,12 @@ def main():
     # 직립 높이가 목표 px가 되도록 화면 크기 역산 + 여유 1.8배(무기 스윙·팔 벌림)
     res = int(math.ceil(a.height * 1.8 / 2) * 2)
     view_size = stand_h * res / a.height
-    cam = setup_render(res, view_size, center, a.azimuth, a.elevation, a.exposure, a.samples)
+    cam = setup_render(res, view_size, center, a.azimuth, a.elevation,
+                       a.exposure, a.samples, a.rim, a.contrast)
+    if a.lines > 0:
+        setup_lines(a.lines)
+    if a.toon:
+        make_toon()
     cam_home = cam.location.copy()
 
     # 2패스: 카메라를 루트 이동만큼 같이 옮겨 제자리 렌더(정사영이라 평행이동=화면 이동과 1:1).
