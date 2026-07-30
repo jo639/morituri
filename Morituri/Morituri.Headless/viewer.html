@@ -135,9 +135,31 @@
 
 <script>
 "use strict";
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const cv = document.getElementById('cv');
+const screenCtx = cv.getContext('2d');
+// ctx는 매 프레임 월드층(저해상)과 UI층(풀해상) 사이를 오간다 — 드로우 함수 본문은 그대로 두고
+// 참조만 갈아끼우는 방식(아래 PIXEL 주석 참고). 그래서 const가 아니라 let이다.
+let ctx = screenCtx;
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
 const W = 940, H = 440, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 그리기 기준) — 불변
+
+// ── 픽셀 렌더 (M4-c) ──────────────────────────────────────────────────────────
+// 월드(아레나·스프라이트·혈흔)는 1/PX 크기의 저해상 캔버스에 그린 뒤 정수배로 확대한다.
+// 이러면 스프라이트 배율이 깊이원근 때문에 비정수여도 화면 픽셀은 전부 PX×PX로 균일하다.
+// UI·글자는 확대 대상이 아니라 풀해상 본 캔버스에 따로 그린다(안 그러면 이름·데미지가 뭉갠다).
+//
+// PX와 FIGH는 묶여 있다: 화면상 검투사 키 = 스프라이트 원본 px × PX.
+// 원본 96px + PX 2 → FIGH 192여야 1:1로 다 쓴다. FIGH를 120에 두면 저해상 공간에서 60px로
+// 줄여 그리게 되어 96px 원본이 실질 60px 아트가 된다.
+let PX   = +(new URLSearchParams(location.search).get('px')   || 1);   // 1 = 픽셀화 없음(기존 동작)
+let FIGH = +(new URLSearchParams(location.search).get('figh') || 120); // 화면상 검투사 키(px)
+const wcv = document.createElement('canvas');
+const wctx = wcv.getContext('2d');
+function fitWorldCanvas(){
+  wcv.width  = Math.ceil(W / PX);
+  wcv.height = Math.ceil(H / PX);
+}
+fitWorldCanvas();
 // ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
 // ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
 //    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
@@ -145,12 +167,14 @@ const W = 940, H = 440, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 
 const CamHeight = 0.50, CamTilt = 0.34;
 const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD, RY = (W/2 - PAD)*CamTilt;
 // 캔버스 백킹을 표시 크기×DPR에 맞춤 → 전체화면·리사이즈에서도 크리스프 (좌표계는 W×H 논리 고정)
+let CANVAS_S = 1;   // 논리 좌표 → 물리 픽셀 배율. 월드층 합성 후 이 값으로 되돌려야 한다.
 function fitCanvas(){
   const rw = cv.clientWidth || W;
   const pw = Math.max(1, Math.round(rw*DPR)), ph = Math.max(1, Math.round(rw*(H/W)*DPR));
   if (cv.width!==pw || cv.height!==ph){ cv.width=pw; cv.height=ph; }
   const s = pw/W;
-  ctx.setTransform(s,0,0,s,0,0);
+  CANVAS_S = s;
+  screenCtx.setTransform(s,0,0,s,0,0);
 }
 // 무대 상자에 캔버스를 비율 유지로 앉힌다(contain) — 스크롤 없는 고정 화면
 function fitStageBox(){
@@ -881,7 +905,7 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
   if(!fr) return false;
   // refH(직립 환산 키) 우선순위: 애니 > 포즈별 > idle. 화면 키 일관성의 핵심.
   const refH = (anim?.refH) || fr.refH || spr.frames.idle.h;
-  const k = (120*scale)/refH;
+  const k = (FIGH*scale)/refH;
   const w = fr.w*k, h = fr.h*k;
   const flip = (facing<0) !== spr.srcFlip;
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
@@ -1232,6 +1256,12 @@ function render(){
     camX=Math.min(CX+mgnX, Math.max(CX-mgnX, camX));
     camY=Math.min(CY+mgnY, Math.max(CY-mgnY, camY));
   }
+  // ── 월드층 시작 (PIXEL): ctx를 저해상 캔버스로 돌린다. 기본 변환에 1/PX을 걸어두므로
+  //    아래 드로우 코드는 지금까지처럼 화면 좌표(W·H·CX·CY)를 그대로 쓰면 된다.
+  ctx = wctx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, wcv.width, wcv.height);
+  ctx.scale(1/PX, 1/PX);
   ctx.save(); ctx.translate(shx, shy);
   ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
   // 경기장 배경 — 프리렌더 1장 (관중석·모래 질감·벽, buildArenaBg)
@@ -1284,11 +1314,7 @@ function render(){
   vScrB.x+=(tpb.x-vScrB.x)*SM; vScrB.y+=(tpb.y-vScrB.y)*SM;
   const pa={x:vScrA.x,y:vScrA.y}, pb={x:vScrB.x,y:vScrB.y};
 
-  // 간격선
-  ctx.save(); ctx.globalAlpha=.35; ctx.strokeStyle='#5a4129'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();
-  ctx.fillStyle='#6e4f31'; ctx.font='11px system-ui'; ctx.textAlign='center';
-  ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
+  // (간격선은 UI층으로 옮겼다 — 아래 합성 이후)
 
   // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
   const frameDt = Math.max(g.Time - f.Time, 0.016);
@@ -1304,13 +1330,36 @@ function render(){
     if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
     else { A.st='Down'; B.st='Taunt'; }
   }
-  for (const u of [A,B].sort((m,n)=>m.sy-n.sy)){
+  // 깊이 정렬은 한 번만 하고 월드층·UI층이 같은 순서를 쓴다.
+  const drawOrder = [A,B].sort((m,n)=>m.sy-n.sy);
+  const FS = FIGH/120;   // 그림자·혈흔 등 '캐릭터 단위' 장식은 키가 커진 만큼 같이 커져야 한다
+  for (const u of drawOrder){
     const sc=(0.8+0.4*depthN(u.sy))*(u.size||1);   // 거인 등 특성 크기 배율
-    if (u.spr){ drawGround(u.p.x, u.p.y, sc, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
-    else drawFighter(u.p.x, u.p.y, sc, u.st, u.face, u.col, u.reach);
-    unitTag(u.p.x, u.p.y - 100*sc - 16, u.name, u.hp, u.col);
-    if (u.bleed > 0) drawBleed(u.p.x, u.p.y, sc, u.bleed);
-    drawStatusStrip(u.p.x, u.p.y - 100*sc - 16, u.bleed, u.who);   // 롤식 디버프 아이콘 스트립 (HP바 아래)
+    u._sc = sc;
+    if (u.spr){ drawGround(u.p.x, u.p.y, sc*FS, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
+    else drawFighter(u.p.x, u.p.y, sc*FS, u.st, u.face, u.col, u.reach);
+    if (u.bleed > 0) drawBleed(u.p.x, u.p.y, sc*FS, u.bleed);
+  }
+
+  // ── 월드층 끝 → 화면에 정수배 확대 합성. 이후 UI는 풀해상으로 같은 카메라 변환 위에 그린다.
+  ctx.restore();
+  ctx = screenCtx;
+  ctx.setTransform(CANVAS_S, 0, 0, CANVAS_S, 0, 0);   // fitCanvas가 걸어둔 DPR 배율로 복원
+  ctx.imageSmoothingEnabled = false;          // 니어리스트 — 정수배라 픽셀이 균일하게 커진다
+  ctx.drawImage(wcv, 0, 0, W, H);
+  ctx.imageSmoothingEnabled = true;           // UI·글자는 다시 부드럽게
+  ctx.save(); ctx.translate(shx, shy);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY);
+  // 간격선 — 11px 글자라 저해상으로 내려가면 못 읽는다. 월드층에서 UI층으로 옮겼다(선이 발밑 위로 온다).
+  ctx.save(); ctx.globalAlpha=.35; ctx.strokeStyle='#5a4129'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();
+  ctx.fillStyle='#6e4f31'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
+  // 이름표·상태 스트립은 글자라 저해상으로 내려가면 못 읽는다 → UI층
+  for (const u of drawOrder){
+    const top = u.p.y - (FIGH*0.83)*u._sc - 16;
+    unitTag(u.p.x, top, u.name, u.hp, u.col);
+    drawStatusStrip(u.p.x, top, u.bleed, u.who);   // 롤식 디버프 아이콘 스트립 (HP바 아래)
   }
   // 승리 오버레이
   if (postGame && doc.Result.Winner >= 0){
