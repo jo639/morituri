@@ -66,6 +66,19 @@ blender --background --python bake.py -- \
 5. **Freestyle 크리스 선을 켜면 안 된다.** 8000버텍스 캐릭터의 내부 모서리마다 선이 그어져 저해상에선 형체가 갈색 진흙이 된다. 실루엣·경계만.
 6. **선 색은 순수 검정.** 어두운 선형값(0.04)도 노출·sRGB 변환에 들려 갈색으로 뜬다.
 7. **엔진은 Cycles CPU 고정.** Blender 5.2엔 `BLENDER_EEVEE_NEXT`가 없고, EEVEE headless가 Intel 드라이버를 종료 시 죽였다.
+8. **축척 기준은 캐릭터 바인드 자세 하나로 고정한다.** 애니별 bbox로 잡으면 무릎이 굽은 걷기가 직립 높이까지 확대되어 **상태가 바뀔 때마다 캐릭터가 15%씩 커졌다 작아진다**. `refH`도 셀 높이가 아니라 `--height` 그 자체를 쓴다 — 셀 높이를 쓰면 같은 병이 뷰어 쪽에서 재발한다.
+9. **`.ps1`은 BOM 필수.** PS 5.1이 BOM 없는 스크립트를 ANSI로 읽어 한글 주석이 깨지고 파서가 죽는다(`bake_all.ps1`).
+
+## 배치 실행
+
+```powershell
+powershell -File bake_all.ps1      # 9포즈 전량 (약 7.5분)
+py merge_poses.py                  # sprites.json에 일괄 병합 (+ 파생 애니)
+```
+
+`walk_bwd` · `dash_bwd` · `dash_fwd`는 **굽지 않는다.** 팩에 뒷걸음·회피 애니가 없어 `walk_fwd`
+프레임을 역순(또는 동일 순서)으로 참조해 만든다 — 같은 PNG를 가리키므로 추가 용량 0.
+전용 애니를 확보하면 `merge_poses.py`의 `DERIVED`에서 빼고 실제 베이크로 교체할 것.
 
 ### Mixamo 다운로드 설정
 
@@ -73,8 +86,8 @@ blender --background --python bake.py -- \
 원본 FBX는 라이선스·용량(28 MB) 때문에 `.gitignore` 처리 — 산출 시트만 추적한다.
 
 ## 현재 파일
-- `bake/*.png` + `sprites.json` — 3D 베이크 산출물. `walk_fwd`만 교체 완료, **나머지 8포즈는 아직 옛 손그림 시트**.
-- `gladiator*.png`, `chang*/mang*` — 옛 손그림/플레이스홀더. 포즈 배치가 끝나면 정리 대상.
+- `bake/*.png` + `sprites.json` — 3D 베이크 산출물. **애니 12종 전부 교체 완료**(9포즈 베이크 + 파생 3종), `refH` 96 통일, 합계 약 2.4 MB.
+- `gladiator*.png`, `chang*/mang*` — 옛 손그림/플레이스홀더. `animations`는 더 이상 참조하지 않고 **정적 `frames` 블록만 폴백으로 남아 있다**. 무기별 시트가 갖춰지면 정리 대상.
 - `sprites_e15.json` · `sprites_e11.json` · `sprites_ss3.json` — 룩 비교용 대안 시트(`?sheet=`로 전환).
 
 ## 확장 (나중)
