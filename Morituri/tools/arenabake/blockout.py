@@ -47,6 +47,7 @@ def parse_args():
     p.add_argument("--no-velarium", action="store_true")
     p.add_argument("--no-fg", action="store_true", help="앞쪽 관중석 실루엣 제거")
     p.add_argument("--b2", action="store_true", help="B2 재질 팔레트(§10.5) 적용")
+    p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
@@ -129,6 +130,48 @@ def cutaway(near_deg=270.0, keep=110.0, fade=45.0, floor=0.0):
     return f
 
 
+def sand_bump(m, rake=0.65, grain=0.35, dist=0.03):
+    """모래 요철을 **절차 텍스처**로 준다. 지오메트리로 깎으면 폴리곤이 폭발하고,
+    어차피 B3에서 노멀맵으로 구워질 것이라 여기서 셰이더로 넣는 게 맞다.
+    rake = 동심 갈퀴 자국(Wave RINGS) · grain = 모래알(Noise)."""
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    wave = nt.nodes.new("ShaderNodeTexWave")
+    wave.wave_type = "RINGS"
+    wave.inputs["Scale"].default_value = 5.5
+    wave.inputs["Distortion"].default_value = 2.5
+    wave.inputs["Detail"].default_value = 2.0
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 60.0
+    noise.inputs["Detail"].default_value = 6.0
+    mr = nt.nodes.new("ShaderNodeMath"); mr.operation = "MULTIPLY"; mr.inputs[1].default_value = rake
+    mg = nt.nodes.new("ShaderNodeMath"); mg.operation = "MULTIPLY"; mg.inputs[1].default_value = grain
+    add = nt.nodes.new("ShaderNodeMath"); add.operation = "ADD"
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 1.0
+    bump.inputs["Distance"].default_value = dist * 2.2
+    nt.links.new(wave.outputs["Fac"], mr.inputs[0])
+    nt.links.new(noise.outputs["Fac"], mg.inputs[0])
+    nt.links.new(mr.outputs[0], add.inputs[0])
+    nt.links.new(mg.outputs[0], add.inputs[1])
+    nt.links.new(add.outputs[0], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
+
+
+def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=6, n=44, zscale=None, gaps=()):
+    """포디움 벽 석재 — 돌(앞)/줄눈(뒤) 2겹. 앞 겹에 구멍을 내면 뒤의 어둠이 줄눈으로 보인다.
+    단마다 반 칸씩 밀어 **엇갈림 쌓기**. 안쪽으로는 절대 튀어나오지 않는다 —
+    r=12는 Sim 충돌 경계다(§1). 줄눈은 바깥(r+)으로만 판다."""
+    lathe(name + "_joint", [(r + 0.035, z0), (r + 0.035, z1)], mat_joint, zscale=zscale, gaps=gaps)
+    h = (z1 - z0) / courses
+    for c in range(courses):
+        za, zb = z0 + c * h, z0 + (c + 1) * h - h * 0.10      # 위쪽 10% = 가로 줄눈
+        phase = (360.0 / n) * (0.5 if c % 2 else 0.0)          # 엇갈림
+        lathe("%s_c%d" % (name, c), [(r, za), (r, zb)], mat_stone,
+              zscale=zscale, gaps=list(gaps) + periodic_gaps(phase, phase + 360.0, n, duty=0.10))
+
+
 def periodic_gaps(a0, a1, n, duty=0.5):
     """[a0,a1)을 n등분해 각 칸의 duty 비율을 '건너뛸 구간'으로 만든다.
     톱니(좌석 등받이)·아케이드 기둥처럼 규칙적인 실루엣을 만들 때 쓴다."""
@@ -159,8 +202,12 @@ def build(a):
 
     m_floor, m_wall, m_seat, m_dark = (mat("floor", v_floor, 0.95), mat("wall", v_wall, 0.80),
                                        mat("seat", v_seat), mat("dark", v_dark))
+    m_joint = mat("joint", tuple(x * 0.62 for x in v_wall) if isinstance(v_wall, tuple)
+                  else v_wall * 0.62)
 
     # 바닥 — Sim 원 그대로. 이 안에는 아무것도 없다(§1 계약)
+    if a.detail:
+        sand_bump(m_floor)
     disc("floor", ARENA_R, 0.0, m_floor)
 
     # 철문 2곳: 좌·우(az 0·180) ±7°
@@ -171,8 +218,14 @@ def build(a):
     WH = a.wall_h
     LIP = 0.35 / WH                      # 앞쪽에 남길 높이 비율(≈0.35 m 턱)
     cut = cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=LIP)
-    lathe("podium", [(ARENA_R, 0.0), (ARENA_R, WH), (ARENA_R + 0.6, WH)], m_wall,
-          gaps=GATES, zscale=cut)
+    if a.detail:
+        # 화면 상단의 **유일한** 요소다(§10.11) — 디테일 예산을 여기 몰아넣는다.
+        wall_courses("podium", ARENA_R, 0.0, WH, m_wall, m_joint,
+                     courses=6, n=80, zscale=cut, gaps=GATES)
+        lathe("podium_cap", [(ARENA_R, WH), (ARENA_R + 0.6, WH)], m_wall, gaps=GATES, zscale=cut)
+    else:
+        lathe("podium", [(ARENA_R, 0.0), (ARENA_R, WH), (ARENA_R + 0.6, WH)], m_wall,
+              gaps=GATES, zscale=cut)
     # 철문 안쪽: 검은 공동(§10.5). gaps는 '건너뛸 구간'이라 문만 남기려면 **여집합**을 준다 —
     # 두 문을 한 번에 처리하려고 합쳐 쓰면 합집합이 전체가 되어 아무것도 안 남는다(실측 후 분리).
     for i, (g0, g1) in enumerate(GATES):
@@ -214,8 +267,28 @@ def build(a):
         lathe("fg_cavea", fg, m_dark, gaps=FG_ARC)
         # 윗선을 톱니로 — 매끈한 곡선은 '검은 막대'로 읽힌다. 관객 머리·좌석 등받이의 실루엣.
         # 이 높이(0.37 m ≈ 화면 12 px)까지가 한계다. 위 식에 넣으면 남단 발밑에서 5 px 남는다.
-        lathe("fg_teeth", [(20.6, 2.60), (20.6, 2.97), (21.2, 2.97)], m_dark,
-              gaps=FG_ARC + periodic_gaps(190.0, 350.0, n=46, duty=0.45))
+        # 균일한 톱니는 그 자체로 규칙성이 보인다 → 높이를 결정론적으로 흔들고 가끔 기둥을 세운다.
+        sd = 12345
+        def rnd():
+            nonlocal sd
+            sd = (sd * 1103515245 + 12345) & 0x7FFFFFFF
+            return (sd % 10000) / 10000.0
+        N = 46
+        span = (350.0 - 190.0)
+        for i in range(N):
+            a0 = 190.0 + span * i / N
+            w = span / N * (0.40 + rnd() * 0.22)
+            tall = rnd() < 0.13                                  # 난간 기둥 — 가끔 하나씩
+            top = 2.60 + (0.37 if tall else 0.16 + rnd() * 0.17)
+            verts, faces = [], []
+            for (r0, z0), (r1, z1) in [((20.6, 2.60), (20.6, top)), ((20.6, top), (21.2, top))]:
+                c0, s0 = math.cos(math.radians(a0)), math.sin(math.radians(a0))
+                c1, s1 = math.cos(math.radians(a0 + w)), math.sin(math.radians(a0 + w))
+                b = len(verts)
+                verts += [(r0 * c0, r0 * s0, z0), (r0 * c1, r0 * s1, z0),
+                          (r1 * c1, r1 * s1, z1), (r1 * c0, r1 * s0, z1)]
+                faces.append((b, b + 1, b + 2, b + 3))
+            mesh_from("fg_tooth%d" % i, verts, faces, m_dark)
 
     if not a.no_velarium and a.vela > 0:
         # 차양 — 프레임 밖 상공. 보이지 않고 그림자만 남는다(라니스타 지시).
