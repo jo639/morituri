@@ -45,6 +45,9 @@ def parse_args():
     p.add_argument("--wall-h", type=float, default=3.5, help="포디움 벽 높이(m)")
     p.add_argument("--vela", type=float, default=1.0, help="차양 그림자 세기 0~1 (0=차양 제거)")
     p.add_argument("--no-velarium", action="store_true")
+    p.add_argument("--no-fg", action="store_true", help="앞쪽 관중석 실루엣 제거")
+    p.add_argument("--b2", action="store_true", help="B2 재질 팔레트(§10.5) 적용")
+    p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
     return p.parse_args(argv)
@@ -54,12 +57,15 @@ def clear():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def mat(name, value):
+def mat(name, value, rough=0.85):
+    """value = 스칼라(회색) 또는 (r,g,b)."""
+    if not isinstance(value, (tuple, list)):
+        value = (value, value, value)
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     bsdf = m.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs["Base Color"].default_value = (value, value, value, 1)
-    bsdf.inputs["Roughness"].default_value = 0.85
+    bsdf.inputs["Base Color"].default_value = (value[0], value[1], value[2], 1)
+    bsdf.inputs["Roughness"].default_value = rough
     return m
 
 
@@ -123,6 +129,14 @@ def cutaway(near_deg=270.0, keep=110.0, fade=45.0, floor=0.0):
     return f
 
 
+def periodic_gaps(a0, a1, n, duty=0.5):
+    """[a0,a1)을 n등분해 각 칸의 duty 비율을 '건너뛸 구간'으로 만든다.
+    톱니(좌석 등받이)·아케이드 기둥처럼 규칙적인 실루엣을 만들 때 쓴다."""
+    span = (a1 - a0) % 360.0 or 360.0
+    step = span / n
+    return [((a0 + i * step) % 360.0, (a0 + i * step + step * duty) % 360.0) for i in range(n)]
+
+
 def disc(name, r, z, material, seg=192):
     verts = [(0, 0, z)] + [(r * math.cos(math.radians(i * 360.0 / seg)),
                             r * math.sin(math.radians(i * 360.0 / seg)), z) for i in range(seg)]
@@ -131,12 +145,19 @@ def disc(name, r, z, material, seg=192):
 
 
 def build(a):
-    v_floor = 0.62 if a.values else 0.5      # §10.3: 초점(밝게)
-    v_wall  = 0.42 if a.values else 0.5      #         중간
-    v_seat  = 0.20 if a.values else 0.5      #         프레임(어둡게)
-    v_dark  = 0.03
+    if a.b2:
+        # B2 재질 팔레트(§10.5) — 값 3단은 유지하고 색만 입힌다. 재질이 갈려야 형태가 읽힌다.
+        v_floor = (0.74, 0.55, 0.35)     # 붉은 모래 — 초점
+        v_wall  = (0.50, 0.47, 0.41)     # 트래버틴 — 중간
+        v_seat  = (0.24, 0.22, 0.20)     # 관중석 구조 — 프레임
+        v_dark  = (0.045, 0.040, 0.038)  # 검은 공동
+    else:
+        v_floor = 0.62 if a.values else 0.5      # §10.3: 초점(밝게)
+        v_wall  = 0.42 if a.values else 0.5      #         중간
+        v_seat  = 0.20 if a.values else 0.5      #         프레임(어둡게)
+        v_dark  = 0.03
 
-    m_floor, m_wall, m_seat, m_dark = (mat("floor", v_floor), mat("wall", v_wall),
+    m_floor, m_wall, m_seat, m_dark = (mat("floor", v_floor, 0.95), mat("wall", v_wall, 0.80),
                                        mat("seat", v_seat), mat("dark", v_dark))
 
     # 바닥 — Sim 원 그대로. 이 안에는 아무것도 없다(§1 계약)
@@ -168,6 +189,33 @@ def build(a):
              (ARENA_R + 13.4, WH + 8.0), (ARENA_R + 17.0, WH + 8.0)]
     cut_seat = cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0)   # 앞쪽 관중석은 통째로 없앤다
     lathe("cavea", cavea, m_seat, gaps=VOM, zscale=cut_seat)
+
+    # 아케이드 — 기본 OFF. **이 카메라에서는 영영 안 보인다**(§10.11).
+    #   화면 세로 = 0.342·y + 0.940·z, 프레임 절반 ±6.60 m
+    #   → 보이는 높이 상한 z ≤ (6.60 − 0.342·y) / 0.940
+    #   아케이드는 y=+30에 z=15.7이라 상한이 음수다. 옆쪽(y≈0)에서도 상한 7.0 m라 여전히 밖.
+    # 세워도 그림자조차 아레나에 안 닿는다(h=15.7의 그림자는 14 m 밖으로 떨어진다).
+    if a.attic:
+        TOP_R, TOP_Z = ARENA_R + 17.0, WH + 8.0
+        lathe("attic_void", [(TOP_R + 1.2, TOP_Z), (TOP_R + 1.2, TOP_Z + 4.2)], m_dark,
+              zscale=cut_seat)
+        lathe("arcade", [(TOP_R, TOP_Z), (TOP_R, TOP_Z + 4.2)], m_wall,
+              gaps=periodic_gaps(0.0, 360.0, n=40, duty=0.52), zscale=cut_seat)
+
+    # 앞쪽 관중석 실루엣 — 컷어웨이로 비워진 화면 하단을 채우는 **프레임 요소**(라니스타 지시).
+    # 상한은 취향이 아니라 기하학이다. 화면 세로 = 0.342·y + 0.940·z 이고 아레나 남단 발밑이 −4.10 m다.
+    #   반경 r(=−y)에서 허용 높이 z ≤ (0.342·r − 4.40) / 0.940     ← −4.40 = 발밑에서 0.3 m 여유
+    #   r=20 → 2.60 m.  단이 r당 0.35씩 오르면 화면 높이가 그대로 유지된다(−0.342 + 0.94·0.35 ≈ 0)
+    #   → 위 가장자리가 남단 바로 아래에 **평행하게** 눕는다. 아래로는 프레임 밖까지 내려가 하단을 채운다.
+    if not a.no_fg:
+        FG_ARC = [(350.0, 190.0)]                              # 앞 아크(190~350°)에만
+        fg = [(20.0, 0.0), (20.0, 2.60),                       # 뒤판 — 프레임 하단을 메운다
+              (21.3, 2.95), (22.6, 3.40), (24.0, 3.90), (25.6, 4.45)]   # 단 4개
+        lathe("fg_cavea", fg, m_dark, gaps=FG_ARC)
+        # 윗선을 톱니로 — 매끈한 곡선은 '검은 막대'로 읽힌다. 관객 머리·좌석 등받이의 실루엣.
+        # 이 높이(0.37 m ≈ 화면 12 px)까지가 한계다. 위 식에 넣으면 남단 발밑에서 5 px 남는다.
+        lathe("fg_teeth", [(20.6, 2.60), (20.6, 2.97), (21.2, 2.97)], m_dark,
+              gaps=FG_ARC + periodic_gaps(190.0, 350.0, n=46, duty=0.45))
 
     if not a.no_velarium and a.vela > 0:
         # 차양 — 프레임 밖 상공. 보이지 않고 그림자만 남는다(라니스타 지시).
