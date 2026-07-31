@@ -901,12 +901,23 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
       anim = kind==='Heavy' ? spr.anims.heavy_attack : spr.anims.light_attack;
     } else if (state==='HitStun'||state==='Stagger'){
       anim = state==='Stagger' ? spr.anims.hurt_heavy : spr.anims.hurt_light; // 자세붕괴=강피격
+    } else {
+      // 정지 계열(대기·방어·도발·다운)도 애니가 있으면 쓴다 — 호흡·가드 흔들림이 살아난다.
+      // 없으면 아래 정적 포즈로 조용히 폴백(옛 손그림 시트 호환).
+      anim = spr.anims[poseFor(state, kind)] || null;
     }
   }
+  // 걷기 위상은 이동 상태에서만 의미가 있다. 정지 계열에 그대로 넘기면 위상이 안 늘어 프레임이 얼어붙는다.
+  const moving = (state==='Move'||state==='Dodge');
+  if (!moving) walkPhase = null;
+  // 다운은 반복 재생하면 시체가 계속 쓰러진다 — 마지막(무너진) 프레임에서 정지.
+  const holdLast = (state==='Down'||state==='GetUp');
   let fr, srcImg;
   if (anim?.frames?.length){
     let fi;
-    if (ph && ph.grp){
+    if (holdLast){
+      fi = anim.frames.length - 1;   // 쓰러진 마지막 자세로 정지
+    } else if (ph && ph.grp){
       // 공격/피격: 구간 진행률로 시트를 한 번 재생 (루프 없음). holds 있으면 프레임별 가중 타이밍(임팩트 포즈 유지).
       if (anim.holds){
         const target = ph.p * anim.holdTot; let acc=0, idx=0;

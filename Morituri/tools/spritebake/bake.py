@@ -70,7 +70,12 @@ def import_fbx(path):
 
 
 def build_scene(char_path, anim_path):
-    """메시 있는 리그 + 애니 액션을 한 씬에 조립. (meshes, armature) 반환."""
+    """메시 있는 리그 + 애니 액션을 한 씬에 조립. (meshes, armature, rest_h) 반환.
+
+    rest_h = 애니를 얹기 **전** 바인드 자세의 세로 크기. 렌더 축척의 단일 기준이다.
+    애니별 bbox로 축척을 잡으면 무릎이 굽은 걷기가 직립 높이까지 확대되어, 걷다가 공격할 때
+    캐릭터가 15%씩 커졌다 작아진다(실측: refH가 포즈마다 93~107).
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
     if char_path:
@@ -80,6 +85,9 @@ def build_scene(char_path, anim_path):
         if not arms:
             raise SystemExit(f"[bake] --char에 아마추어가 없다: {char_path}")
         char_arm = arms[0]
+        dg0 = bpy.context.evaluated_depsgraph_get()
+        lo0, hi0 = world_bbox(meshes, dg0)
+        rest_h = hi0.z - lo0.z
 
         _, anim_arms = import_fbx(anim_path)
         if not anim_arms:
@@ -97,14 +105,14 @@ def build_scene(char_path, anim_path):
         for o in list(bpy.context.scene.objects):          # 애니 파일 쪽 오브젝트는 치운다
             if o == src or o.parent == src:
                 bpy.data.objects.remove(o, do_unlink=True)
-        return meshes, char_arm
+        return meshes, char_arm, rest_h
 
     meshes, arms = import_fbx(anim_path)
     if not meshes:
         raise SystemExit(
             f"[bake] FBX에 메시가 없다: {anim_path}\n"
             "        Mixamo 애니 팩은 Without Skin이다 — --char로 캐릭터 FBX를 함께 지정할 것")
-    return meshes, (arms[0] if arms else None)
+    return meshes, (arms[0] if arms else None), None
 
 
 def setup_lines(thickness):
@@ -319,7 +327,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     name = a.name or a.anim
 
-    meshes, arm = build_scene(char, fbx)
+    meshes, arm, rest_h = build_scene(char, fbx)
     sc = bpy.context.scene
 
     f0, f1 = action_range(arm)
@@ -348,10 +356,12 @@ def main():
         lo = Vector((min(lo[i], l[i]) for i in range(3)))
         hi = Vector((max(hi[i], h[i]) for i in range(3)))
 
-    stand_h = hi.z - lo.z
+    # 축척 기준은 **바인드 자세 높이 하나로 고정**한다. 애니별 bbox로 잡으면 포즈마다 배율이
+    # 달라져 상태 전환 때 캐릭터가 커졌다 작아진다. 프레이밍(center)만 애니 bbox를 쓴다.
+    stand_h = rest_h if rest_h else (hi.z - lo.z)
     center = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2))
-    # 직립 높이가 목표 px가 되도록 화면 크기 역산 + 여유 1.8배(무기 스윙·팔 벌림)
-    res = int(math.ceil(a.height * 1.8 / 2) * 2)
+    # 직립 높이가 목표 px가 되도록 화면 크기 역산 + 여유 2.2배(치켜든 무기·팔 벌림이 잘리지 않게)
+    res = int(math.ceil(a.height * 2.2 / 2) * 2)
     view_size = stand_h * res / a.height
     # 수퍼샘플: 화각(view_size)은 최종 해상도 기준 그대로 두고 픽셀 수만 늘린다 → 프레이밍 불변.
     ss = max(1, a.supersample)
@@ -389,7 +399,9 @@ def main():
     anim = {
         "image": f"bake/{name}.png",
         "fps": a.fps,
-        "refH": ch,
+        # 직립 환산 키 = 목표 높이 그 자체. 셀 높이(ch)를 쓰면 애니마다 값이 달라져
+        # 뷰어 배율 k=(FIGH·sc)/refH가 흔들린다 — 포즈 전환 때 캐릭터가 커졌다 작아진다.
+        "refH": a.height,
         "baseSpeed": a.base_speed,
         "frames": [{"x": i * cw, "y": 0, "w": cw, "h": ch} for i in range(len(cells))],
     }
