@@ -269,12 +269,16 @@ function bakeRelief(c, _CX, _CY, _RX, _RY){
   const Lx=LIGHT.x, Ly=LIGHT.y, Lz=LIGHT.z, cr=LAMBC.r-1, cg=LAMBC.g-1, cb=LAMBC.b-1;
   const flat = LAMB + (1-LAMB)*Lz;        // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
   const RXm=(_RX+M)*BGS, RYm=(_RY+M)*BGS, cxd=_CX*BGS-x0, cyd=_CY*BGS-y0;
-  for (let y=1;y<hh-1;y++){
+  // 음영은 2 px 격자로 계산해 2×2 블록에 바른다.
+  // 앨비도는 줌(최대 2.9배) 때문에 BGS=2가 필요하지만, **요철 음영은 그만큼 필요 없다** —
+  // 최소 디테일이 PX 논리px(=4 프리렌더px)이라 2 px 표본으로 충분하고, 비용은 1/4이 된다([15]§6.4).
+  const ST=2;
+  for (let y=1;y<hh-1;y+=ST){
     // 바깥 타원 밖은 전부 평면(관중석·무대 밖)이다 — 행마다 x범위를 잘라 모서리 4곳을 통째로 건너뛴다
     const dy=(y-cyd)/RYm; if (dy<=-1 || dy>=1) continue;
     const half=RXm*Math.sqrt(1-dy*dy);
     const xa=Math.max(1,Math.floor(cxd-half)), xb=Math.min(w-1,Math.ceil(cxd+half));
-    for (let x=xa;x<xb;x++){
+    for (let x=xa;x<xb;x+=ST){
       const j=y*w+x;
       const tl=H1[j-1-w], tc=H1[j-w], tr=H1[j+1-w];
       const ml=H1[j-1],                mr=H1[j+1];
@@ -286,10 +290,17 @@ function bakeRelief(c, _CX, _CY, _RX, _RY){
       const lit=Math.max(0, nx*Lx + ny*Ly + inv*Lz);
       const I=(LAMB+(1-LAMB)*lit)/flat;
       const s=(1-Math.min(1,lit/Lz))*0.6; // 0=평면(팔레트 불변) · 1=완전한 그늘
-      const i=j*4;
-      a[i]  =Math.min(255,a[i]  *I*(1+cr*s));
-      a[i+1]=Math.min(255,a[i+1]*I*(1+cg*s));
-      a[i+2]=Math.min(255,a[i+2]*I*(1+cb*s));
+      const kr=I*(1+cr*s), kg=I*(1+cg*s), kb=I*(1+cb*s);
+      for (let dy2=0; dy2<ST; dy2++){
+        const yy=y+dy2; if (yy>=hh) break;
+        for (let dx2=0; dx2<ST; dx2++){
+          const xx=x+dx2; if (xx>=w) break;
+          const i=(yy*w+xx)*4;
+          a[i]  =Math.min(255,a[i]  *kr);
+          a[i+1]=Math.min(255,a[i+1]*kg);
+          a[i+2]=Math.min(255,a[i+2]*kb);
+        }
+      }
     }
   }
   c.putImageData(A,x0,y0);
@@ -343,9 +354,12 @@ function buildArenaBg(target, tiltV){
     h.strokeStyle=`rgb(${g},${g},${g})`;
     h.beginPath(); h.ellipse(_CX,_CY,_RX+k,_RY+k,0,0,7); h.stroke(); }
   // 줄눈: 2단 엇갈림 쌓기(위단을 반 칸 민다)
-  const JN=48, jstep=Math.PI*2/JN;
-  c.strokeStyle='rgba(0,0,0,0.13)'; c.lineWidth=1;
-  h.strokeStyle='#4e4e4e'; h.lineWidth=1.6;
+  // ※ 굵기·간격은 프리렌더가 아니라 **월드 캔버스(W/PX)** 기준으로 잡는다.
+  //   초판은 48칸·1 px로 그렸는데 월드에선 0.5 px라 화면에 아무것도 안 남았다([15]§6.4).
+  //   렌더되는 최소 단위는 PX 논리px = 월드 1px. 그 아래로 내려가는 선은 그리나 마나다.
+  const JN=24, jstep=Math.PI*2/JN;
+  c.strokeStyle='rgba(0,0,0,0.30)'; c.lineWidth=PX;
+  h.strokeStyle='#4a4a4a'; h.lineWidth=PX*1.6;
   for (let i=0;i<JN;i++){
     for (const [a,r0,r1] of [[i*jstep,0,4.5],[i*jstep+jstep/2,4.5,9]]){
       c.beginPath(); c.moveTo(_CX+Math.cos(a)*(_RX+r0),_CY+Math.sin(a)*(_RY+r0));
@@ -358,8 +372,8 @@ function buildArenaBg(target, tiltV){
   c.beginPath(); c.ellipse(_CX,_CY,_RX+4.5,_RY+4.5,0,0,7); c.stroke();
   h.beginPath(); h.ellipse(_CX,_CY,_RX+4.5,_RY+4.5,0,0,7); h.stroke();
   // 이 빠진 자국·균열 — 중(0.5). 콜로세움의 나이
-  c.strokeStyle='rgba(0,0,0,0.10)';
-  h.strokeStyle='#6a6a6a'; h.lineWidth=1.2;
+  c.strokeStyle='rgba(0,0,0,0.22)'; c.lineWidth=PX;
+  h.strokeStyle='#666'; h.lineWidth=PX*1.2;
   for (let i=0;i<9;i++){
     const a=rnd()*Math.PI*2, len=jstep*(0.3+rnd()*0.5), rr=1+rnd()*6, jit=(rnd()-0.5)*3;
     c.beginPath(); c.moveTo(_CX+Math.cos(a)*(_RX+rr),_CY+Math.sin(a)*(_RY+rr));
@@ -375,12 +389,12 @@ function buildArenaBg(target, tiltV){
       g2.ellipse(_CX,_CY,_RX+9,_RY+9,0,ga-gw/2,ga+gw/2);
       g2.ellipse(_CX,_CY,_RX,_RY,0,ga+gw/2,ga-gw/2,true);
       g2.closePath(); g2.fill(); };
-    c.fillStyle='rgba(0,0,0,0.42)'; sect(c);              // 안쪽이 어둡다 = 뚫린 통로
+    c.fillStyle='rgba(0,0,0,0.62)'; sect(c);              // 안쪽이 어둡다 = 뚫린 통로
     h.fillStyle='#3c3c3c';         sect(h);               // 깊게 파인다 — 벽면보다 훨씬 낮게
-    c.strokeStyle='rgba(30,24,16,0.55)'; c.lineWidth=1;   // 쇠창살
-    h.strokeStyle='#9a9a9a'; h.lineWidth=1.4;             // 창살은 문틀보다 높게 튀어나온다
-    for (let b=1;b<7;b++){
-      const a=ga-gw/2+gw*b/7;
+    c.strokeStyle='rgba(226,205,160,0.5)'; c.lineWidth=PX; // 쇠창살 — 어두운 통로 위라 밝게 서야 보인다
+    h.strokeStyle='#a6a6a6'; h.lineWidth=PX*1.4;          // 창살은 문틀보다 높게 튀어나온다
+    for (let b=1;b<5;b++){
+      const a=ga-gw/2+gw*b/5;
       const x0=_CX+Math.cos(a)*_RX, y0=_CY+Math.sin(a)*_RY;
       const x1=_CX+Math.cos(a)*(_RX+9), y1=_CY+Math.sin(a)*(_RY+9);
       c.beginPath(); c.moveTo(x0,y0); c.lineTo(x1,y1); c.stroke();
@@ -404,11 +418,19 @@ function buildArenaBg(target, tiltV){
     h.fillStyle = pit ? '#7b7b7b' : '#858585';   // 모래알 = 약(±5). 부각 20°에선 거의 안 보인다([15]§4)
     h.fillRect(x,y,1.4,1.4);
   }
-  c.strokeStyle='rgba(0,0,0,0.06)'; c.lineWidth=1;
-  h.strokeStyle='#5c5c5c'; h.lineWidth=2;        // 갈퀴 자국 = 강(홈). 이 각도에서 살아남는 유일한 요철([15]§4)
-  for (let i=1;i<=5;i++){ const fr2=i/6, a0=rnd()*6.28, a1=a0+2.2+rnd()*2;
-    c.beginPath(); c.ellipse(_CX,_CY,_RX*fr2,_RY*fr2,0,a0,a1); c.stroke();
-    h.beginPath(); h.ellipse(_CX,_CY,_RX*fr2,_RY*fr2,0,a0,a1); h.stroke(); }
+  // 갈퀴 자국([15]§4) — 이 부각에서 살아남는 유일한 바닥 요철.
+  // 초판은 5줄이 각각 2.2~4.2 rad을 휩쓸어 **모래 고른 자국이 아니라 긁힌 상처**로 보였다(§6.4).
+  // 고르는 도구는 여러 갈래다 — 짧은 호를 촘촘히, 얕게.
+  c.strokeStyle='rgba(0,0,0,0.05)'; c.lineWidth=1;
+  h.strokeStyle='#6e6e6e'; h.lineWidth=PX;       // 128→110: 홈이되 얕게
+  for (let i=0;i<9;i++){
+    const fr2=0.18+0.09*i, a0=rnd()*6.28, sweep=0.5+rnd()*0.7;
+    for (let b=0;b<3;b++){                       // 갈퀴 살 3개 = 나란한 홈
+      const rr=fr2+b*0.022;
+      c.beginPath(); c.ellipse(_CX,_CY,_RX*rr,_RY*rr,0,a0,a0+sweep); c.stroke();
+      h.beginPath(); h.ellipse(_CX,_CY,_RX*rr,_RY*rr,0,a0,a0+sweep); h.stroke();
+    }
+  }
   // 벽 그림자 — 빛이 들어오는 좌상 림에서 안쪽으로. 방향을 L에서 유도한다([15]§3.3)
   const _lxy=Math.hypot(LIGHT.x,LIGHT.y), ux=LIGHT.x/_lxy, uy=LIGHT.y/_lxy;
   const shg=c.createLinearGradient(_CX+ux*_RX,_CY+uy*_RY,_CX+ux*_RX*0.15,_CY+uy*_RY*0.15);
