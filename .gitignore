@@ -53,3 +53,7 @@ __pycache__/
 
 # ── 스프라이트 베이크 원본 3D 에셋 (Mixamo 라이선스·28MB — 산출된 시트만 추적) ──
 Morituri/tools/spritebake/source/
+
+# ── 아레나 블록아웃 렌더 산출물([15]§10.8) — 스크립트로 재생성됨 ──
+Morituri/tools/arenabake/*.png
+Morituri/tools/arenabake/*.jpg
