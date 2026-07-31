@@ -231,7 +231,7 @@ const VENUES = {
   street:{ wall:'#2a2c33', f0:'#7c8391', f1:'#4a505c', ring:'rgba(30,34,42,0.55)', label:'뒷골목' },
   bar:   { wall:'#3a281c', f0:'#8a6a44', f1:'#5c4128', ring:'rgba(40,26,14,0.5)',  label:'선술집' },
 };
-const VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUES.arena;
+let VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUES.arena;
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 // ── 아레나 배경 프리렌더(1회): 관중석 점묘·모래 질감·벽 그림자 — 런타임 코스트 = drawImage 1장 ──
 const BGS = 2;   // 프리렌더 해상도 배율(줌 시 선명)
@@ -241,19 +241,46 @@ const mkbg = () => { const cv2 = document.createElement('canvas'); cv2.width = 9
 const bgBasic = mkbg(), bgZoom = mkbg();
 // ── 노멀맵 조명([15]§5 N1 · A2): 높이 버퍼를 알베도와 같은 패스에서 쌓고, 로드 시 1회 N·L을 구워 넣는다.
 //    프레임 루프는 무변경 — 런타임 비용은 그대로 drawImage다.
-const LIGHT = { x:-0.45, y:-0.60, z:0.66 };  // [15]§3.3 확정 광원(늦은 오후·좌상단 41°). 접선공간 +x=오른쪽 +y=아래 +z=화면 밖
-const LAMB = 0.35;                           // 환경광 — 그림자가 새까매지지 않게
-// 환경광 색 #6b7a96(하늘 반사)을 휘도 1로 정규화. 평면에는 안 걸리고 그늘에만 실려 팔레트가 보존된다([15]§3.4)
-const LAMBC = { r:0.845, g:0.964, b:1.185 };
+// ── 광원 리그([15]§3.5 · A5): venue·날씨별 프리셋 ──────────────────────────────
+// 벡터가 아니라 **방위·고도(도)**로 적는다 — 사람이 읽고 고칠 수 있어야 한다.
+//   az: 화면 방위(0=오른쪽, 시계방향)  ·  el: 고도  ·  sun: 직사광 세기  ·  amb: 환경광
+// §3.3 확정치(늦은 오후·좌상단 41°) = az 233 · el 41.
+const RAD = d => d*Math.PI/180;
+const LIGHTS = {
+  arena : { az:233, el:41, sun:1.00, amb:0.35, ambHex:'#6b7a96', rim:'rgba(255,238,204,0.50)', relief:1 },
+  spar  : { az:233, el:41, sun:0.80, amb:0.45, ambHex:'#7d8a9c', rim:'rgba(255,244,214,0.40)', relief:1 },
+  street: { az:233, el:15, sun:0.70, amb:0.25, ambHex:'#5a6272', rim:'rgba(210,224,255,0.45)', relief:1 },
+  // 선술집은 실내다 — 태양이 없다. 횃불은 동적 광원이라 웹에서 못 굽는다(§3.4) → 요철 베이크 정지, 평면 유지.
+  bar   : { az:233, el:70, sun:0.30, amb:0.20, ambHex:'#8a5a2e', rim:'rgba(255,196,120,0.45)', relief:0 },
+};
+// [14] 세계 이벤트 훅 — 조명·팔레트만 변조한다. Sim·매트릭스 무접촉(문서[14] 원칙 1·3).
+// ?weather=night|rain|sand
+// 주의: sun·amb만으로는 밤이 안 온다. A2의 정규화가 평면을 항상 I=1로 맞추므로 이 둘은 요철 대비만
+//   바꾸고 전체 밝기는 그대로다(실측: night가 낮보다 밝게 나왔다). 분위기는 별도 단계가 만든다 —
+//   grade = 곱연산(어둡게·색 입히기) · haze = 반투명 워시(대비 낮추기). 각각 fillRect 1번.
+const WEATHERS = {
+  night: { sun:0.15, amb:0.15, ambHex:'#6a5236', rim:'rgba(255,186,110,0.55)', grade:'#42506e' },
+  rain : { sun:0.50, amb:0.40, ambHex:'#8a8f96', rim:'rgba(220,232,245,0.45)', grade:'#8791a0' },
+  sand : { sun:0.60, amb:0.50, ambHex:'#c9a56a', rim:'rgba(255,226,170,0.40)', haze:'rgba(214,176,116,0.30)' },
+};
+const WEATHER = WEATHERS[_qs.get('weather')] || null;
+const LRIG = Object.assign({}, LIGHTS[_qs.get('venue')] || LIGHTS.arena, WEATHER || {});
+const _ce = Math.cos(RAD(LRIG.el));
+const LIGHT = { x:Math.cos(RAD(LRIG.az))*_ce, y:Math.sin(RAD(LRIG.az))*_ce, z:Math.sin(RAD(LRIG.el)) };
+const LSUN = LRIG.sun, LAMB = LRIG.amb, LRELIEF_ON = LRIG.relief;
+// 환경광 색을 휘도 1로 정규화. 평면에는 안 걸리고 그늘에만 실려 팔레트가 보존된다([15]§3.4)
+const LAMBC = (hex=>{ const n=parseInt(hex.slice(1),16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  const y=0.299*r+0.587*g+0.114*b || 1; return { r:r/y, g:g/y, b:b/y }; })(LRIG.ambHex);
 // L의 화면 방위(단위벡터). 그림자·발자국·림라이트가 전부 이 하나를 읽는다 — 방향이 갈리면 조명이 거짓말이 된다
-const _LXY = Math.hypot(LIGHT.x, LIGHT.y);
-const LDIR = { x: LIGHT.x/_LXY, y: LIGHT.y/_LXY };   // 빛이 오는 쪽(좌상). 반대편이 그림자가 눕는 방향
-const RIMPX = 2, RIMCOL = 'rgba(255,238,204,0.5)';   // 림 두께(px) · 늦은 오후 햇빛 색
+const _LXY = Math.hypot(LIGHT.x, LIGHT.y) || 1;
+const LDIR = { x: LIGHT.x/_LXY, y: LIGHT.y/_LXY };   // 빛이 오는 쪽. 반대편이 그림자가 눕는 방향
+const RIMPX = 2, RIMCOL = LRIG.rim;                  // 림 두께(px) · 그 조명의 햇빛/불빛 색
 const RELIEF = 1/300;                        // 높이 기울기 → 노멀 기울기 배율
 const hcv = mkbg();                          // 높이 버퍼(128=평면). 두 벌을 번갈아 재사용
 let _bkH1 = null;   // 베이크용 1채널 높이 스크래치(재사용)
 // 높이 → Sobel → N·L. 평면(기울기 0)은 I=1로 정규화되므로 팔레트는 안 변한다 — 바뀌는 건 요철뿐.
 function bakeRelief(c, _CX, _CY, _RX, _RY){
+  if (!LRELIEF_ON) return;   // 실내(선술집): 태양이 없으니 구울 것도 없다 — 평면 유지([15]§3.5)
   const M=12;   // 벽 링(+9)까지 덮는 여유 — A3에서 바닥 bbox만으로는 벽이 안 구워진다
   const x0=Math.max(0,Math.floor((_CX-_RX-M)*BGS)), x1=Math.min(hcv.width, Math.ceil((_CX+_RX+M)*BGS));
   const y0=Math.max(0,Math.floor((_CY-_RY-M)*BGS)), y1=Math.min(hcv.height,Math.ceil((_CY+_RY+M)*BGS));
@@ -267,7 +294,8 @@ function bakeRelief(c, _CX, _CY, _RX, _RY){
   const H1=_bkH1;
   for (let p=0,q=0;p<H1.length;p++,q+=4) H1[p]=hd[q];
   const Lx=LIGHT.x, Ly=LIGHT.y, Lz=LIGHT.z, cr=LAMBC.r-1, cg=LAMBC.g-1, cb=LAMBC.b-1;
-  const flat = LAMB + (1-LAMB)*Lz;        // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
+  const D=(1-LAMB)*LSUN;                  // 직사광 기여. venue·날씨의 sun 세기가 여기로 들어온다([15]§3.5)
+  const flat = LAMB + D*Lz;               // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
   const RXm=(_RX+M)*BGS, RYm=(_RY+M)*BGS, cxd=_CX*BGS-x0, cyd=_CY*BGS-y0;
   // 음영은 2 px 격자로 계산해 2×2 블록에 바른다.
   // 앨비도는 줌(최대 2.9배) 때문에 BGS=2가 필요하지만, **요철 음영은 그만큼 필요 없다** —
@@ -288,7 +316,7 @@ function bakeRelief(c, _CX, _CY, _RX, _RY){
       let nx=-gx*RELIEF, ny=-gy*RELIEF;
       const inv=1/Math.sqrt(nx*nx+ny*ny+1); nx*=inv; ny*=inv;
       const lit=Math.max(0, nx*Lx + ny*Ly + inv*Lz);
-      const I=(LAMB+(1-LAMB)*lit)/flat;
+      const I=(LAMB+D*lit)/flat;
       const s=(1-Math.min(1,lit/Lz))*0.6; // 0=평면(팔레트 불변) · 1=완전한 그늘
       const kr=I*(1+cr*s), kg=I*(1+cg*s), kb=I*(1+cb*s);
       for (let dy2=0; dy2<ST; dy2++){
@@ -442,6 +470,10 @@ function buildArenaBg(target, tiltV){
   c.strokeStyle=V.ring; c.lineWidth=1.5;
   c.beginPath(); c.ellipse(_CX,_CY,_RX*0.875,_RY*0.875,0,0,7); c.stroke();
   bakeRelief(c,_CX,_CY,_RX,_RY);
+  // 색보정([15]§3.5 A5) — 관중석·무대 밖까지 전부 걸려야 분위기가 산다. 각 1회 fillRect.
+  if (LRIG.grade){ c.save(); c.globalCompositeOperation='multiply';
+    c.fillStyle=LRIG.grade; c.fillRect(0,0,940,440); c.restore(); }
+  if (LRIG.haze){ c.fillStyle=LRIG.haze; c.fillRect(0,0,940,440); }
 }
 buildArenaBg(bgBasic, TiltBasic); buildArenaBg(bgZoom, TiltZoom);
 let postGame = false, postGameElapsed = 0;
