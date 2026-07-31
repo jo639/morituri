@@ -222,7 +222,8 @@ setInterval(()=>{
 }, 400);
 // 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
 const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
-let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], statuses = [], duration = 0;
+const _rcv = document.createElement('canvas'), _rctx = _rcv.getContext('2d');   // 림라이트 전용(플래시와 분리)
+let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], tracks = [], statuses = [], duration = 0;
 // 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
 const VENUES = {
   arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'콜로세움' },
@@ -244,8 +245,13 @@ const LIGHT = { x:-0.45, y:-0.60, z:0.66 };  // [15]§3.3 확정 광원(늦은 �
 const LAMB = 0.35;                           // 환경광 — 그림자가 새까매지지 않게
 // 환경광 색 #6b7a96(하늘 반사)을 휘도 1로 정규화. 평면에는 안 걸리고 그늘에만 실려 팔레트가 보존된다([15]§3.4)
 const LAMBC = { r:0.845, g:0.964, b:1.185 };
+// L의 화면 방위(단위벡터). 그림자·발자국·림라이트가 전부 이 하나를 읽는다 — 방향이 갈리면 조명이 거짓말이 된다
+const _LXY = Math.hypot(LIGHT.x, LIGHT.y);
+const LDIR = { x: LIGHT.x/_LXY, y: LIGHT.y/_LXY };   // 빛이 오는 쪽(좌상). 반대편이 그림자가 눕는 방향
+const RIMPX = 2, RIMCOL = 'rgba(255,238,204,0.5)';   // 림 두께(px) · 늦은 오후 햇빛 색
 const RELIEF = 1/300;                        // 높이 기울기 → 노멀 기울기 배율
 const hcv = mkbg();                          // 높이 버퍼(128=평면). 두 벌을 번갈아 재사용
+let _bkH1 = null;   // 베이크용 1채널 높이 스크래치(재사용)
 // 높이 → Sobel → N·L. 평면(기울기 0)은 I=1로 정규화되므로 팔레트는 안 변한다 — 바뀌는 건 요철뿐.
 function bakeRelief(c, _CX, _CY, _RX, _RY){
   const M=12;   // 벽 링(+9)까지 덮는 여유 — A3에서 바닥 bbox만으로는 벽이 안 구워진다
@@ -256,7 +262,9 @@ function bakeRelief(c, _CX, _CY, _RX, _RY){
   const a=A.data, hd=Hd.data;
   // 높이를 1채널로 압축해 두고 Sobel을 돈다. RGBA 스트라이드(4)로 이웃 8칸을 찌르면 캐시가 계속 빗나가
   // 벽까지 얹은 뒤 253 ms가 나왔다 — 이 한 줄이 예산을 되돌린다.
-  const H1=new Uint8Array(w*hh);
+  // 버퍼는 재사용한다. 매번 새로 잡으면 1 MB짜리 쓰레기가 쌓여 GC가 튄다(실측 스파이크 1065 ms).
+  if (!_bkH1 || _bkH1.length < w*hh) _bkH1 = new Uint8Array(w*hh);
+  const H1=_bkH1;
   for (let p=0,q=0;p<H1.length;p++,q+=4) H1[p]=hd[q];
   const Lx=LIGHT.x, Ly=LIGHT.y, Lz=LIGHT.z, cr=LAMBC.r-1, cg=LAMBC.g-1, cb=LAMBC.b-1;
   const flat = LAMB + (1-LAMB)*Lz;        // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
@@ -359,6 +367,26 @@ function buildArenaBg(target, tiltV){
     h.beginPath(); h.moveTo(_CX+Math.cos(a)*(_RX+rr),_CY+Math.sin(a)*(_RY+rr));
     h.lineTo(_CX+Math.cos(a+len)*(_RX+rr+jit),_CY+Math.sin(a+len)*(_RY+rr+jit)); h.stroke();
   }
+  // 철문 2곳(포르타) — 좌·우 벽면. 선수 입·퇴장 방향의 근거([15]§4 A4).
+  // §1 계약: 원 안에는 소품을 놓지 않는다 — 벽 링 클립 안에서만 그린다(이 블록이 그 클립이다).
+  for (const ga of [0, Math.PI]){
+    const gw=jstep*2.4;                                   // 문 폭(각도)
+    const sect=(g2)=>{ g2.beginPath();
+      g2.ellipse(_CX,_CY,_RX+9,_RY+9,0,ga-gw/2,ga+gw/2);
+      g2.ellipse(_CX,_CY,_RX,_RY,0,ga+gw/2,ga-gw/2,true);
+      g2.closePath(); g2.fill(); };
+    c.fillStyle='rgba(0,0,0,0.42)'; sect(c);              // 안쪽이 어둡다 = 뚫린 통로
+    h.fillStyle='#3c3c3c';         sect(h);               // 깊게 파인다 — 벽면보다 훨씬 낮게
+    c.strokeStyle='rgba(30,24,16,0.55)'; c.lineWidth=1;   // 쇠창살
+    h.strokeStyle='#9a9a9a'; h.lineWidth=1.4;             // 창살은 문틀보다 높게 튀어나온다
+    for (let b=1;b<7;b++){
+      const a=ga-gw/2+gw*b/7;
+      const x0=_CX+Math.cos(a)*_RX, y0=_CY+Math.sin(a)*_RY;
+      const x1=_CX+Math.cos(a)*(_RX+9), y1=_CY+Math.sin(a)*(_RY+9);
+      c.beginPath(); c.moveTo(x0,y0); c.lineTo(x1,y1); c.stroke();
+      h.beginPath(); h.moveTo(x0,y0); h.lineTo(x1,y1); h.stroke();
+    }
+  }
   c.restore(); h.restore();
   // 바닥 — 밝은 지점을 광원 쪽(좌상)으로. 옛 값은 "빛이 위에서"였고 아래 벽 그림자와 모순이었다([15]§3.2)
   const grd=c.createRadialGradient(_CX-_RX*0.22,_CY-_RY*0.45,8,_CX,_CY,_RX);
@@ -387,9 +415,10 @@ function buildArenaBg(target, tiltV){
   shg.addColorStop(0,'rgba(0,0,0,0.30)'); shg.addColorStop(1,'rgba(0,0,0,0)');
   c.fillStyle=shg; c.beginPath(); c.ellipse(_CX,_CY,_RX-2,_RY-2,0,0,7); c.fill();
   c.restore(); h.restore();
-  // 경기 라인
+  // 경기 라인 = CornerZone 경계. (ArenaRadius−CornerZone)/ArenaRadius = (12−1.5)/12 = 0.875.
+  // 기존 눈금 0.88이 우연히 여기였다 — 선을 하나 더 긋지 않고 의미를 붙였다([15]§4 A4).
   c.strokeStyle=V.ring; c.lineWidth=1.5;
-  c.beginPath(); c.ellipse(_CX,_CY,_RX*0.88,_RY*0.88,0,0,7); c.stroke();
+  c.beginPath(); c.ellipse(_CX,_CY,_RX*0.875,_RY*0.875,0,0,7); c.stroke();
   bakeRelief(c,_CX,_CY,_RX,_RY);
 }
 buildArenaBg(bgBasic, TiltBasic); buildArenaBg(bgZoom, TiltZoom);
@@ -741,6 +770,25 @@ function buildImpacts(){
     stains.push({ t: im.t, x: p.x, y: p.y, r: 3 + im.mag*0.55, seed: (im.t*977|0)+1 });
     if (stains.length >= 60) break;
   }
+  // 발자국·끌린 자국([15]§4 A4): 프레임에서 파생 → t 필터로 스크럽 안전(혈흔과 같은 규약).
+  // 경기가 갈수록 모래가 밟힌다 = 살아있는 무대. 화면좌표가 아니라 월드좌표로 담는다 —
+  // RY가 줌에 따라 변하므로(모드별 부각) 그릴 때 투영해야 어긋나지 않는다.
+  tracks = [];
+  // 보폭 0.55 m·상한 240으로 뽑으면 경기 말미에 자국이 카펫이 되고 프레임의 55%(2.9 ms)를 먹는다.
+  // 성기게 뽑는 편이 보기에도 낫다 — 밟힌 자리가 읽혀야지 바닥이 갈려선 안 된다.
+  const STEP = 0.9;    // m — 이 거리마다 한 발
+  for (let who=0; who<2; who++){
+    let lx=null, ly=null;
+    for (let i=0;i<frames.length;i+=2){
+      const f0=frames[i], wx=who===0?f0.Ax:f0.Bx, wy=who===0?f0.Ay:f0.By;
+      if (lx===null){ lx=wx; ly=wy; continue; }
+      if (Math.hypot(wx-lx, wy-ly) < STEP) continue;
+      tracks.push({ t:f0.Time, wx, wy, a:Math.atan2(wy-ly, wx-lx) });
+      lx=wx; ly=wy;
+      if (tracks.length >= 150) break;
+    }
+  }
+  tracks.sort((p0,q0)=>p0.t-q0.t);
 }
 
 // 피격 스프라이트 흰색 플래시 강도(0~1) — 최근 임팩트가 이 선수를 때렸으면 잠깐 하얘진다.
@@ -981,8 +1029,12 @@ function drawGround(fx, fy, scale, reach, col){
   ctx.beginPath(); ctx.ellipse(fx, fy, 16*scale, 6*scale, 0,0,7); ctx.fill(); ctx.restore();
   ctx.save(); ctx.globalAlpha=.18; ctx.strokeStyle=col; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0,0,7); ctx.stroke(); ctx.restore();
+  // 접지 그림자([15]§9 결정4 대체안): 발밑 정원이 아니라 빛 반대쪽(우하)으로 눕는다.
+  // 고도 41°라 그림자가 길다 — 장축을 방위각에 맞추고 그만큼 늘린다.
   ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
-  ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
+  ctx.translate(fx - LDIR.x*5*scale, fy - LDIR.y*5*scale);
+  ctx.rotate(Math.atan2(-LDIR.y, -LDIR.x));
+  ctx.beginPath(); ctx.ellipse(0, 0, 13*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 }
 function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkDir, walkPhase){
   // 상태별 다중프레임 애니 선택 (이동·공격·피격). 없으면 정적 포즈 폴백.
@@ -1045,6 +1097,22 @@ function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, p
   ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
+  // 림라이트([15]§9 결정4 대체안 · A4): 스프라이트 노멀맵 대신 이걸 쓴다.
+  // 실루엣을 빛 반대쪽으로 밀어 지우면 광원 쪽 가장자리만 초승달로 남는다.
+  // ※ 이 컨텍스트는 facing에 따라 좌우 반전돼 있다 — 밀어내는 방향의 x를 로컬 기준으로 뒤집어야
+  //   왼쪽을 볼 때 림이 반대편에 붙지 않는다.
+  {
+    const iw2=Math.max(1,Math.ceil(w)), ih2=Math.max(1,Math.ceil(h));
+    _rcv.width=iw2; _rcv.height=ih2;                       // 크기 재설정 = 클리어
+    _rctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, 0,0, w,h);
+    _rctx.globalCompositeOperation='destination-out';
+    _rctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h,
+      (flip? LDIR.x : -LDIR.x)*RIMPX, -LDIR.y*RIMPX, w,h);
+    _rctx.globalCompositeOperation='source-in';
+    _rctx.fillStyle=RIMCOL; _rctx.fillRect(0,0,iw2,ih2);
+    _rctx.globalCompositeOperation='source-over';
+    ctx.drawImage(_rcv, -w/2,-h, w, h);
+  }
   // 피격 흰색 플래시: 오프스크린에 스프라이트만 그려 거기서 source-atop(스프라이트 픽셀=유일한 목적지) →
   // 실루엣 내부만 하얘진다. 본 캔버스에서 직접 하면 바닥까지 덮여 박스로 번짐.
   if (flash>0){
@@ -1409,6 +1477,18 @@ function render(){
     ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
   }
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
+  // 발자국: 파인 자국(어둡게) + 광원 쪽 둔덕(밝게). 방향은 LDIR 하나에서만 나온다
+  if (tracks.length){
+    ctx.save();
+    for (const s of tracks){ if (s.t > t) continue;
+      const p = proj(s.wx, s.wy), sc = 0.75+0.5*depthN(s.wy);
+      ctx.globalAlpha = 0.15; ctx.fillStyle = '#6b4f2e';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, 3.4*sc, 1.5*sc, s.a, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.09; ctx.fillStyle = '#f2e0ba';
+      ctx.beginPath(); ctx.ellipse(p.x+LDIR.x*1.3*sc, p.y+LDIR.y*1.3*sc, 3.0*sc, 1.2*sc, s.a, 0, 7); ctx.fill();
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
   if (stains.length){
     ctx.save();
     for (const s of stains){ if (s.t > t) continue;
