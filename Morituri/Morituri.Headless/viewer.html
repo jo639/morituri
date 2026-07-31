@@ -242,29 +242,46 @@ const bgBasic = mkbg(), bgZoom = mkbg();
 //    프레임 루프는 무변경 — 런타임 비용은 그대로 drawImage다.
 const LIGHT = { x:-0.45, y:-0.60, z:0.66 };  // [15]§3.3 확정 광원(늦은 오후·좌상단 41°). 접선공간 +x=오른쪽 +y=아래 +z=화면 밖
 const LAMB = 0.35;                           // 환경광 — 그림자가 새까매지지 않게
+// 환경광 색 #6b7a96(하늘 반사)을 휘도 1로 정규화. 평면에는 안 걸리고 그늘에만 실려 팔레트가 보존된다([15]§3.4)
+const LAMBC = { r:0.845, g:0.964, b:1.185 };
 const RELIEF = 1/300;                        // 높이 기울기 → 노멀 기울기 배율
 const hcv = mkbg();                          // 높이 버퍼(128=평면). 두 벌을 번갈아 재사용
 // 높이 → Sobel → N·L. 평면(기울기 0)은 I=1로 정규화되므로 팔레트는 안 변한다 — 바뀌는 건 요철뿐.
 function bakeRelief(c, _CX, _CY, _RX, _RY){
-  const x0=Math.max(0,Math.floor((_CX-_RX-2)*BGS)), x1=Math.min(hcv.width, Math.ceil((_CX+_RX+2)*BGS));
-  const y0=Math.max(0,Math.floor((_CY-_RY-2)*BGS)), y1=Math.min(hcv.height,Math.ceil((_CY+_RY+2)*BGS));
+  const M=12;   // 벽 링(+9)까지 덮는 여유 — A3에서 바닥 bbox만으로는 벽이 안 구워진다
+  const x0=Math.max(0,Math.floor((_CX-_RX-M)*BGS)), x1=Math.min(hcv.width, Math.ceil((_CX+_RX+M)*BGS));
+  const y0=Math.max(0,Math.floor((_CY-_RY-M)*BGS)), y1=Math.min(hcv.height,Math.ceil((_CY+_RY+M)*BGS));
   const w=x1-x0, hh=y1-y0; if (w<3 || hh<3) return;
   const A=c.getImageData(x0,y0,w,hh), Hd=hcv.getContext('2d').getImageData(x0,y0,w,hh);
-  const a=A.data, hd=Hd.data, row=w*4;
-  const flat = LAMB + (1-LAMB)*LIGHT.z;   // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
+  const a=A.data, hd=Hd.data;
+  // 높이를 1채널로 압축해 두고 Sobel을 돈다. RGBA 스트라이드(4)로 이웃 8칸을 찌르면 캐시가 계속 빗나가
+  // 벽까지 얹은 뒤 253 ms가 나왔다 — 이 한 줄이 예산을 되돌린다.
+  const H1=new Uint8Array(w*hh);
+  for (let p=0,q=0;p<H1.length;p++,q+=4) H1[p]=hd[q];
+  const Lx=LIGHT.x, Ly=LIGHT.y, Lz=LIGHT.z, cr=LAMBC.r-1, cg=LAMBC.g-1, cb=LAMBC.b-1;
+  const flat = LAMB + (1-LAMB)*Lz;        // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
+  const RXm=(_RX+M)*BGS, RYm=(_RY+M)*BGS, cxd=_CX*BGS-x0, cyd=_CY*BGS-y0;
   for (let y=1;y<hh-1;y++){
-    for (let x=1;x<w-1;x++){
-      const i=(y*w+x)*4;
-      const tl=hd[i-4-row], tc=hd[i-row], tr=hd[i+4-row];
-      const ml=hd[i-4],                   mr=hd[i+4];
-      const bl=hd[i-4+row], bc=hd[i+row], br=hd[i+4+row];
+    // 바깥 타원 밖은 전부 평면(관중석·무대 밖)이다 — 행마다 x범위를 잘라 모서리 4곳을 통째로 건너뛴다
+    const dy=(y-cyd)/RYm; if (dy<=-1 || dy>=1) continue;
+    const half=RXm*Math.sqrt(1-dy*dy);
+    const xa=Math.max(1,Math.floor(cxd-half)), xb=Math.min(w-1,Math.ceil(cxd+half));
+    for (let x=xa;x<xb;x++){
+      const j=y*w+x;
+      const tl=H1[j-1-w], tc=H1[j-w], tr=H1[j+1-w];
+      const ml=H1[j-1],                mr=H1[j+1];
+      const bl=H1[j-1+w], bc=H1[j+w], br=H1[j+1+w];
       const gx=(tr+2*mr+br)-(tl+2*ml+bl), gy=(bl+2*bc+br)-(tl+2*tc+tr);
-      if (gx===0 && gy===0) continue;     // 평면 = 무변화. 벽·관중석은 여기서 걸러진다(높이를 안 쌓았으므로)
+      if (gx===0 && gy===0) continue;     // 평면 = 무변화. 높이를 안 쌓은 관중석·무대 밖은 여기서 걸러진다
       let nx=-gx*RELIEF, ny=-gy*RELIEF;
       const inv=1/Math.sqrt(nx*nx+ny*ny+1); nx*=inv; ny*=inv;
-      const nl=nx*LIGHT.x + ny*LIGHT.y + inv*LIGHT.z;
-      const I=(LAMB+(1-LAMB)*Math.max(0,nl))/flat;
-      a[i]=Math.min(255,a[i]*I); a[i+1]=Math.min(255,a[i+1]*I); a[i+2]=Math.min(255,a[i+2]*I);
+      const lit=Math.max(0, nx*Lx + ny*Ly + inv*Lz);
+      const I=(LAMB+(1-LAMB)*lit)/flat;
+      const s=(1-Math.min(1,lit/Lz))*0.6; // 0=평면(팔레트 불변) · 1=완전한 그늘
+      const i=j*4;
+      a[i]  =Math.min(255,a[i]  *I*(1+cr*s));
+      a[i+1]=Math.min(255,a[i+1]*I*(1+cg*s));
+      a[i+2]=Math.min(255,a[i+2]*I*(1+cb*s));
     }
   }
   c.putImageData(A,x0,y0);
@@ -306,6 +323,43 @@ function buildArenaBg(target, tiltV){
   // 벽(두께) + 외곽 음영
   ell(_RX+9,_RY+9,V.wall);
   ell(_RX+9,_RY+9,null,'rgba(0,0,0,.35)',2);
+  // 벽 석재([15]§4 · A3): 베벨 + 줄눈 + 균열. 부각 20°에서 벽은 카메라에 거의 정면이라
+  // 노멀 효과가 가장 크게 나오는 자리다 — 알베도는 은은하게, 높이는 강하게 쌓는다.
+  c.save(); h.save();
+  const ring=new Path2D();
+  ring.ellipse(_CX,_CY,_RX+9,_RY+9,0,0,7); ring.ellipse(_CX,_CY,_RX,_RY,0,0,7);
+  c.clip(ring,'evenodd'); h.clip(ring,'evenodd');
+  // 베벨: 안쪽이 낮고 바깥이 높다 — 링 전체가 L에 대해 한 방향으로 기울어 '두께'가 생긴다
+  h.lineWidth=1.4;
+  for (let k=0;k<=9;k++){ const g=Math.round(118+k*(152-118)/9);
+    h.strokeStyle=`rgb(${g},${g},${g})`;
+    h.beginPath(); h.ellipse(_CX,_CY,_RX+k,_RY+k,0,0,7); h.stroke(); }
+  // 줄눈: 2단 엇갈림 쌓기(위단을 반 칸 민다)
+  const JN=48, jstep=Math.PI*2/JN;
+  c.strokeStyle='rgba(0,0,0,0.13)'; c.lineWidth=1;
+  h.strokeStyle='#4e4e4e'; h.lineWidth=1.6;
+  for (let i=0;i<JN;i++){
+    for (const [a,r0,r1] of [[i*jstep,0,4.5],[i*jstep+jstep/2,4.5,9]]){
+      c.beginPath(); c.moveTo(_CX+Math.cos(a)*(_RX+r0),_CY+Math.sin(a)*(_RY+r0));
+      c.lineTo(_CX+Math.cos(a)*(_RX+r1),_CY+Math.sin(a)*(_RY+r1)); c.stroke();
+      h.beginPath(); h.moveTo(_CX+Math.cos(a)*(_RX+r0),_CY+Math.sin(a)*(_RY+r0));
+      h.lineTo(_CX+Math.cos(a)*(_RX+r1),_CY+Math.sin(a)*(_RY+r1)); h.stroke();
+    }
+  }
+  // 단 사이 수평 줄눈
+  c.beginPath(); c.ellipse(_CX,_CY,_RX+4.5,_RY+4.5,0,0,7); c.stroke();
+  h.beginPath(); h.ellipse(_CX,_CY,_RX+4.5,_RY+4.5,0,0,7); h.stroke();
+  // 이 빠진 자국·균열 — 중(0.5). 콜로세움의 나이
+  c.strokeStyle='rgba(0,0,0,0.10)';
+  h.strokeStyle='#6a6a6a'; h.lineWidth=1.2;
+  for (let i=0;i<9;i++){
+    const a=rnd()*Math.PI*2, len=jstep*(0.3+rnd()*0.5), rr=1+rnd()*6, jit=(rnd()-0.5)*3;
+    c.beginPath(); c.moveTo(_CX+Math.cos(a)*(_RX+rr),_CY+Math.sin(a)*(_RY+rr));
+    c.lineTo(_CX+Math.cos(a+len)*(_RX+rr+jit),_CY+Math.sin(a+len)*(_RY+rr+jit)); c.stroke();
+    h.beginPath(); h.moveTo(_CX+Math.cos(a)*(_RX+rr),_CY+Math.sin(a)*(_RY+rr));
+    h.lineTo(_CX+Math.cos(a+len)*(_RX+rr+jit),_CY+Math.sin(a+len)*(_RY+rr+jit)); h.stroke();
+  }
+  c.restore(); h.restore();
   // 바닥 — 밝은 지점을 광원 쪽(좌상)으로. 옛 값은 "빛이 위에서"였고 아래 벽 그림자와 모순이었다([15]§3.2)
   const grd=c.createRadialGradient(_CX-_RX*0.22,_CY-_RY*0.45,8,_CX,_CY,_RX);
   grd.addColorStop(0,V.f0); grd.addColorStop(1,V.f1);
