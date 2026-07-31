@@ -238,9 +238,42 @@ const BGS = 2;   // 프리렌더 해상도 배율(줌 시 선명)
 // 전환 중에는 두 장을 알파로 겹쳐 중간 각도를 근사한다(배경은 drawImage 1장이라 2장도 싸다).
 const mkbg = () => { const cv2 = document.createElement('canvas'); cv2.width = 940*BGS; cv2.height = 440*BGS; return cv2; };
 const bgBasic = mkbg(), bgZoom = mkbg();
+// ── 노멀맵 조명([15]§5 N1 · A2): 높이 버퍼를 알베도와 같은 패스에서 쌓고, 로드 시 1회 N·L을 구워 넣는다.
+//    프레임 루프는 무변경 — 런타임 비용은 그대로 drawImage다.
+const LIGHT = { x:-0.45, y:-0.60, z:0.66 };  // [15]§3.3 확정 광원(늦은 오후·좌상단 41°). 접선공간 +x=오른쪽 +y=아래 +z=화면 밖
+const LAMB = 0.35;                           // 환경광 — 그림자가 새까매지지 않게
+const RELIEF = 1/300;                        // 높이 기울기 → 노멀 기울기 배율
+const hcv = mkbg();                          // 높이 버퍼(128=평면). 두 벌을 번갈아 재사용
+// 높이 → Sobel → N·L. 평면(기울기 0)은 I=1로 정규화되므로 팔레트는 안 변한다 — 바뀌는 건 요철뿐.
+function bakeRelief(c, _CX, _CY, _RX, _RY){
+  const x0=Math.max(0,Math.floor((_CX-_RX-2)*BGS)), x1=Math.min(hcv.width, Math.ceil((_CX+_RX+2)*BGS));
+  const y0=Math.max(0,Math.floor((_CY-_RY-2)*BGS)), y1=Math.min(hcv.height,Math.ceil((_CY+_RY+2)*BGS));
+  const w=x1-x0, hh=y1-y0; if (w<3 || hh<3) return;
+  const A=c.getImageData(x0,y0,w,hh), Hd=hcv.getContext('2d').getImageData(x0,y0,w,hh);
+  const a=A.data, hd=Hd.data, row=w*4;
+  const flat = LAMB + (1-LAMB)*LIGHT.z;   // 평면 밝기 → 이 값으로 나눠 1.0으로 정규화
+  for (let y=1;y<hh-1;y++){
+    for (let x=1;x<w-1;x++){
+      const i=(y*w+x)*4;
+      const tl=hd[i-4-row], tc=hd[i-row], tr=hd[i+4-row];
+      const ml=hd[i-4],                   mr=hd[i+4];
+      const bl=hd[i-4+row], bc=hd[i+row], br=hd[i+4+row];
+      const gx=(tr+2*mr+br)-(tl+2*ml+bl), gy=(bl+2*bc+br)-(tl+2*tc+tr);
+      if (gx===0 && gy===0) continue;     // 평면 = 무변화. 벽·관중석은 여기서 걸러진다(높이를 안 쌓았으므로)
+      let nx=-gx*RELIEF, ny=-gy*RELIEF;
+      const inv=1/Math.sqrt(nx*nx+ny*ny+1); nx*=inv; ny*=inv;
+      const nl=nx*LIGHT.x + ny*LIGHT.y + inv*LIGHT.z;
+      const I=(LAMB+(1-LAMB)*Math.max(0,nl))/flat;
+      a[i]=Math.min(255,a[i]*I); a[i+1]=Math.min(255,a[i+1]*I); a[i+2]=Math.min(255,a[i+2]*I);
+    }
+  }
+  c.putImageData(A,x0,y0);
+}
 function buildArenaBg(target, tiltV){
   const c = target.getContext('2d'); c.setTransform(BGS,0,0,BGS,0,0);
   c.clearRect(0,0,940,440);
+  const h = hcv.getContext('2d'); h.setTransform(BGS,0,0,BGS,0,0);
+  h.fillStyle='#808080'; h.fillRect(0,0,940,440);   // 128 = 평면. 여기 안 그린 곳은 조명이 안 건드린다
   const _CX=CX, _CY=CY, _RX=RX, _RY=RX*tiltV;   // 투영 단일 출처 — 하드코딩 금지([15]§2.3: 0.58이 박혀 있어 35px 어긋났다)
   let sd = 987654321; const rnd = ()=>{ sd^=sd<<13; sd^=sd>>>17; sd^=sd<<5; return ((sd>>>0)%100000)/100000; };
   const V = VENUE, isArena = V === VENUES.arena;
@@ -273,28 +306,37 @@ function buildArenaBg(target, tiltV){
   // 벽(두께) + 외곽 음영
   ell(_RX+9,_RY+9,V.wall);
   ell(_RX+9,_RY+9,null,'rgba(0,0,0,.35)',2);
-  // 바닥(기존 방사 그라디언트)
-  const grd=c.createRadialGradient(_CX,_CY-_RY*0.3,8,_CX,_CY,_RX);
+  // 바닥 — 밝은 지점을 광원 쪽(좌상)으로. 옛 값은 "빛이 위에서"였고 아래 벽 그림자와 모순이었다([15]§3.2)
+  const grd=c.createRadialGradient(_CX-_RX*0.22,_CY-_RY*0.45,8,_CX,_CY,_RX);
   grd.addColorStop(0,V.f0); grd.addColorStop(1,V.f1);
   ell(_RX,_RY,grd,V.wall,4);
-  // 바닥 질감(클립 안): 스펙클 + 갈퀴 자국 + 벽 그림자
+  // 바닥 질감(클립 안): 스펙클 + 갈퀴 자국 + 벽 그림자. 알베도(c)와 높이(h)를 같은 루프에서 쌓는다
   c.save(); c.beginPath(); c.ellipse(_CX,_CY,_RX-2,_RY-2,0,0,7); c.clip();
+  h.save(); h.beginPath(); h.ellipse(_CX,_CY,_RX-2,_RY-2,0,0,7); h.clip();
   for (let i=0;i<950;i++){
     const a=rnd()*Math.PI*2, rr=Math.sqrt(rnd());
     const x=_CX+Math.cos(a)*(_RX-4)*rr, y=_CY+Math.sin(a)*(_RY-4)*rr;
-    c.fillStyle = rnd()<0.5 ? 'rgba(0,0,0,0.055)' : 'rgba(255,255,255,0.05)';
+    const pit = rnd()<0.5;
+    c.fillStyle = pit ? 'rgba(0,0,0,0.055)' : 'rgba(255,255,255,0.05)';
     c.fillRect(x,y,1.4,1.4);
+    h.fillStyle = pit ? '#7b7b7b' : '#858585';   // 모래알 = 약(±5). 부각 20°에선 거의 안 보인다([15]§4)
+    h.fillRect(x,y,1.4,1.4);
   }
   c.strokeStyle='rgba(0,0,0,0.06)'; c.lineWidth=1;
-  for (let i=1;i<=5;i++){ const fr2=i/6, a0=rnd()*6.28;
-    c.beginPath(); c.ellipse(_CX,_CY,_RX*fr2,_RY*fr2,0,a0,a0+2.2+rnd()*2); c.stroke(); }
-  const shg=c.createLinearGradient(0,_CY-_RY,0,_CY-_RY*0.15);
+  h.strokeStyle='#5c5c5c'; h.lineWidth=2;        // 갈퀴 자국 = 강(홈). 이 각도에서 살아남는 유일한 요철([15]§4)
+  for (let i=1;i<=5;i++){ const fr2=i/6, a0=rnd()*6.28, a1=a0+2.2+rnd()*2;
+    c.beginPath(); c.ellipse(_CX,_CY,_RX*fr2,_RY*fr2,0,a0,a1); c.stroke();
+    h.beginPath(); h.ellipse(_CX,_CY,_RX*fr2,_RY*fr2,0,a0,a1); h.stroke(); }
+  // 벽 그림자 — 빛이 들어오는 좌상 림에서 안쪽으로. 방향을 L에서 유도한다([15]§3.3)
+  const _lxy=Math.hypot(LIGHT.x,LIGHT.y), ux=LIGHT.x/_lxy, uy=LIGHT.y/_lxy;
+  const shg=c.createLinearGradient(_CX+ux*_RX,_CY+uy*_RY,_CX+ux*_RX*0.15,_CY+uy*_RY*0.15);
   shg.addColorStop(0,'rgba(0,0,0,0.30)'); shg.addColorStop(1,'rgba(0,0,0,0)');
   c.fillStyle=shg; c.beginPath(); c.ellipse(_CX,_CY,_RX-2,_RY-2,0,0,7); c.fill();
-  c.restore();
+  c.restore(); h.restore();
   // 경기 라인
   c.strokeStyle=V.ring; c.lineWidth=1.5;
   c.beginPath(); c.ellipse(_CX,_CY,_RX*0.88,_RY*0.88,0,0,7); c.stroke();
+  bakeRelief(c,_CX,_CY,_RX,_RY);
 }
 buildArenaBg(bgBasic, TiltBasic); buildArenaBg(bgZoom, TiltZoom);
 let postGame = false, postGameElapsed = 0;
