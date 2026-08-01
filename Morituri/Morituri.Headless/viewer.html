@@ -281,13 +281,59 @@ const LIGHT = { x:Math.cos(RAD(LRIG.az))*_ce, y:Math.sin(RAD(LRIG.az))*_ce, z:Ma
 const _LXY = Math.hypot(LIGHT.x, LIGHT.y) || 1;
 const LDIR = { x: LIGHT.x/_LXY, y: LIGHT.y/_LXY };   // 빛이 오는 쪽. 반대편이 그림자가 눕는 방향
 const RIMPX = 2, RIMCOL = LRIG.rim;                  // 림 두께(px) · 그 조명의 햇빛/불빛 색
+// ── 관중([15]§10.9 결정 1) — 베이크된 관중석은 **빈 좌석**이라 사람은 뷰어가 얹는다 ──────
+// §10.11: 관중석은 좌·우 가장자리에서만 보인다. 뒤쪽은 포디움 벽에 가려 안 나온다.
+// 그래서 **링이 아니라 좌·우 두 덩어리**로 찍고, 각 점이 벽 위로 올라오는지 각도마다 따진다.
+//
+// 좌석 자리는 눈대중이 아니라 베이크와 같은 식으로 구한다(tools/arenabake/blockout.py):
+//   월드 (X,Y,Z) → 화면 x = CX + X·(RX/12)
+//                  화면 y = CY − Y·(RY/12) − Z·(RX/12)·cos(부각)
+//   카베아: r = 14.4 + 0.55k, z = 3.5 + 0.30(k+1)   (라이저 0.30 · 트레드 0.55 · 22열)
+function paintCrowd(c, tilt){
+  const el = Math.asin(Math.max(-1, Math.min(1, tilt)));   // 부각 — CamTilt = sin(부각)
+  const mx = RX / 12, my = (RX * tilt) / 12, mz = mx * Math.cos(el);
+  const WALL_R = 12.6, WALL_Z = 3.5;
+  const pt = (aDeg, r, z) => {
+    const a = aDeg * Math.PI / 180;
+    return [CX + Math.cos(a) * r * mx, CY - Math.sin(a) * r * my - z * mz];
+  };
+  let sd = 20250801;
+  const rnd = () => { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return (sd % 10000) / 10000; };
+  c.save();
+  c.setTransform(BGS, 0, 0, BGS, 0, 0);
+  // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep=65, fade=35, floor=0)와 **같은 램프**를 쓴다.
+  // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
+  const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
+  // 윗열은 베이크에서 ruin()으로 불규칙하게 깎였다 — 그 곡선을 여기서 재현할 수 없으니
+  // 영향이 적은 아래 16열만 쓴다. 어차피 윗열은 대부분 프레임 밖이다(§10.11).
+  for (let k = 0; k < 16; k++){
+    const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
+    for (let i = 0; i < 300; i++){
+      const aDeg = i * 1.2 + rnd() * 1.2;
+      const kf = cut(Math.abs(((aDeg - 270 + 180) % 360) - 180));
+      if (kf <= 0.02) continue;
+      const z = z0 * kf;                       // 컷어웨이 구간은 좌석도 눌려 있다
+      const [sx, sy] = pt(aDeg, r, z);
+      const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
+      if (sy > wallY - 1.5) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
+      if (sx < -6 || sx > W + 6 || sy < -6 || sy > H) continue;
+      const warm = rnd();
+      c.fillStyle = `rgba(${180 + warm * 60 | 0},${142 + warm * 48 | 0},${96 + warm * 38 | 0},${0.30 + rnd() * 0.45})`;
+      c.fillRect(sx, sy - 1.1, 1.5, 1.9);
+    }
+  }
+  c.restore();
+}
+
 // venue·날씨 색보정을 **로드 시 1회** 이미지에 입힌다. 프레임 루프는 무관하다.
 // 결정 4에 따라 3D 베이크는 arena 한 벌뿐이고, 나머지 venue는 이 색보정으로 변주한다.
-function paintArena(target, img){
+function paintArena(target, img, tilt){
   const c = target.getContext('2d');
   c.setTransform(1,0,0,1,0,0);
   c.clearRect(0,0,target.width,target.height);
   c.drawImage(img, 0, 0, target.width, target.height);
+  paintCrowd(c, tilt);                        // 색보정 **전에** 얹어야 관중도 같은 빛을 받는다
+  c.setTransform(1,0,0,1,0,0);
   for (const g of [VGRADE, WGRADE]){          // venue → 날씨 순으로 곱한다
     if (!g) continue;
     c.save(); c.globalCompositeOperation='multiply';
@@ -299,9 +345,10 @@ function paintArena(target, img){
 for (const t of [bgBasic, bgZoom]){
   const c = t.getContext('2d'); c.fillStyle = '#141009'; c.fillRect(0,0,t.width,t.height);
 }
-for (const [target, src] of [[bgBasic, 'arena_basic.png'], [bgZoom, 'arena_zoom.png']]){
+for (const [target, src, tilt] of [[bgBasic, 'arena_basic.png', TiltBasic],
+                                   [bgZoom,  'arena_zoom.png',  TiltZoom]]){
   const im = new Image();
-  im.onload = () => paintArena(target, im);
+  im.onload = () => paintArena(target, im, tilt);
   im.src = src;
 }
 let postGame = false, postGameElapsed = 0;
