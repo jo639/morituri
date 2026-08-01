@@ -50,6 +50,7 @@ def parse_args():
     p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
     p.add_argument("--back-squash", type=float, default=1.00, help="뒤쪽 구조물 압축(1=압축 없음)")
+    p.add_argument("--veg", action="store_true", help="식생 — 기본 꺼짐(라니스타 지시로 제거)")
     p.add_argument("--normal", action="store_true", help="노멀맵 패스도 함께 출력(B3)")
     p.add_argument("--ruin", type=float, default=0.22, help="무너진 윗선 진폭(0=평평)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
@@ -241,42 +242,51 @@ def sand_bump(m, rake=0.70, grain=0.30, dist=0.03):
     return m
 
 
-def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=5, n=80, zscale=None, gaps=()):
-    """포디움 벽 석재 — 돌(앞)/줄눈(뒤) 2겹. 앞 겹에 구멍을 내면 뒤의 어둠이 줄눈으로 보인다.
-    **안쪽으로는 한 톨도 안 나온다** — r=12는 Sim 충돌 경계다(§1). 벽면 본체를 바깥으로 물리고
-    굽도리·처마만 r=12에 둬서 '튀어나온 것처럼' 보이게 한다.
+def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=6, n=90, zscale=None, gaps=()):
+    """포디움 벽 석재 — 로마 오푸스 콰드라툼(다듬은 큰 돌 쌓기).
 
-    균일 격자만으로는 벽돌담이지 콜로세움이 아니다. 세 가지로 깬다:
-      ① 굽도리(plinth)·처마(cornice) — 위아래를 매듭지어 벽면에 시작과 끝을 준다
-      ② 칸 너비를 흔든다 — 같은 폭이 80개 늘어서면 눈이 돌보다 격자를 먼저 본다
-      ③ 빠진 돌 — 가끔 한 칸을 뒤로 물려 세월을 넣는다(§10.1 진단 5: 규칙성 제거)"""
+    **안쪽으로는 한 톨도 안 나온다** — r=12는 Sim 충돌 경계다(§1). 벽면 본체를 바깥으로 물리고
+    굽도리·처마만 r에 둬서 도드라지게 한다.
+
+    초판이 부자연스러웠던 이유는 돌 크기가 아니라 **기계로 쌓은 듯한 균일함**이었다. 셋을 고쳤다:
+      ① **단 높이를 단마다 다르게** — 실물은 층마다 돌 크기가 다르다. 같은 높이가 정확히
+         반복되면 눈이 돌보다 격자를 먼저 본다.
+      ② **빠진 돌 16% → 4%.** 그렇게 많으면 세월이 아니라 **이가 빠진 것**으로 보인다.
+         대신 **모든 돌에 ±1.5 cm 미세 요철** — 면이 고르지 않은 것이 진짜 석재의 신호다.
+      ③ **줄눈을 얇고 옅게** — 두껍고 검으면 석조가 아니라 격자무늬가 된다."""
     PLINTH, CORNICE = 0.42, 0.30
-    RB = r + 0.06                        # 벽면 본체는 바깥으로 물린다
+    RB = r + 0.06
     zb0, zb1 = z0 + PLINTH, z1 - CORNICE
 
-    lathe(name + "_joint", [(RB + 0.035, zb0), (RB + 0.035, zb1)], mat_joint, zscale=zscale, gaps=gaps)
-    # ① 굽도리 · 처마 — r 그대로(가장 앞)라 본체보다 도드라진다
+    lathe(name + "_joint", [(RB + 0.028, zb0), (RB + 0.028, zb1)], mat_joint, zscale=zscale, gaps=gaps)
     lathe(name + "_plinth", [(r, z0), (r, zb0), (RB, zb0)], mat_stone, zscale=zscale, gaps=gaps)
     lathe(name + "_cornice", [(RB, zb1), (r, zb1 + 0.07), (r, z1)], mat_stone, zscale=zscale, gaps=gaps)
 
     sd = 987
+
     def rnd():
         nonlocal sd
         sd = (sd * 1103515245 + 12345) & 0x7FFFFFFF
         return (sd % 10000) / 10000.0
 
-    h = (zb1 - zb0) / courses
+    ws = [0.80 + rnd() * 0.55 for _ in range(courses)]     # ① 단 높이를 흔들고 정규화
+    tot = sum(ws)
     step = 360.0 / n
-    for c in range(courses):
-        za, zz = zb0 + c * h, zb0 + (c + 1) * h - h * 0.11    # 위 11% = 가로 줄눈
+    zc = zb0
+    for c, w in enumerate(ws):
+        h = (zb1 - zb0) * w / tot
+        za, zz = zc, zc + h * 0.94                          # 위 6% = 가로 줄눈(얇게)
+        zc += h
         a = step * (0.5 if c % 2 else 0.0)
         while a < 360.0:
-            w = step * (0.55 + rnd() * 1.05)                  # ② 칸 너비 흔들기
-            back = (0.02 + rnd() * 0.07) if rnd() < 0.16 else 0.0             # ③ 빠진 돌
+            bw = step * (0.62 + rnd() * 0.95)
+            depth = (rnd() - 0.5) * 0.030                   # ② 모든 돌에 미세 요철
+            if rnd() < 0.04:
+                depth += 0.035 + rnd() * 0.030              # ② 드물게 물러난 돌
             lathe("%s_c%d_%d" % (name, c, int(a * 10)),
-                  [(RB + back, za), (RB + back, zz)], mat_stone, seg=96, zscale=zscale,
-                  gaps=list(gaps) + [((a + w * 0.88) % 360.0, a % 360.0)])
-            a += w
+                  [(RB + depth, za), (RB + depth, zz)], mat_stone, seg=96, zscale=zscale,
+                  gaps=list(gaps) + [((a + bw * 0.94) % 360.0, a % 360.0)])   # ③ 세로 줄눈 얇게
+            a += bw
 
 
 def backsquash(back=90.0, min_k=0.34, width=72.0):
@@ -381,8 +391,8 @@ def build(a):
     else:
         m_wall, m_seat = mat("wall", v_wall, 0.80), mat("seat", v_seat)
     m_dark = mat("dark", v_dark)
-    m_joint = mat("joint", tuple(x * 0.62 for x in v_wall) if isinstance(v_wall, tuple)
-                  else v_wall * 0.62)
+    m_joint = mat("joint", tuple(x * 0.80 for x in v_wall) if isinstance(v_wall, tuple)
+                  else v_wall * 0.80)
 
     # 바닥 — Sim 원 그대로. 이 안에는 아무것도 없다(§1 계약)
     if a.detail:
@@ -481,8 +491,9 @@ def build(a):
                 faces.append((b, b + 1, b + 2, b + 3))
             mesh_from("fg_tooth%d" % i, verts, faces, m_dark)
 
-    if a.detail:
-        # 식생([15]§10.13 #9) — 계단 틈·벽 아래. 화면에선 몇 픽셀이지만 '관리되지 않음'을 말한다
+    if a.veg:
+        # 식생([15]§10.13 #9) — **기본 꺼짐.** 라니스타 지시로 제거했다.
+        # 화면에서 몇 픽셀짜리 검은 점으로만 남아 폐허감보다 얼룩으로 읽혔다.
         m_veg = mat("veg", (0.10, 0.14, 0.06), 1.0)
         sd2 = 4242
         for _i in range(26):
