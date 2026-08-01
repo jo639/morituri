@@ -49,6 +49,7 @@ def parse_args():
     p.add_argument("--b2", action="store_true", help="B2 재질 팔레트(§10.5) 적용")
     p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
+    p.add_argument("--back-squash", type=float, default=0.44, help="뒤쪽 구조물 압축(1=압축 없음)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
     return p.parse_args(argv)
@@ -189,12 +190,35 @@ def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=5, n=80, zscale=
         za, zz = zb0 + c * h, zb0 + (c + 1) * h - h * 0.11    # 위 11% = 가로 줄눈
         a = step * (0.5 if c % 2 else 0.0)
         while a < 360.0:
-            w = step * (0.72 + rnd() * 0.70)                  # ② 칸 너비 흔들기
-            back = 0.085 if rnd() < 0.05 else 0.0             # ③ 빠진 돌
+            w = step * (0.55 + rnd() * 1.05)                  # ② 칸 너비 흔들기
+            back = (0.02 + rnd() * 0.07) if rnd() < 0.16 else 0.0             # ③ 빠진 돌
             lathe("%s_c%d_%d" % (name, c, int(a * 10)),
                   [(RB + back, za), (RB + back, zz)], mat_stone, seg=96, zscale=zscale,
                   gaps=list(gaps) + [((a + w * 0.88) % 360.0, a % 360.0)])
             a += w
+
+
+def backsquash(back=90.0, min_k=0.34, width=72.0):
+    """뒤쪽 구조물만 낮춘다 — **무대 세트 수법**.
+
+    화면 세로 = 0.342·y + 0.940·z 이고 프레임 위 끝이 +6.60 m다. 아레나 뒤 가장자리가
+    이미 4.10 m를 먹으므로 **뒤쪽이 쓸 수 있는 월드 높이는 2.66 m뿐**이다.
+    포디움 벽 3.5 m 하나가 그 예산을 다 먹고 넘쳐서 좌석이 들어갈 자리가 없었다.
+
+    카메라를 올리면 해결되지만 `CamTilt`는 스프라이트 베이크와 묶여 있다(§2.4.4 규칙 1).
+    한 각도에서만 보는 그림이므로 **뒤쪽만 납작하게** 만든다 — 옆쪽(y≈0)은 화면 여유가
+    7 m라 그대로 두고, 뒤쪽만 눌러 좌석이 벽 위로 올라오게 한다."""
+    def f(a):
+        d = abs(((a - back + 180.0) % 360.0) - 180.0)
+        if d >= width:
+            return 1.0
+        return min_k + (1.0 - min_k) * (d / width)
+    return f
+
+
+def combine(*fns):
+    """여러 zscale을 곱해 합친다(컷어웨이 × 뒤쪽 압축)."""
+    return lambda a: math.prod(f(a) for f in fns)
 
 
 def periodic_gaps(a0, a1, n, duty=0.5):
@@ -217,7 +241,7 @@ def build(a):
         # B2 재질 팔레트(§10.5) — 값 3단은 유지하고 색만 입힌다. 재질이 갈려야 형태가 읽힌다.
         v_floor = (0.74, 0.55, 0.35)     # 붉은 모래 — 초점
         v_wall  = (0.50, 0.47, 0.41)     # 트래버틴 — 중간
-        v_seat  = (0.24, 0.22, 0.20)     # 관중석 구조 — 프레임
+        v_seat  = (0.42, 0.39, 0.34)     # 관중석 석회석 — 참고 이미지처럼 밝게(열이 읽혀야 한다)
         v_dark  = (0.045, 0.040, 0.038)  # 검은 공동
     else:
         v_floor = 0.62 if a.values else 0.5      # §10.3: 초점(밝게)
@@ -242,7 +266,8 @@ def build(a):
     # 앞쪽은 컷어웨이: 낮은 턱(lip)만 남긴다 → 남단 검투사를 가리지 않는다(결정 3).
     WH = a.wall_h
     LIP = 0.35 / WH                      # 앞쪽에 남길 높이 비율(≈0.35 m 턱)
-    cut = cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=LIP)
+    squash = backsquash(min_k=a.back_squash)
+    cut = combine(cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=LIP), squash)
     if a.detail:
         # 화면 상단의 **유일한** 요소다(§10.11) — 디테일 예산을 여기 몰아넣는다.
         wall_courses("podium", ARENA_R, 0.0, WH, m_wall, m_joint,
@@ -261,13 +286,13 @@ def build(a):
     # 관중석 3단 — 통로(vomitoria) 4곳으로 끊는다(§10.4 #3). 앞쪽은 같은 컷어웨이로 사라진다.
     VOM = [(43.0, 47.0), (133.0, 137.0), (223.0, 227.0), (313.0, 317.0)]
     # 좌석 열 — 큰 단 3개는 '회색 쐐기'로 보인다. 실제로 보이는 건 좌·우 가장자리뿐이지만(§10.11)
-    # 거기서 관중석으로 읽히려면 열이 있어야 한다. 라이저 0.42 · 트레드 0.78 (실제 카베아 비율)
+    # 거기서 관중석으로 읽히려면 열이 있어야 한다. 라이저 0.30 · 트레드 0.55 — 참고 이미지의 촘촘한 열
     cavea = [(ARENA_R + 0.6, WH), (ARENA_R + 2.4, WH)]          # 순회 통로
     rr, zz = ARENA_R + 2.4, WH
-    for _row in range(14):
-        zz += 0.42; cavea.append((rr, zz))                       # 라이저
-        rr += 0.78; cavea.append((rr, zz))                       # 트레드
-    cut_seat = cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0)   # 앞쪽 관중석은 통째로 없앤다
+    for _row in range(22):
+        zz += 0.30; cavea.append((rr, zz))                       # 라이저
+        rr += 0.55; cavea.append((rr, zz))                       # 트레드
+    cut_seat = combine(cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0), squash)
     lathe("cavea", cavea, m_seat, gaps=VOM, zscale=cut_seat)
 
     # 아케이드 — 기본 OFF. **이 카메라에서는 영영 안 보인다**(§10.11).
