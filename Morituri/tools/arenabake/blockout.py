@@ -50,6 +50,7 @@ def parse_args():
     p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
     p.add_argument("--back-squash", type=float, default=1.00, help="뒤쪽 구조물 압축(1=압축 없음)")
+    p.add_argument("--normal", action="store_true", help="노멀맵 패스도 함께 출력(B3)")
     p.add_argument("--ruin", type=float, default=0.22, help="무너진 윗선 진폭(0=평평)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
@@ -132,7 +133,7 @@ def cutaway(near_deg=270.0, keep=110.0, fade=45.0, floor=0.0):
     return f
 
 
-def stone_material(name, base, scale=6.0, bevel=0.035, grime=0.55, rough=0.82):
+def stone_material(name, base, scale=6.0, bevel=0.035, grime=0.55, rough=0.82, streak=0.0):
     """풍화된 석재. **블록아웃과 사진을 가르는 것은 색이 아니라 이 세 가지다:**
 
       ① 모서리 마모 — 실제 돌은 모서리가 깨져 둥글다. 각진 상자는 그 자체로 '3D 블록아웃'이다.
@@ -171,6 +172,21 @@ def stone_material(name, base, scale=6.0, bevel=0.035, grime=0.55, rough=0.82):
         return n
 
     s = add(add(mul(bw, "Val", 0.42), mul(nz, "Fac", 0.24)), mul(ao, "AO", grime))
+    if streak > 0.0:
+        # 흘러내린 자국 — 노이즈를 세로로 길게 늘여 **아래로 흐른 얼룩**을 만든다.
+        # 규칙적인 무늬가 아니라 '무언가 흘렀다'는 흔적이라 서사가 붙는다(핏자국·빗물).
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        mp = nt.nodes.new("ShaderNodeMapping")
+        mp.inputs["Scale"].default_value = (5.0, 5.0, 0.22)   # z만 눌러 세로로 늘인다
+        nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+        st = nt.nodes.new("ShaderNodeTexNoise")
+        st.inputs["Scale"].default_value = 3.0
+        st.inputs["Detail"].default_value = 5.0
+        nt.links.new(mp.outputs["Vector"], st.inputs["Vector"])
+        sub = nt.nodes.new("ShaderNodeMath"); sub.operation = "SUBTRACT"
+        nt.links.new(s.outputs[0], sub.inputs[0])
+        nt.links.new(mul(st, "Fac", streak).outputs[0], sub.inputs[1])
+        s = sub
 
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     r, g, b = base
@@ -360,7 +376,7 @@ def build(a):
 
     m_floor = mat("floor", v_floor, 0.95)
     if a.b2:
-        m_wall = stone_material("wall", v_wall, scale=7.0, bevel=0.04)
+        m_wall = stone_material("wall", v_wall, scale=7.0, bevel=0.04, streak=0.34)
         m_seat = stone_material("seat", v_seat, scale=14.0, bevel=0.03, grime=0.62)
     else:
         m_wall, m_seat = mat("wall", v_wall, 0.80), mat("seat", v_seat)
@@ -488,32 +504,26 @@ def build(a):
 
     if not a.no_velarium and a.vela > 0:
         # 차양 — 프레임 밖 상공. 보이지 않고 그림자만 남는다(라니스타 지시).
-        H = 20.0
+        # 실제 벨라리움은 **관중석 위**에 걸리고 가운데가 뚫려 있다(oculus). 아레나 위가 아니다.
+        # 그리고 그림자 위치를 인위로 맞추지 않는다 — 광원이 고도 41°로 비스듬한데 그림자만
+        # 한가운데 동그랗게 앉아 있으면 빛과 그림자가 서로 다른 말을 한다.
+        # 제자리에 걸면 그림자는 광원 반대쪽(화면 오른쪽·앞쪽)으로 눕는다. 그게 현실적이다.
         Lx, Ly, Lz = sun_vec()
-        # 높이 H의 점 p가 만드는 그림자는 p − L·(H/Lz)에 떨어진다.
-        # 그림자를 원점(아레나 중앙)에 놓으려면 p = +L_xy·(H/Lz).
-        # ⚠ 초판은 부호가 반대였다. 평행 슬랫은 범위가 워낙 넓어 우연히 덮여 안 드러났고,
-        #   방사 돛으로 바꾸자 그림자가 통째로 아레나 밖으로 나가면서 발각됐다.
-        off = Vector((Lx / Lz * H, Ly / Lz * H))
-        # 천은 빛을 완전히 막지 않는다. 알파를 주면 그림자가 '검은 막대'가 아니라 **눌린 띠**가 된다.
         m_vela = mat("velarium", 0.5)
         bsdf = m_vela.node_tree.nodes["Principled BSDF"]
         bsdf.inputs["Alpha"].default_value = 1.0 - 0.42 * a.vela
-        # 실제 벨라리움은 **중앙 고리에서 방사로 뻗은 삼각 돛**이고 가운데는 뚫려 있다(oculus).
-        # 초판은 평행 슬랫이라 그림자가 곧은 줄무늬 — 차양이 아니라 블라인드였다.
-        # 방사로 바꾸면 쐐기 그림자 + 가운데 밝은 원이 나온다. 아레나 중앙이 밝아
-        # **전투가 벌어지는 자리에 시선이 모이는** 부수 효과까지 얻는다.
         verts, faces = [], []
-        R_IN, R_OUT, N, DUTY = 4.5, 26.0, 24, 0.62
+        R_IN, R_OUT, N, DUTY = 9.0, 34.0, 24, 0.62
+        Z_IN, Z_OUT = 11.5, 14.5        # 안쪽이 처진 원뿔 — 평평한 판보다 그림자가 자연스럽게 눕는다
         step = 2.0 * math.pi / N
         for i in range(N):
             a0 = i * step
             a1 = a0 + step * DUTY
-            for (rr0, rr1) in ((R_IN, R_OUT),):
-                b = len(verts)
-                for (rr, aa) in ((rr0, a0), (rr1, a0), (rr1, a1), (rr0, a1)):
-                    verts.append((math.cos(aa) * rr + off.x, math.sin(aa) * rr + off.y, H))
-                faces.append((b, b + 1, b + 2, b + 3))
+            b = len(verts)
+            for (rr, aa, zz) in ((R_IN, a0, Z_IN), (R_OUT, a0, Z_OUT),
+                                 (R_OUT, a1, Z_OUT), (R_IN, a1, Z_IN)):
+                verts.append((math.cos(aa) * rr, math.sin(aa) * rr, zz))
+            faces.append((b, b + 1, b + 2, b + 3))
         ob = mesh_from("velarium", verts, faces, m_vela)
         ob.visible_camera = False          # 혹시 프레임에 걸려도 안 보이게 (그림자는 유지)
 
@@ -565,6 +575,86 @@ def setup(a):
     bpy.context.collection.objects.link(sun)
 
 
+def to_normal_pass():
+    """노멀맵 출력([15]§10.8 B3) — **머티리얼을 이미션으로 갈아** 노멀을 그대로 그린다.
+
+    ⚠ 컴포지터 경로는 못 쓴다. Blender 5.x는 `scene.node_tree`가 사라졌고
+      (`compositing_node_group`으로 대체), 새 컴포지터에는 `CompositorNodeMixRGB`·`Math`·
+      `VecMath`가 아예 등록돼 있지 않다(실측). 인코딩(×0.5+0.5)을 할 노드가 없다.
+
+    대신 각 머티리얼의 **BSDF Normal 입력에 물린 소켓**을 그대로 가져다 쓴다 —
+    거기엔 이미 Bump와 Bevel이 합쳐져 있으므로 **모래 요철·모서리 마모까지 포함된** 노멀이 나온다.
+    (Geometry 노드의 Normal을 쓰면 그 둘이 빠진다.)
+
+    정사영 카메라라 카메라 공간 노멀이 곧 §3.1 접선공간이다(+x 오른쪽 · +z 화면 밖).
+    §3.1은 아래가 +y인데 여기 y는 위가 +다 — **뷰어에서 g를 한 번 뒤집으면 맞는다**(B4).
+    """
+    for m in bpy.data.materials:
+        nt = getattr(m, "node_tree", None)
+        if not nt:
+            continue
+        out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+        bsdf = nt.nodes.get("Principled BSDF")
+        if not out:
+            continue
+        if bsdf is not None and bsdf.inputs["Normal"].is_linked:
+            src = bsdf.inputs["Normal"].links[0].from_socket
+        else:
+            src = nt.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
+        vt = nt.nodes.new("ShaderNodeVectorTransform")
+        vt.vector_type, vt.convert_from, vt.convert_to = "VECTOR", "WORLD", "CAMERA"
+        nt.links.new(src, vt.inputs[0])
+        mul = nt.nodes.new("ShaderNodeVectorMath"); mul.operation = "MULTIPLY"
+        mul.inputs[1].default_value = (0.5, 0.5, 0.5)
+        nt.links.new(vt.outputs[0], mul.inputs[0])
+        addv = nt.nodes.new("ShaderNodeVectorMath"); addv.operation = "ADD"
+        addv.inputs[1].default_value = (0.5, 0.5, 0.5)
+        nt.links.new(mul.outputs[0], addv.inputs[0])
+        em = nt.nodes.new("ShaderNodeEmission")
+        nt.links.new(addv.outputs[0], em.inputs["Color"])
+        nt.links.new(em.outputs[0], out.inputs["Surface"])
+
+    sc = bpy.context.scene
+    sc.view_settings.exposure = 0.0            # 노멀은 색이 아니라 데이터다 — 노출을 먹이면 안 된다
+    sc.view_settings.view_transform = "Standard"
+    sc.cycles.samples = 24                     # 이미션뿐이라 샘플이 많이 필요 없다
+    bg = sc.world.node_tree.nodes["Background"]
+    bg.inputs[0].default_value = (0.5, 0.5, 0.5, 1)   # 빈 곳 = 평면 노멀(0,0,1)의 인코딩값
+    bg.inputs[1].default_value = 1.0
+
+
+def _unused_setup_normal_pass(out_dir, name):
+    """노멀맵 출력([15]§10.8 B3) — 카메라 공간 노멀 패스를 별도 파일로 뽑는다.
+
+    A2·A3은 절차 텍스처에서 Sobel로 높이를 *추정*했다. 여기서는 지오메트리에서
+    바로 나온다 — 코드는 줄고 결과는 좋아진다(§10.6).
+    카메라가 정사영이라 **카메라 공간 노멀이 곧 §3.1의 접선공간**이다(+x 오른쪽 · +z 화면 밖).
+    +y만 뒤집으면(§3.1은 아래가 +y) 뷰어 규약과 그대로 맞는다 — 그 반전은 B4에서 한 번에."""
+    # ⚠ Blender 5.x는 `scene.node_tree`가 없다 — 컴포지터가 노드 그룹으로 바뀌었다.
+    #   `scene.compositing_node_group`에 CompositorNodeTree를 새로 만들어 붙인다.
+    #   그리고 `use_pass_normal`을 **먼저** 켜야 RLayers 노드에 Normal 출력이 생긴다(실측).
+    sc = bpy.context.scene
+    vl = bpy.context.view_layer
+    vl.use_pass_normal = True
+    ng = bpy.data.node_groups.new("arena_comp", "CompositorNodeTree")
+    sc.compositing_node_group = ng
+    nt = ng
+    rl = nt.nodes.new("CompositorNodeRLayers")
+    # 노멀은 −1~1이라 0~1로 옮겨 담는다(일반적인 파란 노멀맵 인코딩)
+    mul = nt.nodes.new("CompositorNodeMixRGB"); mul.blend_type = "MULTIPLY"
+    mul.inputs[0].default_value = 1.0; mul.inputs[2].default_value = (0.5, 0.5, 0.5, 1)
+    addn = nt.nodes.new("CompositorNodeMixRGB"); addn.blend_type = "ADD"
+    addn.inputs[0].default_value = 1.0; addn.inputs[2].default_value = (0.5, 0.5, 0.5, 1)
+    fo = nt.nodes.new("CompositorNodeOutputFile")
+    fo.base_path = out_dir
+    fo.file_slots[0].path = name + "_"
+    fo.format.file_format = "PNG"
+    fo.format.color_depth = "16"          # 8비트면 노멀에 밴딩이 보인다
+    nt.links.new(rl.outputs["Normal"], mul.inputs[1])
+    nt.links.new(mul.outputs[0], addn.inputs[1])
+    nt.links.new(addn.outputs[0], fo.inputs[0])
+
+
 def main():
     a = parse_args()
     clear()
@@ -574,6 +664,13 @@ def main():
     bpy.context.scene.render.filepath = out
     bpy.ops.render.render(write_still=True)
     print("WROTE", out)
+    if a.normal:
+        # 알베도를 먼저 굽고 나서 머티리얼을 갈아엎는다(되돌릴 필요가 없다 — 프로세스가 곧 끝난다)
+        to_normal_pass()
+        nout = os.path.splitext(out)[0] + "_n.png"
+        bpy.context.scene.render.filepath = nout
+        bpy.ops.render.render(write_still=True)
+        print("WROTE", nout)
 
 
 main()
