@@ -130,7 +130,7 @@ def cutaway(near_deg=270.0, keep=110.0, fade=45.0, floor=0.0):
     return f
 
 
-def sand_bump(m, rake=0.65, grain=0.35, dist=0.03):
+def sand_bump(m, rake=0.70, grain=0.30, dist=0.03):
     """모래 요철을 **절차 텍스처**로 준다. 지오메트리로 깎으면 폴리곤이 폭발하고,
     어차피 B3에서 노멀맵으로 구워질 것이라 여기서 셰이더로 넣는 게 맞다.
     rake = 동심 갈퀴 자국(Wave RINGS) · grain = 모래알(Noise)."""
@@ -139,7 +139,7 @@ def sand_bump(m, rake=0.65, grain=0.35, dist=0.03):
     wave = nt.nodes.new("ShaderNodeTexWave")
     wave.wave_type = "RINGS"
     wave.inputs["Scale"].default_value = 5.5
-    wave.inputs["Distortion"].default_value = 2.5
+    wave.inputs["Distortion"].default_value = 3.4
     wave.inputs["Detail"].default_value = 2.0
     noise = nt.nodes.new("ShaderNodeTexNoise")
     noise.inputs["Scale"].default_value = 60.0
@@ -149,7 +149,7 @@ def sand_bump(m, rake=0.65, grain=0.35, dist=0.03):
     add = nt.nodes.new("ShaderNodeMath"); add.operation = "ADD"
     bump = nt.nodes.new("ShaderNodeBump")
     bump.inputs["Strength"].default_value = 1.0
-    bump.inputs["Distance"].default_value = dist * 2.2
+    bump.inputs["Distance"].default_value = dist * 5.0
     nt.links.new(wave.outputs["Fac"], mr.inputs[0])
     nt.links.new(noise.outputs["Fac"], mg.inputs[0])
     nt.links.new(mr.outputs[0], add.inputs[0])
@@ -159,17 +159,42 @@ def sand_bump(m, rake=0.65, grain=0.35, dist=0.03):
     return m
 
 
-def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=6, n=44, zscale=None, gaps=()):
+def wall_courses(name, r, z0, z1, mat_stone, mat_joint, courses=5, n=80, zscale=None, gaps=()):
     """포디움 벽 석재 — 돌(앞)/줄눈(뒤) 2겹. 앞 겹에 구멍을 내면 뒤의 어둠이 줄눈으로 보인다.
-    단마다 반 칸씩 밀어 **엇갈림 쌓기**. 안쪽으로는 절대 튀어나오지 않는다 —
-    r=12는 Sim 충돌 경계다(§1). 줄눈은 바깥(r+)으로만 판다."""
-    lathe(name + "_joint", [(r + 0.035, z0), (r + 0.035, z1)], mat_joint, zscale=zscale, gaps=gaps)
-    h = (z1 - z0) / courses
+    **안쪽으로는 한 톨도 안 나온다** — r=12는 Sim 충돌 경계다(§1). 벽면 본체를 바깥으로 물리고
+    굽도리·처마만 r=12에 둬서 '튀어나온 것처럼' 보이게 한다.
+
+    균일 격자만으로는 벽돌담이지 콜로세움이 아니다. 세 가지로 깬다:
+      ① 굽도리(plinth)·처마(cornice) — 위아래를 매듭지어 벽면에 시작과 끝을 준다
+      ② 칸 너비를 흔든다 — 같은 폭이 80개 늘어서면 눈이 돌보다 격자를 먼저 본다
+      ③ 빠진 돌 — 가끔 한 칸을 뒤로 물려 세월을 넣는다(§10.1 진단 5: 규칙성 제거)"""
+    PLINTH, CORNICE = 0.42, 0.30
+    RB = r + 0.06                        # 벽면 본체는 바깥으로 물린다
+    zb0, zb1 = z0 + PLINTH, z1 - CORNICE
+
+    lathe(name + "_joint", [(RB + 0.035, zb0), (RB + 0.035, zb1)], mat_joint, zscale=zscale, gaps=gaps)
+    # ① 굽도리 · 처마 — r 그대로(가장 앞)라 본체보다 도드라진다
+    lathe(name + "_plinth", [(r, z0), (r, zb0), (RB, zb0)], mat_stone, zscale=zscale, gaps=gaps)
+    lathe(name + "_cornice", [(RB, zb1), (r, zb1 + 0.07), (r, z1)], mat_stone, zscale=zscale, gaps=gaps)
+
+    sd = 987
+    def rnd():
+        nonlocal sd
+        sd = (sd * 1103515245 + 12345) & 0x7FFFFFFF
+        return (sd % 10000) / 10000.0
+
+    h = (zb1 - zb0) / courses
+    step = 360.0 / n
     for c in range(courses):
-        za, zb = z0 + c * h, z0 + (c + 1) * h - h * 0.10      # 위쪽 10% = 가로 줄눈
-        phase = (360.0 / n) * (0.5 if c % 2 else 0.0)          # 엇갈림
-        lathe("%s_c%d" % (name, c), [(r, za), (r, zb)], mat_stone,
-              zscale=zscale, gaps=list(gaps) + periodic_gaps(phase, phase + 360.0, n, duty=0.10))
+        za, zz = zb0 + c * h, zb0 + (c + 1) * h - h * 0.11    # 위 11% = 가로 줄눈
+        a = step * (0.5 if c % 2 else 0.0)
+        while a < 360.0:
+            w = step * (0.72 + rnd() * 0.70)                  # ② 칸 너비 흔들기
+            back = 0.085 if rnd() < 0.05 else 0.0             # ③ 빠진 돌
+            lathe("%s_c%d_%d" % (name, c, int(a * 10)),
+                  [(RB + back, za), (RB + back, zz)], mat_stone, seg=96, zscale=zscale,
+                  gaps=list(gaps) + [((a + w * 0.88) % 360.0, a % 360.0)])
+            a += w
 
 
 def periodic_gaps(a0, a1, n, duty=0.5):
@@ -235,11 +260,13 @@ def build(a):
 
     # 관중석 3단 — 통로(vomitoria) 4곳으로 끊는다(§10.4 #3). 앞쪽은 같은 컷어웨이로 사라진다.
     VOM = [(43.0, 47.0), (133.0, 137.0), (223.0, 227.0), (313.0, 317.0)]
-    cavea = [(ARENA_R + 0.6, WH), (ARENA_R + 2.4, WH),          # 순회 통로
-             (ARENA_R + 2.4, WH + 1.2), (ARENA_R + 5.6, WH + 1.2),   # 1단
-             (ARENA_R + 5.6, WH + 3.0), (ARENA_R + 9.2, WH + 3.0),   # 2단
-             (ARENA_R + 9.2, WH + 5.2), (ARENA_R + 13.4, WH + 5.2),  # 3단
-             (ARENA_R + 13.4, WH + 8.0), (ARENA_R + 17.0, WH + 8.0)]
+    # 좌석 열 — 큰 단 3개는 '회색 쐐기'로 보인다. 실제로 보이는 건 좌·우 가장자리뿐이지만(§10.11)
+    # 거기서 관중석으로 읽히려면 열이 있어야 한다. 라이저 0.42 · 트레드 0.78 (실제 카베아 비율)
+    cavea = [(ARENA_R + 0.6, WH), (ARENA_R + 2.4, WH)]          # 순회 통로
+    rr, zz = ARENA_R + 2.4, WH
+    for _row in range(14):
+        zz += 0.42; cavea.append((rr, zz))                       # 라이저
+        rr += 0.78; cavea.append((rr, zz))                       # 트레드
     cut_seat = cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0)   # 앞쪽 관중석은 통째로 없앤다
     lathe("cavea", cavea, m_seat, gaps=VOM, zscale=cut_seat)
 
