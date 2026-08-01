@@ -616,7 +616,12 @@ def to_normal_pass():
         vt.vector_type, vt.convert_from, vt.convert_to = "VECTOR", "WORLD", "CAMERA"
         nt.links.new(src, vt.inputs[0])
         mul = nt.nodes.new("ShaderNodeVectorMath"); mul.operation = "MULTIPLY"
-        mul.inputs[1].default_value = (0.5, 0.5, 0.5)
+        # y·z 부호를 뒤집으면서 인코딩한다 — Blender 카메라 공간과 [15]§3.1이 서로 반대다.
+        #   §3.1: +x 오른쪽 · **+y 아래** · **+z 화면 밖(관중 쪽)**
+        #   Blender 카메라 공간: +y 위 · +z 화면 안쪽
+        # 실측으로 확정한 값이다 — 바닥 평균이 (−0.003, +0.928, −0.349)로 나왔고
+        # 기대한 (0, 0.940, +0.342)와 크기는 맞고 z 부호만 반대였다(두 부각 모두 동일).
+        mul.inputs[1].default_value = (0.5, -0.5, -0.5)
         nt.links.new(vt.outputs[0], mul.inputs[0])
         addv = nt.nodes.new("ShaderNodeVectorMath"); addv.operation = "ADD"
         addv.inputs[1].default_value = (0.5, 0.5, 0.5)
@@ -627,7 +632,9 @@ def to_normal_pass():
 
     sc = bpy.context.scene
     sc.view_settings.exposure = 0.0            # 노멀은 색이 아니라 데이터다 — 노출을 먹이면 안 된다
-    sc.view_settings.view_transform = "Standard"
+    # ⚠ Standard도 **sRGB 전달함수를 먹인다.** 첫 베이크에서 x=0이어야 할 바닥이 +0.47로 나왔다
+    #   (선형 0.5 → sRGB 0.735 → 187). 노멀은 데이터이므로 반드시 Raw(선형 그대로)로 쓴다.
+    sc.view_settings.view_transform = "Raw"
     sc.cycles.samples = 24                     # 이미션뿐이라 샘플이 많이 필요 없다
     bg = sc.world.node_tree.nodes["Background"]
     bg.inputs[0].default_value = (0.5, 0.5, 0.5, 1)   # 빈 곳 = 평면 노멀(0,0,1)의 인코딩값
