@@ -26,7 +26,7 @@ from mathutils import Vector
 ARENA_R   = 12.0          # Sim ArenaRadius (§1) — 이 원 안에는 아무것도 세우지 않는다
 PX_PER_M  = 400.0 / 12.0
 ORTHO_W   = 940.0 / PX_PER_M      # 28.2 m
-ASPECT    = 940.0 / 440.0
+ASPECT    = 940.0 / 560.0   # [15]§2.4 개정 — 무대 세로 560(라니스타 결정 ⓒ)
 ELEV      = 20.0                  # 기본 부각 (§2.4.1). 줌 벌은 15°
 SUN_AZ, SUN_EL = 233.0, 41.0      # §3.3
 
@@ -129,6 +129,69 @@ def cutaway(near_deg=270.0, keep=110.0, fade=45.0, floor=0.0):
             return floor
         return floor + (1.0 - floor) * (d - keep) / fade
     return f
+
+
+def stone_material(name, base, scale=6.0, bevel=0.035, grime=0.55, rough=0.82):
+    """풍화된 석재. **블록아웃과 사진을 가르는 것은 색이 아니라 이 세 가지다:**
+
+      ① 모서리 마모 — 실제 돌은 모서리가 깨져 둥글다. 각진 상자는 그 자체로 '3D 블록아웃'이다.
+         `Bevel` 노드는 지오메트리 없이 셰이딩 단계에서 모서리를 굴린다(폴리곤 비용 0).
+      ② 틈의 때 — 때는 **오목한 곳에 쌓인다**. AO를 마스크로 써서 오목한 곳만 어둡게 하면
+         '더러워 보이는' 게 아니라 '오래돼 보인다'. 이 한 수가 가장 크다.
+      ③ 돌마다 다른 색 — Voronoi 셀 난수로 블록별 톤을 흔든다. 균일한 색은 페인트지 석재가 아니다.
+
+    세 신호를 스칼라 하나로 합쳐 ColorRamp에 태운다(Mix 노드 버전 차이를 피한다)."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+
+    vor = nt.nodes.new("ShaderNodeTexVoronoi")          # ③ 블록별 난수
+    vor.inputs["Scale"].default_value = scale
+    bw = nt.nodes.new("ShaderNodeRGBToBW")
+    nt.links.new(vor.outputs["Color"], bw.inputs["Color"])
+
+    nz = nt.nodes.new("ShaderNodeTexNoise")             # 얼룩·풍화
+    nz.inputs["Scale"].default_value = scale * 2.5
+    nz.inputs["Detail"].default_value = 8.0
+
+    ao = nt.nodes.new("ShaderNodeAmbientOcclusion")     # ② 틈의 때
+    ao.inputs["Distance"].default_value = 0.45
+
+    def mul(src, out, k):
+        n = nt.nodes.new("ShaderNodeMath"); n.operation = "MULTIPLY"
+        n.inputs[1].default_value = k
+        nt.links.new(src.outputs[out], n.inputs[0])
+        return n
+
+    def add(a, b):
+        n = nt.nodes.new("ShaderNodeMath"); n.operation = "ADD"
+        nt.links.new(a.outputs[0], n.inputs[0]); nt.links.new(b.outputs[0], n.inputs[1])
+        return n
+
+    s = add(add(mul(bw, "Val", 0.42), mul(nz, "Fac", 0.24)), mul(ao, "AO", grime))
+
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    r, g, b = base
+    ramp.color_ramp.elements[0].position = 0.15
+    ramp.color_ramp.elements[0].color = (r * 0.34, g * 0.33, b * 0.30, 1)   # 틈의 때
+    ramp.color_ramp.elements[1].position = 0.95
+    ramp.color_ramp.elements[1].color = (min(1, r * 1.22), min(1, g * 1.20), min(1, b * 1.14), 1)
+    e = ramp.color_ramp.elements.new(0.55)
+    e.color = (r, g, b, 1)
+    nt.links.new(s.outputs[0], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = rough
+
+    bev = nt.nodes.new("ShaderNodeBevel")               # ① 모서리 마모
+    bev.inputs["Radius"].default_value = bevel
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.35
+    bump.inputs["Distance"].default_value = 0.02
+    nt.links.new(nz.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bev.outputs["Normal"], bump.inputs["Normal"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
 
 
 def sand_bump(m, rake=0.70, grain=0.30, dist=0.03):
@@ -249,8 +312,13 @@ def build(a):
         v_seat  = 0.20 if a.values else 0.5      #         프레임(어둡게)
         v_dark  = 0.03
 
-    m_floor, m_wall, m_seat, m_dark = (mat("floor", v_floor, 0.95), mat("wall", v_wall, 0.80),
-                                       mat("seat", v_seat), mat("dark", v_dark))
+    m_floor = mat("floor", v_floor, 0.95)
+    if a.b2:
+        m_wall = stone_material("wall", v_wall, scale=7.0, bevel=0.04)
+        m_seat = stone_material("seat", v_seat, scale=14.0, bevel=0.03, grime=0.62)
+    else:
+        m_wall, m_seat = mat("wall", v_wall, 0.80), mat("seat", v_seat)
+    m_dark = mat("dark", v_dark)
     m_joint = mat("joint", tuple(x * 0.62 for x in v_wall) if isinstance(v_wall, tuple)
                   else v_wall * 0.62)
 
@@ -284,7 +352,9 @@ def build(a):
               m_dark, gaps=[(g1, g0)], zscale=cut)
 
     # 관중석 3단 — 통로(vomitoria) 4곳으로 끊는다(§10.4 #3). 앞쪽은 같은 컷어웨이로 사라진다.
-    VOM = [(43.0, 47.0), (133.0, 137.0), (223.0, 227.0), (313.0, 317.0)]
+    # 방사형 계단(vomitoria) — 참고 이미지에서 관중석을 가장 알아보게 만드는 요소.
+    # 열이 통째로 이어지면 골판지로 보인다. 쐐기로 끊어야 '구역'이 생긴다.
+    VOM = [(a - 2.6, a + 2.6) for a in (25.0, 65.0, 115.0, 155.0, 205.0, 245.0, 295.0, 335.0)]
     # 좌석 열 — 큰 단 3개는 '회색 쐐기'로 보인다. 실제로 보이는 건 좌·우 가장자리뿐이지만(§10.11)
     # 거기서 관중석으로 읽히려면 열이 있어야 한다. 라이저 0.30 · 트레드 0.55 — 참고 이미지의 촘촘한 열
     cavea = [(ARENA_R + 0.6, WH), (ARENA_R + 2.4, WH)]          # 순회 통로
@@ -294,6 +364,9 @@ def build(a):
         rr += 0.55; cavea.append((rr, zz))                       # 트레드
     cut_seat = combine(cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0), squash)
     lathe("cavea", cavea, m_seat, gaps=VOM, zscale=cut_seat)
+    # 계단 바닥 — 관중석보다 어둡게 깔아 쐐기가 실루엣으로 읽히게 한다
+    lathe("vom_floor", [(p[0], p[1] - 0.16) for p in cavea], m_dark,
+          gaps=[(v[1], VOM[(i + 1) % len(VOM)][0]) for i, v in enumerate(VOM)], zscale=cut_seat)
 
     # 아케이드 — 기본 OFF. **이 카메라에서는 영영 안 보인다**(§10.11).
     #   화면 세로 = 0.342·y + 0.940·z, 프레임 절반 ±6.60 m
