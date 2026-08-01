@@ -490,19 +490,30 @@ def build(a):
         # 차양 — 프레임 밖 상공. 보이지 않고 그림자만 남는다(라니스타 지시).
         H = 20.0
         Lx, Ly, Lz = sun_vec()
-        off = Vector((-Lx / Lz * H, -Ly / Lz * H))   # 그림자가 아레나에 오도록 반대로 민다
+        # 높이 H의 점 p가 만드는 그림자는 p − L·(H/Lz)에 떨어진다.
+        # 그림자를 원점(아레나 중앙)에 놓으려면 p = +L_xy·(H/Lz).
+        # ⚠ 초판은 부호가 반대였다. 평행 슬랫은 범위가 워낙 넓어 우연히 덮여 안 드러났고,
+        #   방사 돛으로 바꾸자 그림자가 통째로 아레나 밖으로 나가면서 발각됐다.
+        off = Vector((Lx / Lz * H, Ly / Lz * H))
         # 천은 빛을 완전히 막지 않는다. 알파를 주면 그림자가 '검은 막대'가 아니라 **눌린 띠**가 된다.
         m_vela = mat("velarium", 0.5)
         bsdf = m_vela.node_tree.nodes["Principled BSDF"]
         bsdf.inputs["Alpha"].default_value = 1.0 - 0.42 * a.vela
+        # 실제 벨라리움은 **중앙 고리에서 방사로 뻗은 삼각 돛**이고 가운데는 뚫려 있다(oculus).
+        # 초판은 평행 슬랫이라 그림자가 곧은 줄무늬 — 차양이 아니라 블라인드였다.
+        # 방사로 바꾸면 쐐기 그림자 + 가운데 밝은 원이 나온다. 아레나 중앙이 밝아
+        # **전투가 벌어지는 자리에 시선이 모이는** 부수 효과까지 얻는다.
         verts, faces = [], []
-        SLAT, GAP, N = 1.1, 2.3, 44
+        R_IN, R_OUT, N, DUTY = 4.5, 26.0, 24, 0.62
+        step = 2.0 * math.pi / N
         for i in range(N):
-            y0 = -40.0 + i * (SLAT + GAP)
-            b = len(verts)
-            verts += [(-34.0 + off.x, y0 + off.y, H), (34.0 + off.x, y0 + off.y, H),
-                      (34.0 + off.x, y0 + SLAT + off.y, H), (-34.0 + off.x, y0 + SLAT + off.y, H)]
-            faces.append((b, b + 1, b + 2, b + 3))
+            a0 = i * step
+            a1 = a0 + step * DUTY
+            for (rr0, rr1) in ((R_IN, R_OUT),):
+                b = len(verts)
+                for (rr, aa) in ((rr0, a0), (rr1, a0), (rr1, a1), (rr0, a1)):
+                    verts.append((math.cos(aa) * rr + off.x, math.sin(aa) * rr + off.y, H))
+                faces.append((b, b + 1, b + 2, b + 3))
         ob = mesh_from("velarium", verts, faces, m_vela)
         ob.visible_camera = False          # 혹시 프레임에 걸려도 안 보이게 (그림자는 유지)
 
