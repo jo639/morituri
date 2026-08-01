@@ -29,6 +29,9 @@
     <Content Include="..\Morituri.Headless\melee.html" Link="melee.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\theme.css" Link="theme.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\icons.svg" Link="icons.svg" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 아레나 배경 3D 베이크([15]§10.8 B3) — 부각 20°/15° 두 벌. tools/arenabake로 재생성 -->
+    <Content Include="..\Morituri.Headless\arena_basic.png" Link="arena_basic.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\arena_zoom.png" Link="arena_zoom.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\ui.js" Link="ui.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
