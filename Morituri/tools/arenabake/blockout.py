@@ -49,7 +49,8 @@ def parse_args():
     p.add_argument("--b2", action="store_true", help="B2 재질 팔레트(§10.5) 적용")
     p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
-    p.add_argument("--back-squash", type=float, default=0.44, help="뒤쪽 구조물 압축(1=압축 없음)")
+    p.add_argument("--back-squash", type=float, default=1.00, help="뒤쪽 구조물 압축(1=압축 없음)")
+    p.add_argument("--ruin", type=float, default=0.22, help="무너진 윗선 진폭(0=평평)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
     return p.parse_args(argv)
@@ -177,8 +178,9 @@ def stone_material(name, base, scale=6.0, bevel=0.035, grime=0.55, rough=0.82):
     ramp.color_ramp.elements[0].color = (r * 0.34, g * 0.33, b * 0.30, 1)   # 틈의 때
     ramp.color_ramp.elements[1].position = 0.95
     ramp.color_ramp.elements[1].color = (min(1, r * 1.22), min(1, g * 1.20), min(1, b * 1.14), 1)
-    e = ramp.color_ramp.elements.new(0.55)
-    e.color = (r, g, b, 1)
+    ramp.color_ramp.elements.new(0.38).color = (r * 0.74, g * 0.76, b * 0.80, 1)   # 회색기
+    ramp.color_ramp.elements.new(0.58).color = (r, g, b, 1)
+    ramp.color_ramp.elements.new(0.78).color = (min(1, r * 1.12), g * 1.02, b * 0.86, 1)  # 황토기
     nt.links.new(s.outputs[0], ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = rough
@@ -279,6 +281,50 @@ def backsquash(back=90.0, min_k=0.34, width=72.0):
     return f
 
 
+def ruin(seed=7, amp=0.22, harmonics=(3, 5, 8, 13, 21)):
+    """무너진 실루엣([15]§10.13 #6) — 윗선을 각도에 따라 불규칙하게 낮춘다.
+
+    사진은 **폐허**다. 완벽한 수평선이 하나라도 남아 있으면 도면으로 보인다.
+    난수를 그냥 뿌리면 지글거리므로 서로 안 맞아떨어지는 배음(3·5·8·13·21)의 합으로
+    **연속이면서 주기가 안 읽히는** 곡선을 만든다."""
+    import random
+    rng = random.Random(seed)
+    ph = [rng.random() * 6.2832 for _ in harmonics]
+
+    def f(a):
+        r = math.radians(a)
+        v = sum(math.sin(h * r + p) for h, p in zip(harmonics, ph)) / len(harmonics)
+        return 1.0 - amp * (0.5 + 0.5 * v)
+    return f
+
+
+def arch_gate(name, r, r_out, span, ga, wh, mat_stone, mat_dark, spring=1.9, rise=1.0, seg=40):
+    """아치 통로([15]§10.13 #7) — 납작한 홈이 아니라 **깊이가 있는 구멍**.
+
+    아케이드가 주는 인상의 대부분은 구멍 자체가 아니라 **그 안의 어둠이 얼마나 깊은가**다.
+    ① 개구부 윗선을 반원으로(중앙이 가장 높다) ② 그 위로 벽을 채워 아치를 만든다
+    ③ 뒤로 물러나는 통로를 어둠으로 깐다."""
+    verts, faces = [], []
+    for i in range(seg):
+        t0 = -1.0 + 2.0 * i / seg
+        t1 = -1.0 + 2.0 * (i + 1) / seg
+        a0 = ga + span * 0.5 * t0
+        a1 = ga + span * 0.5 * t1
+        h0 = spring + rise * math.sqrt(max(0.0, 1.0 - t0 * t0))   # 반원 개구부
+        h1 = spring + rise * math.sqrt(max(0.0, 1.0 - t1 * t1))
+        c0, s0 = math.cos(math.radians(a0)), math.sin(math.radians(a0))
+        c1, s1 = math.cos(math.radians(a1)), math.sin(math.radians(a1))
+        b = len(verts)
+        verts += [(r * c0, r * s0, h0), (r * c1, r * s1, h1),
+                  (r * c1, r * s1, wh), (r * c0, r * s0, wh)]     # 아치 위쪽 벽
+        faces.append((b, b + 1, b + 2, b + 3))
+    mesh_from(name + "_arch", verts, faces, mat_stone)
+    # 통로 — 뒤로 물러나는 어둠. 천장은 아치 꼭대기에 맞춘다
+    lathe(name + "_tunnel",
+          [(r, 0.0), (r, spring + rise), (r_out, spring + rise)], mat_dark,
+          gaps=[((ga + span * 0.5) % 360.0, (ga - span * 0.5) % 360.0)])
+
+
 def combine(*fns):
     """여러 zscale을 곱해 합친다(컷어웨이 × 뒤쪽 압축)."""
     return lambda a: math.prod(f(a) for f in fns)
@@ -346,10 +392,8 @@ def build(a):
               gaps=GATES, zscale=cut)
     # 철문 안쪽: 검은 공동(§10.5). gaps는 '건너뛸 구간'이라 문만 남기려면 **여집합**을 준다 —
     # 두 문을 한 번에 처리하려고 합쳐 쓰면 합집합이 전체가 되어 아무것도 안 남는다(실측 후 분리).
-    for i, (g0, g1) in enumerate(GATES):
-        lathe("gate_void%d" % i,
-              [(ARENA_R, 0.0), (ARENA_R, WH * 0.8), (ARENA_R + 3.0, WH * 0.8)],
-              m_dark, gaps=[(g1, g0)], zscale=cut)
+    for i, ga in enumerate((0.0, 180.0)):
+        arch_gate("gate%d" % i, ARENA_R + 0.06, ARENA_R + 4.5, 14.0, ga, WH, m_wall, m_dark)
 
     # 관중석 3단 — 통로(vomitoria) 4곳으로 끊는다(§10.4 #3). 앞쪽은 같은 컷어웨이로 사라진다.
     # 방사형 계단(vomitoria) — 참고 이미지에서 관중석을 가장 알아보게 만드는 요소.
@@ -362,7 +406,8 @@ def build(a):
     for _row in range(22):
         zz += 0.30; cavea.append((rr, zz))                       # 라이저
         rr += 0.55; cavea.append((rr, zz))                       # 트레드
-    cut_seat = combine(cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0), squash)
+    cut_seat = combine(cutaway(keep=a.cut_keep, fade=a.cut_fade, floor=0.0), squash,
+                       ruin(seed=7, amp=a.ruin))          # 폐허 윗선(§10.13 #6)
     lathe("cavea", cavea, m_seat, gaps=VOM, zscale=cut_seat)
     # 계단 바닥 — 관중석보다 어둡게 깔아 쐐기가 실루엣으로 읽히게 한다
     lathe("vom_floor", [(p[0], p[1] - 0.16) for p in cavea], m_dark,
@@ -414,6 +459,27 @@ def build(a):
                           (r1 * c1, r1 * s1, z1), (r1 * c0, r1 * s0, z1)]
                 faces.append((b, b + 1, b + 2, b + 3))
             mesh_from("fg_tooth%d" % i, verts, faces, m_dark)
+
+    if a.detail:
+        # 식생([15]§10.13 #9) — 계단 틈·벽 아래. 화면에선 몇 픽셀이지만 '관리되지 않음'을 말한다
+        m_veg = mat("veg", (0.10, 0.14, 0.06), 1.0)
+        sd2 = 4242
+        for _i in range(26):
+            sd2 = (sd2 * 1103515245 + 12345) & 0x7FFFFFFF
+            aa = (sd2 % 10000) / 10000.0 * 360.0
+            if abs(((aa - 270.0 + 180.0) % 360.0) - 180.0) < 90.0:
+                continue                                    # 앞쪽은 컷어웨이라 안 보인다
+            rr2 = ARENA_R + 0.9 + ((sd2 >> 7) % 100) / 100.0 * 1.3
+            hh = 0.22 + ((sd2 >> 13) % 100) / 100.0 * 0.28
+            c, s_ = math.cos(math.radians(aa)), math.sin(math.radians(aa))
+            vv, ff = [], []
+            for k in range(3):
+                d = (k - 1) * 0.13
+                vv += [((rr2 + d) * c, (rr2 + d) * s_, WH),
+                       ((rr2 + d + 0.09) * c, (rr2 + d + 0.09) * s_, WH),
+                       ((rr2 + d + 0.04) * c, (rr2 + d + 0.04) * s_, WH + hh)]
+                ff.append((len(vv) - 3, len(vv) - 2, len(vv) - 1))
+            mesh_from("veg%d" % _i, vv, ff, m_veg)
 
     if not a.no_velarium and a.vela > 0:
         # 차양 — 프레임 밖 상공. 보이지 않고 그림자만 남는다(라니스타 지시).
