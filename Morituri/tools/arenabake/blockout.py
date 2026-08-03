@@ -26,7 +26,7 @@ from mathutils import Vector
 ARENA_R   = 12.0          # Sim ArenaRadius (§1) — 이 원 안에는 아무것도 세우지 않는다
 PX_PER_M  = 400.0 / 12.0
 ORTHO_W   = 940.0 / PX_PER_M      # 28.2 m
-ASPECT    = 940.0 / 560.0   # [15]§2.4 개정 — 무대 세로 560(라니스타 결정 ⓒ)
+ASPECT    = 940.0 / 528.0   # [15]§2.4 — 16:9(1.780). 세로 528은 PX=2로도 정확히 나뉜다
 ELEV      = 20.0                  # 기본 부각 (§2.4.1). 줌 벌은 15°
 SUN_AZ, SUN_EL = 233.0, 41.0      # §3.3
 
@@ -38,6 +38,8 @@ def parse_args():
     p.add_argument("--out", default="blockout.png")
     p.add_argument("--res", type=int, default=940)
     p.add_argument("--elevation", type=float, default=ELEV)
+    p.add_argument("--cam-height", type=float, default=0.62,
+                   help="뷰어 CamHeight와 같은 값. 아레나를 아래로 내려 하단 여백을 줄인다")
     p.add_argument("--samples", type=int, default=48)
     p.add_argument("--exposure", type=float, default=-0.35, help="Standard 변환은 하이라이트가 바로 탄다")
     p.add_argument("--values", action="store_true",
@@ -55,6 +57,13 @@ def parse_args():
     p.add_argument("--ruin", type=float, default=0.22, help="무너진 윗선 진폭(0=평평)")
     p.add_argument("--cut-keep", type=float, default=65.0, help="앞쪽 컷어웨이 각반경(도)")
     p.add_argument("--cut-fade", type=float, default=35.0, help="컷어웨이 페이드 폭(도)")
+    # ── 돌리 시퀀스([15]§10.17) — 줌 경로를 따라 N장을 실제로 렌더한다 ──────────
+    # 줌은 **정해진 1차원 경로**다(zoomFrac 0→1). 그 위의 프레임을 미리 구워 두면
+    # 부각이 연속으로 낮아지고 크로스페이드 이중상이 사라진다. 런타임 3D는 0.
+    p.add_argument("--dolly", type=int, default=0, help="돌리 프레임 수(0=끔). 24 권장")
+    p.add_argument("--zoom-follow", type=float, default=1.6, help="뷰어 ZoomFollow와 같은 값")
+    p.add_argument("--tilt-basic", type=float, default=0.34)
+    p.add_argument("--tilt-zoom", type=float, default=0.26)
     return p.parse_args(argv)
 
 
@@ -573,6 +582,13 @@ def setup(a):
     D = 80.0
     cam.location = (0.0, -D * math.cos(el), D * math.sin(el))
     cam.rotation_euler = (math.radians(90.0) - el, 0.0, 0.0)
+    # 프레이밍 — 아레나를 화면 아래로 내려 하단 여백을 줄인다([15]§2.4).
+    # 카메라를 제 up축으로 올리면 피사체는 화면에서 내려간다.
+    #   화면 이동(px) = (CamHeight − 0.5)·H   →   월드 이동(m) = 그 값 / (RX/ArenaRadius)
+    # ⚠ **뷰어 CamHeight와 반드시 같은 값**이어야 한다. 한쪽만 바꾸면 배경과 플레이 타원이 어긋난다.
+    up = Vector((0.0, math.sin(el), math.cos(el)))
+    cam.location = tuple(Vector(cam.location)
+                         + up * ((a.cam_height - 0.5) * (940.0 / ASPECT) / PX_PER_M))
     bpy.context.collection.objects.link(cam)
     sc.camera = cam
 
@@ -673,12 +689,50 @@ def _unused_setup_normal_pass(out_dir, name):
     nt.links.new(addn.outputs[0], fo.inputs[0])
 
 
+def render_dolly(a, out):
+    """줌 경로 위의 N장을 굽는다([15]§10.17 · 1단계 정사영).
+
+    프레임 f의 값은 **뷰어가 매 프레임 계산하는 것과 같은 식**이다:
+        frac   = f / (N−1)
+        CamTilt= TiltBasic + (TiltZoom − TiltBasic)·frac      (§2.4.3)
+        camZoom= 1 + (ZoomFollow − 1)·frac
+    정사영에서 '가까이 감'은 **ortho 폭을 줄이는 것**이다 → ORTHO_W / camZoom.
+    부각은 tilt에서 역산한다(elevation = asin(CamTilt)) — §2.4.4 규칙 1과 같은 관계.
+
+    ⚠ 이 벌은 **줌이 이미 구워져 있으므로** 뷰어가 다시 확대하면 안 된다.
+      뷰어는 배경을 카메라 변환 **밖에서** 그리고 팬(pan)만 적용해야 한다(§10.17).
+    """
+    sc = bpy.context.scene
+    cam = sc.camera
+    base = os.path.splitext(out)[0]
+    N = a.dolly
+    for f in range(N):
+        frac = f / max(1, N - 1)
+        tilt = a.tilt_basic + (a.tilt_zoom - a.tilt_basic) * frac
+        zoom = 1.0 + (a.zoom_follow - 1.0) * frac
+        el = math.asin(max(-1.0, min(1.0, tilt)))
+        cam.data.ortho_scale = ORTHO_W / zoom
+        D = 80.0
+        cam.location = (0.0, -D * math.cos(el), D * math.sin(el))
+        cam.rotation_euler = (math.radians(90.0) - el, 0.0, 0.0)
+        up = Vector((0.0, math.sin(el), math.cos(el)))
+        # 프레이밍 이동도 줌에 비례한다 — 화면 픽셀 기준이 같아야 하므로 월드에서는 1/zoom
+        cam.location = tuple(Vector(cam.location)
+                             + up * ((a.cam_height - 0.5) * (940.0 / ASPECT) / PX_PER_M / zoom))
+        sc.render.filepath = "%s_%02d.png" % (base, f)
+        bpy.ops.render.render(write_still=True)
+        print("WROTE %s_%02d.png  (frac %.3f · tilt %.4f · zoom %.3f)" % (base, f, frac, tilt, zoom))
+
+
 def main():
     a = parse_args()
     clear()
     build(a)
     setup(a)
     out = a.out if os.path.isabs(a.out) else os.path.join(os.path.dirname(os.path.abspath(__file__)), a.out)
+    if a.dolly > 0:
+        render_dolly(a, out)
+        return
     bpy.context.scene.render.filepath = out
     bpy.ops.render.render(write_still=True)
     print("WROTE", out)

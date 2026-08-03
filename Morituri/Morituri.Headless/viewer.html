@@ -141,7 +141,7 @@ const screenCtx = cv.getContext('2d');
 // 참조만 갈아끼우는 방식(아래 PIXEL 주석 참고). 그래서 const가 아니라 let이다.
 let ctx = screenCtx;
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
-const W = 940, H = 560, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 그리기 기준). 세로는 [15]§2.4 개정으로 440→560
+const W = 940, H = 528, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 그리기 기준). 세로는 [15]§2.4 개정으로 440→560
 
 // ── 픽셀 렌더 (M4-c) ──────────────────────────────────────────────────────────
 // 월드(아레나·스프라이트·혈흔)는 1/PX 크기의 저해상 캔버스에 그린 뒤 정수배로 확대한다.
@@ -178,7 +178,7 @@ fitWorldCanvas();
 // 전환 순간 바닥이 튀지 않는다. 스프라이트는 20° 한 벌만 쓴다 — 96px에서 5° 차이는 윤곽선 위
 // 1px 이동으로만 나타나 인지되지 않는다(측정: 차이 픽셀의 전부가 외곽선). 두 벌은 영구 2배
 // 유지비와 전환 팝을 부르는데 얻는 게 없다.
-const CamHeight = 0.50;
+const CamHeight = 0.62;
 const TiltBasic = +(_qs.get('tilt')     || 0.34);   // 부각 20° — 스프라이트 베이크 각도와 일치
 const TiltZoom  = +(_qs.get('tiltzoom') || 0.26);   // 부각 15° — 바닥만 눕는다
 let CamTilt = TiltBasic;
@@ -306,20 +306,42 @@ function paintCrowd(c, tilt){
   const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
   // 윗열은 베이크에서 ruin()으로 불규칙하게 깎였다 — 그 곡선을 여기서 재현할 수 없으니
   // 영향이 적은 아래 16열만 쓴다. 어차피 윗열은 대부분 프레임 밖이다(§10.11).
-  for (let k = 0; k < 16; k++){
+  // ── 크기: 점이 아니라 **사람**이어야 한다 ──────────────────────────────────
+  // 높이 축척 mz = 31.3 px/m 이므로 1.8 m 사람은 기하학적으로 56 px다.
+  // 그런데 검투사는 FIGH=120 px로 이미 실물의 2.13배로 과장돼 있다(§2.4.1).
+  // 초판은 관중을 1.7 px 점으로 찍었다 — 옳은 크기의 1/33이라 **모래알로 보였다.**
+  // 관중만 엄밀할 이유가 없으므로 실물의 절반인 28 px로 맞춘다. 56 px 실물 크기는
+  // 애써 구운 좌석 디테일을 통째로 덮는다.
+  const PH = 28, PW = 9;                       // 사람 높이 · 어깨 너비(논리 px)
+  // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
+  for (let k = 5; k >= 0; k--){
     const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
-    for (let i = 0; i < 300; i++){
-      const aDeg = i * 1.2 + rnd() * 1.2;
+    let lastX = -1e9, lastY = 0;
+    for (let i = 0; i < 1600; i++){
+      const aDeg = i * (360 / 1600);
       const kf = cut(Math.abs(((aDeg - 270 + 180) % 360) - 180));
       if (kf <= 0.02) continue;
       const z = z0 * kf;                       // 컷어웨이 구간은 좌석도 눌려 있다
       const [sx, sy] = pt(aDeg, r, z);
       const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
       if (sy > wallY - 1.5) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
-      if (sx < -6 || sx > W + 6 || sy < -6 || sy > H) continue;
-      const warm = rnd();
-      c.fillStyle = `rgba(${180 + warm * 60 | 0},${142 + warm * 48 | 0},${96 + warm * 38 | 0},${0.30 + rnd() * 0.45})`;
-      c.fillRect(sx, sy - 1.1, 1.5, 1.9);
+      if (sx < -PW || sx > W + PW || sy < -PH || sy > H) continue;
+      // 화면상 간격으로 솎는다 — 각도로 솎으면 옆쪽에서만 촘촘해진다
+      if (Math.hypot(sx - lastX, sy - lastY) < PW * 1.25 + rnd() * 5) continue;
+      lastX = sx; lastY = sy;
+      const w = PW * (0.82 + rnd() * 0.36), h = PH * (0.86 + rnd() * 0.28);
+      const hd = w * 0.42;                     // 머리 반지름
+      // 태양이 뒤쪽(좌상)에 있어 관중은 역광이다 — 어두운 실루엣에 가장자리만 밝다
+      c.fillStyle = `rgba(${28 + rnd() * 26 | 0},${22 + rnd() * 20 | 0},${18 + rnd() * 16 | 0},0.93)`;
+      c.beginPath();                           // 어깨
+      c.ellipse(sx, sy - h * 0.30, w * 0.5, h * 0.34, 0, 0, 7); c.fill();
+      c.beginPath();                           // 머리
+      c.arc(sx, sy - h * 0.72, hd, 0, 7); c.fill();
+      if (rnd() < 0.55){                       // 역광 림 — 절반만 넣어 줄이 안 서게
+        const warm = rnd();
+        c.fillStyle = `rgba(${210 + warm * 45 | 0},${176 + warm * 42 | 0},${128 + warm * 40 | 0},0.5)`;
+        c.fillRect(sx - w * 0.5, sy - h * 0.86, w * 0.34, 1.6);
+      }
     }
   }
   c.restore();
