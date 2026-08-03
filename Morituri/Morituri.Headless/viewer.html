@@ -71,6 +71,19 @@
   #drop b{ color:var(--ink); }
   /* 컨트롤 */
   #ctrl{ display:flex; gap:12px; align-items:center; margin-top:10px; }
+  /* ── 시네마 모드([15]§10.18) — UI를 걷고 카메라만 남긴다 ──────────────────
+     무대가 이미 16:9(940×528)라 대부분의 화면을 레터박스 없이 채운다.
+     HP·이름표는 캔버스 위에 그려지므로(unitTag) UI를 걷어도 정보가 다 사라지진 않는다. */
+  body.cinema{ overflow:hidden; }
+  body.cinema header, body.cinema #hud, body.cinema #ctrl,
+  body.cinema .hint, body.cinema #legend{ display:none !important; }
+  body.cinema #wrap{ max-width:none; width:100vw; height:100vh; padding:0; margin:0; }
+  body.cinema #stagebox{ width:100vw; height:100vh; }
+  body.cinema #cinemaOut{ display:block; }
+  /* 나갈 길은 남긴다 — 평소엔 숨고 마우스를 올리면 나타난다 */
+  #cinemaOut{ display:none; position:fixed; top:10px; right:12px; z-index:50;
+              opacity:.12; transition:opacity .18s; }
+  #cinemaOut:hover{ opacity:1; }
   button{ background:var(--panel2); color:var(--ink); border:1px solid var(--line);
           border-radius:var(--r1); padding:7px 14px; font-size:14px; cursor:pointer;
           transition:border-color .15s, background .15s; }
@@ -111,6 +124,7 @@
     </div>
   </div>
 
+  <button id="cinemaOut" onclick="setCinema(false)">시네마 종료</button>
   <div id="stagebox"><div id="stage">
     <canvas id="cv" width="940" height="440"></canvas>
     <div id="introCap"></div>
@@ -289,20 +303,27 @@ const RIMPX = 2, RIMCOL = LRIG.rim;                  // 림 두께(px) · 그 �
 //   월드 (X,Y,Z) → 화면 x = CX + X·(RX/12)
 //                  화면 y = CY − Y·(RY/12) − Z·(RX/12)·cos(부각)
 //   카베아: r = 14.4 + 0.55k, z = 3.5 + 0.30(k+1)   (라이저 0.30 · 트레드 0.55 · 22열)
-function paintCrowd(c, tilt){
+// zoom = 이 그림에 **이미 구워진** 줌 배율. 돌리 프레임은 확대된 렌더이므로
+// 관중도 같은 배율로 앉혀야 한다. 초판은 이걸 빼먹어 관중만 기본 배율에 남았고,
+// 그래서 줌하면 관중석은 커지는데 사람은 제자리 — "관중이 카메라를 따라오는" 것으로 보였다.
+function paintCrowd(c, tilt, zoom){
+  zoom = zoom || 1;
   const el = Math.asin(Math.max(-1, Math.min(1, tilt)));   // 부각 — CamTilt = sin(부각)
-  const mx = RX / 12, my = (RX * tilt) / 12, mz = mx * Math.cos(el);
+  const mx = RX / 12 * zoom, my = (RX * tilt) / 12 * zoom, mz = RX / 12 * Math.cos(el) * zoom;
   const WALL_R = 12.6, WALL_Z = 3.5;
-  const pt = (aDeg, r, z) => {
+  const pt = (aDeg, r, z) => {                 // CXf = 오버스캔을 반영한 아레나 중심(아래에서 잡는다)
     const a = aDeg * Math.PI / 180;
-    return [CX + Math.cos(a) * r * mx, CY - Math.sin(a) * r * my - z * mz];
+    return [CXf + Math.cos(a) * r * mx, CY - Math.sin(a) * r * my - z * mz];
   };
   let sd = 20250801;
   const rnd = () => { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return (sd % 10000) / 10000; };
   c.save();
-  // 배율은 캔버스에서 유도한다 — BGS를 상수로 쓰면 돌리 프레임(940×528, 배율 1)에서 2배로 그려진다
-  const s = c.canvas.width / W;
+  // 배율은 캔버스에서 유도한다 — BGS를 상수로 쓰면 돌리 프레임(배율 1)에서 2배로 그려진다.
+  // **세로 기준**으로 잡는다: 돌리 프레임은 가로만 오버스캔돼 있어 가로로 재면 배율을 오인한다.
+  const s = c.canvas.height / H;
   c.setTransform(s, 0, 0, s, 0, 0);
+  // 오버스캔된 프레임에서 아레나 중심은 캔버스 한가운데지 CX가 아니다
+  const CXf = (c.canvas.width / s) / 2;
   // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep=65, fade=35, floor=0)와 **같은 램프**를 쓴다.
   // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
   const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
@@ -314,7 +335,11 @@ function paintCrowd(c, tilt){
   // 초판은 관중을 1.7 px 점으로 찍었다 — 옳은 크기의 1/33이라 **모래알로 보였다.**
   // 관중만 엄밀할 이유가 없으므로 실물의 절반인 28 px로 맞춘다. 56 px 실물 크기는
   // 애써 구운 좌석 디테일을 통째로 덮는다.
-  const PH = 28, PW = 9;                       // 사람 높이 · 어깨 너비(논리 px)
+  const PH = 28 * zoom, PW = 9 * zoom;         // 사람 높이 · 어깨 너비(논리 px). 줌하면 같이 커진다
+  // 멀리서 망원으로 찍은 군중의 색 — **채도가 낮고 값이 좁다**(대기 원근).
+  // 원색을 쓰면 사탕처럼 보인다. 흙·아마포·모직의 탁한 색에 가끔 붉은 천 하나.
+  const CLOTH = [[92,78,64],[74,66,58],[104,86,66],[68,62,60],[86,74,72],
+                 [110,92,70],[80,70,58],[96,80,78],[120,74,58],[64,58,54]];
   // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
   for (let k = 5; k >= 0; k--){
     const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
@@ -327,22 +352,34 @@ function paintCrowd(c, tilt){
       const [sx, sy] = pt(aDeg, r, z);
       const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
       if (sy > wallY - 1.5) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
-      if (sx < -PW || sx > W + PW || sy < -PH || sy > H) continue;
+      if (sx < -PW || sx > CXf * 2 + PW || sy < -PH || sy > H) continue;
       // 화면상 간격으로 솎는다 — 각도로 솎으면 옆쪽에서만 촘촘해진다
       if (Math.hypot(sx - lastX, sy - lastY) < PW * 1.25 + rnd() * 5) continue;
       lastX = sx; lastY = sy;
-      const w = PW * (0.82 + rnd() * 0.36), h = PH * (0.86 + rnd() * 0.28);
-      const hd = w * 0.42;                     // 머리 반지름
-      // 태양이 뒤쪽(좌상)에 있어 관중은 역광이다 — 어두운 실루엣에 가장자리만 밝다
-      c.fillStyle = `rgba(${28 + rnd() * 26 | 0},${22 + rnd() * 20 | 0},${18 + rnd() * 16 | 0},0.93)`;
-      c.beginPath();                           // 어깨
-      c.ellipse(sx, sy - h * 0.30, w * 0.5, h * 0.34, 0, 0, 7); c.fill();
-      c.beginPath();                           // 머리
-      c.arc(sx, sy - h * 0.72, hd, 0, 7); c.fill();
-      if (rnd() < 0.55){                       // 역광 림 — 절반만 넣어 줄이 안 서게
-        const warm = rnd();
-        c.fillStyle = `rgba(${210 + warm * 45 | 0},${176 + warm * 42 | 0},${128 + warm * 40 | 0},0.5)`;
-        c.fillRect(sx - w * 0.5, sy - h * 0.86, w * 0.34, 1.6);
+      // 밀도를 뭉치게 — 균일하면 격자로 보인다. 실제 관중은 몰린 데와 빈 데가 있다
+      if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < rnd() * 0.42) continue;
+
+      const w = PW * (0.80 + rnd() * 0.40), h = PH * (0.84 + rnd() * 0.32);
+      const stand = rnd() < 0.10;              // 서 있는 사람 — 윗선이 고르지 않게 만든다
+      const hh = h * (stand ? 1.22 : 1.0);
+      const hd = w * 0.40;                     // 머리 반지름
+      const [cr, cg, cb] = CLOTH[(rnd() * CLOTH.length) | 0];
+      const sh = 0.72 + rnd() * 0.5;           // 개체별 밝기 — 같은 옷도 빛을 다르게 받는다
+
+      // ① 앉은 자리의 그늘 — 사람 밑이 어두워야 좌석에 '얹힌' 것으로 보인다
+      c.fillStyle = 'rgba(16,12,9,0.42)';
+      c.beginPath(); c.ellipse(sx, sy, w * 0.52, h * 0.10, 0, 0, 7); c.fill();
+      // ② 몸통(옷)
+      c.fillStyle = `rgba(${cr * sh | 0},${cg * sh | 0},${cb * sh | 0},0.95)`;
+      c.beginPath(); c.ellipse(sx, sy - hh * 0.30, w * 0.5, hh * 0.34, 0, 0, 7); c.fill();
+      // ③ 머리 — 살빛은 옷보다 밝고 붉다. 이 대비가 '사람'을 만든다
+      const sk = 0.9 + rnd() * 0.5;
+      c.fillStyle = `rgba(${124 * sk | 0},${96 * sk | 0},${76 * sk | 0},0.96)`;
+      c.beginPath(); c.arc(sx, sy - hh * 0.70, hd, 0, 7); c.fill();
+      // ④ 역광 림 — 태양이 뒤쪽(좌상)이라 왼쪽 어깨·정수리에만 얇게. 절반만 넣어 줄이 안 서게
+      if (rnd() < 0.5){
+        c.fillStyle = 'rgba(236,206,158,0.42)';
+        c.fillRect(sx - w * 0.48, sy - hh * 0.84, w * 0.30, Math.max(1, 1.4 * zoom));
       }
     }
   }
@@ -351,12 +388,12 @@ function paintCrowd(c, tilt){
 
 // venue·날씨 색보정을 **로드 시 1회** 이미지에 입힌다. 프레임 루프는 무관하다.
 // 결정 4에 따라 3D 베이크는 arena 한 벌뿐이고, 나머지 venue는 이 색보정으로 변주한다.
-function paintArena(target, img, tilt){
+function paintArena(target, img, tilt, zoom){
   const c = target.getContext('2d');
   c.setTransform(1,0,0,1,0,0);
   c.clearRect(0,0,target.width,target.height);
   c.drawImage(img, 0, 0, target.width, target.height);
-  paintCrowd(c, tilt);                        // 색보정 **전에** 얹어야 관중도 같은 빛을 받는다
+  paintCrowd(c, tilt, zoom);                  // 색보정 **전에** 얹어야 관중도 같은 빛을 받는다
   c.setTransform(1,0,0,1,0,0);
   for (const g of [VGRADE, WGRADE]){          // venue → 날씨 순으로 곱한다
     if (!g) continue;
@@ -395,7 +432,8 @@ const dolly = { frames: [], ready: false, want: 24 };
       const c2 = document.createElement('canvas');
       c2.width = im.naturalWidth; c2.height = im.naturalHeight;
       const frac = idx / Math.max(1, dolly.want - 1);
-      paintArena(c2, im, TiltBasic + (TiltZoom - TiltBasic) * frac);
+      const fz = 1 + (ZoomFollow - 1) * frac;   // 이 프레임에 구워진 줌
+      paintArena(c2, im, TiltBasic + (TiltZoom - TiltBasic) * frac, fz);
       dolly.frames[idx] = c2;
       if (--pending === 0 && failed === 0) dolly.ready = true;
     };
@@ -1455,13 +1493,23 @@ function render(){
   // **돌리 프레임은 줌이 이미 구워져 있다** — 그래서 scale(camZoom)을 걸면 두 번 확대된다.
   // 카메라 변환을 직접 조립하되 배율만 빼고 팬(pan)은 줌만큼 곱해 넣는다.
   if (dolly.ready){
-    const fr = dolly.frames[Math.min(dolly.frames.length - 1,
-                 Math.max(0, Math.round(zoomFrac * (dolly.frames.length - 1))))];
+    const N = dolly.frames.length;
+    const fi = Math.min(N - 1, Math.max(0, Math.round(zoomFrac * (N - 1))));
+    const fr = dolly.frames[fi];
+    // 프레임에 구워진 줌과 실제 camZoom의 **잔여 배율**을 보정한다. 두 가지를 한꺼번에 푼다:
+    //  ① 프레임이 24단계로 양자화돼 생기는 오차
+    //  ② 패자 줌인(2.9배)처럼 ZoomFollow를 넘어서는 구간 — 보정이 없으면 배경만 1.6에서 멈춘다
+    const frameZoom = 1 + (ZoomFollow - 1) * (fi / Math.max(1, N - 1));
+    const ex = camZoom / frameZoom;
     ctx.save();
     ctx.translate(shx, shy);
     ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt);
     ctx.translate(camZoom * (CX - camX), camZoom * (CY - camY) + camLift);
-    ctx.drawImage(fr, -CX, -CY, W, H);
+    ctx.scale(ex, ex);
+    // 프레임이 가로로 오버스캔돼 있으면(카메라 팬 대비) 그만큼 넓게, 중심을 맞춰 그린다.
+    // 세로는 오버스캔이 없다 — 팬이 0이라 필요 없었다.
+    const fw = W * (fr.width / fr.height) / (W / H);
+    ctx.drawImage(fr, -CX - (fw - W) / 2, -CY, fw, H);
     ctx.restore();
   }
   ctx.save(); ctx.translate(shx, shy);
@@ -1769,7 +1817,18 @@ fileEl.onchange = e=>{ const f=e.target.files[0]; if(f) f.text().then(load); };
 const stage = document.getElementById('stage');
 stage.ondragover = e=>{ e.preventDefault(); };
 stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f.text().then(load); };
-window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); } };
+// 시네마 모드([15]§10.18): ?cinema=1 로 들어오거나 C 키로 토글.
+// 무대 크기 감시가 setInterval로 돌고 있으므로(fitStageBox) 토글 후 한 번 불러 즉시 맞춘다.
+function setCinema(on){
+  document.body.classList.toggle('cinema', !!on);
+  fitStageBox(); fitCanvas();
+}
+if (_qs.get('cinema') === '1') setCinema(true);
+window.onkeydown = e=>{
+  if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); }
+  else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema')); }
+  else if(e.code==='Escape' && document.body.classList.contains('cinema')){ setCinema(false); }
+};
 
 // 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
 loadDefaultSprites().finally(()=>

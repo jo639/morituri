@@ -61,6 +61,10 @@ def parse_args():
     # 줌은 **정해진 1차원 경로**다(zoomFrac 0→1). 그 위의 프레임을 미리 구워 두면
     # 부각이 연속으로 낮아지고 크로스페이드 이중상이 사라진다. 런타임 3D는 0.
     p.add_argument("--dolly", type=int, default=0, help="돌리 프레임 수(0=끔). 24 권장")
+    p.add_argument("--overscan", type=float, default=1.0,
+                   help="돌리 프레임 가로 여유. 카메라가 선수를 추적하며 팬하면 "
+                        "1:1 프레임은 가장자리가 비어 잘린다 — camZoom 1.6에서 팬 최대 218 px, "
+                        "940+2·218 = 1376 → 배율 1.5가 필요하다. 세로는 팬이 0이라 불필요")
     p.add_argument("--zoom-follow", type=float, default=1.6, help="뷰어 ZoomFollow와 같은 값")
     p.add_argument("--tilt-basic", type=float, default=0.34)
     p.add_argument("--tilt-zoom", type=float, default=0.26)
@@ -706,12 +710,16 @@ def render_dolly(a, out):
     cam = sc.camera
     base = os.path.splitext(out)[0]
     N = a.dolly
+    # 오버스캔: 가로만 넓힌다. ortho_scale은 **긴 변**에 걸리므로 폭을 키우면
+    # 세로 화각은 그대로고 좌우로만 여유가 붙는다(해상도도 같은 비율로 늘린다).
+    if a.overscan > 1.0:
+        sc.render.resolution_x = int(round(a.res * a.overscan))
     for f in range(N):
         frac = f / max(1, N - 1)
         tilt = a.tilt_basic + (a.tilt_zoom - a.tilt_basic) * frac
         zoom = 1.0 + (a.zoom_follow - 1.0) * frac
         el = math.asin(max(-1.0, min(1.0, tilt)))
-        cam.data.ortho_scale = ORTHO_W / zoom
+        cam.data.ortho_scale = ORTHO_W / zoom * a.overscan
         D = 80.0
         cam.location = (0.0, -D * math.cos(el), D * math.sin(el))
         cam.rotation_euler = (math.radians(90.0) - el, 0.0, 0.0)
