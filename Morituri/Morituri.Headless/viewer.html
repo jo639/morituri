@@ -373,6 +373,30 @@ for (const [target, src, tilt] of [[bgBasic, 'arena_basic.png', TiltBasic],
   im.onload = () => paintArena(target, im, tilt);
   im.src = src;
 }
+
+// ── 돌리 시퀀스([15]§10.17 · 1단계) ─────────────────────────────────────────
+// 줌 경로 위의 프레임을 미리 구워 두면 부각이 연속으로 낮아지고 **크로스페이드 이중상이
+// 사라진다.** 런타임 3D는 0 — 프레임 하나를 골라 drawImage 할 뿐이다.
+// 프레임 f 는 tilt = TiltBasic + (TiltZoom−TiltBasic)·frac 로 구워졌으므로,
+// 뷰어가 매 프레임 계산하는 CamTilt와 **같은 값**이다(§2.4.3) → 바닥과 선수가 안 어긋난다.
+// 파일이 없으면 조용히 폴백한다 — 자산 없이도 뷰어는 돌아가야 한다.
+const dolly = { frames: [], ready: false, want: 24 };
+(function loadDolly(){
+  let pending = dolly.want, failed = 0;
+  for (let f = 0; f < dolly.want; f++){
+    const im = new Image();
+    const idx = f;
+    im.onload = () => {
+      const c2 = mkbg();
+      const frac = idx / Math.max(1, dolly.want - 1);
+      paintArena(c2, im, TiltBasic + (TiltZoom - TiltBasic) * frac);
+      dolly.frames[idx] = c2;
+      if (--pending === 0 && failed === 0) dolly.ready = true;
+    };
+    im.onerror = () => { failed++; pending--; };   // 자산 없음 → 폴백 유지
+    im.src = 'dolly_' + String(f).padStart(2, '0') + '.png';
+  }
+})();
 let postGame = false, postGameElapsed = 0;
 const TAUNT_DUR = 3.0;
 // 성격 지시(Decision) 태그 → 가독 라벨. 관중게이지 버프와 별개인 '행동 지시'임을 명확히.
@@ -1420,12 +1444,28 @@ function render(){
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, wcv.width, wcv.height);
   ctx.scale(1/PX, 1/PX);
+  // ── 경기장 배경 ──────────────────────────────────────────────────────────
+  // 돌리 시퀀스가 있으면 그걸 쓴다([15]§10.17). 없으면 옛 방식(2장 크로스페이드)으로 폴백.
+  // **돌리 프레임은 줌이 이미 구워져 있다** — 그래서 scale(camZoom)을 걸면 두 번 확대된다.
+  // 카메라 변환을 직접 조립하되 배율만 빼고 팬(pan)은 줌만큼 곱해 넣는다.
+  if (dolly.ready){
+    const fr = dolly.frames[Math.min(dolly.frames.length - 1,
+                 Math.max(0, Math.round(zoomFrac * (dolly.frames.length - 1))))];
+    ctx.save();
+    ctx.translate(shx, shy);
+    ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt);
+    ctx.translate(camZoom * (CX - camX), camZoom * (CY - camY) + camLift);
+    ctx.drawImage(fr, -CX, -CY, W, H);
+    ctx.restore();
+  }
   ctx.save(); ctx.translate(shx, shy);
   ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
-  // 경기장 배경 — 부각별 프리렌더 2장을 zoomFrac으로 겹친다(전환 중 중간 각도 근사)
-  ctx.drawImage(bgBasic, 0, 0, W, H);
-  if (zoomFrac > 0.001){
-    ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
+  if (!dolly.ready){
+    // 부각별 프리렌더 2장을 zoomFrac으로 겹친다(전환 중 중간 각도 근사)
+    ctx.drawImage(bgBasic, 0, 0, W, H);
+    if (zoomFrac > 0.001){
+      ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
+    }
   }
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
   // 발자국: 파인 자국(어둡게) + 광원 쪽 둔덕(밝게). 방향은 LDIR 하나에서만 나온다
