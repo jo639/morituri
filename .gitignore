@@ -57,3 +57,6 @@ Morituri/tools/spritebake/source/
 # ── 아레나 블록아웃 렌더 산출물([15]§10.8) — 스크립트로 재생성됨 ──
 Morituri/tools/arenabake/*.png
 Morituri/tools/arenabake/*.jpg
+
+# 돌리 시퀀스 중간 산출물(PNG) — JPEG만 배포한다
+Morituri/tools/arenabake/dolly_*.png

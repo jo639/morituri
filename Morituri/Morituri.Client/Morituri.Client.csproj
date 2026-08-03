@@ -32,6 +32,8 @@
     <!-- 아레나 배경 3D 베이크([15]§10.8 B3) — 부각 20°/15° 두 벌. tools/arenabake로 재생성 -->
     <Content Include="..\Morituri.Headless\arena_basic.png" Link="arena_basic.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\arena_zoom.png" Link="arena_zoom.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 돌리 시퀀스([15]§10.17) — 줌 경로 24장. 와일드카드라 장수가 바뀌어도 따라온다 -->
+    <Content Include="..\Morituri.Headless\dolly_*.jpg" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\ui.js" Link="ui.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />

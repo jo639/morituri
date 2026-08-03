@@ -300,7 +300,9 @@ function paintCrowd(c, tilt){
   let sd = 20250801;
   const rnd = () => { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return (sd % 10000) / 10000; };
   c.save();
-  c.setTransform(BGS, 0, 0, BGS, 0, 0);
+  // 배율은 캔버스에서 유도한다 — BGS를 상수로 쓰면 돌리 프레임(940×528, 배율 1)에서 2배로 그려진다
+  const s = c.canvas.width / W;
+  c.setTransform(s, 0, 0, s, 0, 0);
   // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep=65, fade=35, floor=0)와 **같은 램프**를 쓴다.
   // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
   const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
@@ -387,14 +389,18 @@ const dolly = { frames: [], ready: false, want: 24 };
     const im = new Image();
     const idx = f;
     im.onload = () => {
-      const c2 = mkbg();
+      // 주의: 캔버스는 **프레임 원본 크기**로 잡는다. mkbg()(1880×1056)를 24장 쓰면
+      //   1880·1056·4·24 = 190 MB로 터진다. 940×528이면 45 MB.
+      //   돌리 프레임은 줌이 구워져 있어 BGS 배율이 필요 없다 — 이미 확대된 그림이다.
+      const c2 = document.createElement('canvas');
+      c2.width = im.naturalWidth; c2.height = im.naturalHeight;
       const frac = idx / Math.max(1, dolly.want - 1);
       paintArena(c2, im, TiltBasic + (TiltZoom - TiltBasic) * frac);
       dolly.frames[idx] = c2;
       if (--pending === 0 && failed === 0) dolly.ready = true;
     };
     im.onerror = () => { failed++; pending--; };   // 자산 없음 → 폴백 유지
-    im.src = 'dolly_' + String(f).padStart(2, '0') + '.png';
+    im.src = 'dolly_' + String(f).padStart(2, '0') + '.jpg';
   }
 })();
 let postGame = false, postGameElapsed = 0;
