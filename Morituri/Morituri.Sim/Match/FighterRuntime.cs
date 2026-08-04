@@ -187,6 +187,7 @@ public sealed class FighterRuntime
 
     public float HpPct => Hp / HpMax;
     public float StaminaPct => Stamina / StaminaMax;
+    public float GuardPct => GuardGaugeMax > 0f ? GuardGauge / GuardGaugeMax : 0f;
     public bool IsExhausted => ExhaustTimer > 0f;
     public bool IsAttackSwing => State is FighterState.Windup or FighterState.Active or FighterState.Recovery;
 

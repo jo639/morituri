@@ -88,16 +88,29 @@
      시네마를 디폴트로 하면 컨트롤을 걷어낼 수 없다 — 걷으면 조작할 방법이 없어진다.
      그래서 문서 흐름에서 **떼어내 화면 위에 띄운다**. 영상 플레이어와 같은 규칙:
      마우스가 멈추면 물러나고 움직이면 돌아온다. 무대는 그동안 한 픽셀도 안 줄어든다. */
-  body.cinema #ctrl{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
-    z-index:60; width:min(940px, calc(100vw - 48px)); margin:0; padding:10px 14px;
-    border-radius:var(--r2); background:rgba(14,11,8,.74);
+  body.devon.cinema #devbar{ display:block; position:fixed; left:50%; bottom:18px;
+    transform:translateX(-50%); z-index:60; width:min(940px, calc(100vw - 48px));
+    margin:0; padding:10px 14px; border-radius:var(--r2); background:rgba(14,11,8,.74);
     border:1px solid var(--line-soft); box-shadow:var(--sh2);
     -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); }
-  body.cinema #ctrl, body.cinema #cinemaOut{ transition:opacity .3s; }
-  body.cinema #cinemaOut{ opacity:.5; }
-  body.cinema #cinemaOut:hover{ opacity:1; }
+  body.devon.cinema #ctrl{ margin-top:0; }
+  body.cinema #devbar, body.cinema #cinemaOut, body.cinema #devToggle{ transition:opacity .3s; }
+  body.cinema #cinemaOut, body.cinema #devToggle{ opacity:.5; }
+  body.cinema #cinemaOut:hover, body.cinema #devToggle:hover{ opacity:1; }
   /* idle = 일정 시간 입력이 없었다. pointer-events까지 끊어야 안 보이는 버튼이 안 눌린다 */
-  body.cinema.idle #ctrl, body.cinema.idle #cinemaOut{ opacity:0; pointer-events:none; }
+  body.cinema.idle #devbar, body.cinema.idle #cinemaOut,
+  body.cinema.idle #devToggle{ opacity:0; pointer-events:none; }
+  /* ── 개발자 패널([15]§10.24) ────────────────────────────────────────────────
+     배속·재생바·하이라이트·시계는 **인게임 완성본에 없다.** 조사 도구지 게임 UI가 아니다.
+     기본은 숨김 — D 키 또는 우상단 버튼으로 연다. 인게임 정보(HP·스태미나·가드)는
+     캔버스 하단 HUD가 대신한다. */
+  #devbar{ display:none; }
+  body.devon #devbar{ display:block; }
+  /* 시네마 종료와 달리 항상 떠 있다 — 컨트롤로 가는 유일한 입구라 찾을 수 있어야 한다 */
+  #devToggle{ position:fixed; top:10px; right:112px; z-index:50; font-size:12px;
+              padding:5px 10px; opacity:.3; transition:opacity .18s; }
+  #devToggle:hover{ opacity:1; }
+  body.devon #devToggle{ opacity:.75; border-color:var(--gold-deep); }
   button{ background:var(--panel2); color:var(--ink); border:1px solid var(--line);
           border-radius:var(--r1); padding:7px 14px; font-size:14px; cursor:pointer;
           transition:border-color .15s, background .15s; }
@@ -150,7 +163,7 @@
     </label>
   </div></div>
 
-  <div id="ctrl">
+  <div id="devbar"><div id="ctrl">
     <button id="play">▶ 재생</button>
     <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
     <span class="seg" id="speed"><button data-v="0.25">0.25×</button><button data-v="0.5">0.5×</button><button data-v="1" class="cur">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></span>
@@ -158,7 +171,9 @@
     <button id="hl" title="임팩트 구간(타격·넉다운·KO)만 점프 재생 — 3분 경기를 ~30초에">{ff} 하이라이트</button>
     <span id="clock">0.0 / 0.0s</span>
   </div>
-  <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지.</div>
+  <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지 · D=개발자 패널.</div>
+  </div>
+  <button id="devToggle" onclick="setDev()">개발자</button>
 </div>
 
 <script>
@@ -1279,6 +1294,119 @@ function unitTag(sx, topY, name, hpPct, col){
   for(let i=1;i<4;i++){ const segx=x+w*i/4|0; ctx.beginPath(); ctx.moveTo(segx,y); ctx.lineTo(segx,y+6); ctx.stroke(); }
 }
 
+// ── 관중게이지([15]§10.24) — 글자를 걷고 형태로 읽힌다 ──────────────────────────
+// 예전엔 라벨 '관중게이지'와 '이름 유리 — 피해 +n% · 이동 속도 +n%' 두 줄이 있었다.
+// 글자는 **읽어야** 알 수 있다 — 싸움을 보는 중에는 안 읽는다. 셋으로 나눠 형태에 실었다:
+//   수위    = 중앙에서 뻗는 채움
+//   추세    = 1.2초 전 위치의 유령 눈금 + 그 사이를 메우는 갈매기표(방향·속도)
+//   페이오프 = 데드존(±15)을 넘은 만큼 채움이 발광하고 맥동한다
+// **좌우를 하단 HUD와 맞췄다** — A는 왼쪽, B는 오른쪽. 예전엔 A가 오른쪽으로 차서
+// 하단 패널과 반대였다(같은 화면에서 같은 사람이 좌우로 갈리면 안 읽힌다).
+const CROWD_LAG = 1.2;                  // 추세를 재는 과거 시점(초)
+function drawCrowdMeter(fr){
+  const val = r => (r.f.Crowd ?? 0) + (((r.g.Crowd ?? 0) - (r.f.Crowd ?? 0)) * r.k);
+  const crowd = val(fr), past = val(frameAt(Math.max(0, t - CROWD_LAG)));
+  const mw=460, mh=14, mx=(W-mw)/2, my=18, cx=W/2, half=mw/2;
+  const at = v => cx - half * Math.max(-1, Math.min(1, v/100));   // + = A = 왼쪽
+  const col = crowd >= 0 ? getCSS('--a') : getCSS('--b');
+  const norm = Math.max(0, Math.min(1, (Math.abs(crowd) - 15) / 85));   // 데드존 넘은 정도
+
+  ctx.save();
+  ctx.fillStyle='rgba(15,10,6,0.62)'; roundRect(mx-5,my-5,mw+10,mh+10,5); ctx.fill();
+  ctx.fillStyle='rgba(240,230,214,0.10)'; roundRect(mx,my,mw,mh,3); ctx.fill();
+  // 데드존(±15) — 버프가 0인 구간. 여기 있는 동안은 아무도 유리하지 않다
+  ctx.fillStyle='rgba(240,230,214,0.07)'; ctx.fillRect(cx-half*0.15, my, half*0.30, mh);
+
+  // ① 수위 — 끝으로 갈수록 밝아지는 그러데이션이라 **선단이 어디인지**가 저절로 보인다
+  const tip = at(crowd);
+  if (Math.abs(crowd) > 0.5){
+    const gr = ctx.createLinearGradient(cx, 0, tip, 0);
+    gr.addColorStop(0, col + '55'); gr.addColorStop(1, col);
+    ctx.save();
+    if (norm > 0){                       // ③ 페이오프 — 데드존을 넘은 만큼 발광 + 맥동(t 파생 = 스크럽 안전)
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 3 + 17 * norm * (0.78 + 0.22 * Math.sin(t * 4.2));
+    }
+    ctx.fillStyle = gr;
+    ctx.fillRect(Math.min(cx, tip), my, Math.abs(tip - cx), mh);
+    ctx.restore();
+  }
+
+  // ② 추세 — 유령 눈금(1.2초 전)과 갈매기표. 채움이 어디로 **가는 중인지**를 보여준다
+  const gh = at(past), d = tip - gh;
+  if (Math.abs(d) > 3){
+    const dir = Math.sign(d), a = Math.min(1, Math.abs(crowd - past) / 22);
+    ctx.strokeStyle = `rgba(240,230,214,${(0.30 + 0.45*a).toFixed(2)})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(gh, my-2); ctx.lineTo(gh, my+mh+2); ctx.stroke();   // 유령 눈금
+    for (let i = 1; i <= 3; i++){
+      const cxx = gh + d * (i / 4);
+      ctx.globalAlpha = a * (0.30 + 0.22*i);
+      ctx.beginPath();
+      ctx.moveTo(cxx - dir*3, my+mh*0.28); ctx.lineTo(cxx + dir*3, my+mh*0.5);
+      ctx.lineTo(cxx - dir*3, my+mh*0.72); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 선단 캡 + 위쪽 삼각 포인터 — 눈이 여기 하나에 붙는다
+  ctx.fillStyle = '#fff8ea';
+  ctx.fillRect(tip - 1.5, my - 3, 3, mh + 6);
+  ctx.beginPath(); ctx.moveTo(tip, my-5); ctx.lineTo(tip-4, my-11); ctx.lineTo(tip+4, my-11); ctx.closePath();
+  ctx.fillStyle = Math.abs(crowd) > 0.5 ? col : 'rgba(240,230,214,0.5)'; ctx.fill();
+  // 중앙 기준선
+  ctx.fillStyle='rgba(240,230,214,0.55)'; ctx.fillRect(cx-0.5, my-1, 1, mh+2);
+  // 양 끝 색 칩 — 어느 쪽이 누구인지 글자 없이 알린다(하단 HUD와 같은 좌우)
+  ctx.fillStyle=getCSS('--a'); roundRect(mx-5, my-5, 3, mh+10, 1.5); ctx.fill();
+  ctx.fillStyle=getCSS('--b'); roundRect(mx+mw+2, my-5, 3, mh+10, 1.5); ctx.fill();
+  ctx.restore();
+}
+
+// ── 하단 HUD([15]§10.24) — 인게임 화면의 상시 정보. 개발자 컨트롤과 분리된다 ────────
+// HP / 스태미나 / 가드 게이지. 가드는 Sim의 실제 자원(GuardGauge)이고 0이면 가드 브레이크다.
+function hudBar(x, y, w, h, pct, col, back){
+  ctx.fillStyle = back || 'rgba(10,7,4,0.72)'; roundRect(x, y, w, h, h/2); ctx.fill();
+  const p = Math.max(0, Math.min(1, pct));
+  if (p > 0){ ctx.fillStyle = col; roundRect(x, y, Math.max(h, w*p), h, h/2); ctx.fill(); }
+}
+function drawBottomHud(fr){
+  const f = fr.f, g = fr.g, k = fr.k;
+  const ip = (a, b) => a + (b - a) * k;
+  const lag = frameAt(Math.max(0, t - 0.55));            // 피해 잔상 — 방금 얼마나 깎였는지가 보인다
+  const PW2 = 300, BX = 26, BY = H - 62;
+  const side = [
+    { x:BX,             align:'left',  name:doc.Meta.A.Name, col:getCSS('--a'),
+      hp:ip(f.HpPctA, g.HpPctA), st:ip(f.StamPctA, g.StamPctA),
+      gd:ip(f.GuardPctA ?? 1, g.GuardPctA ?? 1), lag:lag.f.HpPctA, bleed:f.BleedA||0 },
+    { x:W - BX - PW2,   align:'right', name:doc.Meta.B.Name, col:getCSS('--b'),
+      hp:ip(f.HpPctB, g.HpPctB), st:ip(f.StamPctB, g.StamPctB),
+      gd:ip(f.GuardPctB ?? 1, g.GuardPctB ?? 1), lag:lag.f.HpPctB, bleed:f.BleedB||0 },
+  ];
+  ctx.save();
+  for (const s of side){
+    ctx.fillStyle='rgba(12,9,6,0.55)'; roundRect(s.x-10, BY-20, PW2+20, 56, 6); ctx.fill();
+    // 이름 — 바깥쪽 정렬(가운데 무대를 비운다)
+    ctx.textAlign = s.align; ctx.font='bold 14px "Pretendard Variable",system-ui';
+    ctx.fillStyle='#f4ecdd';
+    ctx.fillText(s.name, s.align==='left' ? s.x : s.x+PW2, BY-6);
+    // HP — 잔상(흰 띠)이 현재 채움보다 뒤에 남았다가 따라온다
+    ctx.fillStyle='rgba(10,7,4,0.72)'; roundRect(s.x, BY, PW2, 13, 6.5); ctx.fill();
+    const ghost = Math.max(0, Math.min(1, s.lag));
+    if (ghost > s.hp){ ctx.fillStyle='rgba(255,236,214,0.42)'; roundRect(s.x, BY, Math.max(13, PW2*ghost), 13, 6.5); ctx.fill(); }
+    if (s.hp > 0){ ctx.fillStyle=s.col; roundRect(s.x, BY, Math.max(13, PW2*s.hp), 13, 6.5); ctx.fill(); }
+    ctx.strokeStyle='rgba(12,9,6,0.55)'; ctx.lineWidth=1;                    // 4분할 눈금
+    for(let i=1;i<4;i++){ const gx=(s.x+PW2*i/4)|0; ctx.beginPath(); ctx.moveTo(gx,BY); ctx.lineTo(gx,BY+13); ctx.stroke(); }
+    // 스태미나 · 가드 — 얇게 두 줄. 가드가 0이면 붉게(가드 브레이크 = Stagger 직전)
+    hudBar(s.x, BY+16, PW2, 5, s.st, '#d8a23c');
+    hudBar(s.x, BY+24, PW2, 5, s.gd, s.gd <= 0.001 ? '#c0241c' : '#7fa5c8');
+    // 출혈 스택 — 안쪽 끝에 붉은 점
+    for (let i=0;i<s.bleed;i++){
+      const dx = s.align==='left' ? s.x+PW2-6-i*9 : s.x+6+i*9;
+      ctx.fillStyle='#c0241c'; ctx.beginPath(); ctx.arc(dx, BY-11, 3, 0, 7); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 // 출혈 표시: 발밑에 떨어지는 핏방울(스택 수만큼) + 스택 점. t로 애니메이션(스크럽 안전).
 function drawBleed(fx, fy, sc, stacks){
   ctx.save();
@@ -1787,28 +1915,8 @@ function render(){
     }
   }
 
-  // 군중게이지 미터 (HUD — 카메라·흔들림 무관, 화면 상단 중앙). +=A(파랑) / −=B(빨강). 문서[10].
-  {
-    const crowd = (f.Crowd ?? 0) + (((g.Crowd ?? 0) - (f.Crowd ?? 0)) * k);
-    const mw=280, mh=8, mx=(W-mw)/2, my=10, cx=W/2, half=mw/2;
-    ctx.fillStyle='rgba(15,10,6,0.55)'; roundRect(mx-3,my-3,mw+6,mh+6,4); ctx.fill();
-    ctx.fillStyle='rgba(240,230,214,0.12)'; ctx.fillRect(mx,my,mw,mh);
-    // 데드존(±15) 음영
-    ctx.fillStyle='rgba(240,230,214,0.10)'; ctx.fillRect(cx-half*0.15, my, half*0.30, mh);
-    const frac=Math.max(-1,Math.min(1,crowd/100));
-    if (frac>=0){ ctx.fillStyle=getCSS('--a'); ctx.fillRect(cx, my, half*frac, mh); }
-    else        { ctx.fillStyle=getCSS('--b'); ctx.fillRect(cx+half*frac, my, -half*frac, mh); }
-    ctx.fillStyle='#f0e6d6'; ctx.fillRect(cx-1, my-2, 2, mh+4);   // 중앙선
-    ctx.textAlign='center'; ctx.font='9px "Pretendard Variable",system-ui'; ctx.fillStyle=getCSS('--dim');
-    ctx.fillText('관중게이지', cx, my-5);
-    // 관중 페이오프 가시화: 데드존(±15) 위에서 유리한 쪽 실제 버프(피해 최대 +12%·이동 속도 +8%)를 수치로.
-    const a=Math.abs(crowd), norm=a<=15?0:Math.min(1,(a-15)/(100-15));
-    if (norm>0){
-      const favName = crowd>=0 ? doc.Meta.A.Name : doc.Meta.B.Name;
-      ctx.font='bold 10px "Pretendard Variable",system-ui'; ctx.fillStyle=getCSS(crowd>=0?'--a':'--b');
-      ctx.fillText(`${favName} 유리 — 피해 +${Math.round(norm*12)}% · 이동 속도 +${Math.round(norm*8)}%`, cx, my+mh+11);
-    }
-  }
+  drawCrowdMeter(fr);
+  drawBottomHud(fr);
 
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
@@ -1926,7 +2034,15 @@ if (_qs.get('cinema') !== '0'){
 
 // 컨트롤 자동 숨김 — 입력이 멎으면 물러난다. 컨트롤 위에 커서가 있는 동안은 타이머를 멈춘다
 // (조작 중에 버튼이 사라지면 안 된다).
-const ctrlEl = document.getElementById('ctrl');
+// 개발자 패널 토글 — ?dev=1 로도 열린다(스크립트 검증용)
+function setDev(on){
+  const b = document.body;
+  b.classList.toggle('devon', on === undefined ? !b.classList.contains('devon') : !!on);
+  fitStageBox(); fitCanvas();
+}
+if (_qs.get('dev') === '1') setDev(true);
+
+const ctrlEl = document.getElementById('devbar');
 let idleT = 0;
 function wake(){
   document.body.classList.remove('idle');
@@ -1941,6 +2057,7 @@ wake();
 window.onkeydown = e=>{
   if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); }
   else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema'), true); }
+  else if(e.code==='KeyD'){ setDev(); }
   else if(e.code==='Escape' && document.body.classList.contains('cinema')){ setCinema(false, true); }
 };
 

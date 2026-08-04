@@ -128,7 +128,8 @@ public sealed class MatchSim
             _f[0].StaminaPct, _f[1].StaminaPct,
             _f[0].State, _f[1].State,
             _f[0].MotionKindNow, _f[1].MotionKindNow, _crowd,
-            _f[0].BleedStacks, _f[1].BleedStacks));
+            _f[0].BleedStacks, _f[1].BleedStacks,
+            _f[0].GuardPct, _f[1].GuardPct));
     }
 
     // ───────────────────────── 초기화 ─────────────────────────
