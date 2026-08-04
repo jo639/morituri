@@ -713,10 +713,13 @@ def render_dolly(a, out):
     cam = sc.camera
     base = os.path.splitext(out)[0]
     N = a.dolly
-    # 오버스캔: 가로만 넓힌다. ortho_scale은 **긴 변**에 걸리므로 폭을 키우면
-    # 세로 화각은 그대로고 좌우로만 여유가 붙는다(해상도도 같은 비율로 늘린다).
+    # 오버스캔 — 가로와 세로는 **방식이 다르다.**
+    #   가로: ortho_scale이 긴 변에 걸리므로 폭(resolution_x)만 키우면 세로 화각은 그대로다.
+    #   세로: 화각을 넓히려면 resolution_y를 늘려야 한다(ortho_scale은 긴 변만 본다).
     if a.overscan > 1.0:
         sc.render.resolution_x = int(round(a.res * a.overscan))
+    if a.overscan_y > 1.0:
+        sc.render.resolution_y = int(round(a.res / ASPECT * a.overscan_y))
     for f in range(N):
         frac = f / max(1, N - 1)
         tilt = a.tilt_basic + (a.tilt_zoom - a.tilt_basic) * frac
