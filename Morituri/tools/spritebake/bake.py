@@ -60,7 +60,11 @@ def parse_args():
     p.add_argument("--prop-bone", default="mixamorig:RightHand", help="프롭을 매달 본")
     p.add_argument("--prop-len", type=float, default=0.8,
                    help="프롭 최장축 길이(m). 캐릭터 키가 약 1.7m다")
-    p.add_argument("--prop-rot", default="0,0,0", help="프롭 회전 x,y,z(도) — 쥐는 각도 보정")
+    # 기본 -90은 측정값이다: 팔라딘의 원본 검을 손 본 좌표계로 변환하면 길이축이 **본의 +X**다
+    # (bbox dx=101 vs dy=30, 본 길이 8.79). 프롭 길이축은 +Y로 정규화되므로 Z축 -90도로 X에 맞춘다.
+    p.add_argument("--prop-rot", default="0,0,-90", help="프롭 회전 x,y,z(도) — 쥐는 각도 보정")
+    p.add_argument("--grip", type=float, default=0.0,
+                   help="자루의 어디를 쥐나 (0=끝, 0.4=중간쯤). 창처럼 중간을 쥐는 무기용")
     p.add_argument("--prop-off", default="0,0,0", help="프롭 위치 x,y,z(m) — 본 머리 기준")
     p.add_argument("--hide", default="", help="숨길 내장 메시 이름 조각, 쉼표 구분 (예: Sword,Shield)")
     p.add_argument("--keep-root-motion", action="store_true",
@@ -148,7 +152,7 @@ def hide_meshes(meshes, names):
     return keep
 
 
-def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m):
+def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m, grip=0.0):
     """무기 메시를 불러와 손 본에 매단다. 반환: 프롭 오브젝트(월드 bbox 계산에 포함해야 한다).
 
     AI 3D 생성기마다 축·스케일 규약이 제각각이라, 최장축을 target_len으로 정규화한 뒤
@@ -222,7 +226,11 @@ def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m):
         vs = [v.co for v in prop.data.vertices]
         y0 = min(v.y for v in vs)
     xs = [v.x for v in vs]; zs = [v.z for v in vs]
-    prop.location = (-(min(xs) + max(xs)) / 2, -y0, -(min(zs) + max(zs)) / 2)
+    y1 = max(v.y for v in vs)
+    # grip: 자루 끝(0)에서 길이의 몇 %를 손이 잡는가. 창은 중간을 쥔다.
+    prop.location = (-(min(xs) + max(xs)) / 2,
+                     -(y0 + (y1 - y0) * grip),
+                     -(min(zs) + max(zs)) / 2)
     bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
 
     # BONE 부모의 로컬 공간은 **본 꼬리**가 원점이고 +Y가 본 방향이다.
@@ -378,8 +386,12 @@ def setup_render(res, view_size, center, azimuth, elevation, exposure, samples, 
     # 키(카메라 쪽) + 필(반대편) + 흰 앰비언트 3단으로 실루엣 안쪽 형태가 읽히게 만든다.
     # 림(역광)은 카메라 반대편에서 쏴 실루엣 가장자리만 밝힌다 — 어두운 아레나에서 형체를 떼어낸다.
     # 평면 먹선보다 나은 이유: 배경이 어두울 때 어두운 외곽선은 오히려 배경에 먹힌다.
+    # 대비를 올릴 때 필·앰비를 c로 나누면 그늘에 **바닥이 없어진다** — 팔뚝·손처럼 몸에 붙어
+    # 키를 못 받는 부위가 통째로 검게 잠겨 잘려 보인다(실측: 대비 2.0에서 양손이 사라졌다).
+    # sqrt로 완만하게 내려 명암비는 벌리되 그림자 바닥을 남긴다.
     c = max(0.1, contrast)
-    rig = [("key", 7.0 * math.sqrt(c), azimuth + 40, 55), ("fill", 2.5 / c, azimuth - 140, 70)]
+    cs = math.sqrt(c)
+    rig = [("key", 7.0 * cs, azimuth + 40, 55), ("fill", 2.5 / cs, azimuth - 140, 70)]
     if rim > 0:
         rig.append(("rim", rim, azimuth + 180, 35))
     for label, energy, zrot, xrot in rig:
@@ -394,7 +406,7 @@ def setup_render(res, view_size, center, azimuth, elevation, exposure, samples, 
         world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs[0].default_value = (1, 1, 1, 1)      # 새 월드 기본색은 거의 검정이라 흰색으로
-    bg.inputs[1].default_value = 0.8 / c
+    bg.inputs[1].default_value = 0.8 / cs   # 앰비언트 = 그림자 바닥. c로 나누면 손이 사라진다
     sc.world = world
     return cam
 
@@ -472,7 +484,7 @@ def main():
             raise SystemExit(f"[bake] 프롭 없음: {prop_path}")
         rot = [float(v) for v in a.prop_rot.split(",")]
         off = [float(v) for v in a.prop_off.split(",")]
-        meshes.append(attach_prop(prop_path, arm, a.prop_bone, a.prop_len, rot, off))
+        meshes.append(attach_prop(prop_path, arm, a.prop_bone, a.prop_len, rot, off, a.grip))
         print(f"[bake] 프롭 {os.path.basename(prop_path)} → {a.prop_bone} "
               f"(길이 {a.prop_len}m · 회전 {a.prop_rot} · 오프셋 {a.prop_off})")
 
