@@ -14,13 +14,18 @@ public sealed record ViewerEndowment(
     float TalentBudget, float PotentialBudget,
     float Atk, float Def, float HpMax, float Spd, float Aspd, float Rct);
 
+/// <summary>HUD 스킬 슬롯 — 아이콘 + 쿨타임 역산용 초([15]§10.26).</summary>
+public sealed record ViewerSkill(string Tag, float Cd, bool Passive);
+
 /// <summary>한 선수의 정적 정보 — 뷰어가 HP바 라벨·사거리 표시에 쓴다.</summary>
 public sealed record ViewerFighter(string Name, string Weapon, string Tactic, string Personality, float Range,
-    ViewerEndowment? Endowment = null, string[]? Traits = null, float SizeScale = 1f);
+    ViewerEndowment? Endowment = null, string[]? Traits = null, float SizeScale = 1f,
+    ViewerSkill[]? Skills = null);
 
 public sealed record ViewerMeta(float ArenaRadius, ViewerFighter A, ViewerFighter B,
     string? QuoteA = null, string? QuoteB = null,   // 경기 직전 대사(#5) — 경기장 인트로 줌인 연출용
-    int EndFocusIdx = -1);   // 경기 종료 시 줌인할 대상(0=A/1=B, -1=없음) — 리플레이 극적 연출(#5)
+    int EndFocusIdx = -1,   // 경기 종료 시 줌인할 대상(0=A/1=B, -1=없음) — 리플레이 극적 연출(#5)
+    float MatchTimeSec = 180f);   // 제한 시간 — HUD 중앙 카운트다운([15]§10.26)
 
 /// <summary>
 /// 뷰어 봉투 = 정적 메타 + 연속 프레임(위치/HP/자세) + 이산 이벤트(판단·타격 아이콘) + 결과.
@@ -104,6 +109,27 @@ public static class ViewerExport
             names = defs.Select(t => t.Name).ToArray();
             foreach (var t in defs) { size *= t.SizeScale; rmult *= t.RangeMult; radd += t.RangeAdd; }   // 거인: 크기 ×1.3 + 사거리 ×1.4
         }
-        return new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, baseR * rmult + radd, end, names, size);
+        return new(d.Name, d.WeaponId, d.TacticsId, d.PersonalityId, baseR * rmult + radd, end, names, size,
+                   Loadout(d));
+    }
+
+    /// <summary>
+    /// HUD 스킬 슬롯([15]§10.26). 액티브·패시브는 MatchSim.CreateRuntime과 **같은 출처**인
+    /// `TraitIds`에서 나온다 — 런타임을 들여다볼 필요가 없어 WriteDoc 경로에서도 그대로 쓴다.
+    /// 쿨타임 잔량은 뷰어가 Decision("SKILL_"/"PASV_") 이벤트 + 여기 Cd로 역산한다.
+    /// **읽기 전용 투영이라 Sim 거동 무접촉.**
+    /// </summary>
+    private static ViewerSkill[]? Loadout(FighterDef d)
+    {
+        if (d.TraitIds is not { Length: > 0 }) return null;
+        var list = new List<ViewerSkill>();
+        foreach (var id in d.TraitIds)
+        {
+            if (!SkillTable.Exists(id)) continue;
+            var s = SkillTable.Get(id);
+            if (s.Active is { } a)  list.Add(new ViewerSkill(a.ReasonTag, a.CooldownSec, false));
+            if (s.Passive is { } p) list.Add(new ViewerSkill(p.ReasonTag, p.ProcCdSec, true));
+        }
+        return list.Count > 0 ? list.ToArray() : null;
     }
 }
