@@ -24,7 +24,7 @@ import sys, os, json, math
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 
 def parse_args():
@@ -177,7 +177,23 @@ def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m):
         bpy.ops.object.join()
     prop = bpy.context.view_layer.objects.active
     prop.parent = None
+    # glTF 임포터는 rotation_mode를 QUATERNION으로 둔다 → rotation_euler 대입이 **조용히 무시된다**.
+    # 회전이 안 먹는 게 아니라 값이 반영조차 안 됐다(실측: matrix_basis 오일러가 계속 0).
+    prop.rotation_mode = "XYZ"
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+    # ── 축 규약을 여기서 강제한다: 길이축 → +Y, 자루 끝 → 원점 ──
+    # 원본 파일이 어느 축으로 오든(GLB 왕복만 해도 축이 바뀐다) 여기서 맞춰야
+    # --prop-rot이 예측 가능하게 동작한다. 실제로 길이축이 X로 들어와 X축 회전이
+    # 무기를 제자리에서 돌리기만 했다.
+    d = prop.dimensions
+    axis = max(("x", d.x), ("y", d.y), ("z", d.z), key=lambda t: t[1])[0]
+    if axis == "x":
+        prop.rotation_euler = (0, 0, math.radians(90))      # X → Y
+    elif axis == "z":
+        prop.rotation_euler = (math.radians(-90), 0, 0)     # Z → Y
+    if axis != "y":
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
     # 최장축을 target_len으로 정규화
     dims = prop.dimensions
@@ -188,15 +204,46 @@ def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m):
     prop.scale = (s, s, s)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
-    # 본 머리(head) 기준 공간에 매단다. BONE 부모는 기본이 tail 기준이라 parent_inverse로 head로 옮긴다.
-    pb = arm.pose.bones.get(bone_name)
-    if not pb:
+    # 자루 끝(가는 쪽)을 원점으로. 양 끝 20% 구간의 XZ 퍼짐을 비교한다.
+    vs = [v.co for v in prop.data.vertices]
+    y0 = min(v.y for v in vs); y1 = max(v.y for v in vs)
+    seg = (y1 - y0) * 0.2
+
+    def spread(a, b):
+        sel = [v for v in vs if a <= v.y <= b]
+        if not sel:
+            return 1e9
+        return (max(v.x for v in sel) - min(v.x for v in sel)) + \
+               (max(v.z for v in sel) - min(v.z for v in sel))
+
+    if spread(y0, y0 + seg) > spread(y1 - seg, y1):
+        prop.rotation_euler = (0, 0, math.radians(180))     # 굵은 쪽이 -Y면 뒤집는다
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        vs = [v.co for v in prop.data.vertices]
+        y0 = min(v.y for v in vs)
+    xs = [v.x for v in vs]; zs = [v.z for v in vs]
+    prop.location = (-(min(xs) + max(xs)) / 2, -y0, -(min(zs) + max(zs)) / 2)
+    bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+
+    # BONE 부모의 로컬 공간은 **본 꼬리**가 원점이고 +Y가 본 방향이다.
+    # parent_inverse를 항등으로 두고 -Y로 본 길이만큼 돌아가면 본 머리(=손목)에 앉는다.
+    # (머리 기준 역행렬을 끼우는 방식은 꼬리 오프셋이 사이에 끼어 상쇄되지 않는다 — 프롭이
+    #  월드 원점에 남는다. 실측으로 확인.)
+    bone = arm.data.bones.get(bone_name)
+    if not bone:
         raise SystemExit(f"[bake] 본 없음: {bone_name}")
     prop.parent = arm
     prop.parent_type = "BONE"
     prop.parent_bone = bone_name
-    prop.matrix_parent_inverse = (arm.matrix_world @ pb.matrix).inverted()
-    prop.location = Vector(off_m)
+    prop.matrix_parent_inverse = Matrix.Identity(4)
+    # Mixamo 아마추어는 0.01 스케일을 물고 있다(본 길이 8.79 vs 캐릭터 1.72m). 부모를 붙이면
+    # 자식이 그걸 상속받아 1.4m 무기가 1.4cm가 된다 — 역수로 상쇄한다.
+    asc = arm.matrix_world.to_scale()
+    prop.scale = (1 / asc.x, 1 / asc.y, 1 / asc.z)
+    # 위치는 본 공간(아마추어 로컬 단위)이라 bone.length를 그대로 쓴다. 오프셋은 미터라 환산.
+    prop.location = Vector((off_m[0] / asc.x,
+                            -bone.length + off_m[1] / asc.y,
+                            off_m[2] / asc.z))
     prop.rotation_euler = tuple(math.radians(v) for v in rot_deg)
     return prop
 
