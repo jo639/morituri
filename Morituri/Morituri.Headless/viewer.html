@@ -254,13 +254,17 @@ const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
 const _rcv = document.createElement('canvas'), _rctx = _rcv.getContext('2d');   // 림라이트 전용(플래시와 분리)
 let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], tracks = [], statuses = [], duration = 0;
 // 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
+// B4에서 절차 배경(buildArenaBg)이 사라지며 wall/f0/f1/ring 은 전부 죽은 값이 됐다 —
+// 3D 베이크 이미지가 그 자리를 대신한다. 남겨두면 거짓말하는 표가 된다.
+// 대신 여기가 지금 결정해야 하는 것은 **관중**이다([15]§10.23).
+// 색보정만으로는 뒷골목·선술집에도 관중 180명이 그대로 앉아 있다 — 색이 아니라 구조의 문제다.
 const VENUES = {
-  arena: { wall:'#5a4129', f0:'#e9cda2', f1:'#c49a6b', ring:'rgba(110,79,49,0.4)', label:'콜로세움' },
-  spar:  { wall:'#3d4a33', f0:'#c9d3a8', f1:'#94a56f', ring:'rgba(70,90,50,0.4)',  label:'수련장' },
-  street:{ wall:'#2a2c33', f0:'#7c8391', f1:'#4a505c', ring:'rgba(30,34,42,0.55)', label:'뒷골목' },
-  bar:   { wall:'#3a281c', f0:'#8a6a44', f1:'#5c4128', ring:'rgba(40,26,14,0.5)',  label:'선술집' },
+  arena : { label:'콜로세움', crowd:1.00 },   // 만석
+  spar  : { label:'수련장',   crowd:0.18 },   // 훈련장 — 구경꾼 몇뿐
+  street: { label:'뒷골목',   crowd:0    },   // 관중석이 없다
+  bar   : { label:'선술집',   crowd:0    },
 };
-let VENUE = VENUES[new URLSearchParams(location.search).get('venue')] || VENUES.arena;
+const VENUE = VENUES[_qs.get('venue')] || VENUES.arena;
 let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
 // ── 아레나 배경 프리렌더(1회): 관중석 점묘·모래 질감·벽 그림자 — 런타임 코스트 = drawImage 1장 ──
 // ── 아레나 배경: 3D 베이크 이미지 2장([15]§10.8 B3 · B4에서 교체) ─────────────
@@ -336,6 +340,7 @@ function hash2(a, b){                     // 자리 → 0~1 난수. 같은 자�
 // (렌더 루프에서 카메라 변환 위에 그려야 하므로 setTransform을 쓸 수 없다).
 // halfW/halfH = 그 좌표계에서 보이는 반폭·반높이(솎아내기용).
 function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
+  if (!VENUE.crowd) return;                  // 뜻골목·선술집은 관중석이 없다(§10.23)
   zoom = zoom || 1; tsec = tsec || 0;
   halfW = halfW || W / 2; halfH = halfH || H / 2;
   const el = Math.asin(Math.max(-1, Math.min(1, tilt)));   // 부각 — CamTilt = sin(부각)
@@ -374,6 +379,9 @@ function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
   //      채택 집합이 통째로 달라졌다 = 위치도 형태도 튀는 것.
   // 실제 관중석은 좌석이 돌에 새겨져 있다. 자리는 카메라와 무관한 상수다.
   // 열마다 둘레를 좌석 간격으로 나눠 개수를 고정하면 zoom이 식에서 사라진다.
+  // 빈 자리 문턴. arena는 0.12(만석)이고 venue가 한산할수록 올라간다.
+  // 자리에서 뽑으므로 누가 남는지가 카메라·시간과 무관하게 고정된다(§10.20과 같은 원칙).
+  const EMPTY = 1 - 0.88 * VENUE.crowd;
   const SEAT = 0.42;                           // 좌석 간격(m). PW 9px = 0.29 m 라 어깨 사이가 살짝 뜬다
   for (let k = 5; k >= 0; k--){                // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
     const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
@@ -393,7 +401,7 @@ function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
       const q0 = hash2(k, i), q1 = hash2(k, i + 977), q2 = hash2(k, i + 1861),
             q3 = hash2(k, i + 2749), q4 = hash2(k, i + 3623);
 
-      if (q0 < 0.12) continue;                 // 빈 자리 — 자리에서 뽑으므로 줌해도 같은 자리가 비어 있다
+      if (q0 < EMPTY) continue;                 // 빈 자리 — 자리에서 뽑으므로 줌해도 같은 자리가 비어 있다
       // 밀도를 뭉치게 — 균일하면 격자로 보인다. 실제 관중은 몰린 데와 빈 데가 있다
       if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < q1 * 0.42) continue;
 
