@@ -55,6 +55,14 @@ def parse_args():
                    help="Principled→Toon BSDF 교체. 계조가 끊겨 셀 셰이딩이 된다")
     p.add_argument("--supersample", type=int, default=1,
                    help="N배로 렌더 후 축소. 윤곽선 굵기 하한(1px)을 우회해 저해상에서 선을 얇게 앉힌다")
+    # ── 무기 프롭 교체 (실루엣 시험 / 무기별 시트) ──
+    p.add_argument("--prop", default=None, help="손에 쥘 무기 메시 (.obj/.fbx/.glb)")
+    p.add_argument("--prop-bone", default="mixamorig:RightHand", help="프롭을 매달 본")
+    p.add_argument("--prop-len", type=float, default=0.8,
+                   help="프롭 최장축 길이(m). 캐릭터 키가 약 1.7m다")
+    p.add_argument("--prop-rot", default="0,0,0", help="프롭 회전 x,y,z(도) — 쥐는 각도 보정")
+    p.add_argument("--prop-off", default="0,0,0", help="프롭 위치 x,y,z(m) — 본 머리 기준")
+    p.add_argument("--hide", default="", help="숨길 내장 메시 이름 조각, 쉼표 구분 (예: Sword,Shield)")
     p.add_argument("--keep-root-motion", action="store_true",
                    help="루트 모션 보정을 끈다(캐릭터가 화면을 가로질러 간다)")
     return p.parse_args(argv)
@@ -113,6 +121,84 @@ def build_scene(char_path, anim_path):
             f"[bake] FBX에 메시가 없다: {anim_path}\n"
             "        Mixamo 애니 팩은 Without Skin이다 — --char로 캐릭터 FBX를 함께 지정할 것")
     return meshes, (arms[0] if arms else None), None
+
+
+def hide_meshes(meshes, names):
+    """내장 메시를 이름으로 정확히 지운다. 남은 메시 목록 반환.
+
+    **부분 문자열 매칭을 쓰지 않는다.** 이 팔라딘은 메시 이름이 내용과 뒤바뀌어 있어서
+    (`..._Sword`가 몸통 7093v, `Paladin_J_Nordstrom`이 검 116v) 'Sword'로 지우면 몸이 사라진다.
+    못 찾은 이름은 조용히 넘기지 않고 실패시킨다 — 무기가 안 지워진 채로 구워지는 게 더 나쁘다.
+    """
+    if not names:
+        return meshes
+    by_name = {o.name: o for o in meshes}
+    missing = [n for n in names if n not in by_name]
+    if missing:
+        raise SystemExit(
+            f"[bake] --hide 대상 없음: {', '.join(missing)}\n"
+            f"        씬의 메시: {', '.join(by_name)}")
+    keep = []
+    for o in meshes:
+        if o.name in names:
+            bpy.data.objects.remove(o, do_unlink=True)
+        else:
+            keep.append(o)
+    print(f"[bake] 숨김: {', '.join(names)}")
+    return keep
+
+
+def attach_prop(path, arm, bone_name, target_len, rot_deg, off_m):
+    """무기 메시를 불러와 손 본에 매단다. 반환: 프롭 오브젝트(월드 bbox 계산에 포함해야 한다).
+
+    AI 3D 생성기마다 축·스케일 규약이 제각각이라, 최장축을 target_len으로 정규화한 뒤
+    --prop-rot / --prop-off로 손에 맞춘다. 한 무기당 한 번만 맞추면 그 값이 계속 쓰인다.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    before = set(bpy.context.scene.objects)
+    if ext == ".obj":
+        bpy.ops.wm.obj_import(filepath=path)
+    elif ext == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=path)
+    elif ext in (".glb", ".gltf"):
+        bpy.ops.import_scene.gltf(filepath=path)
+    else:
+        raise SystemExit(f"[bake] 지원 안 하는 프롭 형식: {ext} (.obj/.fbx/.glb)")
+    added = [o for o in bpy.context.scene.objects if o not in before and o.type == "MESH"]
+    if not added:
+        raise SystemExit(f"[bake] 프롭에 메시가 없다: {path}")
+
+    # 여러 조각이면 하나로 합친다
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in added:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = added[0]
+    if len(added) > 1:
+        bpy.ops.object.join()
+    prop = bpy.context.view_layer.objects.active
+    prop.parent = None
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+    # 최장축을 target_len으로 정규화
+    dims = prop.dimensions
+    longest = max(dims.x, dims.y, dims.z)
+    if longest <= 0:
+        raise SystemExit("[bake] 프롭 크기가 0이다")
+    s = target_len / longest
+    prop.scale = (s, s, s)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    # 본 머리(head) 기준 공간에 매단다. BONE 부모는 기본이 tail 기준이라 parent_inverse로 head로 옮긴다.
+    pb = arm.pose.bones.get(bone_name)
+    if not pb:
+        raise SystemExit(f"[bake] 본 없음: {bone_name}")
+    prop.parent = arm
+    prop.parent_type = "BONE"
+    prop.parent_bone = bone_name
+    prop.matrix_parent_inverse = (arm.matrix_world @ pb.matrix).inverted()
+    prop.location = Vector(off_m)
+    prop.rotation_euler = tuple(math.radians(v) for v in rot_deg)
+    return prop
 
 
 def setup_lines(thickness):
@@ -329,6 +415,19 @@ def main():
 
     meshes, arm, rest_h = build_scene(char, fbx)
     sc = bpy.context.scene
+
+    # 무기 교체: 내장 검·방패를 빼고 새 프롭을 손에 매단다.
+    # rest_h(축척 기준)는 프롭 부착 **전** 몸 높이라 무기를 바꿔도 캐릭터 크기가 흔들리지 않는다.
+    meshes = hide_meshes(meshes, [s.strip() for s in a.hide.split(",") if s.strip()])
+    if a.prop:
+        prop_path = os.path.abspath(a.prop)
+        if not os.path.exists(prop_path):
+            raise SystemExit(f"[bake] 프롭 없음: {prop_path}")
+        rot = [float(v) for v in a.prop_rot.split(",")]
+        off = [float(v) for v in a.prop_off.split(",")]
+        meshes.append(attach_prop(prop_path, arm, a.prop_bone, a.prop_len, rot, off))
+        print(f"[bake] 프롭 {os.path.basename(prop_path)} → {a.prop_bone} "
+              f"(길이 {a.prop_len}m · 회전 {a.prop_rot} · 오프셋 {a.prop_off})")
 
     f0, f1 = action_range(arm)
     times = sample_frames(f0, f1, a.frames)
