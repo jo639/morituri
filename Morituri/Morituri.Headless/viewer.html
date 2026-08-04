@@ -1282,16 +1282,17 @@ function drawFighter(fx, fy, scale, state, facing, baseCol, reach){
     ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4*scale,0,7); ctx.stroke(); ctx.restore(); }
 }
 
-// 유닛별 플로팅 HUD (머리 위 이름 + 세그먼트 HP바) — TFM 시그니처
+// 유닛별 플로팅 HUD (머리 위) — TFM 시그니처.
+// **하단 판이 생기면서 여기의 세그먼트 HP바는 중복이 됐다**([15]§10.25). 같은 값을 두 군데서
+// 크게 말하면 둘 다 안 읽힌다. 머리 위는 '누가 누구인가'만 맡고(이름 + 3 px 실낱 HP),
+// '얼마나 남았나'는 하단 판이 맡는다.
 function unitTag(sx, topY, name, hpPct, col){
-  const w=66, x=sx-w/2, y=topY;
-  ctx.textAlign='center'; ctx.font='bold 11px "Pretendard Variable",system-ui';
-  ctx.fillStyle='rgba(15,10,6,0.55)'; roundRect(x-3,y-13,w+6,12,3); ctx.fill();
-  ctx.fillStyle='#f4ecdd'; ctx.fillText(name, sx, y-3);
-  ctx.fillStyle='rgba(15,10,6,0.65)'; roundRect(x,y,w,6,2); ctx.fill();
-  ctx.fillStyle=col; roundRect(x, y, Math.max(0,Math.min(1,hpPct))*w, 6, 2); ctx.fill();
-  ctx.strokeStyle='rgba(15,10,6,0.5)'; ctx.lineWidth=1;
-  for(let i=1;i<4;i++){ const segx=x+w*i/4|0; ctx.beginPath(); ctx.moveTo(segx,y); ctx.lineTo(segx,y+6); ctx.stroke(); }
+  const w=60, x=sx-w/2, y=topY+4;
+  ctx.textAlign='center'; ctx.font='700 10px ' + getCSS('--font-display');
+  ctx.fillStyle='rgba(15,10,6,0.5)'; roundRect(x-3,y-12,w+6,11,2); ctx.fill();
+  ctx.fillStyle='#e6dcc6'; ctx.fillText(name, sx, y-3);
+  ctx.fillStyle='rgba(15,10,6,0.6)'; ctx.fillRect(x, y, w, 3);
+  ctx.fillStyle=col; ctx.fillRect(x, y, Math.max(0,Math.min(1,hpPct))*w, 3);
 }
 
 // ── 관중게이지([15]§10.24) — 글자를 걷고 형태로 읽힌다 ──────────────────────────
@@ -1303,44 +1304,105 @@ function unitTag(sx, topY, name, hpPct, col){
 // **좌우를 하단 HUD와 맞췄다** — A는 왼쪽, B는 오른쪽. 예전엔 A가 오른쪽으로 차서
 // 하단 패널과 반대였다(같은 화면에서 같은 사람이 좌우로 갈리면 안 읽힌다).
 const CROWD_LAG = 1.2;                  // 추세를 재는 과거 시점(초)
+
+// ── HUD 공용 형태 언어([15]§10.25) ─────────────────────────────────────────────
+// 직사각형은 웹 UI로 읽힌다. 파이팅 게임의 체력바가 **기운 평행사변형**인 데는 이유가 있다 —
+// 기울기가 방향을 만들고, 방향이 '이쪽 편 / 저쪽 편'을 만든다. 좌우가 서로 거울이면 대치가 된다.
+const SK = 7;                           // 기울기(윗변이 밀리는 px)
+function skewPath(x, y, w, h, sk){
+  ctx.beginPath();
+  ctx.moveTo(x + sk, y); ctx.lineTo(x + w + sk, y);
+  ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath();
+}
+// 베벨 = 광원 방향의 선언. 씬 태양은 좌상단(az 233 · el 41)이므로 **윗변이 받고 아랫변이 진다.**
+// 1 px 두 줄이 전부인데, 이게 있고 없고가 '금속 판'과 '색칠한 사각형'을 가른다.
+function bevel(x, y, w, h, sk){
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,241,216,0.34)';
+  ctx.beginPath(); ctx.moveTo(x + sk, y + 0.5); ctx.lineTo(x + w + sk, y + 0.5); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.moveTo(x, y + h - 0.5); ctx.lineTo(x + w, y + h - 0.5); ctx.stroke();
+}
+// 채움은 **바깥(초상) 쪽에 고정**되고 안쪽으로 줄어든다. 두 선수의 바가 서로를 향해 마주 줄어든다.
+function skewFill(x, y, w, h, sk, pct, style, anchorLeft){
+  const p = Math.max(0, Math.min(1, pct)); if (p <= 0) return;
+  ctx.save(); skewPath(x, y, w, h, sk); ctx.clip();
+  ctx.fillStyle = style;
+  ctx.fillRect(anchorLeft ? x - sk : x + w - w * p, y, w * p + Math.abs(sk) + 1, h);
+  ctx.restore();
+}
+// 화면 아래·위에 얇은 어둠(스크림). HUD가 배경 위에 '떠 있지' 않고 화면에 앉는다.
+function scrim(y0, y1, a0, a1){
+  const gr = ctx.createLinearGradient(0, y0, 0, y1);
+  gr.addColorStop(0, `rgba(8,5,3,${a0})`); gr.addColorStop(1, `rgba(8,5,3,${a1})`);
+  ctx.fillStyle = gr; ctx.fillRect(0, Math.min(y0, y1), W, Math.abs(y1 - y0));
+}
+
 function drawCrowdMeter(fr){
   const val = r => (r.f.Crowd ?? 0) + (((r.g.Crowd ?? 0) - (r.f.Crowd ?? 0)) * r.k);
   const crowd = val(fr), past = val(frameAt(Math.max(0, t - CROWD_LAG)));
-  const mw=460, mh=14, mx=(W-mw)/2, my=18, cx=W/2, half=mw/2;
+  const mw=430, mh=18, mx=(W-mw)/2, my=20, cx=W/2, half=mw/2;
   const at = v => cx - half * Math.max(-1, Math.min(1, v/100));   // + = A = 왼쪽
   const col = crowd >= 0 ? getCSS('--a') : getCSS('--b');
   const norm = Math.max(0, Math.min(1, (Math.abs(crowd) - 15) / 85));   // 데드존 넘은 정도
+  const tip = at(crowd);
 
   ctx.save();
-  ctx.fillStyle='rgba(15,10,6,0.62)'; roundRect(mx-5,my-5,mw+10,mh+10,5); ctx.fill();
-  ctx.fillStyle='rgba(240,230,214,0.10)'; roundRect(mx,my,mw,mh,3); ctx.fill();
-  // 데드존(±15) — 버프가 0인 구간. 여기 있는 동안은 아무도 유리하지 않다
-  ctx.fillStyle='rgba(240,230,214,0.07)'; ctx.fillRect(cx-half*0.15, my, half*0.30, mh);
+  scrim(0, 62, 0.55, 0);
+  // 섀시 — 청동 판에 홈을 판 모양. 바깥 테두리 → 안쪽 홈 → 채움 순으로 층이 진다
+  ctx.fillStyle = 'rgba(10,7,4,0.78)'; roundRect(mx-8, my-7, mw+16, mh+14, 4); ctx.fill();
+  ctx.strokeStyle = getCSS('--bronze'); ctx.lineWidth = 1; ctx.globalAlpha = 0.55;
+  roundRect(mx-8.5, my-7.5, mw+17, mh+15, 4); ctx.stroke(); ctx.globalAlpha = 1;
+  slot(mx, my, mw, mh, SK);
+  // 데드존(±15) — 버프가 0인 구간. 채움 대신 **양쪽 문턱선**으로 새긴다.
+  // 옅은 사각형은 트로프와 구분이 안 갔다 — 선이라야 "여기를 넘으면 효과가 붙는다"가 읽힌다
+  ctx.strokeStyle = getCSS('--gold-deep'); ctx.lineWidth = 1;
+  for (const q of [-0.15, 0.15]){
+    const gx = cx + half*q;
+    ctx.beginPath(); ctx.moveTo(gx + SK, my + 1); ctx.lineTo(gx, my + mh - 1); ctx.stroke();
+  }
 
   // ① 수위 — 끝으로 갈수록 밝아지는 그러데이션이라 **선단이 어디인지**가 저절로 보인다
-  const tip = at(crowd);
   if (Math.abs(crowd) > 0.5){
     const gr = ctx.createLinearGradient(cx, 0, tip, 0);
-    gr.addColorStop(0, col + '55'); gr.addColorStop(1, col);
-    ctx.save();
-    if (norm > 0){                       // ③ 페이오프 — 데드존을 넘은 만큼 발광 + 맥동(t 파생 = 스크럽 안전)
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 3 + 17 * norm * (0.78 + 0.22 * Math.sin(t * 4.2));
+    gr.addColorStop(0, col + '44'); gr.addColorStop(1, col);
+    const fx = Math.min(cx, tip) - SK, fw = Math.abs(tip - cx) + SK;
+    // ③ 페이오프 — 데드존을 넘은 만큼 번진다. shadowBlur는 프레임당 수 ms를 먹으므로
+    //    **바깥으로 넓힌 반투명 사본 두 장**으로 대신한다. 눈에는 같은 번짐이고 비용은 무시할 수준이다.
+    if (norm > 0){
+      const puls = norm * (0.78 + 0.22 * Math.sin(t * 4.2));
+      ctx.save(); ctx.fillStyle = col;
+      for (let i = 1; i <= 2; i++){
+        ctx.globalAlpha = puls * (0.20 / i);
+        ctx.fillRect(fx - i*2, my - i*3, fw + i*4, mh + i*6);
+      }
+      ctx.restore();
     }
+    ctx.save();
+    skewPath(mx, my, mw, mh, SK); ctx.clip();
     ctx.fillStyle = gr;
-    ctx.fillRect(Math.min(cx, tip), my, Math.abs(tip - cx), mh);
+    ctx.fillRect(fx, my, fw, mh);
     ctx.restore();
+  }
+  // 눈금 — ±25/50/75. 새김선이 있으면 '얼마나'가 어림으로 읽힌다
+  ctx.strokeStyle = 'rgba(240,230,214,0.28)'; ctx.lineWidth = 1;
+  for (const q of [-0.75,-0.5,-0.25,0.25,0.5,0.75]){
+    const gx = cx + half*q, big = Math.abs(q) === 0.5;
+    ctx.beginPath();
+    ctx.moveTo(gx + SK*(big?0.9:0.72), my + (big?2:5));
+    ctx.lineTo(gx + SK*(big?0.1:0.28), my + mh - (big?2:5));
+    ctx.stroke();
   }
 
   // ② 추세 — 유령 눈금(1.2초 전)과 갈매기표. 채움이 어디로 **가는 중인지**를 보여준다
   const gh = at(past), d = tip - gh;
   if (Math.abs(d) > 3){
     const dir = Math.sign(d), a = Math.min(1, Math.abs(crowd - past) / 22);
-    ctx.strokeStyle = `rgba(240,230,214,${(0.30 + 0.45*a).toFixed(2)})`; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(gh, my-2); ctx.lineTo(gh, my+mh+2); ctx.stroke();   // 유령 눈금
+    ctx.strokeStyle = `rgba(240,230,214,${(0.28 + 0.42*a).toFixed(2)})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(gh + SK, my-1); ctx.lineTo(gh, my+mh+1); ctx.stroke();
     for (let i = 1; i <= 3; i++){
-      const cxx = gh + d * (i / 4);
-      ctx.globalAlpha = a * (0.30 + 0.22*i);
+      const cxx = gh + d * (i / 4) + SK*0.5;
+      ctx.globalAlpha = a * (0.28 + 0.22*i);
       ctx.beginPath();
       ctx.moveTo(cxx - dir*3, my+mh*0.28); ctx.lineTo(cxx + dir*3, my+mh*0.5);
       ctx.lineTo(cxx - dir*3, my+mh*0.72); ctx.stroke();
@@ -1348,62 +1410,161 @@ function drawCrowdMeter(fr){
     ctx.globalAlpha = 1;
   }
 
+  bevel(mx, my, mw, mh, SK);
   // 선단 캡 + 위쪽 삼각 포인터 — 눈이 여기 하나에 붙는다
   ctx.fillStyle = '#fff8ea';
-  ctx.fillRect(tip - 1.5, my - 3, 3, mh + 6);
-  ctx.beginPath(); ctx.moveTo(tip, my-5); ctx.lineTo(tip-4, my-11); ctx.lineTo(tip+4, my-11); ctx.closePath();
+  skewPath(tip - 1.5, my - 2, 3, mh + 4, SK); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tip+SK, my-4); ctx.lineTo(tip+SK-4.5, my-10.5); ctx.lineTo(tip+SK+4.5, my-10.5); ctx.closePath();
   ctx.fillStyle = Math.abs(crowd) > 0.5 ? col : 'rgba(240,230,214,0.5)'; ctx.fill();
-  // 중앙 기준선
-  ctx.fillStyle='rgba(240,230,214,0.55)'; ctx.fillRect(cx-0.5, my-1, 1, mh+2);
+  // 중앙 피벗 — 저울의 받침점. 여기가 '아무도 유리하지 않은' 원점이다
+  ctx.fillStyle = getCSS('--gold');
+  ctx.beginPath(); ctx.moveTo(cx+SK*0.5, my+mh+2); ctx.lineTo(cx+SK*0.5-4, my+mh+7);
+  ctx.lineTo(cx+SK*0.5+4, my+mh+7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(240,230,214,0.5)'; ctx.fillRect(cx+SK*0.5-0.5, my, 1, mh);
   // 양 끝 색 칩 — 어느 쪽이 누구인지 글자 없이 알린다(하단 HUD와 같은 좌우)
-  ctx.fillStyle=getCSS('--a'); roundRect(mx-5, my-5, 3, mh+10, 1.5); ctx.fill();
-  ctx.fillStyle=getCSS('--b'); roundRect(mx+mw+2, my-5, 3, mh+10, 1.5); ctx.fill();
+  ctx.fillStyle=getCSS('--a'); skewPath(mx-6, my-2, 3, mh+4, SK*0.4); ctx.fill();
+  ctx.fillStyle=getCSS('--b'); skewPath(mx+mw+3, my-2, 3, mh+4, SK*0.4); ctx.fill();
   ctx.restore();
 }
 
-// ── 하단 HUD([15]§10.24) — 인게임 화면의 상시 정보. 개발자 컨트롤과 분리된다 ────────
-// HP / 스태미나 / 가드 게이지. 가드는 Sim의 실제 자원(GuardGauge)이고 0이면 가드 브레이크다.
-function hudBar(x, y, w, h, pct, col, back){
-  ctx.fillStyle = back || 'rgba(10,7,4,0.72)'; roundRect(x, y, w, h, h/2); ctx.fill();
-  const p = Math.max(0, Math.min(1, pct));
-  if (p > 0){ ctx.fillStyle = col; roundRect(x, y, Math.max(h, w*p), h, h/2); ctx.fill(); }
+// ── 하단 선수 판([15]§10.25) — 인게임 화면의 상시 정보 ────────────────────────
+// 위계를 **크기로** 만든다: HP(폭 262·높이 16) ≫ 스태미나(158·5) > 가드(96·5).
+// 예전엔 셋이 같은 폭·같은 모양이라 동급으로 읽혔다 — 정보는 다 있었는데 '무엇부터 볼지'가 없었다.
+// 상태는 글자가 아니라 섀시가 말한다: 위급=혈적색 맥동 · 가드 브레이크=빗금.
+function hpGhost(key){
+  // 피해 잔상은 **끊기지 않고 흘러내려야** 한다. 한 시점만 뽑으면 0.55초 뒤 뚝 끊긴다.
+  // [t−0.75, t−0.30]을 5점 평균내면 순간 피해가 폭 0.45초의 경사로 바뀐다 — 전부 t 파생이라 스크럽 안전.
+  let s = 0;
+  for (let i = 0; i < 5; i++){
+    const r = frameAt(Math.max(0, t - 0.75 + i * 0.1125));
+    s += r.f[key] + ((r.g[key] - r.f[key]) * r.k);
+  }
+  return s / 5;
+}
+function hatch(x, y, w, h, sk, col){       // 가드 브레이크 — 빗금은 '못 쓴다'의 국제 공용 기호다
+  ctx.save(); skewPath(x, y, w, h, sk); ctx.clip();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+  for (let i = -h; i < w + h; i += 5){
+    ctx.beginPath(); ctx.moveTo(x+i, y+h); ctx.lineTo(x+i+h, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+// 게이지 홈. **빈 부분이 배경과 같은 검정이면 길이가 안 읽힌다** — 초판의 가장 큰 실수였다.
+// 스태미나가 15%일 때 '짧은 노란 선'으로만 보이고 '158 중 15%'로는 안 보였다.
+// 홈에 옅은 테두리를 넣어 전체 길이를 먼저 보여주고, 그 안을 채운다.
+function slot(x, y, w, h, sk){
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; skewPath(x, y, w, h, sk); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,240,214,0.22)'; ctx.lineWidth = 1;
+  skewPath(x + 0.5, y + 0.5, w - 1, h - 1, sk); ctx.stroke();
+}
+// ── 섀시는 **한 번만 굽는다**([15]§10.25) ────────────────────────────────────
+// 판·테두리·메달리온·이름은 경기 내내 안 변한다. 그런데 그림자(shadowBlur)는 프레임마다
+// 다시 흐려진다 — 실측 **프레임당 12.2 ms**, 전체 비용의 대부분이었다.
+// 정적인 부분을 오프스크린에 한 번 굽고 매 프레임 drawImage 한 장으로 얹는다.
+const CH_W = 380, CH_H = 96, CH_OY = 24;      // 캐시 내부 좌표계에서의 BY 기준
+const _chassis = {};
+function chassisFor(dir, col, name){
+  const key = dir + '|' + col + '|' + name;
+  if (_chassis[key]) return _chassis[key];
+  const cv2 = document.createElement('canvas');
+  cv2.width = CH_W; cv2.height = CH_H;
+  const ox = dir > 0 ? 20 : CH_W - 20, BY = CH_OY, sk = SK * dir;
+  const X = (x0, w) => dir > 0 ? ox + x0 : ox - x0 - w;
+  const prev = ctx; ctx = cv2.getContext('2d');   // skewPath 등이 전역 ctx를 쓴다(기존 관례)
+  const px0 = X(24, 300), py0 = BY - 4, ph = 60;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = 'rgba(16,11,7,0.80)'; skewPath(px0, py0, 300, ph, sk*0.6); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = getCSS('--bronze'); ctx.globalAlpha = 0.45; ctx.lineWidth = 1;
+  skewPath(px0 + 0.5, py0 + 0.5, 299, ph - 1, sk*0.6); ctx.stroke(); ctx.globalAlpha = 1;
+  // 진영 색 띠 — 바깥 모서리에 한 줄. 어느 쪽이 누구인지 색만으로 말한다
+  ctx.fillStyle = col;
+  ctx.fillRect(dir > 0 ? px0 : px0 + 297, py0 + 6, 3, ph - 12);
+  // 메달리온 — 섀시 바깥 모서리에 걸친다. 눈이 붙을 닻
+  const medX = X(0, 44) + 22, medY = BY + 26;
+  ctx.beginPath(); ctx.arc(medX, medY, 22, 0, 7);
+  ctx.fillStyle = 'rgba(10,7,4,0.95)'; ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = getCSS('--bronze'); ctx.stroke();
+  ctx.lineWidth = 1; ctx.strokeStyle = col; ctx.globalAlpha = 0.75;
+  ctx.beginPath(); ctx.arc(medX, medY, 18, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 21px ' + getCSS('--font-display');
+  ctx.fillStyle = '#f4ecdd'; ctx.fillText([...name][0] || '?', medX, medY + 1);
+  ctx.textBaseline = 'alphabetic';
+  // 이름 — 로마 비문체(Cinzel). 자간을 벌리면 '새긴 글자'가 된다
+  ctx.textAlign = dir > 0 ? 'left' : 'right';
+  ctx.font = '700 13px ' + getCSS('--font-display');
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1.6px';
+  ctx.fillStyle = '#efe3cd';
+  ctx.fillText(name, dir > 0 ? ox + 54 : ox - 54, BY + 11);
+  ctx.letterSpacing = '0px';
+  ctx = prev;
+  return (_chassis[key] = { cv: cv2, ox });
+}
+function fighterPlate(ox, dir, s){
+  // ox = 화면 바깥쪽 x · dir = +1이면 내용이 오른쪽으로 자란다(A), −1이면 왼쪽(B)
+  const BY = H - 78, sk = SK * dir;
+  const X = (x0, w) => dir > 0 ? ox + x0 : ox - x0 - w;   // 바깥 기준 → 실제 좌표
+  const cx0 = 54, BW = 258, SW = 156, GW = 94;
+  const crit = s.hp > 0 && s.hp < 0.25;
+  const pulse = 0.6 + 0.4 * Math.sin(t * 6.0);
+
+  const ch = chassisFor(dir, s.col, s.name);
+  ctx.drawImage(ch.cv, ox - ch.ox, BY - CH_OY);
+
+  // HP — 홈 → 잔상 → 현재 → 눈금 → 베벨 순으로 층을 쌓는다
+  const hx = X(cx0, BW), hy = BY + 17, hh = 17;
+  slot(hx, hy, BW, hh, sk);
+  const ghost = Math.max(0, Math.min(1, s.ghost));
+  if (ghost > s.hp + 0.002) skewFill(hx, hy, BW, hh, sk, ghost, 'rgba(255,231,196,0.58)', dir > 0);
+  const gr = ctx.createLinearGradient(0, hy, 0, hy + hh);
+  gr.addColorStop(0, s.col); gr.addColorStop(1, s.colDeep);
+  skewFill(hx, hy, BW, hh, sk, s.hp, gr, dir > 0);
+  ctx.save(); skewPath(hx, hy, BW, hh, sk); ctx.clip();      // 4분할 새김선
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++){ const gx = hx + BW*i/4;
+    ctx.beginPath(); ctx.moveTo(gx + sk, hy); ctx.lineTo(gx, hy + hh); ctx.stroke(); }
+  ctx.restore();
+  bevel(hx, hy, BW, hh, sk);
+  // 위급 — shadowBlur 대신 **테두리를 세 겹 겹친다**. 발광처럼 보이면서 비용이 0에 가깝다
+  if (crit){
+    ctx.strokeStyle = getCSS('--blood-bright');
+    for (let i = 0; i < 3; i++){
+      ctx.lineWidth = 1.5; ctx.globalAlpha = pulse * (0.55 - i*0.16);
+      skewPath(hx-1-i*1.6, hy-1-i*1.6, BW+2+i*3.2, hh+2+i*3.2, sk); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 스태미나 · 가드 — 나란히. 폭이 다르면 '같은 것이 아니다'라는 뜻이 된다
+  const sy = hy + hh + 4, sh = 7, ssk = sk*0.4;
+  const stx = X(cx0, SW), gdx = X(cx0 + SW + 8, GW);
+  slot(stx, sy, SW, sh, ssk);
+  skewFill(stx, sy, SW, sh, ssk, s.st, '#d8a23c', dir > 0);
+  slot(gdx, sy, GW, sh, ssk);
+  if (s.gd <= 0.02) hatch(gdx, sy, GW, sh, ssk, getCSS('--blood-bright'));
+  else skewFill(gdx, sy, GW, sh, ssk, s.gd, '#7fa5c8', dir > 0);
+
+  // 출혈 — 마름모 스택. 원보다 눈에 걸린다
+  for (let i = 0; i < s.bleed; i++){
+    const dx = (dir > 0 ? ox + cx0 + BW - 7 : ox - cx0 - BW + 7) - dir*i*11, dy = BY + 6;
+    ctx.fillStyle = getCSS('--blood-bright');
+    ctx.beginPath(); ctx.moveTo(dx, dy-4.5); ctx.lineTo(dx+3.5, dy); ctx.lineTo(dx, dy+4.5);
+    ctx.lineTo(dx-3.5, dy); ctx.closePath(); ctx.fill();
+  }
 }
 function drawBottomHud(fr){
   const f = fr.f, g = fr.g, k = fr.k;
   const ip = (a, b) => a + (b - a) * k;
-  const lag = frameAt(Math.max(0, t - 0.55));            // 피해 잔상 — 방금 얼마나 깎였는지가 보인다
-  const PW2 = 300, BX = 26, BY = H - 62;
-  const side = [
-    { x:BX,             align:'left',  name:doc.Meta.A.Name, col:getCSS('--a'),
-      hp:ip(f.HpPctA, g.HpPctA), st:ip(f.StamPctA, g.StamPctA),
-      gd:ip(f.GuardPctA ?? 1, g.GuardPctA ?? 1), lag:lag.f.HpPctA, bleed:f.BleedA||0 },
-    { x:W - BX - PW2,   align:'right', name:doc.Meta.B.Name, col:getCSS('--b'),
-      hp:ip(f.HpPctB, g.HpPctB), st:ip(f.StamPctB, g.StamPctB),
-      gd:ip(f.GuardPctB ?? 1, g.GuardPctB ?? 1), lag:lag.f.HpPctB, bleed:f.BleedB||0 },
-  ];
   ctx.save();
-  for (const s of side){
-    ctx.fillStyle='rgba(12,9,6,0.55)'; roundRect(s.x-10, BY-20, PW2+20, 56, 6); ctx.fill();
-    // 이름 — 바깥쪽 정렬(가운데 무대를 비운다)
-    ctx.textAlign = s.align; ctx.font='bold 14px "Pretendard Variable",system-ui';
-    ctx.fillStyle='#f4ecdd';
-    ctx.fillText(s.name, s.align==='left' ? s.x : s.x+PW2, BY-6);
-    // HP — 잔상(흰 띠)이 현재 채움보다 뒤에 남았다가 따라온다
-    ctx.fillStyle='rgba(10,7,4,0.72)'; roundRect(s.x, BY, PW2, 13, 6.5); ctx.fill();
-    const ghost = Math.max(0, Math.min(1, s.lag));
-    if (ghost > s.hp){ ctx.fillStyle='rgba(255,236,214,0.42)'; roundRect(s.x, BY, Math.max(13, PW2*ghost), 13, 6.5); ctx.fill(); }
-    if (s.hp > 0){ ctx.fillStyle=s.col; roundRect(s.x, BY, Math.max(13, PW2*s.hp), 13, 6.5); ctx.fill(); }
-    ctx.strokeStyle='rgba(12,9,6,0.55)'; ctx.lineWidth=1;                    // 4분할 눈금
-    for(let i=1;i<4;i++){ const gx=(s.x+PW2*i/4)|0; ctx.beginPath(); ctx.moveTo(gx,BY); ctx.lineTo(gx,BY+13); ctx.stroke(); }
-    // 스태미나 · 가드 — 얇게 두 줄. 가드가 0이면 붉게(가드 브레이크 = Stagger 직전)
-    hudBar(s.x, BY+16, PW2, 5, s.st, '#d8a23c');
-    hudBar(s.x, BY+24, PW2, 5, s.gd, s.gd <= 0.001 ? '#c0241c' : '#7fa5c8');
-    // 출혈 스택 — 안쪽 끝에 붉은 점
-    for (let i=0;i<s.bleed;i++){
-      const dx = s.align==='left' ? s.x+PW2-6-i*9 : s.x+6+i*9;
-      ctx.fillStyle='#c0241c'; ctx.beginPath(); ctx.arc(dx, BY-11, 3, 0, 7); ctx.fill();
-    }
-  }
+  scrim(H - 106, H, 0, 0.62);
+  fighterPlate(26, +1, { name:doc.Meta.A.Name, col:getCSS('--a'), colDeep:'#2f5f96',
+    hp:ip(f.HpPctA, g.HpPctA), st:ip(f.StamPctA, g.StamPctA),
+    gd:ip(f.GuardPctA ?? 1, g.GuardPctA ?? 1), ghost:hpGhost('HpPctA'), bleed:f.BleedA||0 });
+  fighterPlate(W - 26, -1, { name:doc.Meta.B.Name, col:getCSS('--b'), colDeep:'#93362f',
+    hp:ip(f.HpPctB, g.HpPctB), st:ip(f.StamPctB, g.StamPctB),
+    gd:ip(f.GuardPctB ?? 1, g.GuardPctB ?? 1), ghost:hpGhost('HpPctB'), bleed:f.BleedB||0 });
   ctx.restore();
 }
 
@@ -1927,7 +2088,13 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function setBar(id,p){ document.getElementById(id).style.width = Math.max(0,Math.min(1,p))*100+'%'; }
-function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+// 토큰 조회는 getComputedStyle이라 싸지 않다. HUD가 프레임당 수십 번 읽으므로 1회만 캐시한다.
+const _cssMemo = {};
+function getCSS(v){
+  let x = _cssMemo[v];
+  if (x === undefined) x = _cssMemo[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  return x;
+}
 
 // ── 재생 루프 ──
 function tick(now){
