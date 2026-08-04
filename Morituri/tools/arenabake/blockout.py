@@ -61,6 +61,9 @@ def parse_args():
     # 줌은 **정해진 1차원 경로**다(zoomFrac 0→1). 그 위의 프레임을 미리 구워 두면
     # 부각이 연속으로 낮아지고 크로스페이드 이중상이 사라진다. 런타임 3D는 0.
     p.add_argument("--dolly", type=int, default=0, help="돌리 프레임 수(0=끔). 24 권장")
+    p.add_argument("--overscan-y", type=float, default=1.0,
+                   help="돌리 프레임 세로 여유. 뷰어가 camLift(줌 46 · 인트로 100 px)만큼 "
+                        "배경을 내리므로 그만큼 위가 비어 보인다 → (528+2·100)/528 = 1.42")
     p.add_argument("--overscan", type=float, default=1.0,
                    help="돌리 프레임 가로 여유. 카메라가 선수를 추적하며 팬하면 "
                         "1:1 프레임은 가장자리가 비어 잘린다 — camZoom 1.6에서 팬 최대 218 px, "

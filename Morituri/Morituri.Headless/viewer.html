@@ -124,7 +124,7 @@
     </div>
   </div>
 
-  <button id="cinemaOut" onclick="setCinema(false)">시네마 종료</button>
+  <button id="cinemaOut" onclick="setCinema(false, true)">시네마 종료</button>
   <div id="stagebox"><div id="stage">
     <canvas id="cv" width="940" height="440"></canvas>
     <div id="introCap"></div>
@@ -303,27 +303,35 @@ const RIMPX = 2, RIMCOL = LRIG.rim;                  // 림 두께(px) · 그 �
 //   월드 (X,Y,Z) → 화면 x = CX + X·(RX/12)
 //                  화면 y = CY − Y·(RY/12) − Z·(RX/12)·cos(부각)
 //   카베아: r = 14.4 + 0.55k, z = 3.5 + 0.30(k+1)   (라이저 0.30 · 트레드 0.55 · 22열)
-// zoom = 이 그림에 **이미 구워진** 줌 배율. 돌리 프레임은 확대된 렌더이므로
-// 관중도 같은 배율로 앉혀야 한다. 초판은 이걸 빼먹어 관중만 기본 배율에 남았고,
-// 그래서 줌하면 관중석은 커지는데 사람은 제자리 — "관중이 카메라를 따라오는" 것으로 보였다.
-function paintCrowd(c, tilt, zoom){
-  zoom = zoom || 1;
+// ── 관중([15]§10.19) — **배경에 굽지 않고 매 프레임 그린다** ────────────────────
+// 배경에 구웠을 때 두 문제가 있었다. 둘 다 같은 뿌리다:
+//   ① 옷 색이 마구 바뀐다 — 프레임마다 rnd() 호출 순서가 달라(건너뛴 자리 수가 다르다)
+//      같은 관객이 다른 색을 받았다. 줌하며 프레임이 넘어갈 때마다 색이 튀었다.
+//   ② 가만히 있다 — 구운 그림이라 움직일 수가 없다.
+// → 난수를 **호출 순서가 아니라 관객의 신원(열 k, 자리 i)에서** 뽑는다. 그러면 어느
+//   프레임에서 그리든 같은 사람은 같은 색이다. 그리고 매 프레임 그리니 움직일 수 있다.
+function hash2(a, b){                     // 자리 → 0~1 난수. 같은 자리면 언제나 같은 값
+  let h = (a * 374761393 + b * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177 | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+// zoom = 이 그림에 적용된 줌 배율. 돌리 프레임은 확대된 렌더이므로 관중도 같은 배율로 앉힌다.
+// 초판은 이걸 빼먹어 관중만 기본 배율에 남았고, 줌하면 관중석은 커지는데 사람은 제자리 —
+// "관중이 카메라를 따라오는" 것으로 보였다.
+// 호출자가 **아레나 중심을 원점으로** 변환을 맞춰 두고 부른다. 이 함수는 변환을 건드리지 않는다
+// (렌더 루프에서 카메라 변환 위에 그려야 하므로 setTransform을 쓸 수 없다).
+// halfW/halfH = 그 좌표계에서 보이는 반폭·반높이(솎아내기용).
+function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
+  zoom = zoom || 1; tsec = tsec || 0;
+  halfW = halfW || W / 2; halfH = halfH || H / 2;
   const el = Math.asin(Math.max(-1, Math.min(1, tilt)));   // 부각 — CamTilt = sin(부각)
   const mx = RX / 12 * zoom, my = (RX * tilt) / 12 * zoom, mz = RX / 12 * Math.cos(el) * zoom;
   const WALL_R = 12.6, WALL_Z = 3.5;
-  const pt = (aDeg, r, z) => {                 // CXf = 오버스캔을 반영한 아레나 중심(아래에서 잡는다)
+  const pt = (aDeg, r, z) => {                 // 아레나 중심(원점) 기준
     const a = aDeg * Math.PI / 180;
-    return [CXf + Math.cos(a) * r * mx, CY - Math.sin(a) * r * my - z * mz];
+    return [Math.cos(a) * r * mx, -Math.sin(a) * r * my - z * mz];
   };
-  let sd = 20250801;
-  const rnd = () => { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return (sd % 10000) / 10000; };
   c.save();
-  // 배율은 캔버스에서 유도한다 — BGS를 상수로 쓰면 돌리 프레임(배율 1)에서 2배로 그려진다.
-  // **세로 기준**으로 잡는다: 돌리 프레임은 가로만 오버스캔돼 있어 가로로 재면 배율을 오인한다.
-  const s = c.canvas.height / H;
-  c.setTransform(s, 0, 0, s, 0, 0);
-  // 오버스캔된 프레임에서 아레나 중심은 캔버스 한가운데지 CX가 아니다
-  const CXf = (c.canvas.width / s) / 2;
   // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep=65, fade=35, floor=0)와 **같은 램프**를 쓴다.
   // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
   const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
@@ -352,34 +360,48 @@ function paintCrowd(c, tilt, zoom){
       const [sx, sy] = pt(aDeg, r, z);
       const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
       if (sy > wallY - 1.5) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
-      if (sx < -PW || sx > CXf * 2 + PW || sy < -PH || sy > H) continue;
+      if (Math.abs(sx) > halfW + PW || sy < -halfH - PH || sy > halfH) continue;
+      // ── 여기서부터 난수는 전부 **자리(k, i)** 에서 나온다 ─────────────────────
+      // rnd()(호출 순서 기반)를 쓰면 프레임마다 건너뛴 자리 수가 달라 같은 관객이
+      // 다른 색을 받는다 — 줌하며 프레임이 넘어갈 때 옷 색이 마구 튀던 원인이다.
+      const q0 = hash2(k, i), q1 = hash2(k, i + 977), q2 = hash2(k, i + 1861),
+            q3 = hash2(k, i + 2749), q4 = hash2(k, i + 3623);
+
       // 화면상 간격으로 솎는다 — 각도로 솎으면 옆쪽에서만 촘촘해진다
-      if (Math.hypot(sx - lastX, sy - lastY) < PW * 1.25 + rnd() * 5) continue;
+      if (Math.hypot(sx - lastX, sy - lastY) < PW * 1.25 + q0 * 5) continue;
       lastX = sx; lastY = sy;
       // 밀도를 뭉치게 — 균일하면 격자로 보인다. 실제 관중은 몰린 데와 빈 데가 있다
-      if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < rnd() * 0.42) continue;
+      if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < q1 * 0.42) continue;
 
-      const w = PW * (0.80 + rnd() * 0.40), h = PH * (0.84 + rnd() * 0.32);
-      const stand = rnd() < 0.10;              // 서 있는 사람 — 윗선이 고르지 않게 만든다
-      const hh = h * (stand ? 1.22 : 1.0);
+      // ── 움직임([15]§10.19) — 멀리서 본 관중은 개인이 아니라 **웅성거림**으로 읽힌다.
+      // 개체마다 다른 위상·주기로 아주 작게 흔든다(진폭 사람 키의 3~7%).
+      // 위상이 자리에서 나오므로 파도처럼 줄지어 움직이지 않고 제각각 꿈틀댄다.
+      const ph = q2 * 6.283, sp = 1.1 + q3 * 1.7;
+      const bob = Math.sin(tsec * sp + ph) * PH * (0.03 + q4 * 0.04);
+      const sway = Math.cos(tsec * sp * 0.7 + ph) * PW * 0.10;
+      const px0 = sx + sway, py0 = sy + bob * 0.35;
+
+      const w = PW * (0.80 + q0 * 0.40), h = PH * (0.84 + q1 * 0.32);
+      const stand = q2 < 0.10;                 // 서 있는 사람 — 윗선이 고르지 않게 만든다
+      const hh = h * (stand ? 1.22 : 1.0) + bob;
       const hd = w * 0.40;                     // 머리 반지름
-      const [cr, cg, cb] = CLOTH[(rnd() * CLOTH.length) | 0];
-      const sh = 0.72 + rnd() * 0.5;           // 개체별 밝기 — 같은 옷도 빛을 다르게 받는다
+      const [cr, cg, cb] = CLOTH[(q3 * CLOTH.length) | 0];
+      const sh = 0.72 + q4 * 0.5;              // 개체별 밝기 — 같은 옷도 빛을 다르게 받는다
 
-      // ① 앉은 자리의 그늘 — 사람 밑이 어두워야 좌석에 '얹힌' 것으로 보인다
+      // ① 앉은 자리의 그늘 — 사람 밑이 어두워야 좌석에 '얹힌' 것으로 보인다(그늘은 안 흔들린다)
       c.fillStyle = 'rgba(16,12,9,0.42)';
       c.beginPath(); c.ellipse(sx, sy, w * 0.52, h * 0.10, 0, 0, 7); c.fill();
       // ② 몸통(옷)
       c.fillStyle = `rgba(${cr * sh | 0},${cg * sh | 0},${cb * sh | 0},0.95)`;
-      c.beginPath(); c.ellipse(sx, sy - hh * 0.30, w * 0.5, hh * 0.34, 0, 0, 7); c.fill();
+      c.beginPath(); c.ellipse(px0, py0 - hh * 0.30, w * 0.5, hh * 0.34, 0, 0, 7); c.fill();
       // ③ 머리 — 살빛은 옷보다 밝고 붉다. 이 대비가 '사람'을 만든다
-      const sk = 0.9 + rnd() * 0.5;
+      const sk = 0.9 + q0 * 0.5;
       c.fillStyle = `rgba(${124 * sk | 0},${96 * sk | 0},${76 * sk | 0},0.96)`;
-      c.beginPath(); c.arc(sx, sy - hh * 0.70, hd, 0, 7); c.fill();
+      c.beginPath(); c.arc(px0 + sway * 0.6, py0 - hh * 0.70, hd, 0, 7); c.fill();
       // ④ 역광 림 — 태양이 뒤쪽(좌상)이라 왼쪽 어깨·정수리에만 얇게. 절반만 넣어 줄이 안 서게
-      if (rnd() < 0.5){
+      if (q1 < 0.5){
         c.fillStyle = 'rgba(236,206,158,0.42)';
-        c.fillRect(sx - w * 0.48, sy - hh * 0.84, w * 0.30, Math.max(1, 1.4 * zoom));
+        c.fillRect(px0 - w * 0.48, py0 - hh * 0.84, w * 0.30, Math.max(1, 1.4 * zoom));
       }
     }
   }
@@ -393,7 +415,8 @@ function paintArena(target, img, tilt, zoom){
   c.setTransform(1,0,0,1,0,0);
   c.clearRect(0,0,target.width,target.height);
   c.drawImage(img, 0, 0, target.width, target.height);
-  paintCrowd(c, tilt, zoom);                  // 색보정 **전에** 얹어야 관중도 같은 빛을 받는다
+  // 관중은 여기서 굽지 않는다 — 매 프레임 그린다(§10.19). 구우면 움직일 수 없고,
+  // 프레임마다 난수 순서가 달라 옷 색이 튄다.
   c.setTransform(1,0,0,1,0,0);
   for (const g of [VGRADE, WGRADE]){          // venue → 날씨 순으로 곱한다
     if (!g) continue;
@@ -1508,8 +1531,17 @@ function render(){
     ctx.scale(ex, ex);
     // 프레임이 가로로 오버스캔돼 있으면(카메라 팬 대비) 그만큼 넓게, 중심을 맞춰 그린다.
     // 세로는 오버스캔이 없다 — 팬이 0이라 필요 없었다.
-    const fw = W * (fr.width / fr.height) / (W / H);
-    ctx.drawImage(fr, -CX - (fw - W) / 2, -CY, fw, H);
+    // 오버스캔은 가로·세로 각각 붙는다(가로=팬 대비, 세로=camLift 대비, §10.19).
+    // 베이크가 `--res 940`(= W)으로 굽히므로 **프레임 픽셀 = 논리 px**다. 그래서 그대로 쓴다.
+    // ※ 베이크 해상도를 바꾸면 이 등식이 깨진다 — blockout.py의 --res는 W와 같아야 한다.
+    const fw = fr.width, fh = fr.height;
+    ctx.drawImage(fr, -CX - (fw - W) / 2, -CY - (fh - H) / 2, fw, fh);
+    // 관중은 배경 위에 **매 프레임** 그린다(§10.19). 위 변환의 원점이 이미 아레나 중심이다:
+    //   프레임 좌상단이 (-CX-(fw-W)/2, -CY-(fh-H)/2)이고 그 안에서 아레나 중심은
+    //   ((fw-W)/2 + CX, (fh-H)/2 + CY) 이므로 합치면 정확히 (0, 0).
+    // 배율은 frameZoom이다 — 이 변환에는 이미 scale(ex)가 걸려 있고 ex·frameZoom = camZoom이다.
+    // camZoom을 넘기면 두 번 곱해진다.
+    paintCrowd(ctx, CamTilt, frameZoom, t, fw / 2, fh / 2);
     ctx.restore();
   }
   ctx.save(); ctx.translate(shx, shy);
@@ -1520,6 +1552,10 @@ function render(){
     if (zoomFrac > 0.001){
       ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
     }
+    // 폴백에서도 관중은 매 프레임. 이 변환에는 scale(camZoom)이 이미 걸려 있으므로 배율은 1이다.
+    ctx.save(); ctx.translate(CX, CY);
+    paintCrowd(ctx, CamTilt, 1, t, W / 2, H / 2);
+    ctx.restore();
   }
   // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
   // 발자국: 파인 자국(어둡게) + 광원 쪽 둔덕(밝게). 방향은 LDIR 하나에서만 나온다
@@ -1819,15 +1855,29 @@ stage.ondragover = e=>{ e.preventDefault(); };
 stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f.text().then(load); };
 // 시네마 모드([15]§10.18): ?cinema=1 로 들어오거나 C 키로 토글.
 // 무대 크기 감시가 setInterval로 돌고 있으므로(fitStageBox) 토글 후 한 번 불러 즉시 맞춘다.
-function setCinema(on){
+// 시네마 = UI를 걷는 것 + **모니터 전체화면**(브라우저 크롬까지 없앤다).
+// requestFullscreen은 사용자 제스처 안에서만 허용되므로, 키/버튼에서 부를 때만 실제로 걸린다.
+// ?cinema=1 자동 진입은 UI만 걷고 전체화면은 사용자가 C를 누를 때 붙는다 — 막히면 조용히 넘긴다.
+function setCinema(on, gesture){
   document.body.classList.toggle('cinema', !!on);
+  if (gesture){
+    try {
+      if (on && !document.fullscreenElement) document.documentElement.requestFullscreen();
+      else if (!on && document.fullscreenElement) document.exitFullscreen();
+    } catch(_){}
+  }
   fitStageBox(); fitCanvas();
 }
+// 브라우저가 전체화면을 빠져나가면(F11·Esc) 시네마도 같이 푼다 — 상태가 어긋나면 안 된다
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('cinema')) setCinema(false);
+  else { fitStageBox(); fitCanvas(); }
+});
 if (_qs.get('cinema') === '1') setCinema(true);
 window.onkeydown = e=>{
   if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); }
-  else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema')); }
-  else if(e.code==='Escape' && document.body.classList.contains('cinema')){ setCinema(false); }
+  else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema'), true); }
+  else if(e.code==='Escape' && document.body.classList.contains('cinema')){ setCinema(false, true); }
 };
 
 // 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
