@@ -346,9 +346,12 @@ function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
     return [Math.cos(a) * r * mx, -Math.sin(a) * r * my - z * mz];
   };
   c.save();
-  // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep=65, fade=35, floor=0)와 **같은 램프**를 쓴다.
+  // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep, fade, floor=0)와 **같은 램프여야 한다.**
+  // 베이크와 어긋나면 걷어낸 자리에 관중만 남아 허공에 뜬다. 베이크 인자를 바꾸면 여기도 바꿀 것.
   // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
-  const cut = d => d <= 65 ? 0 : (d >= 100 ? 1 : (d - 65) / 35);
+  const CUT_KEEP = 82, CUT_FADE = 30;        // = --cut-keep 82 --cut-fade 30 (§10.22)
+  const cut = d => d <= CUT_KEEP ? 0
+                 : (d >= CUT_KEEP + CUT_FADE ? 1 : (d - CUT_KEEP) / CUT_FADE);
   // 윗열은 베이크에서 ruin()으로 불규칙하게 깎였다 — 그 곡선을 여기서 재현할 수 없으니
   // 영향이 적은 아래 16열만 쓴다. 어차피 윗열은 대부분 프레임 밖이다(§10.11).
   // ── 크기: 점이 아니라 **사람**이어야 한다 ──────────────────────────────────
