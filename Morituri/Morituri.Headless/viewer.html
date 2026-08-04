@@ -1521,34 +1521,141 @@ function readyFrac(who, tag, cd){          // 1 = 준비 완료, 0 = 방금 씀
 // 판·테두리·메달리온·이름은 경기 내내 안 변한다. 그런데 그림자(shadowBlur)는 프레임마다
 // 다시 흐려진다 — 실측 **프레임당 12.2 ms**, 전체 비용의 대부분이었다.
 // 정적인 부분을 오프스크린에 한 번 굽고 매 프레임 drawImage 한 장으로 얹는다.
-// ── 하단 HUD([15]§10.26) — 대칭 대형 바 두 개는 **90년대 격투 게임의 문법**이다 ──
-// 현대 액션 RPG는 다르게 짠다: 초상 하나로 정체성을 못박고, 자원 바는 길이를 달리해
-// 층으로 쌓고, 그 아래 장비·스킬을 아이콘 행으로 늘어놓는다. 시간은 화면 중앙 하단에 둔다.
-// 좌우 대칭 거대 바는 "누가 이기고 있나"만 말하지만, 이 구성은 "지금 무엇을 쓸 수 있나"까지 말한다.
-const HUD_BY = H - 92;            // 선수 블록 상단
+// ── 하단 HUD([15]§10.26·§10.27) — 구성은 §10.26, **디테일은 레퍼런스 판화** ────────
+// 라니스타가 준 다크 판타지 HUD를 뜯어보면 '장식이 많다'가 아니라 규칙이 몇 개 있다:
+//   ① 모든 테두리가 **3겹**이다 — 어두운 외곽 / 금선 / 안쪽 밝은 하이라이트.
+//      한 겹짜리 선은 '그린 선'으로 보이고, 세 겹은 '주조된 금속'으로 보인다.
+//   ② 바의 안쪽 끝이 **뾰족하다**. 직사각형은 웹 프로그레스바고, 창끝은 무기다.
+//   ③ 홈이 **거의 새까맣고 윗변에 내부 그림자**가 있다 — 그래서 바가 '파묻혀' 보인다.
+//   ④ 채움은 단색이 아니라 **위가 밝은 3단 그러데이션 + 상단 스페큘러 한 줄**이다.
+//   ⑤ 판 자체가 **어두운 검붉은 판(oxblood)** 이고 모서리에 금 장식이 물려 있다.
+// 아래 primitive들이 이 다섯을 담당한다. 스킬 아이콘 자체는 라니스타가 나중에 그린다.
+const HUD_BY = H - 96;
+const GOLD_HI = 'rgba(246,214,142,0.92)';
+
+// ① 3겹 금테. **금은 아껴야 금으로 보인다** — 전부 같은 밝기로 두르면 판화가 아니라
+// 마커로 그린 그림이 된다(초판의 결함). 구조물(패널·홈·칸)은 청동 톤 `lit=0`,
+// 눈이 머물러야 할 곳(초상·시계·준비된 스킬)만 밝은 금 `lit=1`.
+function gild(pathFn, w, lit){
+  w = w || 3;
+  ctx.lineJoin = 'round';
+  pathFn();     // **경로는 한 번만 만든다** — stroke()는 현재 경로를 소비하지 않는다.
+                // 3번 다시 만들면 프레임당 수십 개 경로가 3배가 된다
+                // (실측 최소 6.51 → 5.03 ms · 하위 25% 7.67 → 5.33 ms).
+  ctx.lineWidth = w;       ctx.strokeStyle = 'rgba(0,0,0,0.82)';                      ctx.stroke();
+  ctx.lineWidth = w - 1.1; ctx.strokeStyle = lit ? getCSS('--gold-deep') : '#5d4a2c'; ctx.stroke();
+  ctx.lineWidth = 0.7;     ctx.globalAlpha = lit ? 1 : 0.5;
+  ctx.strokeStyle = lit ? GOLD_HI : getCSS('--bronze');                               ctx.stroke();
+  ctx.globalAlpha = 1;
+}
 function diamond(cx, cy, r){
   ctx.beginPath();
   ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
   ctx.closePath();
 }
-// 초상 — 스프라이트 idle 프레임의 **머리 부근만** 잘라 쓴다.
-// 스프라이트가 확정되면 그 시트가 그대로 초상이 된다(따로 그릴 필요가 없다).
-// 아직 없으면 머리글자로 폴백한다 — 자산 없이도 HUD는 돌아가야 한다.
-// 머리 상자를 **알파에서 자동 검출한다**. 좌표를 박아두면 스프라이트가 바뀔 때마다 다시 맞춰야 하는데,
-// 라니스타 지시대로 시트는 아직 확정 전이다. 프레임 상단 45%의 불투명 경계상자를 잡아
-// 어깨가 조금 걸리도록 1.5배 정사각으로 넓힌다. 세트당 한 번만 계산하고 캐시한다.
+function octPath(x, y, w, h, c){              // 모서리를 깎은 사각 — 아이콘 칸
+  ctx.beginPath();
+  ctx.moveTo(x + c, y);         ctx.lineTo(x + w - c, y);
+  ctx.lineTo(x + w, y + c);     ctx.lineTo(x + w, y + h - c);
+  ctx.lineTo(x + w - c, y + h); ctx.lineTo(x + c, y + h);
+  ctx.lineTo(x, y + h - c);     ctx.lineTo(x, y + c);
+  ctx.closePath();
+}
+function barPath(x, y, w, h, dir){            // ② 안쪽 끝이 창끝처럼 뾰족한 바
+  const tip = h * 0.72;
+  ctx.beginPath();
+  if (dir > 0){
+    ctx.moveTo(x, y); ctx.lineTo(x + w - tip, y); ctx.lineTo(x + w, y + h / 2);
+    ctx.lineTo(x + w - tip, y + h); ctx.lineTo(x, y + h);
+  } else {
+    ctx.moveTo(x + w, y); ctx.lineTo(x + tip, y); ctx.lineTo(x, y + h / 2);
+    ctx.lineTo(x + tip, y + h); ctx.lineTo(x + w, y + h);
+  }
+  ctx.closePath();
+}
+function barTrough(x, y, w, h, dir){          // ③ 새까만 홈 + 윗변 내부 그림자
+  barPath(x, y, w, h, dir);
+  ctx.fillStyle = '#0a0705'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const sh = ctx.createLinearGradient(0, y, 0, y + h * 0.6);
+  sh.addColorStop(0, 'rgba(0,0,0,0.9)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sh; ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+function barFill(x, y, w, h, dir, pct, c){    // ④ 3단 그러데이션 + 스페큘러
+  const p = Math.max(0, Math.min(1, pct)); if (p <= 0.001) return;
+  ctx.save(); barPath(x, y, w, h, dir); ctx.clip();
+  const fw = w * p, fx = dir > 0 ? x : x + w - fw;
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, c[0]); g.addColorStop(0.42, c[1]); g.addColorStop(1, c[2]);
+  ctx.fillStyle = g; ctx.fillRect(fx, y, fw, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';        // 상단 스페큘러 한 줄
+  ctx.fillRect(fx, y + 1.5, fw, Math.max(1, h * 0.20));
+  ctx.fillStyle = 'rgba(255,255,255,0.30)';        // 채움 앞머리 — 끝단이 빛난다
+  ctx.fillRect(dir > 0 ? fx + fw - 2 : fx, y, 2, h);
+  ctx.restore();
+}
+// 잔상 — 방금 깎인 구간을 뼈흰색으로. 채움 위가 아니라 **아래층**에 깔아야 겹치지 않는다
+function barGhost(x, y, w, h, dir, from, to){
+  if (!(from > to + 0.002)) return;
+  ctx.save(); barPath(x, y, w, h, dir); ctx.clip();
+  const gx = dir > 0 ? x + w * to : x + w - w * from;
+  ctx.fillStyle = 'rgba(255,228,186,0.62)';
+  ctx.fillRect(gx, y, w * (from - to), h);
+  ctx.restore();
+}
+// ⑤ 검붉은 판 — 바깥 모서리는 직각, 안쪽 모서리는 잘려 중앙으로 흐른다
+function oxbloodPanel(x, y, w, h, dir){
+  const cut = 22;
+  const path = () => {
+    ctx.beginPath();
+    if (dir > 0){
+      ctx.moveTo(x, y); ctx.lineTo(x + w - cut, y); ctx.lineTo(x + w, y + cut);
+      ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h);
+    } else {
+      ctx.moveTo(x + w, y); ctx.lineTo(x + cut, y); ctx.lineTo(x, y + cut);
+      ctx.lineTo(x, y + h); ctx.lineTo(x + w, y + h);
+    }
+    ctx.closePath();
+  };
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, 'rgba(48,17,15,0.88)'); g.addColorStop(1, 'rgba(14,7,6,0.94)');
+  path(); ctx.fillStyle = g; ctx.fill();
+  gild(path, 2.6, 0);
+  ctx.save(); ctx.translate(dir > 0 ? 4 : -4, 0);        // 안쪽 헤어라인 — 두 겹이라야 깊이가 생긴다
+  ctx.strokeStyle = 'rgba(196,158,96,0.22)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + (dir > 0 ? 0 : 8), y + 4); ctx.lineTo(x + w - (dir > 0 ? 8 : 0), y + 4);
+  ctx.moveTo(x + (dir > 0 ? 0 : 8), y + h - 4); ctx.lineTo(x + w - (dir > 0 ? 8 : 0), y + h - 4);
+  ctx.stroke(); ctx.restore();
+  // 모서리 금장식 — 짧은 ㄱ자 두 개 + 스터드. 필리그리의 '읽히는 최소치'다
+  const ox2 = dir > 0 ? x : x + w, s = dir;
+  ctx.strokeStyle = getCSS('--gold-deep'); ctx.lineWidth = 1.4;
+  for (const cy2 of [y + 5, y + h - 5]){
+    const dy = cy2 < y + h / 2 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(ox2 + s * 16, cy2); ctx.lineTo(ox2 + s * 5, cy2);
+    ctx.lineTo(ox2 + s * 5, cy2 + dy * 11); ctx.stroke();
+  }
+  ctx.fillStyle = getCSS('--gold');
+  for (const cy2 of [y + 5, y + h - 5]){
+    ctx.beginPath(); ctx.arc(ox2 + s * 5, cy2, 1.6, 0, 7); ctx.fill();
+  }
+}
+
+// 머리 상자를 **알파에서 자동 검출한다**([15]§10.26). 좌표를 박아두면 스프라이트가 바뀔 때마다
+// 다시 맞춰야 하는데, 라니스타 지시대로 시트는 아직 확정 전이다. 세트당 한 번만 계산하고 캐시한다.
 function headBox(spr){
-  if (spr._head !== undefined) return spr._head;
+  if (spr && spr._head !== undefined) return spr._head;
   const fr = spr && spr.frames && spr.frames.idle;
-  if (!fr || !spr.img || !spr.img.complete || !spr.img.naturalWidth) return null;   // 아직 — 다음에 다시
+  if (!fr || !spr.img || !spr.img.complete || !spr.img.naturalWidth) return null;
   const hh = Math.round(fr.h * 0.45);
   const c2 = document.createElement('canvas'); c2.width = fr.w; c2.height = hh;
   const x2 = c2.getContext('2d');
   x2.drawImage(spr.img, fr.x, fr.y, fr.w, hh, 0, 0, fr.w, hh);
   const d = x2.getImageData(0, 0, fr.w, hh).data;
-  // **맨 위 픽셀 = 머리가 아니다.** 이 시트는 무기를 세워 들고 있어서 최상단이 칼끝이다.
-  // 얇은 무기와 머리를 가르는 것은 폭이 아니라 **행별 불투명 픽셀 수**다 —
-  // 칼날은 행당 몇 px, 머리는 행당 프레임 폭의 15% 안팎이 찍힌다.
+  // **맨 위 픽셀 = 머리가 아니다.** 이 시트는 무기를 세워 들고 있어 최상단이 칼끝이다.
+  // 얇은 무기와 머리를 가르는 것은 폭이 아니라 **행별 불투명 픽셀 수**다.
   const need = Math.max(3, fr.w * 0.13);
   let minY = -1;
   for (let y = 0; y < hh && minY < 0; y++){
@@ -1557,7 +1664,6 @@ function headBox(spr){
     if (n >= need) minY = y;
   }
   if (minY < 0) return (spr._head = null);
-  // 가로 중심은 머리 높이의 행에서만 잡는다(뻗은 팔·무기가 중심을 끌고 가지 않도록)
   const headRows = Math.max(4, Math.round(fr.h * 0.08));
   let minX = 1e9, maxX = -1;
   for (let y = minY; y < Math.min(hh, minY + headRows); y++)
@@ -1565,188 +1671,232 @@ function headBox(spr){
       if (x < minX) minX = x; if (x > maxX) maxX = x;
     }
   if (maxX < 0) return (spr._head = null);
-  const side = Math.min(hh, fr.h * 0.30);        // 머리~어깨가 들어가는 정사각
+  const side = Math.min(hh, fr.h * 0.30);
   const cxl = (minX + maxX) / 2;
   return (spr._head = { x: fr.x + Math.max(0, Math.min(fr.w - side, cxl - side / 2)),
                         y: fr.y + Math.max(0, minY - fr.h * 0.035), s: side });
 }
-function drawPortrait(cx, cy, r, spr, name, col, flip){
+function drawPortrait(cx, cy, r, s, dir){
   ctx.save();
-  diamond(cx, cy, r); ctx.clip();
-  // 배경은 순검정이 아니라 **따뜻한 돌빛 그러데이션**이다. 검투사 스프라이트가 어두워서
-  // 검정 위에 얹으면 실루엣이 안 갈린다 — 초판이 새까맣게 보인 이유가 이것이었다.
+  diamond(cx, cy, r - 2); ctx.clip();
+  // 배경은 순검정이 아니라 따뜻한 돌빛 + 진영색 역광. 어두운 스프라이트가 검정 위에선 안 갈린다
   const bg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
-  bg.addColorStop(0, 'rgba(74,58,40,0.96)'); bg.addColorStop(1, 'rgba(16,11,7,0.96)');
+  bg.addColorStop(0, 'rgba(82,64,44,0.97)'); bg.addColorStop(1, 'rgba(14,9,6,0.97)');
   ctx.fillStyle = bg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  const rg = ctx.createRadialGradient(cx, cy + r * 0.2, 2, cx, cy, r * 1.2);
-  rg.addColorStop(0, col + '55'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  const rg = ctx.createRadialGradient(cx, cy + r * 0.25, 2, cx, cy, r * 1.25);
+  rg.addColorStop(0, s.col + '66'); rg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = rg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  const hb = headBox(spr);
+  const hb = headBox(s.spr);
   if (hb){
     ctx.save();
-    if (flip){ ctx.translate(cx * 2, 0); ctx.scale(-1, 1); }
+    if (dir < 0){ ctx.translate(cx * 2, 0); ctx.scale(-1, 1); }
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(spr.img, hb.x, hb.y, hb.s, hb.s, cx - r * 1.05, cy - r * 1.05, r * 2.1, r * 2.1);
+    ctx.drawImage(s.spr.img, hb.x, hb.y, hb.s, hb.s, cx - r * 1.02, cy - r * 1.02, r * 2.04, r * 2.04);
     ctx.restore();
   } else {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = '900 ' + Math.round(r * 0.95) + 'px ' + getCSS('--font-display');
-    ctx.fillStyle = '#e6dcc6'; ctx.fillText([...name][0] || '?', cx, cy + 1);
+    ctx.font = '900 ' + Math.round(r * 0.9) + 'px ' + getCSS('--font-display');
+    ctx.fillStyle = '#e6dcc6'; ctx.fillText([...s.name][0] || '?', cx, cy + 1);
     ctx.textBaseline = 'alphabetic';
   }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';           // 아래쪽 비네트 — 얼굴이 위로 뜬다
+  ctx.fillRect(cx - r, cy + r * 0.35, r * 2, r);
   ctx.restore();
-  // 테두리 두 겹 — 청동 바깥 + 진영색 안쪽
-  ctx.lineWidth = 2.5; ctx.strokeStyle = getCSS('--bronze'); diamond(cx, cy, r); ctx.stroke();
-  ctx.lineWidth = 1;   ctx.strokeStyle = col; ctx.globalAlpha = 0.8;
-  diamond(cx, cy, r - 3.5); ctx.stroke(); ctx.globalAlpha = 1;
-}
-// 아이콘 칸. ready<1이면 **12시부터 시계방향으로** 밝은 부채꼴이 차오른다 = 쿨타임 진행.
-function iconSlot(x, y, sz, id, col, ready, hot){
-  ctx.fillStyle = 'rgba(8,6,4,0.85)'; roundRect(x, y, sz, sz, 3); ctx.fill();
-  ctx.strokeStyle = ready >= 1 ? getCSS('--gold-deep') : 'rgba(120,100,70,0.5)';
-  ctx.lineWidth = 1; roundRect(x + 0.5, y + 0.5, sz - 1, sz - 1, 3); ctx.stroke();
-  const im = iconImg(id, col);
-  if (!im || !im.complete || !im.naturalWidth) return;
-  const p = 3, s = sz - p * 2;
-  if (ready >= 1){
-    ctx.globalAlpha = 1; ctx.drawImage(im, x + p, y + p, s, s);
-    if (hot){                                     // 방금 발동 — 금빛 테두리로 알린다
-      ctx.strokeStyle = getCSS('--gold'); ctx.lineWidth = 1.5;
-      roundRect(x - 1, y - 1, sz + 2, sz + 2, 4); ctx.stroke();
-    }
-    return;
+  gild(() => diamond(cx, cy, r), 4, 1);         // 두꺼운 금 마름모 테
+  ctx.strokeStyle = s.col; ctx.globalAlpha = 0.65; ctx.lineWidth = 1;
+  diamond(cx, cy, r - 5); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = getCSS('--gold');             // 네 꼭짓점 스터드
+  for (const [dx, dy] of [[0,-1],[1,0],[0,1],[-1,0]]){
+    ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, 2.1, 0, 7); ctx.fill();
   }
-  ctx.globalAlpha = 0.26; ctx.drawImage(im, x + p, y + p, s, s);   // 식은 상태
-  ctx.save();                                                      // 차오른 만큼만 밝게
-  ctx.beginPath();
-  ctx.moveTo(x + sz / 2, y + sz / 2);
-  ctx.arc(x + sz / 2, y + sz / 2, sz, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
-  ctx.closePath(); ctx.clip();
-  ctx.globalAlpha = 1; ctx.drawImage(im, x + p, y + p, s, s);
-  ctx.restore();
-  ctx.globalAlpha = 1;
+  // 아래 꼭짓점 배지 — 레퍼런스의 레벨 자리. 지금은 선수 번호(레벨 개념이 아직 없다)
+  const by = cy + r + 2;
+  gild(() => diamond(cx, by, 10), 2.4, 1);
+  ctx.fillStyle = 'rgba(12,8,5,0.95)'; diamond(cx, by, 7.5); ctx.fill();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 11px ' + getCSS('--font-display');
+  ctx.fillStyle = GOLD_HI; ctx.fillText(String(s.who + 1), cx, by + 0.5);
+  ctx.textBaseline = 'alphabetic';
 }
+// 아이콘 칸 — 팔각 금테 + 새까만 인셋. ready<1이면 12시부터 **시계방향**으로 밝아진다
+function iconSlot(x, y, sz, id, col, ready, hot){
+  octPath(x, y, sz, sz, 5); ctx.fillStyle = '#0b0806'; ctx.fill();
+  const im = iconImg(id, col);
+  if (im && im.complete && im.naturalWidth){
+    const p = 4, s = sz - p * 2;
+    if (ready >= 1){
+      ctx.drawImage(im, x + p, y + p, s, s);
+    } else {
+      ctx.globalAlpha = 0.24; ctx.drawImage(im, x + p, y + p, s, s); ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(x + sz / 2, y + sz / 2);
+      ctx.arc(x + sz / 2, y + sz / 2, sz, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
+      ctx.closePath(); ctx.clip();
+      ctx.drawImage(im, x + p, y + p, s, s);
+      ctx.restore();
+    }
+  }
+  gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0);
+  if (hot){                                     // 방금 발동 — 금빛 외곽이 한 겹 더
+    ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.6;
+    octPath(x - 2, y - 2, sz + 4, sz + 4, 6); ctx.stroke();
+  }
+}
+
+const HP_COL = { a: ['#8fc4f5', '#4a86c8', '#1b3d68'], b: ['#f2a096', '#cf5147', '#6b201a'] };
+const ST_COL = ['#f2d189', '#d8a23c', '#6b4a10'];
+const GD_COL = ['#b3d3ee', '#6f92b4', '#26394f'];
+
 function fighterPlate(ox, dir, s){
-  // ox = 화면 바깥쪽 x · dir = +1이면 내용이 오른쪽으로 자란다(A), −1이면 왼쪽(B)
-  const BY = HUD_BY, sk = SK * dir;
+  const BY = HUD_BY;
   const X = (x0, w) => dir > 0 ? ox + x0 : ox - x0 - w;
-  const BX = 76, HPW = 224, STW = 206, GDW = 188;   // 길이를 달리해 층을 만든다(위계 = 크기)
+  const PW2 = 362, BX = 92, HPW = 250, STW = 232, GDW = 214;
   const crit = s.hp > 0 && s.hp < 0.25;
   const pulse = 0.6 + 0.4 * Math.sin(t * 6.0);
 
-  drawPortrait(X(0, 64) + 32, BY + 30, 31, s.spr, s.name, s.col, dir < 0);
+  oxbloodPanel(dir > 0 ? ox : ox - PW2, BY - 8, PW2, 96, dir);   // 아이콘 행까지 덮는다
+  drawPortrait(X(0, 64) + 32, BY + 30, 30, s, dir);
 
-  // 이름 — 바 위 한 줄. 로마 비문체에 자간을 벌린다
   ctx.textAlign = dir > 0 ? 'left' : 'right';
   ctx.font = '700 12px ' + getCSS('--font-display');
-  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1.6px';
-  ctx.fillStyle = '#e6dcc6';
-  // 긴 이름은 바 폭을 넘어 중앙 시계까지 밀고 들어온다 — 넘치면 자른다
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1.7px';
+  ctx.fillStyle = '#d8c9a6';
   let nm = s.name;
-  while (nm.length > 3 && ctx.measureText(nm).width > HPW - 26) nm = nm.slice(0, -1);
-  ctx.fillText(nm === s.name ? nm : nm + '…', dir > 0 ? ox + BX : ox - BX, BY + 2);
+  while (nm.length > 3 && ctx.measureText(nm).width > HPW - 20) nm = nm.slice(0, -1);
+  ctx.fillText(nm === s.name ? nm : nm + '…', dir > 0 ? ox + BX : ox - BX, BY + 4);
   ctx.letterSpacing = '0px';
 
-  // HP — 홈 → 잔상 → 현재 → 새김선 → 베벨
-  const hx = X(BX, HPW), hy = BY + 8, hh = 14;
-  slot(hx, hy, HPW, hh, sk);
-  const ghost = Math.max(0, Math.min(1, s.ghost));
-  if (ghost > s.hp + 0.002) skewFill(hx, hy, HPW, hh, sk, ghost, 'rgba(255,231,196,0.58)', dir > 0);
-  const gr = ctx.createLinearGradient(0, hy, 0, hy + hh);
-  gr.addColorStop(0, s.col); gr.addColorStop(1, s.colDeep);
-  skewFill(hx, hy, HPW, hh, sk, s.hp, gr, dir > 0);
-  ctx.save(); skewPath(hx, hy, HPW, hh, sk); ctx.clip();
-  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++){ const gx = hx + HPW * i / 4;
-    ctx.beginPath(); ctx.moveTo(gx + sk, hy); ctx.lineTo(gx, hy + hh); ctx.stroke(); }
-  ctx.restore();
-  bevel(hx, hy, HPW, hh, sk);
-  if (crit){                                   // 위급 — 3겹 테두리 맥동(shadowBlur 없이)
+  // 레퍼런스처럼 **바가 틀을 꿉 채운다.** 얄은 바 + 넓은 홈은 웹 프로그레스바로 보인다
+  const rows = [
+    { w: HPW, h: 17, y: BY + 9,  v: s.hp, c: HP_COL[s.who ? 'b' : 'a'], ghost: s.ghost, num: s.hp },
+    { w: STW, h: 12, y: BY + 30, v: s.st, c: ST_COL, num: s.st },
+    { w: GDW, h: 12, y: BY + 45, v: s.gd, c: GD_COL, num: s.gd, brk: s.gd <= 0.02 },
+  ];
+  for (const r of rows){
+    const bx = X(BX, r.w);
+    barTrough(bx, r.y, r.w, r.h, dir);
+    if (r.ghost !== undefined) barGhost(bx, r.y, r.w, r.h, dir, Math.max(0, Math.min(1, r.ghost)), r.v);
+    if (r.brk) hatch(bx, r.y, r.w, r.h, 0, getCSS('--blood-bright'));
+    else barFill(bx, r.y, r.w, r.h, dir, r.v, r.c);
+    gild(() => barPath(bx, r.y, r.w, r.h, dir), r.h > 12 ? 2.4 : 2, 0);
+    // 수치 — 레퍼런스처럼 뾰족한 끝 안쪽에 붙는다
+    ctx.textAlign = dir > 0 ? 'right' : 'left';
+    ctx.font = '700 ' + (r.h > 13 ? 11 : 9) + 'px ' + getCSS('--font-body');
+    ctx.fillStyle = 'rgba(12,8,5,0.85)';
+    const tx = dir > 0 ? bx + r.w - r.h * 0.9 : bx + r.h * 0.9;
+    const ty = r.y + r.h - (r.h > 13 ? 4.5 : 3);
+    ctx.fillText(Math.round(r.num * 100) + '%', tx + 1, ty + 1);
+    ctx.fillStyle = '#f4ead6';
+    ctx.fillText(Math.round(r.num * 100) + '%', tx, ty);
+  }
+  if (crit){                                   // 위급 — HP 테두리 3겹 맥동
+    const bx = X(BX, HPW);
     ctx.strokeStyle = getCSS('--blood-bright');
     for (let i = 0; i < 3; i++){
-      ctx.lineWidth = 1.5; ctx.globalAlpha = pulse * (0.55 - i * 0.16);
-      skewPath(hx - 1 - i * 1.6, hy - 1 - i * 1.6, HPW + 2 + i * 3.2, hh + 2 + i * 3.2, sk); ctx.stroke();
+      ctx.lineWidth = 1.6; ctx.globalAlpha = pulse * (0.6 - i * 0.17);
+      barPath(bx - 1 - i * 1.8, BY + 8 - i * 1.8, HPW + 2 + i * 3.6, 19 + i * 3.6, dir); ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
-  // 스태미나 · 가드 — 조금씩 짧아진다. 길이가 다르면 '같은 것이 아니다'라는 뜻이 된다
-  const ssk = sk * 0.5;
-  const sy1 = hy + hh + 4, sy2 = sy1 + 11;
-  slot(X(BX, STW), sy1, STW, 8, ssk);
-  skewFill(X(BX, STW), sy1, STW, 8, ssk, s.st, '#d8a23c', dir > 0);
-  slot(X(BX, GDW), sy2, GDW, 8, ssk);
-  if (s.gd <= 0.02) hatch(X(BX, GDW), sy2, GDW, 8, ssk, getCSS('--blood-bright'));
-  else skewFill(X(BX, GDW), sy2, GDW, 8, ssk, s.gd, '#7fa5c8', dir > 0);
 
-  // 아이콘 행 — 무기 · 전술 · 스킬(쿨타임 부채꼴). 초상 아래가 아니라 바 아래로 뺐다:
-  // 초상 밑은 좁아 4칸도 안 들어가는데 스킬은 최대 6칸까지 온다
-  const SZ = 22, GAP = 5, iy = sy2 + 13;
+  // 아이콘 행 — 초상 아래. 레퍼런스와 같은 자리다
+  const SZ = 24, GAP = 6, iy = BY + 59;
   let n = 0;
   const put = (id, col, ready, hot) => {
     const gx = dir > 0 ? ox + BX + n * (SZ + GAP) : ox - BX - SZ - n * (SZ + GAP);
     iconSlot(gx, iy, SZ, id, col, ready, hot); n++;
   };
-  put(WPN_ICON[s.weapon] || 'sword', getCSS('--ink'), 1, false);
-  put(TAC_ICON[s.tactic] || 'scales', getCSS('--dim'), 1, false);
+  put(WPN_ICON[s.weapon] || 'sword', '#e8dcc0', 1, false);
+  put(TAC_ICON[s.tactic] || 'scales', '#c0ab80', 1, false);
   for (const sk2 of (s.skills || []).slice(0, 5)){
     const rf = readyFrac(s.who, sk2.Tag, sk2.Cd);
     put(SKILL_ICON[sk2.Tag] || (sk2.Passive ? 'star' : 'bolt'),
-        sk2.Passive ? getCSS('--grn') : getCSS('--gold'), rf, rf >= 1 && s.hotTag === sk2.Tag);
+        sk2.Passive ? '#9ad39a' : '#f0cd7c', rf, rf >= 1 && s.hotTag === sk2.Tag);
   }
-  // 출혈 — 이름 옆 마름모 스택
-  for (let i = 0; i < s.bleed; i++){
-    const dx = (dir > 0 ? ox + BX + HPW - 6 : ox - BX - HPW + 6) - dir * i * 11;
+  for (let i = 0; i < s.bleed; i++){           // 출혈 — 이름 옆 마름모
+    const dx = (dir > 0 ? ox + BX + HPW - 8 : ox - BX - HPW + 8) - dir * i * 11;
     ctx.fillStyle = getCSS('--blood-bright');
-    ctx.beginPath(); ctx.moveTo(dx, BY - 6); ctx.lineTo(dx + 3.5, BY - 1.5);
-    ctx.lineTo(dx, BY + 3); ctx.lineTo(dx - 3.5, BY - 1.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(dx, BY - 4); ctx.lineTo(dx + 3.5, BY);
+    ctx.lineTo(dx, BY + 4); ctx.lineTo(dx - 3.5, BY); ctx.closePath(); ctx.fill();
   }
 }
-// 중앙 하단 시계 — 남은 제한 시간. 두 선수 사이를 가르는 축이자 긴장의 계기판이다.
+
+// 중앙 하단 시계 — 레퍼런스의 ROUND 블록 구조를 그대로 옮긴다:
+// 작은 금빛 캡스 라벨 / 가는 금선 / 큰 세리프 숫자 / 아래 문장(紋章) + 좌우 금 날개.
 function drawClock(){
   const lim = doc.Meta.MatchTimeSec || 180;
   const left = Math.max(0, lim - t);
-  const cx = W / 2, cy = H - 58;
+  const cx = W / 2, top = H - 96;
   const urgent = left <= 15;
   const pulse = 0.72 + 0.28 * Math.sin(t * 5.0);
   ctx.save();
   ctx.textAlign = 'center';
-  // 받침 — 아래로 좁아지는 사다리꼴. 좌우 판과 다른 실루엣이라 눈이 구분한다
-  ctx.beginPath();
-  ctx.moveTo(cx - 58, cy - 26); ctx.lineTo(cx + 58, cy - 26);
-  ctx.lineTo(cx + 40, cy + 30); ctx.lineTo(cx - 40, cy + 30); ctx.closePath();
-  ctx.fillStyle = 'rgba(14,10,6,0.82)'; ctx.fill();
-  ctx.strokeStyle = getCSS('--bronze'); ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
-  ctx.stroke(); ctx.globalAlpha = 1;
-  // 날개 — 좌우로 뻗는 갈매기 두 겹
-  ctx.strokeStyle = getCSS('--gold-deep'); ctx.lineWidth = 1.5;
-  for (const d of [-1, 1]) for (let i = 0; i < 2; i++){
-    const x0 = cx + d * (60 + i * 13), y0 = cy - 22 + i * 5;
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + d * 26, y0 + 9); ctx.lineTo(x0, y0 + 18);
-    ctx.stroke();
+  // 받침 — 아래로 좁아지는 사다리꼴. 좌우 판과 다른 실루엣이라 눈이 바로 구분한다
+  const trap = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - 52, top); ctx.lineTo(cx + 52, top);
+    ctx.lineTo(cx + 36, top + 66); ctx.lineTo(cx - 36, top + 66); ctx.closePath();
+  };
+  const g = ctx.createLinearGradient(0, top, 0, top + 66);
+  g.addColorStop(0, 'rgba(48,17,15,0.92)'); g.addColorStop(1, 'rgba(10,6,5,0.96)');
+  trap(); ctx.fillStyle = g; ctx.fill();
+  gild(trap, 3, 1);
+  // 좌우 날개 — 바깥으로 뻗는 금빛 깃 3겹
+  ctx.lineCap = 'round';
+  for (const d of [-1, 1]) for (let i = 0; i < 4; i++){
+    const x0 = cx + d * 50, y0 = top + 10 + i * 11, len = 62 - i * 13;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + d * len * 0.55, y0 - 12, x0 + d * len, y0 + 4);
+    ctx.lineWidth = 2.6; ctx.strokeStyle = 'rgba(0,0,0,0.72)'; ctx.stroke();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = i === 0 ? GOLD_HI : getCSS('--gold-deep'); ctx.stroke();
   }
-  // 경과 호 — 남은 시간이 줄면 테두리가 함께 닫힌다
+  ctx.lineCap = 'butt';
+  // 라벨 — 레퍼런스의 'ROUND' 자리. 로마 비문체 캡스라 장식처럼 읽힌다
+  ctx.font = '700 9px ' + getCSS('--font-display');
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '3px';
+  ctx.fillStyle = getCSS('--gold-deep'); ctx.fillText('TEMPVS', cx + 1.5, top + 15);
+  ctx.letterSpacing = '0px';
+  // 가는 금선 — 레퍼런스와 같은 자리. **경과에 따라 좌우로 줄어든다**(원래 링이 있었는데
+  // 반지름 30이 라벨을 관통했다 — 사다리꼴 안에 들어갈 자리가 없다)
   const frac = Math.max(0, Math.min(1, left / lim));
-  ctx.strokeStyle = urgent ? getCSS('--blood-bright') : getCSS('--gold-deep');
-  ctx.globalAlpha = urgent ? pulse : 0.85; ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.arc(cx, cy + 1, 33, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-  ctx.stroke(); ctx.globalAlpha = 1;
-  // 숫자
-  ctx.font = '900 34px ' + getCSS('--font-display');
-  ctx.fillStyle = urgent ? getCSS('--blood-bright') : '#f2e8d4';
-  if (urgent) ctx.globalAlpha = pulse;
-  ctx.fillText(String(Math.ceil(left)), cx, cy + 12);
+  ctx.strokeStyle = '#3a2c19'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 27, top + 20.5); ctx.lineTo(cx + 27, top + 20.5); ctx.stroke();
+  ctx.strokeStyle = urgent ? getCSS('--blood-bright') : getCSS('--gold');
+  ctx.globalAlpha = urgent ? pulse : 0.9; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(cx - 27 * frac, top + 20.5); ctx.lineTo(cx + 27 * frac, top + 20.5); ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = getCSS('--gold'); ctx.beginPath();
-  ctx.moveTo(cx, cy + 20); ctx.lineTo(cx + 5, cy + 25); ctx.lineTo(cx, cy + 30);
-  ctx.lineTo(cx - 5, cy + 25); ctx.closePath(); ctx.fill();
+  // 숫자 — 금 그러데이션 + 검은 그림자. 15초 이하면 혈적색 맥동
+  const num = String(Math.ceil(left));
+  ctx.font = '900 34px ' + getCSS('--font-display');
+  ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillText(num, cx + 1.5, top + 51.5);
+  if (urgent){
+    ctx.globalAlpha = pulse; ctx.fillStyle = getCSS('--blood-bright');
+  } else {
+    const ng = ctx.createLinearGradient(0, top + 26, 0, top + 51);
+    ng.addColorStop(0, '#f8e6b4'); ng.addColorStop(0.55, getCSS('--gold')); ng.addColorStop(1, '#8a6a2a');
+    ctx.fillStyle = ng;
+  }
+  ctx.fillText(num, cx, top + 50);
+  ctx.globalAlpha = 1;
+  // 아래 문장 — 방패꼴 금 배지
+  const sy = top + 64, crest = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, sy - 3); ctx.lineTo(cx + 9, sy - 3); ctx.lineTo(cx + 9, sy + 4);
+    ctx.quadraticCurveTo(cx, sy + 14, cx - 9, sy + 4); ctx.closePath();
+  };
+  crest(); ctx.fillStyle = 'rgba(14,8,6,0.95)'; ctx.fill();
+  gild(crest, 2.2, 1);
+  ctx.fillStyle = getCSS('--gold');
+  ctx.beginPath(); ctx.moveTo(cx, sy + 1); ctx.lineTo(cx + 3.4, sy + 4.4);
+  ctx.lineTo(cx, sy + 7.8); ctx.lineTo(cx - 3.4, sy + 4.4); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 function drawBottomHud(fr){
   const f = fr.f, g = fr.g, k = fr.k;
   const ip = (a, b) => a + (b - a) * k;
   const MA = doc.Meta.A, MB = doc.Meta.B;
-  // 최근 0.9초 안에 발동한 스킬 — 아이콘을 금빛으로 띄운다.
-  // decisions는 시간순이므로 창을 벗어나면 **끊는다**. continue로 흘리면 매 프레임 전체를 훑는다.
+  // 최근 0.9초 안에 발동한 스킬. decisions는 시간순이므로 창을 벗어나면 **끊는다**
   const hot = who => {
     for (let i = decisions.length - 1; i >= 0; i--){
       const d = decisions[i];
@@ -1758,12 +1908,12 @@ function drawBottomHud(fr){
     return null;
   };
   ctx.save();
-  scrim(H - 116, H, 0, 0.66);
-  fighterPlate(24, +1, { who:0, name:MA.Name, col:getCSS('--a'), colDeep:'#2f5f96',
+  scrim(H - 122, H, 0, 0.7);
+  fighterPlate(20, +1, { who:0, name:MA.Name, col:getCSS('--a'),
     weapon:MA.Weapon, tactic:MA.Tactic, skills:MA.Skills, spr:spriteFor(MA.Weapon), hotTag:hot(0),
     hp:ip(f.HpPctA, g.HpPctA), st:ip(f.StamPctA, g.StamPctA),
     gd:ip(f.GuardPctA ?? 1, g.GuardPctA ?? 1), ghost:hpGhost('HpPctA'), bleed:f.BleedA||0 });
-  fighterPlate(W - 24, -1, { who:1, name:MB.Name, col:getCSS('--b'), colDeep:'#93362f',
+  fighterPlate(W - 20, -1, { who:1, name:MB.Name, col:getCSS('--b'),
     weapon:MB.Weapon, tactic:MB.Tactic, skills:MB.Skills, spr:spriteFor(MB.Weapon), hotTag:hot(1),
     hp:ip(f.HpPctB, g.HpPctB), st:ip(f.StamPctB, g.StamPctB),
     gd:ip(f.GuardPctB ?? 1, g.GuardPctB ?? 1), ghost:hpGhost('HpPctB'), bleed:f.BleedB||0 });
