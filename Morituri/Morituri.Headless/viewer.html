@@ -75,7 +75,7 @@
      무대가 이미 16:9(940×528)라 대부분의 화면을 레터박스 없이 채운다.
      HP·이름표는 캔버스 위에 그려지므로(unitTag) UI를 걷어도 정보가 다 사라지진 않는다. */
   body.cinema{ overflow:hidden; }
-  body.cinema header, body.cinema #hud, body.cinema #ctrl,
+  body.cinema header, body.cinema #hud,
   body.cinema .hint, body.cinema #legend{ display:none !important; }
   body.cinema #wrap{ max-width:none; width:100vw; height:100vh; padding:0; margin:0; }
   body.cinema #stagebox{ width:100vw; height:100vh; }
@@ -84,6 +84,20 @@
   #cinemaOut{ display:none; position:fixed; top:10px; right:12px; z-index:50;
               opacity:.12; transition:opacity .18s; }
   #cinemaOut:hover{ opacity:1; }
+  /* ── 시네마가 기본 상태다([15]§10.21) ─────────────────────────────────────
+     시네마를 디폴트로 하면 컨트롤을 걷어낼 수 없다 — 걷으면 조작할 방법이 없어진다.
+     그래서 문서 흐름에서 **떼어내 화면 위에 띄운다**. 영상 플레이어와 같은 규칙:
+     마우스가 멈추면 물러나고 움직이면 돌아온다. 무대는 그동안 한 픽셀도 안 줄어든다. */
+  body.cinema #ctrl{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+    z-index:60; width:min(940px, calc(100vw - 48px)); margin:0; padding:10px 14px;
+    border-radius:var(--r2); background:rgba(14,11,8,.74);
+    border:1px solid var(--line-soft); box-shadow:var(--sh2);
+    -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); }
+  body.cinema #ctrl, body.cinema #cinemaOut{ transition:opacity .3s; }
+  body.cinema #cinemaOut{ opacity:.5; }
+  body.cinema #cinemaOut:hover{ opacity:1; }
+  /* idle = 일정 시간 입력이 없었다. pointer-events까지 끊어야 안 보이는 버튼이 안 눌린다 */
+  body.cinema.idle #ctrl, body.cinema.idle #cinemaOut{ opacity:0; pointer-events:none; }
   button{ background:var(--panel2); color:var(--ink); border:1px solid var(--line);
           border-radius:var(--r1); padding:7px 14px; font-size:14px; cursor:pointer;
           transition:border-color .15s, background .15s; }
@@ -348,18 +362,27 @@ function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
   // 원색을 쓰면 사탕처럼 보인다. 흙·아마포·모직의 탁한 색에 가끔 붉은 천 하나.
   const CLOTH = [[92,78,64],[74,66,58],[104,86,66],[68,62,60],[86,74,72],
                  [110,92,70],[80,70,58],[96,80,78],[120,74,58],[64,58,54]];
-  // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
-  for (let k = 5; k >= 0; k--){
+  // ── 자리는 **월드 좌석 간격**으로 정한다([15]§10.20) ──────────────────
+  // 초판은 화면상 거리로 솎았다: hypot(sx-lastX, sy-lastY) < PW*1.25 + q0*5.
+  // 두 가지가 겹쳐 줌할 때 관객이 튀었다.
+  //   ① PW는 zoom에 비례하는데 q0*5는 아니다 — 문턱이 축척불변이 아니다.
+  //   ② lastX/lastY가 **사슬**이다 — 앞사람 하나가 채택/탈락으로 뒤집히면 그 뒤 전원의
+  //      기준점이 밀려 연쇄로 바뀐다. 돌리 24프레임이 이산적인 배율로 넘어갈 때마다
+  //      채택 집합이 통째로 달라졌다 = 위치도 형태도 튀는 것.
+  // 실제 관중석은 좌석이 돌에 새겨져 있다. 자리는 카메라와 무관한 상수다.
+  // 열마다 둘레를 좌석 간격으로 나눠 개수를 고정하면 zoom이 식에서 사라진다.
+  const SEAT = 0.42;                           // 좌석 간격(m). PW 9px = 0.29 m 라 어깨 사이가 살짝 뜬다
+  for (let k = 5; k >= 0; k--){                // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
     const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
-    let lastX = -1e9, lastY = 0;
-    for (let i = 0; i < 1600; i++){
-      const aDeg = i * (360 / 1600);
+    const seats = Math.round(2 * Math.PI * r / SEAT);
+    for (let i = 0; i < seats; i++){
+      const aDeg = i * (360 / seats);
       const kf = cut(Math.abs(((aDeg - 270 + 180) % 360) - 180));
       if (kf <= 0.02) continue;
       const z = z0 * kf;                       // 컷어웨이 구간은 좌석도 눌려 있다
       const [sx, sy] = pt(aDeg, r, z);
       const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
-      if (sy > wallY - 1.5) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
+      if (sy > wallY - 1.5 * zoom) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
       if (Math.abs(sx) > halfW + PW || sy < -halfH - PH || sy > halfH) continue;
       // ── 여기서부터 난수는 전부 **자리(k, i)** 에서 나온다 ─────────────────────
       // rnd()(호출 순서 기반)를 쓰면 프레임마다 건너뛴 자리 수가 달라 같은 관객이
@@ -367,9 +390,7 @@ function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
       const q0 = hash2(k, i), q1 = hash2(k, i + 977), q2 = hash2(k, i + 1861),
             q3 = hash2(k, i + 2749), q4 = hash2(k, i + 3623);
 
-      // 화면상 간격으로 솎는다 — 각도로 솎으면 옆쪽에서만 촘촘해진다
-      if (Math.hypot(sx - lastX, sy - lastY) < PW * 1.25 + q0 * 5) continue;
-      lastX = sx; lastY = sy;
+      if (q0 < 0.12) continue;                 // 빈 자리 — 자리에서 뽑으므로 줌해도 같은 자리가 비어 있다
       // 밀도를 뭉치게 — 균일하면 격자로 보인다. 실제 관중은 몰린 데와 빈 데가 있다
       if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < q1 * 0.42) continue;
 
@@ -1868,12 +1889,44 @@ function setCinema(on, gesture){
   }
   fitStageBox(); fitCanvas();
 }
-// 브라우저가 전체화면을 빠져나가면(F11·Esc) 시네마도 같이 푼다 — 상태가 어긋나면 안 된다
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && document.body.classList.contains('cinema')) setCinema(false);
-  else { fitStageBox(); fitCanvas(); }
-});
-if (_qs.get('cinema') === '1') setCinema(true);
+// 전체화면을 빠져나가도(F11·Esc) 시네마 레이아웃은 유지한다 — 시네마가 기본 상태이기 때문이다.
+// 예전엔 여기서 setCinema(false)를 했는데, 기본이 시네마가 된 지금은 Esc 한 번에 기본값이
+// 풀려 버린다. 시네마를 끄는 길은 '시네마 종료' 버튼 하나로 명시한다.
+document.addEventListener('fullscreenchange', () => { fitStageBox(); fitCanvas(); });
+
+// ── 시네마 기본 진입([15]§10.21) ─────────────────────────────────────────────
+// requestFullscreen은 **사용자 제스처 안에서만** 허용된다. 그래서 두 단계로 나눈다:
+//   ① 로드 즉시 시네마 레이아웃 — UI를 걷고 무대를 뷰포트에 꽉 채운다(제스처 불필요).
+//   ② 첫 클릭/키 입력에 모니터 전체화면을 붙인다 — 한 번만 시도하고, 막히면 조용히 넘긴다.
+// Photino 셸에는 브라우저 크롬이 없으므로 ①만으로도 이미 전체화면이다.
+function attachFullscreen(){
+  window.removeEventListener('pointerdown', attachFullscreen);
+  window.removeEventListener('keydown', attachFullscreen);
+  if (document.body.classList.contains('cinema') && !document.fullscreenElement){
+    const p = document.documentElement.requestFullscreen();
+    if (p && p.catch) p.catch(()=>{});
+  }
+}
+if (_qs.get('cinema') !== '0'){
+  setCinema(true);
+  window.addEventListener('pointerdown', attachFullscreen);
+  window.addEventListener('keydown', attachFullscreen);
+}
+
+// 컨트롤 자동 숨김 — 입력이 멎으면 물러난다. 컨트롤 위에 커서가 있는 동안은 타이머를 멈춘다
+// (조작 중에 버튼이 사라지면 안 된다).
+const ctrlEl = document.getElementById('ctrl');
+let idleT = 0;
+function wake(){
+  document.body.classList.remove('idle');
+  clearTimeout(idleT);
+  idleT = setTimeout(()=> document.body.classList.add('idle'), 2600);
+}
+['pointermove','pointerdown','keydown','wheel'].forEach(ev =>
+  window.addEventListener(ev, wake, {passive:true}));
+ctrlEl.addEventListener('pointerenter', ()=>{ clearTimeout(idleT); document.body.classList.remove('idle'); });
+ctrlEl.addEventListener('pointerleave', wake);
+wake();
 window.onkeydown = e=>{
   if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); }
   else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema'), true); }

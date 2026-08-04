@@ -48,6 +48,8 @@ def parse_args():
     p.add_argument("--vela", type=float, default=1.0, help="차양 그림자 세기 0~1 (0=차양 제거)")
     p.add_argument("--no-velarium", action="store_true")
     p.add_argument("--no-fg", action="store_true", help="앞쪽 관중석 실루엣 제거")
+    p.add_argument("--fg-h", type=float, default=1.0,
+                   help="앞쪽 실루엣 높이 배율. 화면 하단을 덜 가리게 낮춘다")
     p.add_argument("--b2", action="store_true", help="B2 재질 팔레트(§10.5) 적용")
     p.add_argument("--detail", action="store_true", help="벽 석재 줄눈 + 모래 절차 요철(B2)")
     p.add_argument("--attic", action="store_true", help="아케이드/상단 관중석 — 이 카메라에선 프레임 밖(§10.11)")
@@ -479,8 +481,9 @@ def build(a):
     #   → 위 가장자리가 남단 바로 아래에 **평행하게** 눕는다. 아래로는 프레임 밖까지 내려가 하단을 채운다.
     if not a.no_fg:
         FG_ARC = [(350.0, 190.0)]                              # 앞 아크(190~350°)에만
-        fg = [(20.0, 0.0), (20.0, 2.60),                       # 뒤판 — 프레임 하단을 메운다
-              (21.3, 2.95), (22.6, 3.40), (24.0, 3.90), (25.6, 4.45)]   # 단 4개
+        fg = [(20.0, 0.0), (20.0, 2.60 * a.fg_h),                       # 뒤판 — 프레임 하단을 메운다
+              (21.3, 2.95 * a.fg_h), (22.6, 3.40 * a.fg_h),
+              (24.0, 3.90 * a.fg_h), (25.6, 4.45 * a.fg_h)]   # 단 4개
         lathe("fg_cavea", fg, m_dark, gaps=FG_ARC)
         # 윗선을 톱니로 — 매끈한 곡선은 '검은 막대'로 읽힌다. 관객 머리·좌석 등받이의 실루엣.
         # 이 높이(0.37 m ≈ 화면 12 px)까지가 한계다. 위 식에 넣으면 남단 발밑에서 5 px 남는다.
@@ -496,9 +499,10 @@ def build(a):
             a0 = 190.0 + span * i / N
             w = span / N * (0.40 + rnd() * 0.22)
             tall = rnd() < 0.13                                  # 난간 기둥 — 가끔 하나씩
-            top = 2.60 + (0.37 if tall else 0.16 + rnd() * 0.17)
+            top = (2.60 + (0.37 if tall else 0.16 + rnd() * 0.17)) * a.fg_h
             verts, faces = [], []
-            for (r0, z0), (r1, z1) in [((20.6, 2.60), (20.6, top)), ((20.6, top), (21.2, top))]:
+            for (r0, z0), (r1, z1) in [((20.6, 2.60 * a.fg_h), (20.6, top)),
+                                       ((20.6, top), (21.2, top))]:
                 c0, s0 = math.cos(math.radians(a0)), math.sin(math.radians(a0))
                 c1, s1 = math.cos(math.radians(a0 + w)), math.sin(math.radians(a0 + w))
                 b = len(verts)
