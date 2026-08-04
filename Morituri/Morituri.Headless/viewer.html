@@ -1536,17 +1536,57 @@ const GOLD_HI = 'rgba(246,214,142,0.92)';
 // ① 3겹 금테. **금은 아껴야 금으로 보인다** — 전부 같은 밝기로 두르면 판화가 아니라
 // 마커로 그린 그림이 된다(초판의 결함). 구조물(패널·홈·칸)은 청동 톤 `lit=0`,
 // 눈이 머물러야 할 곳(초상·시계·준비된 스킬)만 밝은 금 `lit=1`.
-function gild(pathFn, w, lit){
+// ── 금속 테두리([15]§10.28) — **선 하나에 그러데이션을 먹이면 그게 베벨이다** ──────
+// 균일한 색으로 세 줄 긋는 것과, 위가 밝고 아래가 어두운 한 줄은 전혀 다르게 보인다.
+// 실제 주물 테두리는 윗면이 하늘을 받고 아랫면이 반사광을 받는다 — 그래서 4단이다:
+// 밝은 하이라이트 → 금색 본체 → 그늘 → 아래쪽 반사광. 이 네 단이 '두께'를 만든다.
+function metalGrad(y0, y1, lit){
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  if (lit){
+    g.addColorStop(0, '#fdf0c4'); g.addColorStop(0.30, '#dcb662');
+    g.addColorStop(0.58, '#7d5a1f'); g.addColorStop(0.82, '#a8823a'); g.addColorStop(1, '#e3c481');
+  } else {
+    g.addColorStop(0, '#b09a70'); g.addColorStop(0.30, '#836a3d');
+    g.addColorStop(0.58, '#40321c'); g.addColorStop(0.82, '#6b5730'); g.addColorStop(1, '#96805a');
+  }
+  return g;
+}
+function gild(pathFn, w, lit, y0, y1){
   w = w || 3;
   ctx.lineJoin = 'round';
   pathFn();     // **경로는 한 번만 만든다** — stroke()는 현재 경로를 소비하지 않는다.
                 // 3번 다시 만들면 프레임당 수십 개 경로가 3배가 된다
                 // (실측 최소 6.51 → 5.03 ms · 하위 25% 7.67 → 5.33 ms).
-  ctx.lineWidth = w;       ctx.strokeStyle = 'rgba(0,0,0,0.82)';                      ctx.stroke();
-  ctx.lineWidth = w - 1.1; ctx.strokeStyle = lit ? getCSS('--gold-deep') : '#5d4a2c'; ctx.stroke();
-  ctx.lineWidth = 0.7;     ctx.globalAlpha = lit ? 1 : 0.5;
-  ctx.strokeStyle = lit ? GOLD_HI : getCSS('--bronze');                               ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.lineWidth = w + 1;   ctx.strokeStyle = 'rgba(0,0,0,0.88)'; ctx.stroke();   // 바깥 어둠 = 깊이
+  ctx.lineWidth = w;       ctx.strokeStyle = metalGrad(y0, y1, lit); ctx.stroke();
+}
+// 그레인 — 레퍼런스의 '질감'은 색이 아니라 **미세한 잡티**다. 매끈한 면은 벡터로 보이고
+// 잡티가 얹히면 재질로 보인다. 64×64 타일을 한 번 굽고 overlay로 얹는다(프레임 비용 무시할 수준).
+let _noisePat;
+function noisePattern(){
+  if (_noisePat !== undefined) return _noisePat;
+  const n = document.createElement('canvas'); n.width = n.height = 64;
+  const nx = n.getContext('2d'), im = nx.createImageData(64, 64);
+  for (let i = 0; i < 64 * 64; i++){
+    const v = 128 + (Math.random() * 2 - 1) * 42;
+    im.data[i*4] = im.data[i*4+1] = im.data[i*4+2] = v; im.data[i*4+3] = 255;
+  }
+  nx.putImageData(im, 0, 0);
+  return (_noisePat = ctx.createPattern(n, 'repeat'));
+}
+function grain(pathFn, a){
+  ctx.save(); pathFn(); ctx.clip();
+  ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = a;
+  ctx.fillStyle = noisePattern(); ctx.fill();
+  ctx.restore();
+}
+// 소용돌이(볼류트) — 레퍼런스 모서리 장식의 최소 단위. 두 번 감기면 로마 아칸서스로 읽힌다
+function volute(x, y, s, dx, dy){
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.bezierCurveTo(x + dx*s*0.95, y, x + dx*s, y + dy*s*0.60, x + dx*s*0.46, y + dy*s*0.66);
+  ctx.bezierCurveTo(x + dx*s*0.08, y + dy*s*0.70, x + dx*s*0.14, y + dy*s*0.30, x + dx*s*0.44, y + dy*s*0.34);
+  ctx.stroke();
 }
 function diamond(cx, cy, r){
   ctx.beginPath();
@@ -1586,12 +1626,15 @@ function barFill(x, y, w, h, dir, pct, c){    // ④ 3단 그러데이션 + 스�
   const p = Math.max(0, Math.min(1, pct)); if (p <= 0.001) return;
   ctx.save(); barPath(x, y, w, h, dir); ctx.clip();
   const fw = w * p, fx = dir > 0 ? x : x + w - fw;
+  // **하드 스텝 광택.** 부드러운 그러데이션은 플라스틱으로 보이고,
+  // 위아래가 뚝 갈리면 유리·에나멘이 된다 — 레퍼런스 바의 반짝임이 이것이다.
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, c[0]); g.addColorStop(0.42, c[1]); g.addColorStop(1, c[2]);
+  g.addColorStop(0, c[0]); g.addColorStop(0.44, c[1]);
+  g.addColorStop(0.441, c[2]); g.addColorStop(1, c[3]);
   ctx.fillStyle = g; ctx.fillRect(fx, y, fw, h);
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';        // 상단 스페큘러 한 줄
-  ctx.fillRect(fx, y + 1.5, fw, Math.max(1, h * 0.20));
-  ctx.fillStyle = 'rgba(255,255,255,0.30)';        // 채움 앞머리 — 끝단이 빛난다
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';        // 상단 스페큐러 한 줄
+  ctx.fillRect(fx, y + 1, fw, Math.max(1, h * 0.16));
+  ctx.fillStyle = 'rgba(255,255,255,0.42)';        // 채움 앞머리 — 끝단이 빛난다
   ctx.fillRect(dir > 0 ? fx + fw - 2 : fx, y, 2, h);
   ctx.restore();
 }
@@ -1618,28 +1661,27 @@ function oxbloodPanel(x, y, w, h, dir){
     }
     ctx.closePath();
   };
+  // 레퍼런스의 판은 **거의 검다.** 갈색이 돌면 나무판이고, 검붉게 죽어야 가죽·주철로 읽힌다.
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, 'rgba(48,17,15,0.88)'); g.addColorStop(1, 'rgba(14,7,6,0.94)');
+  g.addColorStop(0, 'rgba(34,13,12,0.95)'); g.addColorStop(0.5, 'rgba(19,8,8,0.96)');
+  g.addColorStop(1, 'rgba(7,4,4,0.97)');
   path(); ctx.fillStyle = g; ctx.fill();
-  gild(path, 2.6, 0);
-  ctx.save(); ctx.translate(dir > 0 ? 4 : -4, 0);        // 안쪽 헤어라인 — 두 겹이라야 깊이가 생긴다
-  ctx.strokeStyle = 'rgba(196,158,96,0.22)'; ctx.lineWidth = 1;
+  grain(path, 0.18);                                     // 질감 — 잡티가 재질을 만든다
+  gild(path, 2.6, 0, y, y + h);
+  // 안쪽 헤어라인 — 테두리와 본판 사이에 한 칸 띄우면 '끼워 넣은 판'이 된다
+  ctx.strokeStyle = 'rgba(190,152,92,0.20)'; ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x + (dir > 0 ? 0 : 8), y + 4); ctx.lineTo(x + w - (dir > 0 ? 8 : 0), y + 4);
-  ctx.moveTo(x + (dir > 0 ? 0 : 8), y + h - 4); ctx.lineTo(x + w - (dir > 0 ? 8 : 0), y + h - 4);
-  ctx.stroke(); ctx.restore();
-  // 모서리 금장식 — 짧은 ㄱ자 두 개 + 스터드. 필리그리의 '읽히는 최소치'다
-  const ox2 = dir > 0 ? x : x + w, s = dir;
-  ctx.strokeStyle = getCSS('--gold-deep'); ctx.lineWidth = 1.4;
-  for (const cy2 of [y + 5, y + h - 5]){
-    const dy = cy2 < y + h / 2 ? 1 : -1;
-    ctx.beginPath();
-    ctx.moveTo(ox2 + s * 16, cy2); ctx.lineTo(ox2 + s * 5, cy2);
-    ctx.lineTo(ox2 + s * 5, cy2 + dy * 11); ctx.stroke();
-  }
-  ctx.fillStyle = getCSS('--gold');
-  for (const cy2 of [y + 5, y + h - 5]){
-    ctx.beginPath(); ctx.arc(ox2 + s * 5, cy2, 1.6, 0, 7); ctx.fill();
+  ctx.moveTo(x + (dir > 0 ? 4 : 12), y + 4.5); ctx.lineTo(x + w - (dir > 0 ? 12 : 4), y + 4.5);
+  ctx.moveTo(x + 4, y + h - 4.5); ctx.lineTo(x + w - 4, y + h - 4.5);
+  ctx.stroke();
+  // 모서리 볼류트 — 레퍼런스 모서리의 소용돌이 장식. 바깥 두 모서리에만 건다
+  const ox2 = dir > 0 ? x + 6 : x + w - 6, s = dir;
+  ctx.lineWidth = 1.3; ctx.strokeStyle = metalGrad(y, y + h, 1);
+  volute(ox2, y + 6, 13, s, 1);
+  volute(ox2, y + h - 6, 13, s, -1);
+  ctx.fillStyle = '#e8cf92';
+  for (const cy2 of [y + 6, y + h - 6]){
+    ctx.beginPath(); ctx.arc(ox2, cy2, 1.7, 0, 7); ctx.fill();
   }
 }
 
@@ -1702,7 +1744,7 @@ function drawPortrait(cx, cy, r, s, dir){
   ctx.fillStyle = 'rgba(0,0,0,0.35)';           // 아래쪽 비네트 — 얼굴이 위로 뜬다
   ctx.fillRect(cx - r, cy + r * 0.35, r * 2, r);
   ctx.restore();
-  gild(() => diamond(cx, cy, r), 4, 1);         // 두꺼운 금 마름모 테
+  gild(() => diamond(cx, cy, r), 4, 1, cy - r, cy + r);   // 두꺼운 금 마름모 테
   ctx.strokeStyle = s.col; ctx.globalAlpha = 0.65; ctx.lineWidth = 1;
   diamond(cx, cy, r - 5); ctx.stroke(); ctx.globalAlpha = 1;
   ctx.fillStyle = getCSS('--gold');             // 네 꼭짓점 스터드
@@ -1711,7 +1753,7 @@ function drawPortrait(cx, cy, r, s, dir){
   }
   // 아래 꼭짓점 배지 — 레퍼런스의 레벨 자리. 지금은 선수 번호(레벨 개념이 아직 없다)
   const by = cy + r + 2;
-  gild(() => diamond(cx, by, 10), 2.4, 1);
+  gild(() => diamond(cx, by, 10), 2.4, 1, by - 10, by + 10);
   ctx.fillStyle = 'rgba(12,8,5,0.95)'; diamond(cx, by, 7.5); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = '900 11px ' + getCSS('--font-display');
@@ -1736,16 +1778,18 @@ function iconSlot(x, y, sz, id, col, ready, hot){
       ctx.restore();
     }
   }
-  gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0);
+  gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0, y, y + sz);
   if (hot){                                     // 방금 발동 — 금빛 외곽이 한 겹 더
     ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.6;
     octPath(x - 2, y - 2, sz + 4, sz + 4, 6); ctx.stroke();
   }
 }
 
-const HP_COL = { a: ['#8fc4f5', '#4a86c8', '#1b3d68'], b: ['#f2a096', '#cf5147', '#6b201a'] };
-const ST_COL = ['#f2d189', '#d8a23c', '#6b4a10'];
-const GD_COL = ['#b3d3ee', '#6f92b4', '#26394f'];
+// 4단: 상단 하이라이트 / 상부 본색 / (하드 스텝) 하부 그늘 / 밑바닥 반사광
+const HP_COL = { a: ['#bcdcff', '#5b9be0', '#2a5b96', '#173c66'],
+                 b: ['#ffc0b6', '#e0685f', '#9e2f27', '#5c1b16'] };
+const ST_COL = ['#ffe8ae', '#d8a23c', '#93661a', '#54390c'];
+const GD_COL = ['#d6ebfb', '#7fa5c8', '#476884', '#27394b'];
 
 function fighterPlate(ox, dir, s){
   const BY = HUD_BY;
@@ -1778,7 +1822,7 @@ function fighterPlate(ox, dir, s){
     if (r.ghost !== undefined) barGhost(bx, r.y, r.w, r.h, dir, Math.max(0, Math.min(1, r.ghost)), r.v);
     if (r.brk) hatch(bx, r.y, r.w, r.h, 0, getCSS('--blood-bright'));
     else barFill(bx, r.y, r.w, r.h, dir, r.v, r.c);
-    gild(() => barPath(bx, r.y, r.w, r.h, dir), r.h > 12 ? 2.4 : 2, 0);
+    gild(() => barPath(bx, r.y, r.w, r.h, dir), r.h > 13 ? 3.2 : 2.6, 1, r.y - 1, r.y + r.h + 1);
     // 수치 — 레퍼런스처럼 뾰족한 끝 안쪽에 붙는다
     ctx.textAlign = dir > 0 ? 'right' : 'left';
     ctx.font = '700 ' + (r.h > 13 ? 11 : 9) + 'px ' + getCSS('--font-body');
@@ -1840,7 +1884,7 @@ function drawClock(){
   const g = ctx.createLinearGradient(0, top, 0, top + 66);
   g.addColorStop(0, 'rgba(48,17,15,0.92)'); g.addColorStop(1, 'rgba(10,6,5,0.96)');
   trap(); ctx.fillStyle = g; ctx.fill();
-  gild(trap, 3, 1);
+  gild(trap, 3, 1, top, top + 66);
   // 좌우 날개 — 바깥으로 뻗는 금빛 깃 3겹
   ctx.lineCap = 'round';
   for (const d of [-1, 1]) for (let i = 0; i < 4; i++){
@@ -1886,7 +1930,7 @@ function drawClock(){
     ctx.quadraticCurveTo(cx, sy + 14, cx - 9, sy + 4); ctx.closePath();
   };
   crest(); ctx.fillStyle = 'rgba(14,8,6,0.95)'; ctx.fill();
-  gild(crest, 2.2, 1);
+  gild(crest, 2.2, 1, sy - 3, sy + 14);
   ctx.fillStyle = getCSS('--gold');
   ctx.beginPath(); ctx.moveTo(cx, sy + 1); ctx.lineTo(cx + 3.4, sy + 4.4);
   ctx.lineTo(cx, sy + 7.8); ctx.lineTo(cx - 3.4, sy + 4.4); ctx.closePath(); ctx.fill();
