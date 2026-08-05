@@ -21,16 +21,16 @@ public class DamageFormulaTests
         => Assert.That(CombatMath.GuardGaugeMax(Avg, WeaponTable.Sword, C), Is.EqualTo(40f + 70f * 0.4f).Within(1e-4)); // 68
 
     [Test]
-    public void GuardGaugeMax_SwordShield_Gets60PercentBonus()
+    public void GuardGaugeMax_Shield_Gets60PercentBonus()
     {
         float baseGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.Sword, C);
-        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.SwordShield, C);
+        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.Shield, C);
         Assert.That(shieldGauge, Is.EqualTo(baseGauge * 1.6f).Within(1e-3));
     }
 
     [Test]
     public void MoveSpeed_Spd70_Is3_4mps()
-        => Assert.That(CombatMath.MoveSpeedMps(Avg, C), Is.EqualTo(3.4f).Within(1e-4));
+        => Assert.That(CombatMath.MoveSpeedMps(Avg, WeaponTable.Sword, C), Is.EqualTo(3.4f).Within(1e-4));
 
     [Test]
     public void MotionTime_Aspd70_Sword()
@@ -49,6 +49,19 @@ public class DamageFormulaTests
         // clamp 검증: 상한 0.08, RCT 최소(1)는 0.298로 상한 0.30 미도달 (clamp는 RCT 0 이하 가정용 안전장치)
         Assert.That(CombatMath.PerceptionDelay(Avg with { Rct = 150 }), Is.EqualTo(0.08f).Within(1e-4));
         Assert.That(CombatMath.PerceptionDelay(Avg with { Rct = 1 }),   Is.EqualTo(0.298f).Within(1e-4));
+    }
+
+    [Test]
+    public void DecisionCadenceFactor_NeutralAt70_FasterHighRct_SlowerLowRct()
+    {
+        // 평균 선수(RCT 70) = 1.0 → baseline 판단주기 불변 (Phase 2 밸런스 무손상의 근거)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 70 }),  Is.EqualTo(1.0f).Within(1e-4));
+        // 1 - (RCT-70)×0.003: RCT 높을수록 판단 간격↓(빠름), 낮을수록↑(진중)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 120 }), Is.EqualTo(0.85f).Within(1e-4));
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 20 }),  Is.EqualTo(1.15f).Within(1e-4));
+        // 유효 범위[1,150] 양끝: 0.76~1.207 — clamp[0.7,1.3]는 PerceptionDelay처럼 안전장치(범위 내 미도달)
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 150 }), Is.EqualTo(0.76f).Within(1e-4));
+        Assert.That(CombatMath.DecisionCadenceFactor(Avg with { Rct = 1 }),   Is.EqualTo(1.207f).Within(1e-4));
     }
 
     // ── 데미지 공식 ──
@@ -90,7 +103,7 @@ public class DamageFormulaTests
         float mitig = 100f / (100f + Avg.Def * C.DefCurve);
         float dmg = CombatMath.FinalDamage(
             sw, C.MotionMultHeavy, Avg, Avg, CombatMath.HitContext.Clean, C);
-        Assert.That(dmg, Is.EqualTo(raw * mitig).Within(1e-3));
+        Assert.That(dmg, Is.EqualTo(raw * mitig * C.DamageGlobalMult).Within(1e-3));
     }
 
     [Test]

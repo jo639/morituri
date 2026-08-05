@@ -20,9 +20,9 @@ public static class CombatMath
     public static float GuardGaugeMax(in FighterStats s, in WeaponDef w, in BalanceConstants c)
         => (c.GuardGaugeBase + s.Def * c.GuardGaugePerDef) * (1f + w.GuardGaugeBonus);
 
-    /// <summary>이동속도 m/s 환산: 2.0 + SPD×0.02</summary>
-    public static float MoveSpeedMps(in FighterStats s, in BalanceConstants c)
-        => c.MoveSpeedBase + s.Spd * c.MoveSpeedPerSpd;
+    /// <summary>이동속도 m/s 환산: (2.0 + SPD×0.02) × 무기MoveSpeedMult</summary>
+    public static float MoveSpeedMps(in FighterStats s, in WeaponDef w, in BalanceConstants c)
+        => (c.MoveSpeedBase + s.Spd * c.MoveSpeedPerSpd) * w.MoveSpeedMult;
 
     /// <summary>
     /// 실제 모션 시간 = 기본시간 / (무기 모션속도 × (0.7 + ASPD/250)). 문서[4] 7장.
@@ -36,6 +36,14 @@ public static class CombatMath
     /// </summary>
     public static float PerceptionDelay(in FighterStats s)
         => Math.Clamp(0.30f - s.Rct * 0.002f, 0.08f, 0.30f);
+
+    /// <summary>
+    /// 판단주기 배율(2단계): clamp(1 - (RCT-70)×0.003, 0.7, 1.3). 평균 선수(RCT 70)=1.0 → DecisionTickSec 유지
+    /// (baseline 매치업 불변). RCT 높을수록 판단 간격↓(빠른 반응 리듬), 낮을수록↑(진중). PerceptionDelay와
+    /// 함께 RCT를 "반응속도" 정체성 축으로 통합 — 노화로 RCT 떨어지면 지각도 판단도 굼떠진다.
+    /// </summary>
+    public static float DecisionCadenceFactor(in FighterStats s)
+        => Math.Clamp(1f - (s.Rct - 70f) * 0.003f, 0.7f, 1.3f);
 
     // ─────────────────────────── 데미지 (문서[4] 2장) ───────────────────────────
 
@@ -74,6 +82,7 @@ public static class CombatMath
     {
         float raw = RawDamage(weapon, motionMult, attacker);
         if (ctx.IsInnerRange) raw *= c.InnerRangePenalty;
+        raw *= c.DamageGlobalMult;
 
         return raw
              * Mitigation(defender.Def, c)

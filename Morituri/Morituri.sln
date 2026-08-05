@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Morituri.Sim.Tests", "Morit
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Morituri.Headless", "Morituri.Headless\Morituri.Headless.csproj", "{04FBED93-BB1D-4C44-ACEF-D14917EA5530}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Morituri.Client", "Morituri.Client\Morituri.Client.csproj", "{B08AD52D-7497-4C48-8207-CD0471FEEE40}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{04FBED93-BB1D-4C44-ACEF-D14917EA5530}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{04FBED93-BB1D-4C44-ACEF-D14917EA5530}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{04FBED93-BB1D-4C44-ACEF-D14917EA5530}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B08AD52D-7497-4C48-8207-CD0471FEEE40}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B08AD52D-7497-4C48-8207-CD0471FEEE40}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B08AD52D-7497-4C48-8207-CD0471FEEE40}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B08AD52D-7497-4C48-8207-CD0471FEEE40}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

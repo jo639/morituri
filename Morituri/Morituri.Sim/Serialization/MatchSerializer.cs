@@ -25,12 +25,14 @@ public static class MatchSerializer
 {
     public const int SchemaVersion = 1;
 
-    // SimEvent 9종 ↔ 타입 판별자. 문자열 판별자는 enum/타입 순서 변경에 견고하다(숫자 인덱스는 깨진다).
+    // SimEvent 11종 ↔ 타입 판별자. 문자열 판별자는 enum/타입 순서 변경에 견고하다(숫자 인덱스는 깨진다).
     private static readonly (Type Type, string Id)[] EventTypes =
     {
         (typeof(StateChanged),     "StateChanged"),
         (typeof(AttackSwung),      "AttackSwung"),
         (typeof(HitLanded),        "HitLanded"),
+        (typeof(BleedApplied),     "BleedApplied"),
+        (typeof(Parried),          "Parried"),
         (typeof(PoiseBroken),      "PoiseBroken"),
         (typeof(GuardBroken),      "GuardBroken"),
         (typeof(KnockedDown),      "KnockedDown"),

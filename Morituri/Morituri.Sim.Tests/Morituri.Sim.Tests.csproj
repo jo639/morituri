@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Morituri.Sim\Morituri.Sim.csproj" />
+    <!-- 감독 모드 Game(Meta층) 회귀 테스트용 — Headless의 Game/RelationLedger 소비 -->
+    <ProjectReference Include="..\Morituri.Headless\Morituri.Headless.csproj" />
   </ItemGroup>
 
 </Project>

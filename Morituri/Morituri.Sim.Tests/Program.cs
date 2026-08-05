@@ -4,6 +4,7 @@ using NUnit.Framework;
 
 int passed = 0, failed = 0;
 var failures = new List<string>();
+string? filter = args.Length > 0 ? args[0] : null;   // 테스트 이름 부분 일치 필터(선택)
 
 var fixtures = Assembly.GetExecutingAssembly().GetTypes()
     .Where(t => t.GetCustomAttribute<TestFixtureAttribute>() is not null)
@@ -14,7 +15,8 @@ foreach (var fixture in fixtures)
     Console.WriteLine($"\n■ {fixture.Name}");
     var instance = Activator.CreateInstance(fixture);
     var tests = fixture.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-        .Where(m => m.GetCustomAttribute<TestAttribute>() is not null);
+        .Where(m => m.GetCustomAttribute<TestAttribute>() is not null)
+        .Where(m => filter == null || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
     foreach (var test in tests)
     {

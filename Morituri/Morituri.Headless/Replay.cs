@@ -43,6 +43,14 @@ internal static class Replay
                                       $"[{name[ev.Defender]} {Bar(hp[ev.Defender], hpMax[ev.Defender])} {hp[ev.Defender]:F0}/{hpMax[ev.Defender]:F0}]");
                     break;
 
+                case BleedApplied ev:
+                    Console.WriteLine($"{T(ev.Time)}   🩸 {name[ev.Defender]} 출혈 {ev.Stacks}스택 (도끼 {name[ev.Attacker]})");
+                    break;
+
+                case Parried ev:
+                    Console.WriteLine($"{T(ev.Time)}   🛡⚡ {name[ev.Defender]} 패링! (공격자 {name[ev.Attacker]} 패링당함 {ev.StunStacks}스택{(ev.StunStacks == 0 ? " → 기절" : "")})");
+                    break;
+
                 case PoiseBroken ev:
                     Console.WriteLine($"{T(ev.Time)}   〽 {name[ev.FighterId]} 자세 무너짐 (Stagger)");
                     break;
@@ -91,8 +99,63 @@ internal static class Replay
             return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], "TAC_BALANCED", "PER_CALM"),
                     new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], "TAC_BALANCED", "PER_CALM"));
         }
+        // "s:WHIP:DUALBLADES" = 시그니처 빌드 진단용 (각 무기가 제 시그니처 전술 — sigmatrix 셀과 동일 조건).
+        // disc 재설계(doc[9]) 레버 검증: 카이터 vs 러셔 같은 실제 매치업을 replay/viewer로 재현.
+        if (m.StartsWith("s:"))
+        {
+            var p = m.Split(':');
+            return (new FighterDef(p[1], FighterStats.Baseline, "WPN_" + p[1], SigTactic(p[1]), "PER_CALM"),
+                    new FighterDef(p[2], FighterStats.Baseline, "WPN_" + p[2], SigTactic(p[2]), "PER_CALM"));
+        }
+        // "b:SWORD/PRESSURE/ARROGANT:AXE/BALANCED/RECKLESS" = 무기/전술/성격 직접 지정.
+        // 각 빌드는 무기/전술/성격, 빈 필드는 기본값(SWORD/BALANCED/CALM). B 빌드 생략 시 A의 거울.
+        // 예: "b:WHIP/ZONER/SHOWMAN:AXE/BRAWLER/CRUEL", "b:/PRESSURE/CRUEL"(검·압박·잔혹 vs 거울)
+        if (m.StartsWith("b:"))
+        {
+            var p = m.Split(':');
+            var a = BuildFighter(p.Length > 1 ? p[1] : "", 0);
+            var b = BuildFighter(p.Length > 2 ? p[2] : (p.Length > 1 ? p[1] : ""), 1);
+            return (a, b);
+        }
         return PickNamed(m);
     }
+
+    // "무기/전술/성격[/특성+특성][/감정+감정]" 한 빌드 → FighterDef. 빈 필드는 기본값.
+    // 4번째 필드 = +로 구분된 특성(예: GIANT+ZOMBIE). 5번째 필드 = +로 구분된 감정(예: TRAUMA+CONFIDENT). 원한은 감정 아닌 관계(NEMESIS).
+    private static FighterDef BuildFighter(string spec, int idx)
+    {
+        var f = spec.Split('/');
+        string wpn = Field(f, 0, "SWORD");
+        string tac = Field(f, 1, "BALANCED");
+        string per = Field(f, 2, "CALM");
+        string[]? traits = null;
+        if (f.Length > 3 && f[3].Length > 0)
+            traits = f[3].Split('+', StringSplitOptions.RemoveEmptyEntries)
+                         .Select(t => { var u = t.Trim().ToUpperInvariant();   // SKL_=스킬(T12)도 특성 슬롯으로 주입 가능(A/B 검증용)
+                                        return u.StartsWith("TRT_") || u.StartsWith("SKL_") ? u : "TRT_" + u; })
+                         .Where(TraitTable.Exists).ToArray();
+        string[]? emotions = null;
+        if (f.Length > 4 && f[4].Length > 0)
+            emotions = f[4].Split('+', StringSplitOptions.RemoveEmptyEntries)
+                           .Select(e => "EMO_" + e.Trim().ToUpperInvariant())
+                           .Where(EmotionTable.Exists).ToArray();
+        RelationType? relation = null;
+        if (f.Length > 5 && f[5].Length > 0 && RelationTable.TryParse(f[5].Trim(), out var rt)) relation = rt;
+        string name = $"P{idx + 1}·{per}·{tac}·{wpn}";
+        return new FighterDef(name, FighterStats.Baseline, "WPN_" + wpn, "TAC_" + tac, "PER_" + per, traits, emotions, relation);
+    }
+
+    private static string Field(string[] f, int i, string def)
+        => i < f.Length && f[i].Length > 0 ? f[i].Trim().ToUpperInvariant() : def;
+
+    // 무기 → 시그니처 전술 (Analysis.SignatureMatrix의 5종 + 중량 3종). sigmatrix 셀 재현용.
+    private static string SigTactic(string wpn) => wpn switch
+    {
+        "SWORD" => "TAC_PRESSURE", "SPEAR" => "TAC_COUNTER", "WHIP" => "TAC_ZONER",
+        "DUALBLADES" => "TAC_BRAWLER", "SHIELD" => "TAC_DEFENDER",
+        "AXE" => "TAC_BRAWLER", "GREATSWORD" => "TAC_PRESSURE", "HAMMER" => "TAC_PRESSURE",
+        _ => "TAC_BALANCED",
+    };
 
     private static (FighterDef, FighterDef) PickNamed(string m) => m switch
     {

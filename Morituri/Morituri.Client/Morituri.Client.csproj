@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>       <!-- 콘솔 없이 창으로 실행 -->
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Morituri.Client</RootNamespace>
+    <AssemblyName>Morituri</AssemblyName>  <!-- Morituri.exe -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 네이티브 웹뷰 셸 (Windows=WebView2). Sim·시즌은 이 프로세스 안에서 in-process 실행. -->
+    <PackageReference Include="Photino.NET" Version="*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- W0 스파이크: 기존 Season·ViewerServer 재사용 (추후 Meta 어셈블리로 분리). -->
+    <ProjectReference Include="..\Morituri.Headless\Morituri.Headless.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 웹 UI를 출력 디렉터리로 복사 → 내장 서버가 서빙 -->
+    <Content Include="index.html" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 캠페인 초상(투명 PNG). 글롭이라 새 인물(story_thea·story_lucilius 등)을 넣으면 다음 빌드에 자동 복사된다. -->
+    <Content Include="story_*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\league.html" Link="league.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\viewer.html" Link="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\melee.html" Link="melee.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\theme.css" Link="theme.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\icons.svg" Link="icons.svg" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 아레나 배경 3D 베이크([15]§10.8 B3) — 부각 20°/15° 두 벌. tools/arenabake로 재생성 -->
+    <Content Include="..\Morituri.Headless\arena_basic.png" Link="arena_basic.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\arena_zoom.png" Link="arena_zoom.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 돌리 시퀀스([15]§10.17) — 줌 경로 24장. 와일드카드라 장수가 바뀌어도 따라온다 -->
+    <Content Include="..\Morituri.Headless\dolly_*.jpg" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\ui.js" Link="ui.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
+    <!-- HUD 크롬 자산([15]§10.29) — 없으면 뷰어가 절차 생성으로 폴백하므로 비어 있어도 된다 -->
+    <Content Include="..\Morituri.Headless\hud\**" Exclude="..\Morituri.Headless\hud\test\**"
+             LinkBase="hud" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

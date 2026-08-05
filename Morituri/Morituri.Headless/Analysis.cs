@@ -1,4 +1,5 @@
 using Morituri.Sim.Data;
+using Morituri.Sim.Events;
 using Morituri.Sim.Match;
 
 namespace Morituri.Headless;
@@ -18,13 +19,13 @@ internal static class Analysis
         ("TAC_COUNTER",  "카운터", "WPN_SPEAR"),       // 전술가+창 (문서[4])
         ("TAC_ZONER",    "견제",   "WPN_WHIP"),        // 최장 사거리 순수 견제
         ("TAC_BRAWLER",  "난전",   "WPN_DUALBLADES"),  // 근접 난전 특화 (기획시안: 쌍검)
-        ("TAC_DEFENDER", "방어",   "WPN_SWORDSHIELD"), // 방패검 방어 특화
+        ("TAC_DEFENDER", "방어",   "WPN_SHIELD"),      // 방패 방어·CC 특화
     };
 
     private static readonly string[] AllWeapons =
     {
         "WPN_SWORD", "WPN_SPEAR", "WPN_AXE", "WPN_GREATSWORD",
-        "WPN_DUALBLADES", "WPN_HAMMER", "WPN_WHIP", "WPN_SWORDSHIELD",
+        "WPN_DUALBLADES", "WPN_HAMMER", "WPN_WHIP", "WPN_SHIELD",
     };
 
     /// <summary>코너 교대 듀얼. 이벤트 미수집(속도). 행 승수/판정수 반환.</summary>
@@ -117,7 +118,7 @@ internal static class Analysis
         ("WPN_DUALBLADES",  "TAC_BRAWLER",  "쌍검·난전"),
         ("WPN_HAMMER",      "TAC_PRESSURE", "망치·압박"),
         ("WPN_WHIP",        "TAC_ZONER",    "채찍·견제"),
-        ("WPN_SWORDSHIELD", "TAC_DEFENDER", "방패·방어"),
+        ("WPN_SHIELD",      "TAC_DEFENDER", "방패·방어"),
     };
 
     /// <summary>무기×빌드 매트릭스 (M3-A2 신규 성공 지표). 각 무기를 '제 빌드'에서 8×8.
@@ -191,7 +192,78 @@ internal static class Analysis
     private static string Short(string wpn) => wpn switch
     {
         "WPN_SWORD" => "검", "WPN_SPEAR" => "창", "WPN_AXE" => "도끼", "WPN_GREATSWORD" => "대검",
-        "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SWORDSHIELD" => "방패",
+        "WPN_DUALBLADES" => "쌍검", "WPN_HAMMER" => "망치", "WPN_WHIP" => "채찍", "WPN_SHIELD" => "방패",
         _ => wpn,
     };
+
+    // 무기 → 시그니처 전술 (간격 측정용)
+    private static string SigTac(string w) => w switch
+    {
+        "WPN_SPEAR" => "TAC_COUNTER", "WPN_WHIP" => "TAC_ZONER", "WPN_DUALBLADES" => "TAC_BRAWLER",
+        "WPN_SHIELD" => "TAC_DEFENDER", "WPN_AXE" => "TAC_BRAWLER", _ => "TAC_PRESSURE",
+    };
+
+    /// <summary>간격 측정: 전 무기(시그니처 빌드) 페어별 평균/최소/최대 gap + 무기별 평균. 사거리/거리 스케일 영향 관찰.</summary>
+    public static void SpacingProbe(int games)
+    {
+        Console.WriteLine($"=== 간격 측정 (전 무기 페어, 매치업당 {games}경기, 프레임 평균) ===\n");
+        var perW = new Dictionary<string, (double sum, long n)>();
+        double allSum = 0; long allN = 0; double allMin = 1e9, allMax = 0;
+        foreach (var wa in AllWeapons)
+        {
+            double wsum = 0; long wn = 0;
+            foreach (var wb in AllWeapons)
+            {
+                var a = new FighterDef(Short(wa), FighterStats.Baseline, wa, SigTac(wa), "PER_CALM");
+                var b = new FighterDef(Short(wb), FighterStats.Baseline, wb, SigTac(wb), "PER_CALM");
+                for (ulong s = 1; s <= (ulong)games; s++)
+                {
+                    var frames = new List<ReplayFrame>();
+                    new MatchSim().Run(a, b, s, null, frames);
+                    foreach (var f in frames)
+                    {
+                        double g = Math.Sqrt((f.Bx - f.Ax) * (f.Bx - f.Ax) + (f.By - f.Ay) * (f.By - f.Ay));
+                        wsum += g; wn++; allSum += g; allN++;
+                        if (g < allMin) allMin = g; if (g > allMax) allMax = g;
+                    }
+                }
+            }
+            perW[wa] = (wsum, wn);
+        }
+        Console.WriteLine("무기      평균 gap(자기 모든 매치업)");
+        foreach (var w in AllWeapons)
+            Console.WriteLine($"  {Short(w),-5} {perW[w].sum / perW[w].n,5:F2}m");
+        Console.WriteLine($"\n전체 평균 gap: {allSum / allN:F2}m  (최소 {allMin:F2} / 최대 {allMax:F2})");
+    }
+
+    /// <summary>패링 성공률 프로브: 방패(방어형)가 각 무기(압박)를 상대로 패링 vs 칩블록 비율·기절·승률.</summary>
+    public static void ParryProbe(int games)
+    {
+        Console.WriteLine($"=== 패링 성공률 프로브 (방패+방어형 vs 각 무기·압박, 매치업당 {games}경기) ===");
+        Console.WriteLine($"  ParryWindow = {WeaponTable.Shield.ParryWindowSec * 1000f:F0}ms · ParryChance = {BalanceConstants.Default.ParryChance:P0}\n");
+        Console.WriteLine("상대무기  패링   칩블록  패링률   기절유발  방패승률");
+        int totP = 0, totB = 0, totS = 0;
+        foreach (var w in AllWeapons)
+        {
+            var a = new FighterDef("방패", FighterStats.Baseline, "WPN_SHIELD", "TAC_DEFENDER", "PER_CALM");
+            var b = new FighterDef(Short(w), FighterStats.Baseline, w, "TAC_PRESSURE", "PER_CALM");
+            int parries = 0, blocks = 0, stuns = 0, shieldWins = 0;
+            for (ulong s = 1; s <= (ulong)games; s++)
+            {
+                var ev = new List<SimEvent>();
+                var r = new MatchSim().Run(a, b, s, ev);
+                if (r.Winner == 0) shieldWins++;
+                foreach (var e in ev)
+                {
+                    if (e is Parried p && p.Defender == 0) { parries++; if (p.StunStacks == 0) stuns++; }
+                    else if (e is HitLanded h && h.Defender == 0 && h.IsGuarded) blocks++;
+                }
+            }
+            int tot = parries + blocks;
+            totP += parries; totB += blocks; totS += stuns;
+            Console.WriteLine($"  {Short(w),-5} {parries,6} {blocks,7} {(tot > 0 ? 100f * parries / tot : 0f),6:F1}% {stuns,8} {100f * shieldWins / games,7:F1}%");
+        }
+        int gt = totP + totB;
+        Console.WriteLine($"\n  전체 패링률: {(gt > 0 ? 100f * totP / gt : 0f):F1}%  (패링 {totP} / 블록 {totB}), 기절 {totS}회");
+    }
 }

@@ -15,7 +15,7 @@ internal static class WeaponSweep
     {
         ("WPN_SWORD", "TAC_BALANCED"), ("WPN_SPEAR", "TAC_COUNTER"), ("WPN_AXE", "TAC_BRAWLER"),
         ("WPN_GREATSWORD", "TAC_PRESSURE"), ("WPN_DUALBLADES", "TAC_BRAWLER"), ("WPN_HAMMER", "TAC_PRESSURE"),
-        ("WPN_WHIP", "TAC_ZONER"), ("WPN_SWORDSHIELD", "TAC_DEFENDER"),
+        ("WPN_WHIP", "TAC_ZONER"), ("WPN_SHIELD", "TAC_DEFENDER"),
     };
 
     public static void Run(int games, int iters)

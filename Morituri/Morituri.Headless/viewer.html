@@ -3,52 +3,128 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MORITURI 디버그 2D 뷰어 (M4-a)</title>
+<title>MORITURI · 검투장</title>
+<link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
 <style>
-  :root{ --a:#4ea1ff; --b:#ff6b6b; --bg:#11141a; --panel:#1b2029; --ink:#e7ecf3; --dim:#8a93a3; }
+  /* 디자인 토큰(:root)은 theme.css가 단일 출처 */
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--ink);
-        font:14px/1.4 system-ui,"Segoe UI","Malgun Gothic",sans-serif; }
-  header{ padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-  h1{ font-size:15px; margin:0; font-weight:600; letter-spacing:.5px; color:var(--dim); }
-  #wrap{ max-width:980px; margin:0 auto; padding:0 16px 32px; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
+        font:14px/1.4 var(--font-body); display:flex; flex-direction:column; }
+  header{ flex:0 0 auto; padding:8px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  h1{ font-family:var(--font-display); font-size:14px; margin:0; font-weight:700; letter-spacing:.1em; color:var(--gold); }
+  #wrap{ max-width:min(1200px,96vw); width:100%; margin:0 auto; padding:0 16px 10px;
+         flex:1; min-height:0; display:flex; flex-direction:column; }
+  /* 무대 상자: 남은 세로 공간을 캔버스가 비율 유지로 채운다(JS가 정확한 크기를 준다) */
+  #stagebox{ flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
   /* HP 패널 */
-  #hud{ display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin:8px 0; }
-  .fcard{ background:var(--panel); border-radius:10px; padding:10px 12px; }
+  #hud{ flex:0 0 auto; display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin:8px 0; }
+  .fcard{ background:linear-gradient(180deg,rgba(210,171,85,.04),transparent 40%), var(--panel);
+          border:1px solid var(--line-soft); border-radius:var(--r2); padding:10px 12px; box-shadow:var(--sh1); }
   .fcard.b{ text-align:right; }
-  .fname{ font-weight:700; font-size:16px; }
+  .fname{ font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:.02em; }
   .ftags{ color:var(--dim); font-size:11px; margin-top:2px; }
-  .bar{ height:12px; border-radius:6px; background:#0c0f14; margin-top:6px; overflow:hidden; }
+  .fendow{ color:var(--dim); font-size:10px; margin-top:3px; letter-spacing:.03em; }
+  .fendow .grade{ color:var(--gold); font-weight:600; }
+  .fendow .stats{ opacity:.75; font-variant-numeric:tabular-nums; }
+  .ftraits2{ font-size:10px; margin-top:3px; color:#9bd17a; }
+  .ftraits2 .t{ display:inline-block; background:rgba(120,170,90,0.18); border-radius:3px; padding:0 4px; margin:1px 2px 0 0; }
+  .bar{ height:12px; border-radius:6px; background:rgba(0,0,0,.45); border:1px solid var(--line-soft); margin-top:6px; overflow:hidden; }
   .bar > i{ display:block; height:100%; width:100%; transition:width .05s linear; }
   .hp.a > i{ background:linear-gradient(90deg,#2e6bb0,var(--a)); }
   .hp.b > i{ background:linear-gradient(90deg,var(--b),#b03e3e); }
   .stam{ height:5px; margin-top:4px; }
-  .stam > i{ background:#d9b15a; }
-  .vs{ color:var(--dim); font-weight:700; font-size:13px; text-align:center; }
+  .stam > i{ background:linear-gradient(90deg,var(--gold-deep),var(--gold)); }
+  .vs{ color:var(--gold-deep); font-family:var(--font-display); font-weight:700; font-size:13px; text-align:center; }
   .winner{ font-size:11px; margin-top:4px; min-height:14px; }
   /* 캔버스 */
   #stage{ position:relative; }
-  canvas{ width:100%; height:auto; background:#0c0f14; border-radius:10px; display:block; }
+  /* 경기장 인트로 대사(#5) — 각 모리튜리 줌인 시 하단 자막 */
+  #introCap{ position:absolute; left:0; right:0; bottom:7%; text-align:center; pointer-events:none;
+    opacity:0; transition:opacity .45s ease; z-index:5; }
+  #introCap .ic-name{ font-family:var(--font-display); font-weight:900; font-size:clamp(16px,2.6vw,26px);
+    letter-spacing:.08em; text-shadow:0 2px 10px rgba(0,0,0,.9); }
+  #introCap .ic-quote{ font-family:'Noto Serif KR',serif; font-style:italic; font-size:clamp(14px,2vw,20px);
+    color:#f2e9d2; margin-top:6px; text-shadow:0 2px 8px rgba(0,0,0,.95); word-break:keep-all;
+    max-width:80%; margin-left:auto; margin-right:auto; }
+  /* 처형전 엄지 판정 — 경기장 안에서 진행(경기결과 창 아님) */
+  #execCap{ position:absolute; left:0; right:0; top:26%; text-align:center; pointer-events:none; opacity:0;
+    transition:opacity .4s ease; z-index:7; }
+  #execCap.on{ opacity:1; }
+  #execCap .ex-pre{ font-family:'Noto Serif KR',serif; color:#f2e9d2; font-size:clamp(14px,2vw,20px);
+    text-shadow:0 2px 12px #000; word-break:keep-all; }
+  #execCap .ex-thumb{ font-size:clamp(44px,9vw,86px); line-height:1.1; margin:6px 0;
+    filter:drop-shadow(0 4px 10px rgba(0,0,0,.85)); }
+  #execCap .ex-thumb.rocking{ display:inline-block; animation:thumbRock .7s ease-in-out infinite; }
+  @keyframes thumbRock{ 0%,100%{transform:rotate(-15deg)} 50%{transform:rotate(15deg)} }
+  #execCap .ex-verdict{ font-family:var(--font-display); font-weight:900; font-size:clamp(17px,2.8vw,28px);
+    letter-spacing:.05em; text-shadow:0 2px 14px #000; word-break:keep-all; }
+  #execCap .ex-verdict.spare{ color:#7ec97e; } #execCap .ex-verdict.kill{ color:#e0685f; }
+  #execCap .ex-note{ font-size:12px; color:#cbb98d; margin-top:5px; text-shadow:0 1px 6px #000; }
+  canvas{ width:100%; height:100%; background:#141009; border-radius:var(--r2); display:block;
+          border:1px solid var(--line-soft); box-shadow:var(--sh2); }
   #drop{ position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
          align-items:center; justify-content:center; text-align:center; color:var(--dim);
-         border:2px dashed #2c3340; border-radius:10px; cursor:pointer; }
+         border:2px dashed var(--line); border-radius:var(--r2); cursor:var(--cur-hand); }
   #drop.hidden{ display:none; }
   #drop b{ color:var(--ink); }
   /* 컨트롤 */
   #ctrl{ display:flex; gap:12px; align-items:center; margin-top:10px; }
-  button{ background:var(--panel); color:var(--ink); border:1px solid #2c3340;
-          border-radius:8px; padding:7px 14px; font-size:14px; cursor:pointer; }
-  button:hover{ border-color:#3a4452; }
-  #scrub{ flex:1; accent-color:var(--a); }
+  /* ── 시네마 모드([15]§10.18) — UI를 걷고 카메라만 남긴다 ──────────────────
+     무대가 이미 16:9(940×528)라 대부분의 화면을 레터박스 없이 채운다.
+     HP·이름표는 캔버스 위에 그려지므로(unitTag) UI를 걷어도 정보가 다 사라지진 않는다. */
+  body.cinema{ overflow:hidden; }
+  body.cinema header, body.cinema #hud,
+  body.cinema .hint, body.cinema #legend{ display:none !important; }
+  body.cinema #wrap{ max-width:none; width:100vw; height:100vh; padding:0; margin:0; }
+  body.cinema #stagebox{ width:100vw; height:100vh; }
+  body.cinema #cinemaOut{ display:block; }
+  /* 나갈 길은 남긴다 — 평소엔 숨고 마우스를 올리면 나타난다 */
+  #cinemaOut{ display:none; position:fixed; top:10px; right:12px; z-index:50;
+              opacity:.12; transition:opacity .18s; }
+  #cinemaOut:hover{ opacity:1; }
+  /* ── 시네마가 기본 상태다([15]§10.21) ─────────────────────────────────────
+     시네마를 디폴트로 하면 컨트롤을 걷어낼 수 없다 — 걷으면 조작할 방법이 없어진다.
+     그래서 문서 흐름에서 **떼어내 화면 위에 띄운다**. 영상 플레이어와 같은 규칙:
+     마우스가 멈추면 물러나고 움직이면 돌아온다. 무대는 그동안 한 픽셀도 안 줄어든다. */
+  body.devon.cinema #devbar{ display:block; position:fixed; left:50%; bottom:18px;
+    transform:translateX(-50%); z-index:60; width:min(940px, calc(100vw - 48px));
+    margin:0; padding:10px 14px; border-radius:var(--r2); background:rgba(14,11,8,.74);
+    border:1px solid var(--line-soft); box-shadow:var(--sh2);
+    -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); }
+  body.devon.cinema #ctrl{ margin-top:0; }
+  body.cinema #devbar, body.cinema #cinemaOut, body.cinema #devToggle{ transition:opacity .3s; }
+  body.cinema #cinemaOut, body.cinema #devToggle{ opacity:.5; }
+  body.cinema #cinemaOut:hover, body.cinema #devToggle:hover{ opacity:1; }
+  /* idle = 일정 시간 입력이 없었다. pointer-events까지 끊어야 안 보이는 버튼이 안 눌린다 */
+  body.cinema.idle #devbar, body.cinema.idle #cinemaOut,
+  body.cinema.idle #devToggle{ opacity:0; pointer-events:none; }
+  /* ── 개발자 패널([15]§10.24) ────────────────────────────────────────────────
+     배속·재생바·하이라이트·시계는 **인게임 완성본에 없다.** 조사 도구지 게임 UI가 아니다.
+     기본은 숨김 — D 키 또는 우상단 버튼으로 연다. 인게임 정보(HP·스태미나·가드)는
+     캔버스 하단 HUD가 대신한다. */
+  #devbar{ display:none; }
+  body.devon #devbar{ display:block; }
+  /* 시네마 종료와 달리 항상 떠 있다 — 컨트롤로 가는 유일한 입구라 찾을 수 있어야 한다 */
+  #devToggle{ position:fixed; top:10px; right:112px; z-index:50; font-size:12px;
+              padding:5px 10px; opacity:.3; transition:opacity .18s; }
+  #devToggle:hover{ opacity:1; }
+  body.devon #devToggle{ opacity:.75; border-color:var(--gold-deep); }
+  button{ background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+          border-radius:var(--r1); padding:7px 14px; font-size:14px; cursor:pointer;
+          transition:border-color .15s, background .15s; }
+  button:hover{ border-color:var(--gold-deep); background:var(--panel3); }
+  #scrub{ flex:1; accent-color:var(--gold); }
   #clock{ font-variant-numeric:tabular-nums; color:var(--dim); min-width:96px; text-align:right; }
-  select{ background:var(--panel); color:var(--ink); border:1px solid #2c3340; border-radius:8px; padding:6px; }
+  select{ background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:var(--r1); padding:6px; }
   .hint{ color:var(--dim); font-size:11px; margin-top:10px; }
-  code{ background:#0c0f14; padding:1px 5px; border-radius:4px; }
+  code{ background:rgba(0,0,0,.4); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>MORITURI · 디버그 2D 뷰어</h1>
+  <h1><svg class="ic"><use href="icons.svg#swords"/></svg> MORITURI · 검투장</h1>
   <span class="hint" id="meta"></span>
 </header>
 
@@ -57,6 +133,8 @@
     <div class="fcard a">
       <div class="fname" id="nameA" style="color:var(--a)">—</div>
       <div class="ftags" id="tagsA"></div>
+      <div class="fendow" id="endowA"></div>
+      <div class="ftraits2" id="traitA"></div>
       <div class="bar hp a"><i id="hpA"></i></div>
       <div class="bar stam"><i id="stA"></i></div>
       <div class="winner" id="winA"></div>
@@ -65,42 +143,505 @@
     <div class="fcard b">
       <div class="fname" id="nameB" style="color:var(--b)">—</div>
       <div class="ftags" id="tagsB"></div>
+      <div class="fendow" id="endowB"></div>
+      <div class="ftraits2" id="traitB"></div>
       <div class="bar hp b"><i id="hpB"></i></div>
       <div class="bar stam"><i id="stB"></i></div>
       <div class="winner" id="winB"></div>
     </div>
   </div>
 
-  <div id="stage">
-    <canvas id="cv" width="940" height="380"></canvas>
+  <button id="cinemaOut" onclick="setCinema(false, true)">시네마 종료</button>
+  <div id="stagebox"><div id="stage">
+    <canvas id="cv" width="940" height="440"></canvas>
+    <div id="introCap"></div>
+    <div id="execCap"></div>
     <label id="drop">
       <b>viewer.json 을 여기로 끌어다 놓으세요</b>
       <span>또는 클릭해서 파일 선택 · 생성: <code>dotnet run -- viewer arrogant 7</code></span>
       <input type="file" id="file" accept=".json,application/json" hidden>
     </label>
-  </div>
+  </div></div>
 
-  <div id="ctrl">
+  <div id="devbar"><div id="ctrl">
     <button id="play">▶ 재생</button>
     <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled>
-    <select id="speed">
-      <option value="0.25">0.25×</option>
-      <option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option>
-      <option value="2">2×</option>
-      <option value="4">4×</option>
-    </select>
+    <span class="seg" id="speed"><button data-v="0.25">0.25×</button><button data-v="0.5">0.5×</button><button data-v="1" class="cur">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></span>
+    <button id="viewmode" title="기본 ↔ 줌 추적">기본 화면</button>
+    <button id="hl" title="임팩트 구간(타격·넉다운·KO)만 점프 재생 — 3분 경기를 ~30초에">{ff} 하이라이트</button>
     <span id="clock">0.0 / 0.0s</span>
   </div>
-  <div class="hint">위에서 비스듬히 본 원형 핏(2.5D). 자세 색: 가드 🟦 · 경직/넘어짐 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. 선회로 간격을 유지하는지 보세요.</div>
+  <div class="hint">콜로세움 핏(2.5D). 머리 위 = 이름·HP. 가드 파랑끼 · 경직/다운 회색 · 도발 노랑. 발밑 옅은 타원 = 무기 사거리. Space=재생/정지 · D=개발자 패널.</div>
+  </div>
+  <button id="devToggle" onclick="setDev()">개발자</button>
 </div>
 
 <script>
 "use strict";
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-const W = cv.width, H = cv.height, PAD = 70, GROUND = H - 70;
-let doc = null, frames = null, popups = [], decisions = [], duration = 0;
-let t = 0, playing = false, speed = 1, lastWall = 0;
+const cv = document.getElementById('cv');
+const screenCtx = cv.getContext('2d');
+// ctx는 매 프레임 월드층(저해상)과 UI층(풀해상) 사이를 오간다 — 드로우 함수 본문은 그대로 두고
+// 참조만 갈아끼우는 방식(아래 PIXEL 주석 참고). 그래서 const가 아니라 let이다.
+let ctx = screenCtx;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const W = 940, H = 528, PAD = 70, GROUND = H - 70;   // 논리 좌표계(모든 그리기 기준). 세로는 [15]§2.4 개정으로 440→560
+
+// ── 픽셀 렌더 (M4-c) ──────────────────────────────────────────────────────────
+// 월드(아레나·스프라이트·혈흔)는 1/PX 크기의 저해상 캔버스에 그린 뒤 정수배로 확대한다.
+// 이러면 스프라이트 배율이 깊이원근 때문에 비정수여도 화면 픽셀은 전부 PX×PX로 균일하다.
+// UI·글자는 확대 대상이 아니라 풀해상 본 캔버스에 따로 그린다(안 그러면 이름·데미지가 뭉갠다).
+//
+// 배율은 FIGH가 아니라 **카메라 줌**으로 만든다. FIGH로 스프라이트만 키우면 아레나는 그대로라
+// 비율이 깨지고, 아레나를 같이 키우면 배경 프리렌더(940×440)를 관중석이 넘어가 잘린다.
+// 줌은 아레나·스프라이트·배경을 한 변환으로 같이 키우므로 둘 다 공짜로 해결된다.
+//
+// 저해상 공간에서 스프라이트가 앉는 크기 = (FIGH/PX) × 줌. PX=2·FIGH=120·줌1.6 → 96px,
+// 즉 96px 원본과 정확히 1:1. 이 셋은 한 세트로 움직인다.
+const _qs = new URLSearchParams(location.search);
+let PX   = +(_qs.get('px')   || 2);     // 저해상 월드 캔버스 배율. 1 = 픽셀화 없음(옛 동작)
+let FIGH = +(_qs.get('figh') || 120);   // 화면상 검투사 키(px, 줌 1배 기준)
+const ZoomFollow = +(_qs.get('zoom') || 1.6);   // 추적 카메라 배율
+const SHEET = _qs.get('sheet') || 'sprites.json';   // 스프라이트 시트 교체(룩 비교용)
+const wcv = document.createElement('canvas');
+const wctx = wcv.getContext('2d');
+function fitWorldCanvas(){
+  wcv.width  = Math.ceil(W / PX);
+  wcv.height = Math.ceil(H / PX);
+}
+fitWorldCanvas();
+// ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
+// ▼▼ 카메라 노브(취향껏 조절) ▼▼  CamHeight: 화면상 상하 위치 — 작게(0.45)=위로, 크게(0.62)=아래로.
+//    CamTilt: 카메라 기울기 — 작게(0.24)=더 정면(눕힘), 크게(0.45)=더 내려다봄.
+// ※ 투영은 단일 출처다([15]§2.3 · 원칙 2). 배경 이미지는 이 값들에서 역산한 정사영 카메라로
+//   구워졌으므로(tools/arenabake), 여기를 바꾸면 **배경도 다시 구워야 한다**.
+// ※ CamTilt는 스프라이트 베이크의 --elevation과 한 세트다: elevation = asin(CamTilt).
+//    0.34→20° · 0.26→15° · 0.20→11.5°. 여기만 눕히고 스프라이트를 그대로 두면 바닥은 눕고
+//    캐릭터만 내려다본 각도로 남아 어긋난다. 바꾸면 반드시 다시 굽는다.
+// 부각은 **모드별로 다르다** ([15]§2.4): 기본 20°, 줌 추적 15°. 줌 배율에 연동해 연속 보간하므로
+// 전환 순간 바닥이 튀지 않는다. 스프라이트는 20° 한 벌만 쓴다 — 96px에서 5° 차이는 윤곽선 위
+// 1px 이동으로만 나타나 인지되지 않는다(측정: 차이 픽셀의 전부가 외곽선). 두 벌은 영구 2배
+// 유지비와 전환 팝을 부르는데 얻는 게 없다.
+const CamHeight = 0.62;
+const TiltBasic = +(_qs.get('tilt')     || 0.34);   // 부각 20° — 스프라이트 베이크 각도와 일치
+const TiltZoom  = +(_qs.get('tiltzoom') || 0.26);   // 부각 15° — 바닥만 눕는다
+let CamTilt = TiltBasic;
+let zoomFrac = 0;   // 0=기본 · 1=줌 (배경 크로스페이드와 부각 보간에 공용)
+// 줌 추적 시 발밑이 화면 중앙에 오면 머리 위가 답답하다 — 추적 중심을 이만큼 내려 상단 여백을 만든다.
+const ZoomLiftPx = +(_qs.get('lift') || 46);
+const CX = W/2, CY = H*CamHeight, RX = W/2 - PAD;
+let RY = RX*CamTilt;   // 부각이 모드에 따라 변하므로 let
+// 캔버스 백킹을 표시 크기×DPR에 맞춤 → 전체화면·리사이즈에서도 크리스프 (좌표계는 W×H 논리 고정)
+let CANVAS_S = 1;   // 논리 좌표 → 물리 픽셀 배율. 월드층 합성 후 이 값으로 되돌려야 한다.
+function fitCanvas(){
+  const rw = cv.clientWidth || W;
+  const pw = Math.max(1, Math.round(rw*DPR)), ph = Math.max(1, Math.round(rw*(H/W)*DPR));
+  if (cv.width!==pw || cv.height!==ph){ cv.width=pw; cv.height=ph; }
+  const s = pw/W;
+  CANVAS_S = s;
+  screenCtx.setTransform(s,0,0,s,0,0);
+}
+// 무대 상자에 캔버스를 비율 유지로 앉힌다(contain) — 스크롤 없는 고정 화면
+function fitStageBox(){
+  const box = document.getElementById('stagebox'), st = document.getElementById('stage');
+  if (!box || !st) return;
+  const s = Math.min(box.clientWidth / W, box.clientHeight / H);
+  if (!(s > 0)) return;
+  st.style.width = Math.floor(W * s) + 'px';
+  st.style.height = Math.floor(H * s) + 'px';
+  fitCanvas();
+}
+fitStageBox(); fitCanvas();
+if (window.ResizeObserver){
+  new ResizeObserver(fitCanvas).observe(cv);
+  const box = document.getElementById('stagebox');
+  if (box) new ResizeObserver(fitStageBox).observe(box);   // 상자 크기 → 캔버스 크기(역방향 없음 = 루프 없음)
+}
+// 벨트+멜빵: 이 웹뷰는 ResizeObserver 콜백을 흘린다(선수 카드가 채워져 상자가 줄어도 무반응).
+// 상자 치수 변화를 주기 점검 — 무변화면 no-op.
+let _boxKey = '';
+setInterval(()=>{
+  const b = document.getElementById('stagebox'); if (!b) return;
+  const k = b.clientWidth + 'x' + b.clientHeight;
+  if (k !== _boxKey){ _boxKey = k; fitStageBox(); }
+}, 400);
+// 피격 흰색 플래시용 오프스크린 — 스프라이트만 격리해 틴트(바닥까지 박스로 번지는 것 방지)
+const _fcv = document.createElement('canvas'), _fctx = _fcv.getContext('2d');
+const _rcv = document.createElement('canvas'), _rctx = _rcv.getContext('2d');   // 림라이트 전용(플래시와 분리)
+let doc = null, frames = null, popups = [], decisions = [], impacts = [], stains = [], tracks = [], statuses = [], duration = 0;
+// 경기장 배경(#2): URL ?venue=arena(기본)/spar/street/bar
+// B4에서 절차 배경(buildArenaBg)이 사라지며 wall/f0/f1/ring 은 전부 죽은 값이 됐다 —
+// 3D 베이크 이미지가 그 자리를 대신한다. 남겨두면 거짓말하는 표가 된다.
+// 대신 여기가 지금 결정해야 하는 것은 **관중**이다([15]§10.23).
+// 색보정만으로는 뒷골목·선술집에도 관중 180명이 그대로 앉아 있다 — 색이 아니라 구조의 문제다.
+const VENUES = {
+  arena : { label:'콜로세움', crowd:1.00 },   // 만석
+  spar  : { label:'수련장',   crowd:0.18 },   // 훈련장 — 구경꾼 몇뿐
+  street: { label:'뒷골목',   crowd:0    },   // 관중석이 없다
+  bar   : { label:'선술집',   crowd:0    },
+};
+const VENUE = VENUES[_qs.get('venue')] || VENUES.arena;
+let t = 0, playing = false, speed = 1, lastWall = 0, hitstopUntil = 0;
+// ── 아레나 배경 프리렌더(1회): 관중석 점묘·모래 질감·벽 그림자 — 런타임 코스트 = drawImage 1장 ──
+// ── 아레나 배경: 3D 베이크 이미지 2장([15]§10.8 B3 · B4에서 교체) ─────────────
+// 절차 생성(buildArenaBg)과 요철 베이크(bakeRelief)가 여기서 사라졌다 — 이미지가 대신한다.
+// 런타임 비용은 예전과 같다: 프레임당 drawImage 1~2장(§10.15).
+const BGS = 2;                        // 에셋 배율 — 1880×1120 = 940×560 × 2
+const mkbg = () => { const c2 = document.createElement('canvas');
+  c2.width = W*BGS; c2.height = H*BGS; return c2; };
+const bgBasic = mkbg(), bgZoom = mkbg();   // 색보정까지 입힌 최종 캔버스
+// ── 노멀맵 조명([15]§5 N1 · A2): 높이 버퍼를 알베도와 같은 패스에서 쌓고, 로드 시 1회 N·L을 구워 넣는다.
+//    프레임 루프는 무변경 — 런타임 비용은 그대로 drawImage다.
+// ── 광원 리그([15]§3.5 · A5): venue·날씨별 프리셋 ──────────────────────────────
+// 벡터가 아니라 **방위·고도(도)**로 적는다 — 사람이 읽고 고칠 수 있어야 한다.
+//   az: 화면 방위(0=오른쪽, 시계방향)  ·  el: 고도  ·  sun: 직사광 세기  ·  amb: 환경광
+// §3.3 확정치(늦은 오후·좌상단 41°) = az 233 · el 41.
+const RAD = d => d*Math.PI/180;
+const LIGHTS = {
+  arena : { az:233, el:41, sun:1.00, amb:0.35, ambHex:'#6b7a96', rim:'rgba(255,238,204,0.50)', relief:1 },
+  spar  : { az:233, el:41, sun:0.80, amb:0.45, ambHex:'#7d8a9c', rim:'rgba(255,244,214,0.40)', relief:1, grade:'#c9d2b6' },
+  street: { az:233, el:15, sun:0.70, amb:0.25, ambHex:'#5a6272', rim:'rgba(210,224,255,0.45)', relief:1, grade:'#a6adbb' },
+  // 선술집은 실내다 — 태양이 없다. 횃불은 동적 광원이라 웹에서 못 굽는다(§3.4) → 요철 베이크 정지, 평면 유지.
+  bar   : { az:233, el:70, sun:0.30, amb:0.20, ambHex:'#8a5a2e', rim:'rgba(255,196,120,0.45)', relief:0, grade:'#bc9670' },
+};
+// [14] 세계 이벤트 훅 — 조명·팔레트만 변조한다. Sim·매트릭스 무접촉(문서[14] 원칙 1·3).
+// ?weather=night|rain|sand
+// 주의: sun·amb만으로는 밤이 안 온다. A2의 정규화가 평면을 항상 I=1로 맞추므로 이 둘은 요철 대비만
+//   바꾸고 전체 밝기는 그대로다(실측: night가 낮보다 밝게 나왔다). 분위기는 별도 단계가 만든다 —
+//   grade = 곱연산(어둡게·색 입히기) · haze = 반투명 워시(대비 낮추기). 각각 fillRect 1번.
+const WEATHERS = {
+  night: { sun:0.15, amb:0.15, ambHex:'#6a5236', rim:'rgba(255,186,110,0.55)', grade:'#42506e' },
+  rain : { sun:0.50, amb:0.40, ambHex:'#8a8f96', rim:'rgba(220,232,245,0.45)', grade:'#8791a0' },
+  sand : { sun:0.60, amb:0.50, ambHex:'#c9a56a', rim:'rgba(255,226,170,0.40)', haze:'rgba(214,176,116,0.30)' },
+};
+const WEATHER = WEATHERS[_qs.get('weather')] || null;
+const VEN_KEY = _qs.get('venue') || 'arena';
+const LRIG = Object.assign({}, LIGHTS[VEN_KEY] || LIGHTS.arena, WEATHER || {});
+// 색보정은 venue와 날씨가 각각 따로 곱해진다 — 합쳐 쓰면 날씨가 venue를 덮어버린다
+const VGRADE = (LIGHTS[VEN_KEY] || LIGHTS.arena).grade || null;
+const WGRADE = (WEATHER && WEATHER.grade) || null;
+const WHAZE  = (WEATHER && WEATHER.haze) || null;
+const _ce = Math.cos(RAD(LRIG.el));
+const LIGHT = { x:Math.cos(RAD(LRIG.az))*_ce, y:Math.sin(RAD(LRIG.az))*_ce, z:Math.sin(RAD(LRIG.el)) };
+// 조명 세기(sun·amb·ambHex)는 B4에서 빠졌다 — 요철 조명이 이미지에 구워져 들어왔으므로
+// 런타임에서 다시 계산할 것이 없다. LIGHTS 표에는 남겨둔다(Blender 베이크 인자와 짝이라 문서 역할).
+// L의 화면 방위(단위벡터). 그림자·발자국·림라이트가 전부 이 하나를 읽는다 — 방향이 갈리면 조명이 거짓말이 된다
+const _LXY = Math.hypot(LIGHT.x, LIGHT.y) || 1;
+const LDIR = { x: LIGHT.x/_LXY, y: LIGHT.y/_LXY };   // 빛이 오는 쪽. 반대편이 그림자가 눕는 방향
+const RIMPX = 2, RIMCOL = LRIG.rim;                  // 림 두께(px) · 그 조명의 햇빛/불빛 색
+// ── 관중([15]§10.9 결정 1) — 베이크된 관중석은 **빈 좌석**이라 사람은 뷰어가 얹는다 ──────
+// §10.11: 관중석은 좌·우 가장자리에서만 보인다. 뒤쪽은 포디움 벽에 가려 안 나온다.
+// 그래서 **링이 아니라 좌·우 두 덩어리**로 찍고, 각 점이 벽 위로 올라오는지 각도마다 따진다.
+//
+// 좌석 자리는 눈대중이 아니라 베이크와 같은 식으로 구한다(tools/arenabake/blockout.py):
+//   월드 (X,Y,Z) → 화면 x = CX + X·(RX/12)
+//                  화면 y = CY − Y·(RY/12) − Z·(RX/12)·cos(부각)
+//   카베아: r = 14.4 + 0.55k, z = 3.5 + 0.30(k+1)   (라이저 0.30 · 트레드 0.55 · 22열)
+// ── 관중([15]§10.19) — **배경에 굽지 않고 매 프레임 그린다** ────────────────────
+// 배경에 구웠을 때 두 문제가 있었다. 둘 다 같은 뿌리다:
+//   ① 옷 색이 마구 바뀐다 — 프레임마다 rnd() 호출 순서가 달라(건너뛴 자리 수가 다르다)
+//      같은 관객이 다른 색을 받았다. 줌하며 프레임이 넘어갈 때마다 색이 튀었다.
+//   ② 가만히 있다 — 구운 그림이라 움직일 수가 없다.
+// → 난수를 **호출 순서가 아니라 관객의 신원(열 k, 자리 i)에서** 뽑는다. 그러면 어느
+//   프레임에서 그리든 같은 사람은 같은 색이다. 그리고 매 프레임 그리니 움직일 수 있다.
+function hash2(a, b){                     // 자리 → 0~1 난수. 같은 자리면 언제나 같은 값
+  let h = (a * 374761393 + b * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177 | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+// zoom = 이 그림에 적용된 줌 배율. 돌리 프레임은 확대된 렌더이므로 관중도 같은 배율로 앉힌다.
+// 초판은 이걸 빼먹어 관중만 기본 배율에 남았고, 줌하면 관중석은 커지는데 사람은 제자리 —
+// "관중이 카메라를 따라오는" 것으로 보였다.
+// 호출자가 **아레나 중심을 원점으로** 변환을 맞춰 두고 부른다. 이 함수는 변환을 건드리지 않는다
+// (렌더 루프에서 카메라 변환 위에 그려야 하므로 setTransform을 쓸 수 없다).
+// halfW/halfH = 그 좌표계에서 보이는 반폭·반높이(솎아내기용).
+function paintCrowd(c, tilt, zoom, tsec, halfW, halfH){
+  if (!VENUE.crowd) return;                  // 뜻골목·선술집은 관중석이 없다(§10.23)
+  zoom = zoom || 1; tsec = tsec || 0;
+  halfW = halfW || W / 2; halfH = halfH || H / 2;
+  const el = Math.asin(Math.max(-1, Math.min(1, tilt)));   // 부각 — CamTilt = sin(부각)
+  const mx = RX / 12 * zoom, my = (RX * tilt) / 12 * zoom, mz = RX / 12 * Math.cos(el) * zoom;
+  const WALL_R = 12.6, WALL_Z = 3.5;
+  const pt = (aDeg, r, z) => {                 // 아레나 중심(원점) 기준
+    const a = aDeg * Math.PI / 180;
+    return [Math.cos(a) * r * mx, -Math.sin(a) * r * my - z * mz];
+  };
+  c.save();
+  // 앞쪽 컷어웨이 — blockout.py 의 cutaway(keep, fade, floor=0)와 **같은 램프여야 한다.**
+  // 베이크와 어긋나면 걷어낸 자리에 관중만 남아 허공에 뜬다. 베이크 인자를 바꾸면 여기도 바꿀 것.
+  // 초판은 여기를 100°로 잘랐다가 좌·우(각거리 90°)가 통째로 제외돼 관중이 하나도 안 찍혔다.
+  const CUT_KEEP = 82, CUT_FADE = 30;        // = --cut-keep 82 --cut-fade 30 (§10.22)
+  const cut = d => d <= CUT_KEEP ? 0
+                 : (d >= CUT_KEEP + CUT_FADE ? 1 : (d - CUT_KEEP) / CUT_FADE);
+  // 윗열은 베이크에서 ruin()으로 불규칙하게 깎였다 — 그 곡선을 여기서 재현할 수 없으니
+  // 영향이 적은 아래 16열만 쓴다. 어차피 윗열은 대부분 프레임 밖이다(§10.11).
+  // ── 크기: 점이 아니라 **사람**이어야 한다 ──────────────────────────────────
+  // 높이 축척 mz = 31.3 px/m 이므로 1.8 m 사람은 기하학적으로 56 px다.
+  // 그런데 검투사는 FIGH=120 px로 이미 실물의 2.13배로 과장돼 있다(§2.4.1).
+  // 초판은 관중을 1.7 px 점으로 찍었다 — 옳은 크기의 1/33이라 **모래알로 보였다.**
+  // 관중만 엄밀할 이유가 없으므로 실물의 절반인 28 px로 맞춘다. 56 px 실물 크기는
+  // 애써 구운 좌석 디테일을 통째로 덮는다.
+  const PH = 28 * zoom, PW = 9 * zoom;         // 사람 높이 · 어깨 너비(논리 px). 줌하면 같이 커진다
+  // 멀리서 망원으로 찍은 군중의 색 — **채도가 낮고 값이 좁다**(대기 원근).
+  // 원색을 쓰면 사탕처럼 보인다. 흙·아마포·모직의 탁한 색에 가끔 붉은 천 하나.
+  const CLOTH = [[92,78,64],[74,66,58],[104,86,66],[68,62,60],[86,74,72],
+                 [110,92,70],[80,70,58],[96,80,78],[120,74,58],[64,58,54]];
+  // ── 자리는 **월드 좌석 간격**으로 정한다([15]§10.20) ──────────────────
+  // 초판은 화면상 거리로 솎았다: hypot(sx-lastX, sy-lastY) < PW*1.25 + q0*5.
+  // 두 가지가 겹쳐 줌할 때 관객이 튀었다.
+  //   ① PW는 zoom에 비례하는데 q0*5는 아니다 — 문턱이 축척불변이 아니다.
+  //   ② lastX/lastY가 **사슬**이다 — 앞사람 하나가 채택/탈락으로 뒤집히면 그 뒤 전원의
+  //      기준점이 밀려 연쇄로 바뀐다. 돌리 24프레임이 이산적인 배율로 넘어갈 때마다
+  //      채택 집합이 통째로 달라졌다 = 위치도 형태도 튀는 것.
+  // 실제 관중석은 좌석이 돌에 새겨져 있다. 자리는 카메라와 무관한 상수다.
+  // 열마다 둘레를 좌석 간격으로 나눠 개수를 고정하면 zoom이 식에서 사라진다.
+  // 빈 자리 문턴. arena는 0.12(만석)이고 venue가 한산할수록 올라간다.
+  // 자리에서 뽑으므로 누가 남는지가 카메라·시간과 무관하게 고정된다(§10.20과 같은 원칙).
+  const EMPTY = 1 - 0.88 * VENUE.crowd;
+  const SEAT = 0.42;                           // 좌석 간격(m). PW 9px = 0.29 m 라 어깨 사이가 살짝 뜬다
+  for (let k = 5; k >= 0; k--){                // 뒷열부터 그려야 앞열이 위로 겹친다(뒷열 = 큰 k = 화면 위쪽)
+    const r = 14.4 + 0.55 * k, z0 = 3.5 + 0.30 * (k + 1);
+    const seats = Math.round(2 * Math.PI * r / SEAT);
+    for (let i = 0; i < seats; i++){
+      const aDeg = i * (360 / seats);
+      const kf = cut(Math.abs(((aDeg - 270 + 180) % 360) - 180));
+      if (kf <= 0.02) continue;
+      const z = z0 * kf;                       // 컷어웨이 구간은 좌석도 눌려 있다
+      const [sx, sy] = pt(aDeg, r, z);
+      const wallY = pt(aDeg, WALL_R, WALL_Z)[1];
+      if (sy > wallY - 1.5 * zoom) continue;          // 벽에 가리는 자리 — 찍으면 벽 위에 떠 버린다
+      if (Math.abs(sx) > halfW + PW || sy < -halfH - PH || sy > halfH) continue;
+      // ── 여기서부터 난수는 전부 **자리(k, i)** 에서 나온다 ─────────────────────
+      // rnd()(호출 순서 기반)를 쓰면 프레임마다 건너뛴 자리 수가 달라 같은 관객이
+      // 다른 색을 받는다 — 줌하며 프레임이 넘어갈 때 옷 색이 마구 튀던 원인이다.
+      const q0 = hash2(k, i), q1 = hash2(k, i + 977), q2 = hash2(k, i + 1861),
+            q3 = hash2(k, i + 2749), q4 = hash2(k, i + 3623);
+
+      if (q0 < EMPTY) continue;                 // 빈 자리 — 자리에서 뽑으므로 줌해도 같은 자리가 비어 있다
+      // 밀도를 뭉치게 — 균일하면 격자로 보인다. 실제 관중은 몰린 데와 빈 데가 있다
+      if (Math.sin(aDeg * 0.21 + k * 1.7) * 0.5 + 0.5 < q1 * 0.42) continue;
+
+      // ── 움직임([15]§10.19) — 멀리서 본 관중은 개인이 아니라 **웅성거림**으로 읽힌다.
+      // 개체마다 다른 위상·주기로 아주 작게 흔든다(진폭 사람 키의 3~7%).
+      // 위상이 자리에서 나오므로 파도처럼 줄지어 움직이지 않고 제각각 꿈틀댄다.
+      const ph = q2 * 6.283, sp = 1.1 + q3 * 1.7;
+      const bob = Math.sin(tsec * sp + ph) * PH * (0.03 + q4 * 0.04);
+      const sway = Math.cos(tsec * sp * 0.7 + ph) * PW * 0.10;
+      const px0 = sx + sway, py0 = sy + bob * 0.35;
+
+      const w = PW * (0.80 + q0 * 0.40), h = PH * (0.84 + q1 * 0.32);
+      const stand = q2 < 0.10;                 // 서 있는 사람 — 윗선이 고르지 않게 만든다
+      const hh = h * (stand ? 1.22 : 1.0) + bob;
+      const hd = w * 0.40;                     // 머리 반지름
+      const [cr, cg, cb] = CLOTH[(q3 * CLOTH.length) | 0];
+      const sh = 0.72 + q4 * 0.5;              // 개체별 밝기 — 같은 옷도 빛을 다르게 받는다
+
+      // ① 앉은 자리의 그늘 — 사람 밑이 어두워야 좌석에 '얹힌' 것으로 보인다(그늘은 안 흔들린다)
+      c.fillStyle = 'rgba(16,12,9,0.42)';
+      c.beginPath(); c.ellipse(sx, sy, w * 0.52, h * 0.10, 0, 0, 7); c.fill();
+      // ② 몸통(옷)
+      c.fillStyle = `rgba(${cr * sh | 0},${cg * sh | 0},${cb * sh | 0},0.95)`;
+      c.beginPath(); c.ellipse(px0, py0 - hh * 0.30, w * 0.5, hh * 0.34, 0, 0, 7); c.fill();
+      // ③ 머리 — 살빛은 옷보다 밝고 붉다. 이 대비가 '사람'을 만든다
+      const sk = 0.9 + q0 * 0.5;
+      c.fillStyle = `rgba(${124 * sk | 0},${96 * sk | 0},${76 * sk | 0},0.96)`;
+      c.beginPath(); c.arc(px0 + sway * 0.6, py0 - hh * 0.70, hd, 0, 7); c.fill();
+      // ④ 역광 림 — 태양이 뒤쪽(좌상)이라 왼쪽 어깨·정수리에만 얇게. 절반만 넣어 줄이 안 서게
+      if (q1 < 0.5){
+        c.fillStyle = 'rgba(236,206,158,0.42)';
+        c.fillRect(px0 - w * 0.48, py0 - hh * 0.84, w * 0.30, Math.max(1, 1.4 * zoom));
+      }
+    }
+  }
+  c.restore();
+}
+
+// venue·날씨 색보정을 **로드 시 1회** 이미지에 입힌다. 프레임 루프는 무관하다.
+// 결정 4에 따라 3D 베이크는 arena 한 벌뿐이고, 나머지 venue는 이 색보정으로 변주한다.
+function paintArena(target, img, tilt, zoom){
+  const c = target.getContext('2d');
+  c.setTransform(1,0,0,1,0,0);
+  c.clearRect(0,0,target.width,target.height);
+  c.drawImage(img, 0, 0, target.width, target.height);
+  // 관중은 여기서 굽지 않는다 — 매 프레임 그린다(§10.19). 구우면 움직일 수 없고,
+  // 프레임마다 난수 순서가 달라 옷 색이 튄다.
+  c.setTransform(1,0,0,1,0,0);
+  for (const g of [VGRADE, WGRADE]){          // venue → 날씨 순으로 곱한다
+    if (!g) continue;
+    c.save(); c.globalCompositeOperation='multiply';
+    c.fillStyle=g; c.fillRect(0,0,target.width,target.height); c.restore();
+  }
+  if (WHAZE){ c.fillStyle=WHAZE; c.fillRect(0,0,target.width,target.height); }
+}
+// 이미지가 늦게 와도 첫 프레임이 깨지지 않게 바탕을 미리 깔아둔다(무대 밖 어둠과 같은 색)
+for (const t of [bgBasic, bgZoom]){
+  const c = t.getContext('2d'); c.fillStyle = '#141009'; c.fillRect(0,0,t.width,t.height);
+}
+for (const [target, src, tilt] of [[bgBasic, 'arena_basic.png', TiltBasic],
+                                   [bgZoom,  'arena_zoom.png',  TiltZoom]]){
+  const im = new Image();
+  im.onload = () => paintArena(target, im, tilt);
+  im.src = src;
+}
+
+// ── 돌리 시퀀스([15]§10.17 · 1단계) ─────────────────────────────────────────
+// 줌 경로 위의 프레임을 미리 구워 두면 부각이 연속으로 낮아지고 **크로스페이드 이중상이
+// 사라진다.** 런타임 3D는 0 — 프레임 하나를 골라 drawImage 할 뿐이다.
+// 프레임 f 는 tilt = TiltBasic + (TiltZoom−TiltBasic)·frac 로 구워졌으므로,
+// 뷰어가 매 프레임 계산하는 CamTilt와 **같은 값**이다(§2.4.3) → 바닥과 선수가 안 어긋난다.
+// 파일이 없으면 조용히 폴백한다 — 자산 없이도 뷰어는 돌아가야 한다.
+const dolly = { frames: [], ready: false, want: 24 };
+(function loadDolly(){
+  let pending = dolly.want, failed = 0;
+  for (let f = 0; f < dolly.want; f++){
+    const im = new Image();
+    const idx = f;
+    im.onload = () => {
+      // 주의: 캔버스는 **프레임 원본 크기**로 잡는다. mkbg()(1880×1056)를 24장 쓰면
+      //   1880·1056·4·24 = 190 MB로 터진다. 940×528이면 45 MB.
+      //   돌리 프레임은 줌이 구워져 있어 BGS 배율이 필요 없다 — 이미 확대된 그림이다.
+      const c2 = document.createElement('canvas');
+      c2.width = im.naturalWidth; c2.height = im.naturalHeight;
+      const frac = idx / Math.max(1, dolly.want - 1);
+      const fz = 1 + (ZoomFollow - 1) * frac;   // 이 프레임에 구워진 줌
+      paintArena(c2, im, TiltBasic + (TiltZoom - TiltBasic) * frac, fz);
+      dolly.frames[idx] = c2;
+      if (--pending === 0 && failed === 0) dolly.ready = true;
+    };
+    im.onerror = () => { failed++; pending--; };   // 자산 없음 → 폴백 유지
+    im.src = 'dolly_' + String(f).padStart(2, '0') + '.jpg';
+  }
+})();
+let postGame = false, postGameElapsed = 0;
+const TAUNT_DUR = 3.0;
+// 성격 지시(Decision) 태그 → 가독 라벨. 관중게이지 버프와 별개인 '행동 지시'임을 명확히.
+const TAGKR = { SHOWTIME:'쇼타임 · 화려한 강공', TAUNT:'도발', ENRAGED:'격노', RAGED:'도발에 격노',
+  RECKLESS:'폭주', FEAR:'위축', FLINCH:'주춤', CRUEL:'잔혹', EXPLOIT:'허점 공략', HONOR:'경의',
+  BOLD:'결단', COOL:'냉정', WARY:'신중',
+  HUNT:'사냥 본능', VENGE:'복수의 도발', DREAD:'천적 공포',   // 전술·관계 트리거([3]4.2 / RelationTable)
+  REL_NEMESIS:'원수', REL_FEAR:'두려움', REL_ENVY:'질투', REL_OBSESSION:'집착',
+  REL_RIVAL:'라이벌', REL_RESPECT:'존경', REL_FRIEND:'친구',
+  // 이월 감정 8종([10] EmotionTable의 공식 이름과 일치시킬 것)
+  EMO_CONFIDENT:'자신감', EMO_HUBRIS:'자만', EMO_PRESSURE:'부담감', EMO_INFERIOR:'열등감',
+  EMO_MOTIVATED:'동기부여', EMO_FRUSTRATED:'좌절', EMO_TRAUMA:'트라우마' };
+// 무기 액티브([7]§4) reasonTag → 한글 — 발동 가시화(금빛 배지)
+const SKILLKR = { SUNDER:'분쇄 일격', BERSERK:'광전사의 도끼', UNBROKEN:'불퇴의 자세',
+  COMBO:'연격', CHARGE:'쇄도 베기', FLURRY:'난무', MIRAGE:'그림자 보',
+  SMASH:'대지 강타', EXECUTE:'심판의 일격', ENTANGLE:'휘감기', ZONELOCK:'공간 지배', SHIELDBASH:'방패 밀치기',
+  // [7]§4.5 도입분
+  GUARDSTANCE:'반격 태세', GUARDRIPOSTE:'반격!', REACHPUSH:'긴 창', LASH:'채찍 후리기',
+  CARRY:'몰아붙이기', WALLSLAM:'벽꽝!',
+  // 성격 패시브([7]§5) proc
+  COMPOSE:'침착', READ:'전장 분석', FERVOR:'투지', LASTSTAND:'최후의 발악', LEISURE:'여유', IMPERIAL:'황제의 위압',
+  FAIRFIGHT:'정정당당', CHIVALRY:'기사도의 보답', SURVIVE:'생존 본능', BACKSTAB:'기회의 일격', CROWD:'관중몰이',
+  SHOWTIME:'쇼타임', EXPLOIT:'약점 포착', VULTURE:'어부지리', BLOODLUST:'피의 갈증', TERROR:'공포 군림',
+  NERVE:'배짱', COMEBACK:'역전의 영웅', GUARDED:'방비', FORESEE:'함정 간파' };
+// 게임 셸 설정 (same-origin localStorage — index.html 설정 모달이 기록)
+const SET = (()=>{ try{ return JSON.parse(localStorage.getItem('mor_settings')) || {}; }catch(e){ return {}; } })();
+let winTextA = '', winTextB = '', winnerRevealed = false, matchEndPosted = false;
+function revealWinner(){
+  if (winnerRevealed) return; winnerRevealed = true;
+  document.getElementById('winA').textContent = winTextA;
+  document.getElementById('winB').textContent = winTextB;
+}
+// 재생이 실제로 끝났음을 게임 셸(부모)에 통지 — 셸이 결과창을 띄운다 (관전 후 결과 흐름)
+function postMatchEnded(){
+  if (matchEndPosted) return; matchEndPosted = true;
+  if (window.parent !== window) window.parent.postMessage({matchEnded:true}, '*');
+  // #5 리플레이 극적 종료 줌인 — viewer.json에 지정된 패자를 자동 줌인하고 유지(라이브는 −1, 부모 focusLoser가 처리)
+  if (doc && doc.Meta && typeof doc.Meta.EndFocusIdx === 'number' && doc.Meta.EndFocusIdx >= 0)
+    focusIdx = doc.Meta.EndFocusIdx;
+}
+// 라이브 전술 개입: 셸이 일시정지+현재 시각을 요청 (라니스타의 "멈춰!")
+window.addEventListener('message', e=>{
+  if (!e.data) return;
+  if (e.data.cmd === 'pauseGetTime'){
+    setPlaying(false);
+    if (window.parent !== window) window.parent.postMessage({liveTime: t}, '*');
+  } else if (e.data.cmd === 'stop'){       // 관전 종료(정산·닫기) — 재생·효과음 완전 정지
+    setPlaying(false); postGame = false;
+    if (AC){ try{ AC.suspend(); }catch(_){} }
+  } else if (e.data.cmd === 'audio'){       // 부모의 사용자 제스처를 이어받아 오디오 활성화
+    audioResume();
+  } else if (e.data.cmd === 'execVerdict'){  // 처형전 엄지 판정 — 경기장 안에서 진행(쓰러진 패자 줌인 + 흔들리는 엄지 → 판정)
+    focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
+    if (frames && duration > 0){ t = duration; lastSfxT = duration; }
+    setPlaying(false);
+    runExecVerdict(e.data);
+  } else if (e.data.cmd === 'focusLoser'){  // #11 전사·성격변화 — 쓰러진 패자를 천천히 줌인하고 정지(부모가 3초 후 결과로)
+    focusIdx = (e.data.idx===0||e.data.idx===1) ? e.data.idx : null;
+    if (frames && duration > 0){ t = duration; lastSfxT = duration; }   // 조기 정산이어도 마지막 장면(쓰러진 패자)으로
+    setPlaying(false);
+  } else if (e.data.cmd === 'reloadSeek'){  // 실시간 전술 변경: 재시뮬된 viewer.json을 깜빡임 없이 이어서 재생
+    const keep = t;                          // 현재 재생 시각 유지(전환점 이전 프레임은 결정론적으로 동일 → 매끄럽게 이어짐)
+    fetch('viewer.json?t=' + Date.now(), {cache:'no-store'}).then(r=>r.text()).then(txt=>{
+      _resumeAt = keep; load(txt);
+    }).catch(()=>{});
+  }
+});
+
+// ── 합성 효과음 (에셋 없음 — WebAudio 신시사이즈. 설정 mor_settings.sound=false로 끔) ──
+let AC = null, lastSfxT = 0, koSlowT = -1, koClutch = false;
+function sndOn(){ return AC && AC.state === 'running' && SET.sound !== false; }
+function sndInit(){
+  if (AC || SET.sound === false) return;
+  try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+}
+// iframe은 부모 클릭으로는 자체 사용자 활성화가 안 생긴다 → allow="autoplay" 위임 + 로드 시 즉시 재개 시도.
+function audioResume(){ sndInit(); if (AC && AC.state === 'suspended'){ try{ AC.resume(); }catch(_){} } }
+['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev, audioResume));
+function beep(freq, dur, type, vol, slide){
+  if (!sndOn()) return;
+  const t0=AC.currentTime, o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t0);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), t0+dur);
+  g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+  o.connect(g).connect(AC.destination); o.start(t0); o.stop(t0+dur);
+}
+function noiseHit(dur, vol, lo, hi){
+  if (!sndOn()) return;
+  const len=Math.floor(AC.sampleRate*dur), buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=(lo+hi)/2; bp.Q.value=0.7;
+  const g=AC.createGain(); g.gain.value=vol;
+  src.connect(bp); bp.connect(g); g.connect(AC.destination); src.start();
+}
+function sfx(kind){
+  switch(kind){
+    case 'hit':   noiseHit(0.06,0.16,600,2500); beep(150,0.05,'triangle',0.10,-80); break;
+    case 'crit':  noiseHit(0.10,0.22,900,4000); beep(320,0.12,'sawtooth',0.13,-200); break;
+    case 'guard': beep(900,0.05,'square',0.07,300); break;                     // 금속성 챙
+    case 'break': noiseHit(0.15,0.22,300,1500); beep(120,0.2,'sawtooth',0.15,-60); break;
+    case 'down':  beep(90,0.25,'triangle',0.20,-50); noiseHit(0.2,0.13,100,500); break;
+    case 'ko':    beep(70,0.5,'sawtooth',0.24,-40); noiseHit(0.4,0.26,80,600); break;
+    case 'crowd': noiseHit(0.8,0.09,200,1200); break;                          // 함성 스웰
+    case 'taunt': beep(500,0.1,'square',0.09,200); beep(660,0.1,'square',0.08,0); break;
+  }
+}
+// 재생 t가 지나간 이벤트를 소리로 (스크럽 등 큰 점프는 무음 스킵)
+function playSfxRange(t0, t1){
+  lastSfxT = t1;
+  if (!doc || !sndOn() || t1 - t0 > 1.0) return;
+  for (const e of doc.Events){
+    if (e.Time <= t0 || e.Time > t1) continue;
+    switch(e.type){
+      case 'HitLanded':   sfx(e.IsCrit ? 'crit' : e.IsGuarded ? 'guard' : 'hit'); break;
+      case 'GuardBroken': case 'PoiseBroken': sfx('break'); break;
+      case 'KnockedDown': sfx('down'); sfx('crowd'); break;
+      case 'MatchEnded':  if (e.Reason === 'KO'){ sfx('ko'); sfx('crowd'); } break;
+      case 'Decision':    if (e.ReasonTag === 'TAUNT') sfx('taunt'); break;
+    }
+  }
+}
+let vScrA = null, vScrB = null; // 최종 화면 위치 스무딩 (잔여 떨림 흡수)
+let _resumeAt = null;           // reloadSeek: 재로드 후 이어갈 재생 시각 (실시간 전술 변경 연속성)
+// 카메라(연출 전용 — sim 위치/밸런스 무관): basic=전체 아레나, zoom=확대하며 두 선수 중점 추적.
+let viewMode = (_qs.get('view') || 'zoom'), camX = null, camY = null, camZoom = 1;
+// 화면 구도용 세로 오프셋(머리 위 여백). 추적 대상이 아니라 프레이밍이므로 아레나 클램프 '뒤'에
+// 적용한다 — 클램프 안에서 tgt.y를 건드리면 아레나가 화면보다 작을 때(mgnY=0) 통째로 먹힌다.
+let camLift = 0;
+let focusIdx = null;   // #11 전사·성격변화 시 쓰러진 패자(0=A/1=B) 줌인 연출 · #5 경기장 인트로 줌인도 재사용
+let introMode = false, introTimers = [];   // #5 경기 직전 대사 — 각 모리튜리 줌인+자막 시퀀스
 
 // ── 로드 ──
 function load(json){
@@ -108,22 +649,101 @@ function load(json){
   frames = doc.Frames;
   duration = frames.length ? frames[frames.length-1].Time : 0;
   buildPopups();
+  buildSkillUses();   // 스킬 발동 시각 색인 — HUD 쿨타임 부채꼴이 여기서 역산한다(§10.26)
+  buildImpacts();
+  buildPhaseProgress();
+  buildFacing();      // _faceA(안정 바라보기)를 walk 방향 계산보다 먼저 — 걷기 fwd/bwd가 그려진 facing과 일치하도록
+  buildWalkDir();
+  buildWalkPhase();
+  buildClinch();
   document.getElementById('meta').textContent =
     `시드 ${doc.Seed} · 원형 핏 지름 ${(doc.Meta.ArenaRadius*2).toFixed(0)}m · ${frames.length}프레임 · ${duration.toFixed(1)}초`;
   const A = doc.Meta.A, B = doc.Meta.B;
+  ensureWeaponSprites([A.Weapon, B.Weapon]); // 무기별 시트 비동기 확보 (로드 전엔 기본 시트로 폴백)
   document.getElementById('nameA').textContent = A.Name;
   document.getElementById('nameB').textContent = B.Name;
   document.getElementById('tagsA').textContent = label(A);
   document.getElementById('tagsB').textContent = label(B);
+  fillEndow('endowA', A.Endowment);
+  fillEndow('endowB', B.Endowment);
+  fillTraits('traitA', A.Traits);
+  fillTraits('traitB', B.Traits);
   const r = doc.Result, wtext = r.Winner < 0 ? '무승부'
       : (r.Winner === 0 ? A.Name : B.Name) + ' 승 · ' + r.Reason;
-  document.getElementById('winA').textContent = r.Winner === 0 ? '🏆 ' + wtext : '';
-  document.getElementById('winB').textContent = r.Winner === 1 ? '🏆 ' + wtext : '';
-  if (r.Winner < 0){ document.getElementById('winA').textContent = wtext; }
+  // 승자 스포일러 방지: 기본은 재생 완료 시 공개(설정 mor_settings.spoiler=true면 즉시 표시)
+  winTextA = r.Winner === 0 ? wtext : (r.Winner < 0 ? wtext : '');
+  winTextB = r.Winner === 1 ? wtext : '';
+  winnerRevealed = false; matchEndPosted = false;
+  document.getElementById('winA').textContent = '';
+  document.getElementById('winB').textContent = '';
+  if (SET.spoiler) revealWinner();
   const sc = document.getElementById('scrub');
   sc.disabled = false; sc.value = 0;
   document.getElementById('drop').classList.add('hidden');
-  t = 0; setPlaying(true);
+  t = 0; postGame = false; postGameElapsed = 0; vScrA = null; vScrB = null; hitstopUntil = 0;
+  lastSfxT = 0;
+  audioResume();   // allow="autoplay" 위임 시 클릭 없이도 효과음 재생 (무음 관전 버그 해소)
+  endIntro(true);  // 이전 인트로 잔여 타이머 정리(재로드 대비)
+  // 라이브 전술 개입: 재시뮬 후 이어서 재생. reloadSeek(_resumeAt) > URL ?seek= 우선.
+  let introable = false;
+  if (_resumeAt != null){ t = Math.min(_resumeAt, duration); lastSfxT = t; _resumeAt = null; setPlaying(true); }
+  else {
+    const seekT = parseFloat(new URLSearchParams(location.search).get('seek')||'0');
+    if (seekT > 0){ t = Math.min(seekT, duration); lastSfxT = t; setPlaying(true); }
+    else if (doc.Meta.QuoteA && frames.length) introable = true;   // #5 신규 로드 = 경기장 인트로
+    else setPlaying(true);
+  }
+  if (introable) runIntro(A, B);
+  // KO 슬로모션: 결정타(마지막 유효타) 주변에서 시간이 느려진다
+  koSlowT = -1; koClutch = false;
+  if (r.Reason === 'KO'){
+    for (const e of doc.Events) if (e.type === 'HitLanded' && !e.IsGuarded) koSlowT = e.Time;
+    // 막판 결착(#15): 승자마저 빈사인 채 마지막 일격으로 갈렸다면 슬로모를 더 깊고 길게 (철권식 클러치 피니시)
+    if (r.Winner >= 0){
+      const ws = r.Winner === 0 ? r.StatsA : r.StatsB;
+      koClutch = ws && ws.HpRemainPct != null && ws.HpRemainPct <= 0.20;
+    }
+  }
+}
+// #5 경기장 인트로 — 각 모리튜리를 차례로 줌인하며 대사 자막을 띄운 뒤 전투 시작
+function runIntro(A, B){
+  const cap = document.getElementById('introCap');
+  introMode = true; setPlaying(false); t = 0; focusIdx = null; camX = null;   // 시작 프레임·카메라 리셋
+  const show = (idx, f, quote, col)=>{
+    focusIdx = idx;
+    cap.innerHTML = `<div class="ic-name" style="color:${col}">${f.Name}</div><div class="ic-quote">“${quote||'…'}”</div>`;
+    cap.style.opacity = '1';
+  };
+  show(0, A, doc.Meta.QuoteA, 'var(--a)');
+  introTimers.push(setTimeout(()=>{ cap.style.opacity='0'; }, 2300));
+  introTimers.push(setTimeout(()=> show(1, B, doc.Meta.QuoteB, 'var(--b)'), 2700));
+  introTimers.push(setTimeout(()=>{ cap.style.opacity='0'; }, 5000));
+  introTimers.push(setTimeout(()=> endIntro(), 5400));
+}
+function endIntro(silent){
+  introTimers.forEach(clearTimeout); introTimers = [];
+  const cap = document.getElementById('introCap'); if (cap) cap.style.opacity = '0';
+  const ec = document.getElementById('execCap'); if (ec) ec.classList.remove('on');   // 처형 판정 오버레이도 초기화
+  const wasIntro = introMode;
+  introMode = false; focusIdx = null;
+  if (wasIntro && !silent && t < duration) setPlaying(true);   // 인트로 후 전투 시작
+}
+// 처형전 엄지 판정 — 경기장 안: 쓰러진 패자를 줌인한 채 흔들리는 엄지 → 상/하 판정 → 사망/자비
+let _execTimer = null;
+function runExecVerdict(data){
+  const cap = document.getElementById('execCap'); if (!cap) return;
+  if (_execTimer) clearTimeout(_execTimer);
+  cap.classList.add('on');
+  cap.innerHTML = `<div class="ex-pre">황제가 일어선다 — 군중이 숨을 죽인다…</div>
+    <div class="ex-thumb rocking">{thumb}</div>`;
+  try{ sfx('taunt'); setTimeout(()=>sfx('taunt'),700); setTimeout(()=>sfx('taunt'),1400); }catch(_){}   // 긴장의 북소리
+  _execTimer = setTimeout(()=>{
+    const sp = !!data.spared, who = data.loser || '패자';
+    cap.innerHTML = `<div class="ex-thumb">${sp?'{thumb}':'{thumbdown}'}</div>
+      <div class="ex-verdict ${sp?'spare':'kill'}">${sp?`황제의 자비 — ${who}, 오늘은 산다`:`${who}의 시간이 끝났다`}</div>
+      <div class="ex-note">사망 확률 ${data.deathPct||0}% · ${data.factors||''}</div>`;
+    try{ sfx(sp?'crowd':'ko'); }catch(_){}
+  }, 2400);
 }
 const TAC = {TAC_BALANCED:'균형',TAC_BRAWLER:'난전',TAC_COUNTER:'카운터',TAC_DECISION:'결단',
   TAC_DEFENDER:'수비',TAC_EVADER:'회피',TAC_GAMBLER:'도박',TAC_HUNTER:'사냥',TAC_PRESSURE:'압박',TAC_ZONER:'견제'};
@@ -131,26 +751,287 @@ const PER = {PER_ARROGANT:'오만',PER_BOLD:'대담',PER_CALM:'냉철',PER_COWAR
   PER_HONORABLE:'명예',PER_OBSESSIVE:'집착',PER_OPTIMIST:'낙관',PER_PESSIMIST:'비관',
   PER_RECKLESS:'충동',PER_VENGEFUL:'복수',PER_WARY:'신중'};
 const WPN = {WPN_AXE:'도끼',WPN_DUALBLADES:'쌍검',WPN_GREATSWORD:'대검',WPN_HAMMER:'망치',
-  WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SWORDSHIELD:'검방패',WPN_WHIP:'채찍'};
+  WPN_SPEAR:'창',WPN_SWORD:'검',WPN_SHIELD:'방패',WPN_WHIP:'채찍'};
 function label(f){ return `${WPN[f.Weapon]||f.Weapon} · ${TAC[f.Tactic]||f.Tactic} · ${PER[f.Personality]||f.Personality}`; }
+function fillTraits(id, traits){
+  const el = document.getElementById(id);
+  el.innerHTML = (traits && traits.length) ? traits.map(t=>`<span class="t">${t}</span>`).join('') : '';
+}
+function fillEndow(id, e){
+  const el = document.getElementById(id);
+  if (!e){ el.innerHTML = ''; return; }
+  const grow = (e.PotentialBudget - e.TalentBudget).toFixed(0);
+  el.innerHTML =
+    `<span class="grade">천부 ${e.Talent}</span> · 잠재력 ${e.Potential} (+${grow})<br>`+
+    `<span class="stats">ATK ${e.Atk.toFixed(0)} · DEF ${e.Def.toFixed(0)} · HP ${e.HpMax.toFixed(0)} · SPD ${e.Spd.toFixed(0)} · ASPD ${e.Aspd.toFixed(0)} · RCT ${e.Rct.toFixed(0)}</span>`;
+}
 
 // 이벤트 → 시간창 팝업 (스크럽해도 상태 무관하게 t로부터 재계산)
+// 데미지 숫자는 한글 접두어 없이 색·크기·표식만으로 구분(치명/카운터/가드/묵직) — drawDamage가 렌더.
+// 상태이상(다운·자세붕괴·가드파괴·탈진)은 떠다니는 글자 대신 롤식 아이콘 스트립(statuses)으로.
 function buildPopups(){
-  popups = []; decisions = [];
-  const flavor = e => e.IsArmored ? ['🪨',' #9aa3af'] : e.IsGuarded ? ['🛡','#6fa8dc']
-        : e.IsCounter ? ['⚡','#ffd24a'] : e.IsCrit ? ['💢','#ff5d5d'] : ['','#ffffff'];
+  popups = []; decisions = []; statuses = [];
   for (const e of doc.Events){
     switch(e.type){
-      case 'HitLanded':{ const [ic,col]=flavor(e);
-        popups.push({t:e.Time, who:e.Defender, life:0.8, rise:34,
-          text:`${ic}-${Math.round(e.Damage)}`, col}); break; }
-      case 'PoiseBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'자세붕괴', col:'#cbd2dc'}); break;
-      case 'GuardBroken':  popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'가드파괴!', col:'#6fa8dc'}); break;
-      case 'KnockedDown':  popups.push({t:e.Time, who:e.FighterId, life:1.2, rise:26, text:'다운!', col:'#ff8a4a'}); break;
-      case 'StaminaExhausted': popups.push({t:e.Time, who:e.FighterId, life:1.0, rise:26, text:'탈진', col:'#d9b15a'}); break;
+      case 'HitLanded':
+        popups.push({t:e.Time, who:e.Defender, life:0.8, dmg:Math.round(e.Damage),
+          crit:!!e.IsCrit, counter:!!e.IsCounter, guard:!!e.IsGuarded, armor:!!e.IsArmored}); break;
+      case 'PoiseBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'poise'}); break;
+      case 'GuardBroken':      statuses.push({t:e.Time, who:e.FighterId, kind:'guardbreak'}); break;
+      case 'KnockedDown':      statuses.push({t:e.Time, who:e.FighterId, kind:'down'}); break;
+      case 'StaminaExhausted': statuses.push({t:e.Time, who:e.FighterId, kind:'stam'}); break;
       case 'Decision': decisions.push({t:e.Time, who:e.FighterId,
           dur:Math.min(Math.max(e.Duration,0.9),2.5), tag:e.ReasonTag, layer:e.SourceLayer}); break;
     }
+  }
+  assignCutinLevels();
+}
+// 스킬 컷인 '층' 배정 — 뜰 때 비어 있는 가장 낮은 층을 잡고 사라질 때까지 그 자리를 지킨다.
+// 시작 시각만으로 확정하므로 아래 컷인이 먼저 사라져도 위가 내려오지 않는다(그리고 t 무관 → 스크럽 안전).
+function assignCutinLevels(){
+  const cuts = decisions.filter(d => d.tag && /^(SKILL_|PASV_)/.test(d.tag));
+  for (let i=0; i<cuts.length; i++){
+    const d = cuts[i], occupied = new Set();
+    for (let j=0; j<i; j++){                       // cuts는 이벤트(시간) 순 — j<i면 먼저 시작
+      const o = cuts[j];
+      if (o.who === d.who && d.t <= o.t + o.dur) occupied.add(o.lvl);   // 내가 뜰 때 아직 살아있다
+    }
+    let L=0; while (occupied.has(L)) L++;
+    d.lvl = L;
+  }
+}
+// 상태이상 표시 규격(발동만 있고 지속시간이 없어 표시용 고정 윈도우) + 카테고리색
+const STATDUR = {down:1.6, poise:1.0, guardbreak:1.2, stam:1.6};
+const STATCOL = {down:'#ff8a4a', poise:'#b7bfca', guardbreak:'#6fa8dc', stam:'#d9b15a', bleed:'#d0473b'};
+
+// ── 하이라이트 모드: 임팩트 구간만 이어 재생 (조용한 대치는 점프) ──
+let hlMode = SET.highlight === true, hlWins = [];
+function buildHlWindows(){
+  const raw = impacts.map(im=>[Math.max(0,im.t-1.0), im.t+0.9]);
+  raw.push([Math.max(0,duration-2.5), duration]);   // 피니시는 항상 포함
+  raw.sort((a,b)=>a[0]-b[0]);
+  hlWins = [];
+  for (const w of raw){
+    if (hlWins.length && w[0] <= hlWins[hlWins.length-1][1]+0.4) hlWins[hlWins.length-1][1] = Math.max(hlWins[hlWins.length-1][1], w[1]);
+    else hlWins.push([...w]);
+  }
+}
+function hlSkip(cur){   // 윈도우 밖이면 다음 윈도우 시작으로 (없으면 그대로)
+  for (const w of hlWins){ if (cur < w[0]) return w[0]; if (cur <= w[1]) return cur; }
+  return cur;
+}
+function setHl(on){ hlMode = on;
+  const b = document.getElementById('hl');
+  b.style.background = on ? getCSS('--gold') : ''; b.style.color = on ? '#231a12' : '';
+}
+document.getElementById('hl').onclick = ()=> setHl(!hlMode);
+
+// 이벤트 → 임팩트(흔들림·스파크·히트스톱). t로부터 재계산 → 스크럽 안전.
+function buildImpacts(){
+  impacts = [];
+  for (const e of doc.Events){
+    if (e.type==='HitLanded'){
+      let mag = Math.min(13, 3 + e.Damage*0.30);
+      if (e.IsCrit) mag*=1.6; if (e.IsCounter) mag*=1.35;
+      if (e.IsGuarded) mag*=0.30; if (e.IsArmored) mag*=0.45;
+      // 약공격은 흔들림을 아주 미세하게만 — 가해자(Attacker)의 현재 스윙 종류로 판별
+      const atkKind = e.Attacker===0 ? frameAt(e.Time).f.KindA : frameAt(e.Time).f.KindB;
+      if (atkKind==='Light') mag = Math.min(mag, 2.2);
+      const big = !e.IsGuarded && (e.IsCrit || e.IsCounter || e.Damage>=20);
+      impacts.push({ t:e.Time, who:e.Defender, mag, kind: e.IsGuarded?'guard':'hit',
+        col: e.IsGuarded?'#bcdcff': e.IsCrit?'#ff6b6b': e.IsCounter?'#ffe08a':'#fff2db',
+        stop: big ? 0.07 : 0 });
+    } else if (e.type==='KnockedDown'){
+      impacts.push({ t:e.Time, who:e.FighterId, mag:13, kind:'down', col:'#ffb070', stop:0.13 });
+    } else if (e.type==='GuardBroken'){
+      impacts.push({ t:e.Time, who:e.FighterId, mag:9, kind:'hit', col:'#7fb8ff', stop:0.08 });
+    } else if (e.type==='MatchEnded' && doc.Result.Winner>=0){
+      impacts.push({ t:e.Time, who:1-doc.Result.Winner, mag:18, kind:'ko', col:'#ffffff', stop:0.22 });
+    }
+  }
+  buildHlWindows();   // 하이라이트 구간 재계산
+  setHl(hlMode);      // 버튼 상태 반영(설정 기본값 포함)
+  // 혈흔 데칼 사전계산: 가드 안 된 묵직한 타격 → 피격자 위치의 바닥 얼룩 (impacts 파생 = 스크럽 안전)
+  stains = [];
+  for (const im of impacts){
+    if (im.kind==='guard' || im.mag < 5) continue;
+    const f0 = frameAt(im.t).f;
+    const p = proj(im.who===0 ? f0.Ax : f0.Bx, im.who===0 ? f0.Ay : f0.By);
+    stains.push({ t: im.t, x: p.x, y: p.y, r: 3 + im.mag*0.55, seed: (im.t*977|0)+1 });
+    if (stains.length >= 60) break;
+  }
+  // 발자국·끌린 자국([15]§4 A4): 프레임에서 파생 → t 필터로 스크럽 안전(혈흔과 같은 규약).
+  // 경기가 갈수록 모래가 밟힌다 = 살아있는 무대. 화면좌표가 아니라 월드좌표로 담는다 —
+  // RY가 줌에 따라 변하므로(모드별 부각) 그릴 때 투영해야 어긋나지 않는다.
+  tracks = [];
+  // 보폭 0.55 m·상한 240으로 뽑으면 경기 말미에 자국이 카펫이 되고 프레임의 55%(2.9 ms)를 먹는다.
+  // 성기게 뽑는 편이 보기에도 낫다 — 밟힌 자리가 읽혀야지 바닥이 갈려선 안 된다.
+  const STEP = 0.9;    // m — 이 거리마다 한 발
+  for (let who=0; who<2; who++){
+    let lx=null, ly=null;
+    for (let i=0;i<frames.length;i+=2){
+      const f0=frames[i], wx=who===0?f0.Ax:f0.Bx, wy=who===0?f0.Ay:f0.By;
+      if (lx===null){ lx=wx; ly=wy; continue; }
+      if (Math.hypot(wx-lx, wy-ly) < STEP) continue;
+      tracks.push({ t:f0.Time, wx, wy, a:Math.atan2(wy-ly, wx-lx) });
+      lx=wx; ly=wy;
+      if (tracks.length >= 150) break;
+    }
+  }
+  tracks.sort((p0,q0)=>p0.t-q0.t);
+}
+
+// 피격 스프라이트 흰색 플래시 강도(0~1) — 최근 임팩트가 이 선수를 때렸으면 잠깐 하얘진다.
+function hitFlashAt(who){
+  let v=0;
+  for (const im of impacts){ if (im.who!==who) continue;
+    const age=t-im.t; if (age<0||age>0.13) continue;
+    v=Math.max(v, (1-age/0.13)*(im.kind==='guard'?0.45:0.9)); }
+  return v;
+}
+
+// 거리싸움 중 0.2s 의사결정 틱 사이의 미세 정지가 걷기↔정지 모션을 초당 3회씩 깜빡이게 한다("방정맞음").
+// 짧은 Idle 블립(측정상 평균 0.13s)을 걷기로 메워 떨림을 흡수 — 진짜 멈춤(긴 Idle)만 정지 포즈로 떨군다.
+// 스크럽 안전: t·frames로만 결정(무상태). 다리 케이던스는 buildWalkPhase가 정지 시 위상 동결로 처리.
+const IDLE_BRIDGE = 0.28;  // 이보다 짧은 Idle 런은 걷기로 흡수
+function smoothMoveState(who, rawSt){
+  if (rawSt!=='Idle' || !frames) return rawSt;
+  const F = frames, key = who===0 ? 'StateA' : 'StateB';
+  let lo=0, hi=F.length-1;
+  if (t<=F[0].Time) lo=0;
+  else if (t>=F[hi].Time) lo=hi;
+  else { while (lo+1<hi){ const m=(lo+hi)>>1; if (F[m].Time<=t) lo=m; else hi=m; } }
+  if (F[lo][key]!=='Idle') return rawSt;
+  let a=lo, b=lo;
+  while (a>0 && F[a-1][key]==='Idle') a--;
+  while (b<F.length-1 && F[b+1][key]==='Idle') b++;
+  const runDur = (b<F.length-1 ? F[b+1].Time : F[b].Time) - F[a].Time;
+  const before = a>0 ? F[a-1][key] : null;
+  const after  = b<F.length-1 ? F[b+1][key] : null;
+  // 짧은 블립이면서 걷기 사이에 낀 경우만 흡수(공격·피격 사이 정지는 그대로 둔다)
+  if (runDur < IDLE_BRIDGE && (before==='Move' || after==='Move')) return 'Move';
+  return rawSt;
+}
+
+// 공격(Windup→Active→Recovery)·피격(HitStun/Stagger) 연속 구간의 진행률(0~1)을 각 프레임에 미리 계산.
+// 한 번 휘두르는 동안 스프라이트 시트를 한 번 재생(루프 없음)하기 위함.
+function buildPhaseProgress(){
+  const grpOf = s => (s==='Windup'||s==='Active'||s==='Recovery') ? 'atk'
+                   : (s==='HitStun'||s==='Stagger') ? 'hurt' : null;
+  for (const who of ['A','B']){
+    let i=0;
+    while (i<frames.length){
+      const grp = grpOf(frames[i]['State'+who]);
+      if (!grp){ frames[i]['_ph'+who]=null; i++; continue; }
+      let j=i; while (j<frames.length && grpOf(frames[j]['State'+who])===grp) j++;
+      const span=j-i;
+      for (let m=i;m<j;m++) frames[m]['_ph'+who] = { grp, p: span<=1?0:(m-i)/(span-1) };
+      i=j;
+    }
+  }
+}
+
+// 거리싸움 중 접근↔후퇴가 0.2s 틱마다 반복돼 앞걸음↔뒷걸음 모션이 뒤집혀 방정맞게 보임.
+// 걷기 방향을 dwell 히스테리시스로 커밋: 분명한 순변위(>DEAD)가 최소 DWELL초 이상 지속될 때만 전환.
+// 프레임별로 미리 계산(스크럽 안전·무상태). 계측: 전술가 방향전환 1.7/s → 0.4/s.
+function buildWalkDir(){
+  const F=frames; if(!F.length) return;
+  const fps = F.length>1 ? (F.length-1)/(F[F.length-1].Time-F[0].Time) : 15;
+  const Wf = Math.max(1, Math.round(0.18*fps));   // 순변위 측정 창(프레임)
+  const DEAD=0.15, DWELL=0.55;                     // 전환 임계 순변위(m) / 최소 커밋(s)
+  for (const who of ['A','B']){
+    const px = who==='A'?'Ax':'Bx', ox = who==='A'?'Bx':'Ax', out='_wdir'+who;
+    let dir=1, heldT=-99;
+    for (let i=0;i<F.length;i++){
+      const t=F[i].Time;
+      const lo=Math.max(0,i-Wf), hi=Math.min(F.length-1,i+Wf);
+      // 그려진 facing(_faceA, 히스테리시스)과 일치하는 방향 — 즉석 (ox-px)를 쓰면 미세 교차마다 fwd/bwd가
+      // 뒤집혀 후퇴 중인데 forward walk가 나온다. A는 _faceA, B는 -_faceA(faceB).
+      const face = who==='A' ? F[i]._faceA : -F[i]._faceA;
+      const net = F[hi][px]-F[lo][px];                 // 창 내 순수평변위
+      const inst = Math.abs(net)>DEAD ? ((net*face)>=0?1:-1) : 0;  // +1=전진(상대쪽) -1=후퇴 0=모호
+      if (inst!==0 && inst!==dir && (t-heldT)>=DWELL){ dir=inst; heldT=t; }
+      F[i][out]=dir;
+    }
+  }
+}
+
+// 걷기 다리 위상을 누적으로 미리 계산. floor(시간×dynFps)는 dynFps가 프레임마다 출렁이면(접전 직후
+// 풀스피드 이탈 등 velMs 급변) 비단조가 돼 프레임이 앞뒤로 튄다(43s대 "빠른 반복" 버그의 원인).
+// 누적(위상 += dt×fps)은 항상 단조증가 → 역행 불가. 속도는 2D 실이동(ΔBx만 쓰면 대각이동 과소평가).
+// 정지 구간은 위상 동결 → 다리 멈춤. fps·baseSpeed는 walk_fwd/bwd 시트값(10 / 2.0)과 일치.
+function buildWalkPhase(){
+  const F=frames; if(!F.length) return;
+  const FPS=10, BASE=2.0, MINF=4, MAXF=24, SMW=3;  // SMW: 다리 케이던스 속도 평활 창(±프레임 ≈ ±0.2s)
+  for (const who of ['A','B']){
+    const px=who==='A'?'Ax':'Bx', py=who==='A'?'Ay':'By', out='_wph'+who;
+    // 프레임별 순간속도(2D 실이동)
+    const sp=new Array(F.length).fill(0);
+    for (let i=1;i<F.length;i++){ const dt=F[i].Time-F[i-1].Time;
+      sp[i] = dt>0 ? Math.hypot(F[i][px]-F[i-1][px], F[i][py]-F[i-1][py])/dt : 0; }
+    // 다리 케이던스를 '이동평균 속도'로 구동: 추격 중 두 선수가 0.2s씩 번갈아 치고나가/멈추는(풀스피드↔정지)
+    // 패턴을 평균내 다리가 '멈췄다-빨라졌다'(풋 스케이팅) 하지 않고 매끄럽게 걷게 한다. 몸은 클램프로 등속 활주 →
+    // 둘이 나란히 걸어가는 모양. 진짜 정지(clinch 등 긴 0)는 창 전체가 0이라 그대로 다리 멈춤.
+    let ph=0; F[0][out]=0;
+    for (let i=1;i<F.length;i++){
+      let acc=0,n=0; for (let j=Math.max(1,i-SMW); j<=Math.min(F.length-1,i+SMW); j++){ acc+=sp[j]; n++; }
+      const s=acc/n;
+      const dt=F[i].Time-F[i-1].Time;
+      const fps = s>0.15 ? Math.max(MINF, Math.min(MAXF, FPS*s/BASE)) : 0;  // 진짜 정지=위상 동결
+      ph += dt*fps;
+      F[i][out]=ph;
+    }
+  }
+}
+
+// 좌우 위치·바라보기 히스테리시스(연출 전용 — sim 위치·승패 무변경, 스크럽 안전): 동속 락스텝(추격-후퇴 동시
+// 슬라이드)에서 두 선수의 X가 0.2s 틱마다 미세 교차하면 facing(좌우 미러)과 화면 좌우배치가 매번 뒤집혀
+// "자리가 계속 바뀐다"로 보인다. X차가 데드밴드(DEAD)를 넘어 DWELL초 이상 지속될 때만 좌우 관계를 전환 →
+// 미세 교차는 무시. +1 = A가 좌(상대가 우), faceB = -faceA. (buildWalkDir의 dwell 방식과 동일)
+function buildFacing(){
+  const F=frames; if(!F.length) return;
+  const DEAD=0.22, DWELL=0.45, TURN=0.60;   // 데드밴드(m) / 최소 커밋(s) / 좌우 교차 이징 길이(s)
+  let face = (F[0].Bx - F[0].Ax) >= 0 ? 1 : -1, heldT = -99;
+  const flips=[];
+  for (let i=0;i<F.length;i++){
+    const dx = F[i].Bx - F[i].Ax;                            // +면 B가 A의 오른쪽
+    const want = Math.abs(dx) > DEAD ? (dx>=0?1:-1) : face;  // 데드밴드 안이면 현 상태 유지 (위치 충실 — 접촉 동결 없음)
+    if (want !== face && (F[i].Time - heldT) >= DWELL){ face = want; heldT = F[i].Time; flips.push({t:F[i].Time, to:face}); }
+    F[i]._faceA = face;
+  }
+  // _faceLerp: 클램프 좌우순서를 즉석 ±1 대신 전환 ±TURN/2에서 old→0→new로 이징한다. 화면 분리가 0을 거쳐
+  // 반대로 벌어져 두 선수가 '걸어서 자리를 바꾸는' 교차가 됨(13s 65px 순간이동 방지). 스프라이트 미러는 즉석 _faceA.
+  const h=TURN/2;
+  for (let i=0;i<F.length;i++){
+    let lerp = F[i]._faceA;
+    for (const fl of flips){ const d=F[i].Time-fl.t;
+      if (d>=-h && d<=h){ lerp = Math.max(-1, Math.min(1, d/h)) * fl.to; break; } }
+    F[i]._faceLerp = lerp;
+  }
+}
+
+// 밀착 교착 연출(연출 전용 — sim 위치·승패 무변경, 스크럽 안전): 카운터 매치업의 간격 싸움은 sim상 정상이나,
+// 충돌 핀(0.8m)에서 양쪽이 거의 안 움직이며 milling(Move/Idle)을 반복하면 '제자리 비비기'(걷기 모션만 헛돔)로 보인다.
+// 근접(gap≤GAP) + 양쪽 실이동 속도 거의 0(≤SPD) + 공격 없음을 MIN초 이상 지속하는 '얼어붙은 핀'만 대치로 표시 →
+// 렌더에서 걷기 대신 idle 스탠스로 그린다. 실제로 선회 이동(16~18s처럼 ~1m 이동) 중이면 SPD를 넘어 걷기 애니 유지.
+function buildClinch(){
+  const F=frames; if(!F.length) return;
+  const GAP=1.35, MIN=0.45, SPD=0.25;   // 근접(m) / 최소 지속(s) / 정지로 볼 속도(m/s). GAP는 충돌 최소거리(2×CollisionRadius=1.2) 위로 — 핀 프레임이 걷기 대신 idle로
+  const mill = s => s==='Move' || s==='Idle';   // 공격·피격·다운·가드가 아닌 '간 보는' 상태
+  const gapAt = i => Math.hypot(F[i].Bx-F[i].Ax, F[i].By-F[i].Ay);
+  const spd = (i,px,py) => { const a = i>0 ? i-1 : 0, b = i>0 ? i : 1;
+    if (b>=F.length) return 0; const dt=F[b].Time-F[a].Time;
+    return dt>0 ? Math.hypot(F[b][px]-F[a][px], F[b][py]-F[a][py])/dt : 0; };
+  const pinned = i => mill(F[i].StateA) && mill(F[i].StateB) && gapAt(i)<=GAP
+                   && spd(i,'Ax','Ay')<SPD && spd(i,'Bx','By')<SPD;
+  let i=0;
+  while (i<F.length){
+    if (!pinned(i)){ F[i]._clinch=false; i++; continue; }
+    let j=i; while (j<F.length && pinned(j)) j++;
+    const dur=(j<F.length?F[j].Time:F[j-1].Time)-F[i].Time;
+    const val = dur>=MIN;   // 짧은 정지(<MIN)는 실제 교전 흐름 → 그대로 둔다
+    for (let m=i;m<j;m++) F[m]._clinch=val;
+    i=j;
   }
 }
 
@@ -163,12 +1044,16 @@ function frameAt(time){
   const a=F[lo], b=F[hi], span=b.Time-a.Time;
   return {f:a, g:b, k: span>0 ? (time-a.Time)/span : 0};
 }
-// ── 2.5D 핏 투영 (원형 아레나 → 기울인 타원 바닥). 중심 (0,0), Y=깊이 ──
-const CX = W/2, CY = H*0.58, RX = W/2 - PAD, RY = (W/2 - PAD)*0.34;
+// 카메라 노브(CamHeight/CamTilt)와 CX/CY/RX/RY는 배경 프리렌더보다 먼저 필요해 상단으로 옮겼다. [15]§2.3
 const R = () => doc.Meta.ArenaRadius;
 const proj = (sx, sy) => ({ x: CX + (sx/R())*RX, y: CY + (sy/R())*RY });
 const mPx = () => RX/R();              // 가로 m→px
 const depthN = sy => (sy/R()+1)/2;     // 0 뒤 ~ 1 앞 (원근·정렬)
+// 근접 간격 가독성: 화면 x간격 g(px)를 비선형으로 벌려 표시 — 겹침 방지(근접일수록 +OFF로 띄움) +
+// 차이 보존(0.9m·1.1m가 구분됨). 멀면(≥TAPER) 실제 그대로. 옛 하드클램프(모든 근접을 65px로 납작)를 대체.
+// 1.8m(≈60px)에서 표시 간격이 캐릭터 키(스프라이트 120px)와 비슷해지도록: gapShow(60)≈120.
+const GAP_OFF = 85, GAP_TAPER = 200;   // 띄움량 / 0으로 수렴하는 간격(px) — 과장 강도 조절 노브
+const gapShow = g => g + GAP_OFF*Math.max(0, 1 - g/GAP_TAPER);
 
 function poseColor(state){
   if (state==='Guard') return '#6fa8dc';
@@ -176,96 +1061,1502 @@ function poseColor(state){
   if (state==='Taunt') return '#ffd24a';
   return null;
 }
-// 막대기: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+
+// ── 스프라이트 시스템 (M4-b): sprites/sprites.json + PNG 시트가 있으면 실루엣 대신 그림을 그린다.
+//    상태(12종) → 포즈(8종) 매핑. 시트는 오른쪽 향함 기준, 발(바닥)이 앵커. 없으면 실루엣 폴백.
+// 무기별 시트(M4-b 확장): 선수마다 무기 ID로 다른 외형. sprites/<무기ID>.json 있으면 그걸, 없으면 공유 sprites.json.
+let defaultSprite = null;     // sprites.json (공유 폴백)
+const spriteSets = {};        // 무기ID → 스프라이트 세트 (시도 후 캐시; 없으면 defaultSprite)
+function spriteFor(weapon){ return spriteSets[weapon] || defaultSprite; }
+// 상태(+스윙 종류) → 9포즈. 강공은 예비(텔레그래프)와 타격이 갈린다 — 수싸움 가독성의 핵심.
+function poseFor(state, kind){
+  const heavy = kind==='Heavy';
+  switch(state){
+    case 'Move': case 'Dodge': return 'walk';
+    case 'Guard': return 'guard';
+    case 'Windup': return heavy?'heavy_windup':'light_attack';
+    case 'Active': case 'Recovery': return heavy?'heavy_attack':'light_attack';
+    case 'HitStun': case 'Stagger': return 'hurt';
+    case 'Down': case 'GetUp': return 'down';
+    case 'Taunt': return 'taunt';
+    default: return 'idle';
+  }
+}
+// 시트 한 세트 로드 (정적 포즈 + 애니). 실패 시 null → 호출부에서 폴백 결정.
+async function loadSpriteSet(jsonFile){
+  try{
+    const cfg = await (await fetch('sprites/'+jsonFile+'?'+Date.now())).json();
+    const img = new Image();
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='sprites/'+cfg.image; });
+    // 애니메이션 시트 로드 (이미지 중복 없이 캐시)
+    const anims = {}, imgCache = {};
+    for (const [name, a] of Object.entries(cfg.animations||{})){
+      if (!imgCache[a.image]){
+        const ai = new Image();
+        await new Promise((res,rej)=>{ ai.onload=res; ai.onerror=rej; ai.src='sprites/'+a.image; });
+        imgCache[a.image] = ai;
+      }
+      // holds: 프레임별 지속 가중치(선택). 특정 포즈(임팩트 프레임 등)를 더 오래 유지하려 비균등 타이밍 부여.
+      const holds = Array.isArray(a.holds) && a.holds.length===a.frames.length ? a.holds : null;
+      anims[name] = { img: imgCache[a.image], fps: a.fps||12, frames: a.frames, refH: a.refH, baseSpeed: a.baseSpeed||0,
+                      holds, holdTot: holds ? holds.reduce((s,x)=>s+x,0) : 0 };
+    }
+    return { img, frames: cfg.frames, srcFlip: cfg.facing === 'left', anims };
+  }catch(e){ return null; } // 시트 없음
+}
+// 공유 기본 시트 로드 (sprites.json). 없으면 실루엣 폴백.
+async function loadDefaultSprites(){ defaultSprite = await loadSpriteSet(SHEET); }
+// 두 선수 무기의 전용 시트 확보. 무기 ID당 한 번만 시도하고, 없으면 기본 시트로 폴백 등록.
+async function ensureWeaponSprites(weapons){
+  for (const w of weapons){
+    if (!w || w in spriteSets) continue;
+    spriteSets[w] = (await loadSpriteSet(w + '.json')) || defaultSprite;
+  }
+}
+// 바닥 장식 (사거리 링 + 그림자 + 팀색 글로우) — 스프라이트 경로용 (실루엣은 자체 보유)
+function drawGround(fx, fy, scale, reach, col){
+  ctx.save(); ctx.globalAlpha=.20; ctx.fillStyle=col;       // 팀색 글로우 (같은 시트라도 구분)
+  ctx.beginPath(); ctx.ellipse(fx, fy, 16*scale, 6*scale, 0,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.18; ctx.strokeStyle=col; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0,0,7); ctx.stroke(); ctx.restore();
+  // 접지 그림자([15]§9 결정4 대체안): 발밑 정원이 아니라 빛 반대쪽(우하)으로 눕는다.
+  // 고도 41°라 그림자가 길다 — 장축을 방위각에 맞추고 그만큼 늘린다.
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
+  ctx.translate(fx - LDIR.x*5*scale, fy - LDIR.y*5*scale);
+  ctx.rotate(Math.atan2(-LDIR.y, -LDIR.x));
+  ctx.beginPath(); ctx.ellipse(0, 0, 13*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
+}
+function drawSprite(spr, fx, fy, scale, state, kind, facing, velX, who, velMs, ph, flash, walkDir, walkPhase){
+  // 상태별 다중프레임 애니 선택 (이동·공격·피격). 없으면 정적 포즈 폴백.
+  let anim = null;
+  if (spr.anims){
+    if (state==='Move'||state==='Dodge'){
+      // 걷기 방향: dwell 히스테리시스로 커밋된 _wdir(전진+1/후퇴-1, facing 반영됨) 사용 — 앞↔뒤 떨림 방지.
+      const fwd = (walkDir!=null) ? walkDir>0 : (velX===0 ? true : (velX*facing)>0);
+      if (state==='Move') anim = fwd ? spr.anims.walk_fwd : spr.anims.walk_bwd;
+      else                anim = spr.anims.dash_bwd; // Dodge = 뒷회피 고정 (앞대쉬는 추후 Dash 기능용)
+    } else if (state==='Windup'||state==='Active'||state==='Recovery'){
+      anim = kind==='Heavy' ? spr.anims.heavy_attack : spr.anims.light_attack;
+    } else if (state==='HitStun'||state==='Stagger'){
+      anim = state==='Stagger' ? spr.anims.hurt_heavy : spr.anims.hurt_light; // 자세붕괴=강피격
+    } else {
+      // 정지 계열(대기·방어·도발·다운)도 애니가 있으면 쓴다 — 호흡·가드 흔들림이 살아난다.
+      // 없으면 아래 정적 포즈로 조용히 폴백(옛 손그림 시트 호환).
+      anim = spr.anims[poseFor(state, kind)] || null;
+    }
+  }
+  // 걷기 위상은 이동 상태에서만 의미가 있다. 정지 계열에 그대로 넘기면 위상이 안 늘어 프레임이 얼어붙는다.
+  const moving = (state==='Move'||state==='Dodge');
+  if (!moving) walkPhase = null;
+  // 다운은 반복 재생하면 시체가 계속 쓰러진다 — 마지막(무너진) 프레임에서 정지.
+  const holdLast = (state==='Down'||state==='GetUp');
+  let fr, srcImg;
+  if (anim?.frames?.length){
+    let fi;
+    if (holdLast){
+      fi = anim.frames.length - 1;   // 쓰러진 마지막 자세로 정지
+    } else if (ph && ph.grp){
+      // 공격/피격: 구간 진행률로 시트를 한 번 재생 (루프 없음). holds 있으면 프레임별 가중 타이밍(임팩트 포즈 유지).
+      if (anim.holds){
+        const target = ph.p * anim.holdTot; let acc=0, idx=0;
+        for (idx=0; idx<anim.holds.length; idx++){ acc+=anim.holds[idx]; if (target < acc) break; }
+        fi = Math.min(anim.frames.length-1, idx);
+      } else {
+        fi = Math.min(anim.frames.length-1, Math.max(0, Math.round(ph.p*(anim.frames.length-1))));
+      }
+    } else if (walkPhase!=null){
+      // 이동: 누적 걷기 위상(buildWalkPhase, 단조증가) → 프레임 역행 없음. 정지 시 위상 동결=다리 멈춤.
+      fi = Math.floor(walkPhase) % anim.frames.length;
+    } else {
+      // 폴백(구 json): 속도 연동 fps 루프 — 위상 비연속이라 프레임 튐 가능
+      const dynFps = (anim.baseSpeed>0 && velMs>0.1)
+        ? Math.max(4, Math.min(24, anim.fps * velMs / anim.baseSpeed))
+        : (anim.fps||12);
+      fi = Math.floor((t + who*0.4) * dynFps) % anim.frames.length;
+    }
+    fr = anim.frames[fi]; srcImg = anim.img;
+  } else {
+    fr = spr.frames[poseFor(state,kind)] || spr.frames.idle; srcImg = spr.img;
+  }
+  if(!fr) return false;
+  // refH(직립 환산 키) 우선순위: 애니 > 포즈별 > idle. 화면 키 일관성의 핵심.
+  const refH = (anim?.refH) || fr.refH || spr.frames.idle.h;
+  const k = (FIGH*scale)/refH;
+  const w = fr.w*k, h = fr.h*k;
+  const flip = (facing<0) !== spr.srcFlip;
+  ctx.save(); ctx.translate(fx, fy); if(flip) ctx.scale(-1,1);
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, -w/2, -h, w, h);
+  // 림라이트([15]§9 결정4 대체안 · A4): 스프라이트 노멀맵 대신 이걸 쓴다.
+  // 실루엣을 빛 반대쪽으로 밀어 지우면 광원 쪽 가장자리만 초승달로 남는다.
+  // ※ 이 컨텍스트는 facing에 따라 좌우 반전돼 있다 — 밀어내는 방향의 x를 로컬 기준으로 뒤집어야
+  //   왼쪽을 볼 때 림이 반대편에 붙지 않는다.
+  {
+    const iw2=Math.max(1,Math.ceil(w)), ih2=Math.max(1,Math.ceil(h));
+    _rcv.width=iw2; _rcv.height=ih2;                       // 크기 재설정 = 클리어
+    _rctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, 0,0, w,h);
+    _rctx.globalCompositeOperation='destination-out';
+    _rctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h,
+      (flip? LDIR.x : -LDIR.x)*RIMPX, -LDIR.y*RIMPX, w,h);
+    _rctx.globalCompositeOperation='source-in';
+    _rctx.fillStyle=RIMCOL; _rctx.fillRect(0,0,iw2,ih2);
+    _rctx.globalCompositeOperation='source-over';
+    ctx.drawImage(_rcv, -w/2,-h, w, h);
+  }
+  // 피격 흰색 플래시: 오프스크린에 스프라이트만 그려 거기서 source-atop(스프라이트 픽셀=유일한 목적지) →
+  // 실루엣 내부만 하얘진다. 본 캔버스에서 직접 하면 바닥까지 덮여 박스로 번짐.
+  if (flash>0){
+    const iw=Math.max(1,Math.ceil(w)), ih=Math.max(1,Math.ceil(h));
+    _fcv.width=iw; _fcv.height=ih;            // 크기 재설정 = 클리어
+    _fctx.drawImage(srcImg, fr.x,fr.y,fr.w,fr.h, 0,0, w, h);
+    _fctx.globalCompositeOperation='source-atop';
+    _fctx.fillStyle='#fff'; _fctx.globalAlpha=Math.min(1,flash);
+    _fctx.fillRect(0,0,iw,ih);
+    _fctx.globalCompositeOperation='source-over'; _fctx.globalAlpha=1;
+    ctx.drawImage(_fcv, -w/2,-h, w, h);
+  }
+  ctx.restore(); return true;
+}
+// 채워진 작은 모리튜리: 투영된 바닥점(fx,fy)에서 위로 선다. scale = 깊이 원근.
+function shade(hex, f){ // 색 밝기 조정 (f<1 어둡게)
+  const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  return `rgb(${r*f|0},${g*f|0},${b*f|0})`;
+}
 function drawFighter(fx, fy, scale, state, facing, baseCol, reach){
   const col = poseColor(state) || baseCol;
-  // 사거리 링 (바닥 타원) — 2D 간격 읽기의 핵심
-  ctx.save(); ctx.globalAlpha=.16; ctx.strokeStyle=col; ctx.lineWidth=1.5;
+  const dark = shade(col.startsWith('#')?col:'#888888', 0.62);
+  // 사거리 링 (바닥 타원)
+  ctx.save(); ctx.globalAlpha=.18; ctx.strokeStyle=col; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(fx, fy, reach*mPx(), reach*mPx()*(RY/RX), 0, 0, 7); ctx.stroke(); ctx.restore();
   // 발 그림자
-  ctx.save(); ctx.globalAlpha=.25; ctx.fillStyle='#000';
-  ctx.beginPath(); ctx.ellipse(fx, fy, 9*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(fx, fy, 10*scale, 4*scale, 0,0,7); ctx.fill(); ctx.restore();
 
-  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineCap='round';
   if (state==='Down'){
-    ctx.lineWidth=3*scale;
-    ctx.beginPath(); ctx.moveTo(fx-facing*18*scale, fy-4); ctx.lineTo(fx+facing*22*scale, fy-4); ctx.stroke();
-    ctx.beginPath(); ctx.arc(fx-facing*24*scale, fy-7, 8*scale, 0,7); ctx.fill(); return;
+    ctx.fillStyle=col; ctx.strokeStyle=dark; ctx.lineWidth=1.5*scale;
+    ctx.save(); ctx.translate(fx,fy-5*scale); ctx.scale(facing,1);
+    roundRect(-20*scale,-5*scale,34*scale,10*scale,5*scale); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-22*scale,0,7*scale,0,7); ctx.fill(); ctx.stroke(); ctx.restore(); return;
   }
-  const H0 = 56*scale;
-  const hip = fy - H0*0.42, sh = fy - H0*0.78, hd = fy - H0*0.92;
+  const H0 = 80*scale;
   let lean=0, crouch=0;
-  if (state==='HitStun'||state==='Stagger') lean=-facing*0.35;
-  if (state==='Dodge') lean=-facing*0.5;
+  if (state==='HitStun'||state==='Stagger') lean=-facing*0.30;
+  if (state==='Dodge') lean=-facing*0.45;
   if (state==='GetUp') crouch=0.5;
-  const cy = v => v + crouch*H0*0.25;
-  const sx = fx + lean*14*scale;
-  ctx.lineWidth=3*scale;
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(sx, cy(sh)); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx-8*scale, fy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(fx, cy(hip)); ctx.lineTo(fx+8*scale, fy); ctx.stroke();
-  ctx.beginPath(); ctx.arc(sx+lean*4, cy(hd), 8*scale, 0,7); ctx.fill();
+  const cy = v => v + crouch*H0*0.28;
+  const hip = cy(fy - H0*0.42), sh = cy(fy - H0*0.80), hd = cy(fy - H0*0.95);
+  const sx = fx + lean*16*scale;
 
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  // 다리 (두꺼운 선)
+  ctx.strokeStyle=dark; ctx.lineWidth=5*scale;
+  ctx.beginPath(); ctx.moveTo(fx, hip); ctx.lineTo(fx-6*scale, fy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx, hip); ctx.lineTo(fx+6*scale, fy); ctx.stroke();
+  // 몸통 (채워진 캡슐)
+  ctx.strokeStyle=dark; ctx.lineWidth=2*scale; ctx.fillStyle=col;
+  ctx.save();
+  const bw=11*scale, bx0=Math.min(fx,sx)-bw/2, bw2=bw+Math.abs(sx-fx);
+  roundRect(bx0, sh, bw2, hip-sh, bw/2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  // 무기 팔 (몸통보다 먼저 — 뒤로 든 자세)
   let arm;
   switch(state){
     case 'Windup': arm=-2.3; break; case 'Active': arm=0; break;
     case 'Recovery': arm=0.5; break; case 'Guard': arm=-1.2; break;
     case 'Taunt': arm=-2.0; break; case 'Stagger': case 'HitStun': arm=-2.6; break;
-    default: arm=1.0;
+    default: arm=0.9;
   }
-  const aL=(state==='Active'?20:16)*scale;
-  const ax=sx+facing*Math.cos(arm)*aL, ay=cy(sh)+Math.sin(arm)*aL;
-  ctx.lineWidth=3*scale; ctx.beginPath(); ctx.moveTo(sx,cy(sh)); ctx.lineTo(ax,ay); ctx.stroke();
-  const wl=(state==='Active'? reach*mPx()*0.6 : 15*scale);
-  ctx.lineWidth=2.5*scale; ctx.globalAlpha=(state==='Active')?1:.7;
+  const aL=(state==='Active'?22:16)*scale;
+  const ax=sx+facing*Math.cos(arm)*aL, ay=sh+Math.sin(arm)*aL;
+  ctx.strokeStyle=col; ctx.lineWidth=4*scale;
+  ctx.beginPath(); ctx.moveTo(sx,sh+2*scale); ctx.lineTo(ax,ay); ctx.stroke();
+  // 무기 블레이드
+  const wl=(state==='Active'? reach*mPx()*0.6 : 16*scale);
+  ctx.strokeStyle='#d8cdb8'; ctx.lineWidth=2.5*scale; ctx.globalAlpha=(state==='Active')?1:.85;
   ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl); ctx.stroke();
   ctx.globalAlpha=1;
-  if (state==='Active'){ ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='#fff'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4,0,7); ctx.stroke(); ctx.restore(); }
+  // 머리
+  ctx.fillStyle=col; ctx.strokeStyle=dark; ctx.lineWidth=2*scale;
+  ctx.beginPath(); ctx.arc(sx+lean*4, hd, 8.5*scale, 0,7); ctx.fill(); ctx.stroke();
+  // 공격 섬광
+  if (state==='Active'){ ctx.save(); ctx.globalAlpha=.6; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(ax+facing*Math.cos(arm)*wl, ay+Math.sin(arm)*wl, 4*scale,0,7); ctx.stroke(); ctx.restore(); }
+}
+
+// 유닛별 플로팅 HUD (머리 위) — TFM 시그니처.
+// **하단 판이 생기면서 여기의 세그먼트 HP바는 중복이 됐다**([15]§10.25). 같은 값을 두 군데서
+// 크게 말하면 둘 다 안 읽힌다. 머리 위는 '누가 누구인가'만 맡고(이름 + 3 px 실낱 HP),
+// '얼마나 남았나'는 하단 판이 맡는다.
+function unitTag(sx, topY, name, hpPct, col){
+  const w=60, x=sx-w/2, y=topY+4;
+  ctx.textAlign='center'; ctx.font='700 10px ' + getCSS('--font-display');
+  ctx.fillStyle='rgba(15,10,6,0.5)'; roundRect(x-3,y-12,w+6,11,2); ctx.fill();
+  ctx.fillStyle='#e6dcc6'; ctx.fillText(name, sx, y-3);
+  ctx.fillStyle='rgba(15,10,6,0.6)'; ctx.fillRect(x, y, w, 3);
+  ctx.fillStyle=col; ctx.fillRect(x, y, Math.max(0,Math.min(1,hpPct))*w, 3);
+}
+
+// ── 관중게이지([15]§10.24) — 글자를 걷고 형태로 읽힌다 ──────────────────────────
+// 예전엔 라벨 '관중게이지'와 '이름 유리 — 피해 +n% · 이동 속도 +n%' 두 줄이 있었다.
+// 글자는 **읽어야** 알 수 있다 — 싸움을 보는 중에는 안 읽는다. 셋으로 나눠 형태에 실었다:
+//   수위    = 중앙에서 뻗는 채움
+//   추세    = 1.2초 전 위치의 유령 눈금 + 그 사이를 메우는 갈매기표(방향·속도)
+//   페이오프 = 데드존(±15)을 넘은 만큼 채움이 발광하고 맥동한다
+// **좌우를 하단 HUD와 맞췄다** — A는 왼쪽, B는 오른쪽. 예전엔 A가 오른쪽으로 차서
+// 하단 패널과 반대였다(같은 화면에서 같은 사람이 좌우로 갈리면 안 읽힌다).
+const CROWD_LAG = 1.2;                  // 추세를 재는 과거 시점(초)
+
+// ── HUD 공용 형태 언어([15]§10.25) ─────────────────────────────────────────────
+// 직사각형은 웹 UI로 읽힌다. 파이팅 게임의 체력바가 **기운 평행사변형**인 데는 이유가 있다 —
+// 기울기가 방향을 만들고, 방향이 '이쪽 편 / 저쪽 편'을 만든다. 좌우가 서로 거울이면 대치가 된다.
+const SK = 7;                           // 기울기(윗변이 밀리는 px)
+function skewPath(x, y, w, h, sk){
+  ctx.beginPath();
+  ctx.moveTo(x + sk, y); ctx.lineTo(x + w + sk, y);
+  ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath();
+}
+// 베벨 = 광원 방향의 선언. 씬 태양은 좌상단(az 233 · el 41)이므로 **윗변이 받고 아랫변이 진다.**
+// 1 px 두 줄이 전부인데, 이게 있고 없고가 '금속 판'과 '색칠한 사각형'을 가른다.
+function bevel(x, y, w, h, sk){
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,241,216,0.34)';
+  ctx.beginPath(); ctx.moveTo(x + sk, y + 0.5); ctx.lineTo(x + w + sk, y + 0.5); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.moveTo(x, y + h - 0.5); ctx.lineTo(x + w, y + h - 0.5); ctx.stroke();
+}
+// 채움은 **바깥(초상) 쪽에 고정**되고 안쪽으로 줄어든다. 두 선수의 바가 서로를 향해 마주 줄어든다.
+function skewFill(x, y, w, h, sk, pct, style, anchorLeft){
+  const p = Math.max(0, Math.min(1, pct)); if (p <= 0) return;
+  ctx.save(); skewPath(x, y, w, h, sk); ctx.clip();
+  ctx.fillStyle = style;
+  ctx.fillRect(anchorLeft ? x - sk : x + w - w * p, y, w * p + Math.abs(sk) + 1, h);
+  ctx.restore();
+}
+// 화면 아래·위에 얇은 어둠(스크림). HUD가 배경 위에 '떠 있지' 않고 화면에 앉는다.
+function scrim(y0, y1, a0, a1){
+  const gr = ctx.createLinearGradient(0, y0, 0, y1);
+  gr.addColorStop(0, `rgba(8,5,3,${a0})`); gr.addColorStop(1, `rgba(8,5,3,${a1})`);
+  ctx.fillStyle = gr; ctx.fillRect(0, Math.min(y0, y1), W, Math.abs(y1 - y0));
+}
+
+function drawCrowdMeter(fr){
+  const val = r => (r.f.Crowd ?? 0) + (((r.g.Crowd ?? 0) - (r.f.Crowd ?? 0)) * r.k);
+  const crowd = val(fr), past = val(frameAt(Math.max(0, t - CROWD_LAG)));
+  const mw=430, mh=18, mx=(W-mw)/2, my=20, cx=W/2, half=mw/2;
+  const at = v => cx - half * Math.max(-1, Math.min(1, v/100));   // + = A = 왼쪽
+  const col = crowd >= 0 ? getCSS('--a') : getCSS('--b');
+  const norm = Math.max(0, Math.min(1, (Math.abs(crowd) - 15) / 85));   // 데드존 넘은 정도
+  const tip = at(crowd);
+
+  ctx.save();
+  scrim(0, 62, 0.55, 0);
+  // 섀시 — 청동 판에 홈을 판 모양. 바깥 테두리 → 안쪽 홈 → 채움 순으로 층이 진다
+  ctx.fillStyle = 'rgba(10,7,4,0.78)'; roundRect(mx-8, my-7, mw+16, mh+14, 4); ctx.fill();
+  ctx.strokeStyle = getCSS('--bronze'); ctx.lineWidth = 1; ctx.globalAlpha = 0.55;
+  roundRect(mx-8.5, my-7.5, mw+17, mh+15, 4); ctx.stroke(); ctx.globalAlpha = 1;
+  slot(mx, my, mw, mh, SK);
+  // 데드존(±15) — 버프가 0인 구간. 채움 대신 **양쪽 문턱선**으로 새긴다.
+  // 옅은 사각형은 트로프와 구분이 안 갔다 — 선이라야 "여기를 넘으면 효과가 붙는다"가 읽힌다
+  ctx.strokeStyle = getCSS('--gold-deep'); ctx.lineWidth = 1;
+  for (const q of [-0.15, 0.15]){
+    const gx = cx + half*q;
+    ctx.beginPath(); ctx.moveTo(gx + SK, my + 1); ctx.lineTo(gx, my + mh - 1); ctx.stroke();
+  }
+
+  // ① 수위 — 끝으로 갈수록 밝아지는 그러데이션이라 **선단이 어디인지**가 저절로 보인다
+  if (Math.abs(crowd) > 0.5){
+    const gr = ctx.createLinearGradient(cx, 0, tip, 0);
+    gr.addColorStop(0, col + '44'); gr.addColorStop(1, col);
+    const fx = Math.min(cx, tip) - SK, fw = Math.abs(tip - cx) + SK;
+    // ③ 페이오프 — 데드존을 넘은 만큼 번진다. shadowBlur는 프레임당 수 ms를 먹으므로
+    //    **바깥으로 넓힌 반투명 사본 두 장**으로 대신한다. 눈에는 같은 번짐이고 비용은 무시할 수준이다.
+    if (norm > 0){
+      const puls = norm * (0.78 + 0.22 * Math.sin(t * 4.2));
+      ctx.save(); ctx.fillStyle = col;
+      for (let i = 1; i <= 2; i++){
+        ctx.globalAlpha = puls * (0.20 / i);
+        ctx.fillRect(fx - i*2, my - i*3, fw + i*4, mh + i*6);
+      }
+      ctx.restore();
+    }
+    ctx.save();
+    skewPath(mx, my, mw, mh, SK); ctx.clip();
+    ctx.fillStyle = gr;
+    ctx.fillRect(fx, my, fw, mh);
+    ctx.restore();
+  }
+  // 눈금 — ±25/50/75. 새김선이 있으면 '얼마나'가 어림으로 읽힌다
+  ctx.strokeStyle = 'rgba(240,230,214,0.28)'; ctx.lineWidth = 1;
+  for (const q of [-0.75,-0.5,-0.25,0.25,0.5,0.75]){
+    const gx = cx + half*q, big = Math.abs(q) === 0.5;
+    ctx.beginPath();
+    ctx.moveTo(gx + SK*(big?0.9:0.72), my + (big?2:5));
+    ctx.lineTo(gx + SK*(big?0.1:0.28), my + mh - (big?2:5));
+    ctx.stroke();
+  }
+
+  // ② 추세 — 유령 눈금(1.2초 전)과 갈매기표. 채움이 어디로 **가는 중인지**를 보여준다
+  const gh = at(past), d = tip - gh;
+  if (Math.abs(d) > 3){
+    const dir = Math.sign(d), a = Math.min(1, Math.abs(crowd - past) / 22);
+    ctx.strokeStyle = `rgba(240,230,214,${(0.28 + 0.42*a).toFixed(2)})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(gh + SK, my-1); ctx.lineTo(gh, my+mh+1); ctx.stroke();
+    for (let i = 1; i <= 3; i++){
+      const cxx = gh + d * (i / 4) + SK*0.5;
+      ctx.globalAlpha = a * (0.28 + 0.22*i);
+      ctx.beginPath();
+      ctx.moveTo(cxx - dir*3, my+mh*0.28); ctx.lineTo(cxx + dir*3, my+mh*0.5);
+      ctx.lineTo(cxx - dir*3, my+mh*0.72); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  bevel(mx, my, mw, mh, SK);
+  // 선단 캡 + 위쪽 삼각 포인터 — 눈이 여기 하나에 붙는다
+  ctx.fillStyle = '#fff8ea';
+  skewPath(tip - 1.5, my - 2, 3, mh + 4, SK); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tip+SK, my-4); ctx.lineTo(tip+SK-4.5, my-10.5); ctx.lineTo(tip+SK+4.5, my-10.5); ctx.closePath();
+  ctx.fillStyle = Math.abs(crowd) > 0.5 ? col : 'rgba(240,230,214,0.5)'; ctx.fill();
+  // 중앙 피벗 — 저울의 받침점. 여기가 '아무도 유리하지 않은' 원점이다
+  ctx.fillStyle = getCSS('--gold');
+  ctx.beginPath(); ctx.moveTo(cx+SK*0.5, my+mh+2); ctx.lineTo(cx+SK*0.5-4, my+mh+7);
+  ctx.lineTo(cx+SK*0.5+4, my+mh+7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(240,230,214,0.5)'; ctx.fillRect(cx+SK*0.5-0.5, my, 1, mh);
+  // 양 끝 색 칩 — 어느 쪽이 누구인지 글자 없이 알린다(하단 HUD와 같은 좌우)
+  ctx.fillStyle=getCSS('--a'); skewPath(mx-6, my-2, 3, mh+4, SK*0.4); ctx.fill();
+  ctx.fillStyle=getCSS('--b'); skewPath(mx+mw+3, my-2, 3, mh+4, SK*0.4); ctx.fill();
+  ctx.restore();
+}
+
+// ── 하단 선수 판([15]§10.25) — 인게임 화면의 상시 정보 ────────────────────────
+// 위계를 **크기로** 만든다: HP(폭 262·높이 16) ≫ 스태미나(158·5) > 가드(96·5).
+// 예전엔 셋이 같은 폭·같은 모양이라 동급으로 읽혔다 — 정보는 다 있었는데 '무엇부터 볼지'가 없었다.
+// 상태는 글자가 아니라 섀시가 말한다: 위급=혈적색 맥동 · 가드 브레이크=빗금.
+function hpGhost(key){
+  // 피해 잔상은 **끊기지 않고 흘러내려야** 한다. 한 시점만 뽑으면 0.55초 뒤 뚝 끊긴다.
+  // [t−0.75, t−0.30]을 5점 평균내면 순간 피해가 폭 0.45초의 경사로 바뀐다 — 전부 t 파생이라 스크럽 안전.
+  let s = 0;
+  for (let i = 0; i < 5; i++){
+    const r = frameAt(Math.max(0, t - 0.75 + i * 0.1125));
+    s += r.f[key] + ((r.g[key] - r.f[key]) * r.k);
+  }
+  return s / 5;
+}
+function hatch(x, y, w, h, sk, col){       // 가드 브레이크 — 빗금은 '못 쓴다'의 국제 공용 기호다
+  ctx.save(); skewPath(x, y, w, h, sk); ctx.clip();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+  for (let i = -h; i < w + h; i += 5){
+    ctx.beginPath(); ctx.moveTo(x+i, y+h); ctx.lineTo(x+i+h, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+// 게이지 홈. **빈 부분이 배경과 같은 검정이면 길이가 안 읽힌다** — 초판의 가장 큰 실수였다.
+// 스태미나가 15%일 때 '짧은 노란 선'으로만 보이고 '158 중 15%'로는 안 보였다.
+// 홈에 옅은 테두리를 넣어 전체 길이를 먼저 보여주고, 그 안을 채운다.
+function slot(x, y, w, h, sk){
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; skewPath(x, y, w, h, sk); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,240,214,0.22)'; ctx.lineWidth = 1;
+  skewPath(x + 0.5, y + 0.5, w - 1, h - 1, sk); ctx.stroke();
+}
+// ── 아이콘 래스터([15]§10.26) — icons.svg 심볼을 캔버스로 가져온다 ────────────
+// DOM은 <use href="icons.svg#id">로 쓰지만 캔버스는 그 방법이 없다. 심볼 본문만 떼어
+// 독립 SVG로 감싼 뒤 data URI 이미지로 굽고 캐시한다(색깔별). 이모지 금지 규약 그대로다.
+let _iconDoc = null;
+const _iconImg = {};
+fetch('icons.svg').then(r => r.text()).then(txt => {
+  _iconDoc = new DOMParser().parseFromString(txt, 'image/svg+xml');
+}).catch(() => {});
+function iconImg(id, color){
+  const key = id + '|' + color;
+  if (_iconImg[key] !== undefined) return _iconImg[key];
+  if (!_iconDoc) return null;                       // 아직 안 왔다 — 다음 프레임에 다시 시도
+  const sym = _iconDoc.getElementById(id);
+  if (!sym) return (_iconImg[key] = null);
+  const vb = sym.getAttribute('viewBox') || '0 0 24 24';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + vb + '" width="64" height="64">'
+    + '<g fill="none" stroke="' + color + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    + sym.innerHTML + '</g></svg>';
+  const im = new Image();
+  im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return (_iconImg[key] = im);
+}
+const WPN_ICON = { WPN_SWORD:'sword', WPN_GREATSWORD:'sword', WPN_DUALBLADES:'swords',
+  WPN_AXE:'impact', WPN_HAMMER:'impact', WPN_SPEAR:'target', WPN_WHIP:'bolt', WPN_SHIELD:'shield' };
+const TAC_ICON = { TAC_BALANCED:'scales', TAC_BRAWLER:'fist', TAC_COUNTER:'impact',
+  TAC_DEFENDER:'shield', TAC_EVADER:'dove', TAC_GAMBLER:'dice', TAC_HUNTER:'target',
+  TAC_PRESSURE:'flame', TAC_ZONER:'search', TAC_DECISION:'mind' };
+const SKILL_ICON = { SUNDER:'blood', BERSERK:'flame', UNBROKEN:'shield', COMBO:'bolt',
+  CHARGE:'bolt', FLURRY:'swords', MIRAGE:'eye', SMASH:'impact', EXECUTE:'skull',
+  ENTANGLE:'lock', ZONELOCK:'target', SHIELDBASH:'shield', GUARDSTANCE:'shield',
+  REACHPUSH:'target', LASH:'bolt', CARRY:'fist', WALLSLAM:'impact',
+  COMPOSE:'mind', READ:'eye', FERVOR:'flame', LASTSTAND:'heart', LEISURE:'wine',
+  IMPERIAL:'crown', FAIRFIGHT:'handshake', CHIVALRY:'dove', SURVIVE:'heart',
+  BACKSTAB:'blood', CROWD:'laurel', SHOWTIME:'masks', EXPLOIT:'search',
+  VULTURE:'skull', BLOODLUST:'blood', TERROR:'skull', NERVE:'star',
+  COMEBACK:'star', GUARDED:'shield', FORESEE:'eye' };
+
+// ── 스킬 쿨타임은 **이벤트에서 역산한다**([15]§10.26) ──────────────────────────
+// 프레임마다 쿨 잔량을 실어 보내면 프레임 1400장 × 슬롯 수만큼 JSON이 불어난다.
+// 발동은 이미 Decision("SKILL_"/"PASV_"+태그)로 나가고 있고 쿨타임 초는 정적이다 —
+// 마지막 발동 시각만 알면 t에서 바로 계산된다. 스크럽에도 자동으로 안전하다.
+let skillUses = [{}, {}];
+function buildSkillUses(){
+  skillUses = [{}, {}];
+  for (const d of decisions){
+    const m = /^(?:SKILL|PASV)_(.+)$/.exec(d.tag || '');
+    if (!m) continue;
+    (skillUses[d.who][m[1]] || (skillUses[d.who][m[1]] = [])).push(d.t);
+  }
+}
+function readyFrac(who, tag, cd){          // 1 = 준비 완료, 0 = 방금 씀
+  if (!(cd > 0)) return 1;
+  const arr = skillUses[who] && skillUses[who][tag];
+  if (!arr) return 1;
+  for (let i = arr.length - 1; i >= 0; i--)
+    if (arr[i] <= t) return Math.min(1, (t - arr[i]) / cd);
+  return 1;
+}
+
+// ── 섀시는 **한 번만 굽는다**([15]§10.25) ────────────────────────────────────
+// 판·테두리·메달리온·이름은 경기 내내 안 변한다. 그런데 그림자(shadowBlur)는 프레임마다
+// 다시 흐려진다 — 실측 **프레임당 12.2 ms**, 전체 비용의 대부분이었다.
+// 정적인 부분을 오프스크린에 한 번 굽고 매 프레임 drawImage 한 장으로 얹는다.
+// ── 하단 HUD([15]§10.26·§10.27) — 구성은 §10.26, **디테일은 레퍼런스 판화** ────────
+// 라니스타가 준 다크 판타지 HUD를 뜯어보면 '장식이 많다'가 아니라 규칙이 몇 개 있다:
+//   ① 모든 테두리가 **3겹**이다 — 어두운 외곽 / 금선 / 안쪽 밝은 하이라이트.
+//      한 겹짜리 선은 '그린 선'으로 보이고, 세 겹은 '주조된 금속'으로 보인다.
+//   ② 바의 안쪽 끝이 **뾰족하다**. 직사각형은 웹 프로그레스바고, 창끝은 무기다.
+//   ③ 홈이 **거의 새까맣고 윗변에 내부 그림자**가 있다 — 그래서 바가 '파묻혀' 보인다.
+//   ④ 채움은 단색이 아니라 **위가 밝은 3단 그러데이션 + 상단 스페큘러 한 줄**이다.
+//   ⑤ 판 자체가 **어두운 검붉은 판(oxblood)** 이고 모서리에 금 장식이 물려 있다.
+// 아래 primitive들이 이 다섯을 담당한다. 스킬 아이콘 자체는 라니스타가 나중에 그린다.
+const HUD_BY = H - 96;
+const GOLD_HI = 'rgba(246,214,142,0.92)';
+
+// ① 3겹 금테. **금은 아껴야 금으로 보인다** — 전부 같은 밝기로 두르면 판화가 아니라
+// 마커로 그린 그림이 된다(초판의 결함). 구조물(패널·홈·칸)은 청동 톤 `lit=0`,
+// 눈이 머물러야 할 곳(초상·시계·준비된 스킬)만 밝은 금 `lit=1`.
+// ── 금속 테두리([15]§10.28) — **선 하나에 그러데이션을 먹이면 그게 베벨이다** ──────
+// 균일한 색으로 세 줄 긋는 것과, 위가 밝고 아래가 어두운 한 줄은 전혀 다르게 보인다.
+// 실제 주물 테두리는 윗면이 하늘을 받고 아랫면이 반사광을 받는다 — 그래서 4단이다:
+// 밝은 하이라이트 → 금색 본체 → 그늘 → 아래쪽 반사광. 이 네 단이 '두께'를 만든다.
+function metalGrad(y0, y1, lit){
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  if (lit){
+    g.addColorStop(0, '#fdf0c4'); g.addColorStop(0.30, '#dcb662');
+    g.addColorStop(0.58, '#7d5a1f'); g.addColorStop(0.82, '#a8823a'); g.addColorStop(1, '#e3c481');
+  } else {
+    g.addColorStop(0, '#b09a70'); g.addColorStop(0.30, '#836a3d');
+    g.addColorStop(0.58, '#40321c'); g.addColorStop(0.82, '#6b5730'); g.addColorStop(1, '#96805a');
+  }
+  return g;
+}
+function gild(pathFn, w, lit, y0, y1){
+  w = w || 3;
+  ctx.lineJoin = 'round';
+  pathFn();     // **경로는 한 번만 만든다** — stroke()는 현재 경로를 소비하지 않는다.
+                // 3번 다시 만들면 프레임당 수십 개 경로가 3배가 된다
+                // (실측 최소 6.51 → 5.03 ms · 하위 25% 7.67 → 5.33 ms).
+  ctx.lineWidth = w + 1;   ctx.strokeStyle = 'rgba(0,0,0,0.88)'; ctx.stroke();   // 바깥 어둠 = 깊이
+  ctx.lineWidth = w;       ctx.strokeStyle = metalGrad(y0, y1, lit); ctx.stroke();
+}
+// 그레인 — 레퍼런스의 '질감'은 색이 아니라 **미세한 잡티**다. 매끈한 면은 벡터로 보이고
+// 잡티가 얹히면 재질로 보인다. 64×64 타일을 한 번 굽고 overlay로 얹는다(프레임 비용 무시할 수준).
+let _noisePat;
+function noisePattern(){
+  if (_noisePat !== undefined) return _noisePat;
+  const n = document.createElement('canvas'); n.width = n.height = 64;
+  const nx = n.getContext('2d'), im = nx.createImageData(64, 64);
+  for (let i = 0; i < 64 * 64; i++){
+    const v = 128 + (Math.random() * 2 - 1) * 42;
+    im.data[i*4] = im.data[i*4+1] = im.data[i*4+2] = v; im.data[i*4+3] = 255;
+  }
+  nx.putImageData(im, 0, 0);
+  return (_noisePat = ctx.createPattern(n, 'repeat'));
+}
+function grain(pathFn, a){
+  ctx.save(); pathFn(); ctx.clip();
+  ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = a;
+  ctx.fillStyle = noisePattern(); ctx.fill();
+  ctx.restore();
+}
+// 소용돌이(볼류트) — 레퍼런스 모서리 장식의 최소 단위. 두 번 감기면 로마 아칸서스로 읽힌다
+function volute(x, y, s, dx, dy){
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.bezierCurveTo(x + dx*s*0.95, y, x + dx*s, y + dy*s*0.60, x + dx*s*0.46, y + dy*s*0.66);
+  ctx.bezierCurveTo(x + dx*s*0.08, y + dy*s*0.70, x + dx*s*0.14, y + dy*s*0.30, x + dx*s*0.44, y + dy*s*0.34);
+  ctx.stroke();
+}
+function diamond(cx, cy, r){
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
+  ctx.closePath();
+}
+function octPath(x, y, w, h, c){              // 모서리를 깎은 사각 — 아이콘 칸
+  ctx.beginPath();
+  ctx.moveTo(x + c, y);         ctx.lineTo(x + w - c, y);
+  ctx.lineTo(x + w, y + c);     ctx.lineTo(x + w, y + h - c);
+  ctx.lineTo(x + w - c, y + h); ctx.lineTo(x + c, y + h);
+  ctx.lineTo(x, y + h - c);     ctx.lineTo(x, y + c);
+  ctx.closePath();
+}
+function barPath(x, y, w, h, dir){            // ② 안쪽 끝이 창끝처럼 뾰족한 바
+  const tip = h * 0.72;
+  ctx.beginPath();
+  if (dir > 0){
+    ctx.moveTo(x, y); ctx.lineTo(x + w - tip, y); ctx.lineTo(x + w, y + h / 2);
+    ctx.lineTo(x + w - tip, y + h); ctx.lineTo(x, y + h);
+  } else {
+    ctx.moveTo(x + w, y); ctx.lineTo(x + tip, y); ctx.lineTo(x, y + h / 2);
+    ctx.lineTo(x + tip, y + h); ctx.lineTo(x + w, y + h);
+  }
+  ctx.closePath();
+}
+function barTrough(x, y, w, h, dir){          // ③ 새까만 홈 + 윗변 내부 그림자
+  barPath(x, y, w, h, dir);
+  ctx.fillStyle = '#0a0705'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const sh = ctx.createLinearGradient(0, y, 0, y + h * 0.6);
+  sh.addColorStop(0, 'rgba(0,0,0,0.9)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sh; ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+function barFill(x, y, w, h, dir, pct, c){    // ④ 3단 그러데이션 + 스페큘러
+  const p = Math.max(0, Math.min(1, pct)); if (p <= 0.001) return;
+  ctx.save(); barPath(x, y, w, h, dir); ctx.clip();
+  const fw = w * p, fx = dir > 0 ? x : x + w - fw;
+  // **하드 스텝 광택.** 부드러운 그러데이션은 플라스틱으로 보이고,
+  // 위아래가 뚝 갈리면 유리·에나멘이 된다 — 레퍼런스 바의 반짝임이 이것이다.
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, c[0]); g.addColorStop(0.44, c[1]);
+  g.addColorStop(0.441, c[2]); g.addColorStop(1, c[3]);
+  ctx.fillStyle = g; ctx.fillRect(fx, y, fw, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';        // 상단 스페큐러 한 줄
+  ctx.fillRect(fx, y + 1, fw, Math.max(1, h * 0.16));
+  ctx.fillStyle = 'rgba(255,255,255,0.42)';        // 채움 앞머리 — 끝단이 빛난다
+  ctx.fillRect(dir > 0 ? fx + fw - 2 : fx, y, 2, h);
+  ctx.restore();
+}
+// 잔상 — 방금 깎인 구간을 뼈흰색으로. 채움 위가 아니라 **아래층**에 깔아야 겹치지 않는다
+function barGhost(x, y, w, h, dir, from, to){
+  if (!(from > to + 0.002)) return;
+  ctx.save(); barPath(x, y, w, h, dir); ctx.clip();
+  const gx = dir > 0 ? x + w * to : x + w - w * from;
+  ctx.fillStyle = 'rgba(255,228,186,0.62)';
+  ctx.fillRect(gx, y, w * (from - to), h);
+  ctx.restore();
+}
+// ⑤ 검붉은 판 — 바깥 모서리는 직각, 안쪽 모서리는 잘려 중앙으로 흐른다
+function oxbloodPanel(x, y, w, h, dir){
+  const cut = 22;
+  const path = () => {
+    ctx.beginPath();
+    if (dir > 0){
+      ctx.moveTo(x, y); ctx.lineTo(x + w - cut, y); ctx.lineTo(x + w, y + cut);
+      ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h);
+    } else {
+      ctx.moveTo(x + w, y); ctx.lineTo(x + cut, y); ctx.lineTo(x, y + cut);
+      ctx.lineTo(x, y + h); ctx.lineTo(x + w, y + h);
+    }
+    ctx.closePath();
+  };
+  // 레퍼런스의 판은 **거의 검다.** 갈색이 돌면 나무판이고, 검붉게 죽어야 가죽·주철로 읽힌다.
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, 'rgba(34,13,12,0.95)'); g.addColorStop(0.5, 'rgba(19,8,8,0.96)');
+  g.addColorStop(1, 'rgba(7,4,4,0.97)');
+  path(); ctx.fillStyle = g; ctx.fill();
+  grain(path, 0.18);                                     // 질감 — 잡티가 재질을 만든다
+  gild(path, 2.6, 0, y, y + h);
+  // 안쪽 헤어라인 — 테두리와 본판 사이에 한 칸 띄우면 '끼워 넣은 판'이 된다
+  ctx.strokeStyle = 'rgba(190,152,92,0.20)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + (dir > 0 ? 4 : 12), y + 4.5); ctx.lineTo(x + w - (dir > 0 ? 12 : 4), y + 4.5);
+  ctx.moveTo(x + 4, y + h - 4.5); ctx.lineTo(x + w - 4, y + h - 4.5);
+  ctx.stroke();
+  // 모서리 볼류트 — 레퍼런스 모서리의 소용돌이 장식. 바깥 두 모서리에만 건다
+  const ox2 = dir > 0 ? x + 6 : x + w - 6, s = dir;
+  ctx.lineWidth = 1.3; ctx.strokeStyle = metalGrad(y, y + h, 1);
+  volute(ox2, y + 6, 13, s, 1);
+  volute(ox2, y + h - 6, 13, s, -1);
+  ctx.fillStyle = '#e8cf92';
+  for (const cy2 of [y + 6, y + h - 6]){
+    ctx.beginPath(); ctx.arc(ox2, cy2, 1.7, 0, 7); ctx.fill();
+  }
+}
+
+// 머리 상자를 **알파에서 자동 검출한다**([15]§10.26). 좌표를 박아두면 스프라이트가 바뀔 때마다
+// 다시 맞춰야 하는데, 라니스타 지시대로 시트는 아직 확정 전이다. 세트당 한 번만 계산하고 캐시한다.
+function headBox(spr){
+  if (spr && spr._head !== undefined) return spr._head;
+  const fr = spr && spr.frames && spr.frames.idle;
+  if (!fr || !spr.img || !spr.img.complete || !spr.img.naturalWidth) return null;
+  const hh = Math.round(fr.h * 0.45);
+  const c2 = document.createElement('canvas'); c2.width = fr.w; c2.height = hh;
+  const x2 = c2.getContext('2d');
+  x2.drawImage(spr.img, fr.x, fr.y, fr.w, hh, 0, 0, fr.w, hh);
+  const d = x2.getImageData(0, 0, fr.w, hh).data;
+  // **맨 위 픽셀 = 머리가 아니다.** 이 시트는 무기를 세워 들고 있어 최상단이 칼끝이다.
+  // 얇은 무기와 머리를 가르는 것은 폭이 아니라 **행별 불투명 픽셀 수**다.
+  const need = Math.max(3, fr.w * 0.13);
+  let minY = -1;
+  for (let y = 0; y < hh && minY < 0; y++){
+    let n = 0;
+    for (let x = 0; x < fr.w; x++) if (d[(y * fr.w + x) * 4 + 3] > 40) n++;
+    if (n >= need) minY = y;
+  }
+  if (minY < 0) return (spr._head = null);
+  const headRows = Math.max(4, Math.round(fr.h * 0.08));
+  let minX = 1e9, maxX = -1;
+  for (let y = minY; y < Math.min(hh, minY + headRows); y++)
+    for (let x = 0; x < fr.w; x++) if (d[(y * fr.w + x) * 4 + 3] > 40){
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+    }
+  if (maxX < 0) return (spr._head = null);
+  const side = Math.min(hh, fr.h * 0.30);
+  const cxl = (minX + maxX) / 2;
+  return (spr._head = { x: fr.x + Math.max(0, Math.min(fr.w - side, cxl - side / 2)),
+                        y: fr.y + Math.max(0, minY - fr.h * 0.035), s: side });
+}
+// shape = 'diamond' | 'circle' · chrome = 테두리와 배지틀을 여기서 그릴 것인가.
+// 자산이 있으면 그 장식은 앞판 그림이 맡는다 — 여기서는 내용만 올린다.
+function drawPortrait(cx, cy, r, s, dir, shape, chrome){
+  const round = shape === 'circle';
+  const ring = k => round ? (ctx.beginPath(), ctx.arc(cx, cy, k, 0, 7)) : diamond(cx, cy, k);
+  ctx.save();
+  ring(r - 2); ctx.clip();
+  // 배경은 순검정이 아니라 따뜻한 돌빛 + 진영색 역광. 어두운 스프라이트가 검정 위에선 안 갈린다
+  const bg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  bg.addColorStop(0, 'rgba(82,64,44,0.97)'); bg.addColorStop(1, 'rgba(14,9,6,0.97)');
+  ctx.fillStyle = bg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  const rg = ctx.createRadialGradient(cx, cy + r * 0.25, 2, cx, cy, r * 1.25);
+  rg.addColorStop(0, s.col + '66'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = rg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  const hb = headBox(s.spr);
+  if (hb){
+    ctx.save();
+    if (dir < 0){ ctx.translate(cx * 2, 0); ctx.scale(-1, 1); }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(s.spr.img, hb.x, hb.y, hb.s, hb.s, cx - r * 1.02, cy - r * 1.02, r * 2.04, r * 2.04);
+    ctx.restore();
+  } else {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '900 ' + Math.round(r * 0.9) + 'px ' + getCSS('--font-display');
+    ctx.fillStyle = '#e6dcc6'; ctx.fillText([...s.name][0] || '?', cx, cy + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';           // 아래쪽 비네트 — 얼굴이 위로 뜬다
+  ctx.fillRect(cx - r, cy + r * 0.35, r * 2, r);
+  ctx.restore();
+  if (chrome){
+  gild(() => ring(r), 4, 1, cy - r, cy + r);   // 두꺼운 금 마름모 테
+  ctx.strokeStyle = s.col; ctx.globalAlpha = 0.65; ctx.lineWidth = 1;
+  ring(r - 5); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = getCSS('--gold');             // 네 꼭짓점 스터드
+  if (!round) for (const [dx, dy] of [[0,-1],[1,0],[0,1],[-1,0]]){
+    ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, 2.1, 0, 7); ctx.fill();
+  }
+  }
+  // 아래 꼭짓점 배지 — 레퍼런스의 레벨 자리. 지금은 선수 번호(레벨 개념이 아직 없다)
+  const bd = HUD.L.badge || {};
+  if (bd.show === false) return;
+  const by = cy + r + 2, br = bd.r || 10;
+  if (chrome){
+    gild(() => diamond(cx, by, br), 2.4, 1, by - br, by + br);
+    ctx.fillStyle = 'rgba(12,8,5,0.95)'; diamond(cx, by, br - 2.5); ctx.fill();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 11px ' + getCSS('--font-display');
+  ctx.fillStyle = GOLD_HI; ctx.fillText(String(s.who + 1), cx, by + 0.5);
+  ctx.textBaseline = 'alphabetic';
+}
+// 아이콘 칸 — 팔각 금테 + 새까만 인셋. ready<1이면 12시부터 **시계방향**으로 밝아진다
+function iconSlot(x, y, sz, id, col, ready, hot, art){
+  if (!art){ octPath(x, y, sz, sz, 5); ctx.fillStyle = '#0b0806'; ctx.fill(); }
+  const im = iconImg(id, col);
+  if (im && im.complete && im.naturalWidth){
+    const p = 4, s = sz - p * 2;
+    if (ready >= 1){
+      ctx.drawImage(im, x + p, y + p, s, s);
+    } else {
+      ctx.globalAlpha = 0.24; ctx.drawImage(im, x + p, y + p, s, s); ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(x + sz / 2, y + sz / 2);
+      ctx.arc(x + sz / 2, y + sz / 2, sz, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
+      ctx.closePath(); ctx.clip();
+      ctx.drawImage(im, x + p, y + p, s, s);
+      ctx.restore();
+    }
+  }
+  if (!art) gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0, y, y + sz);
+  if (hot){                                     // 방금 발동 — 금빛 외곽이 한 겹 더
+    ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.6;
+    octPath(x - 2, y - 2, sz + 4, sz + 4, 6); ctx.stroke();
+  }
+}
+
+// 4단: 상단 하이라이트 / 상부 본색 / (하드 스텝) 하부 그늘 / 밑바닥 반사광
+// ── HUD 크롬 자산([15]§10.29) — 그림이 있으면 그림, 없으면 절차 생성 ────────────
+// 레퍼런스는 손으로 그린 래스터다. 캔버스 벡터로는 붓질·긁힘·깊은 인그레이빙이 안 나온다(§10.28).
+// 그래서 **크롬(장식)만 자산으로 빼고 데이터(채움·쿨타임·숫자)는 코드가 계속 그린다.**
+// 층 샌드위치: back(판·홈) → 초상 → 바 채움 → front(테두리·링·칸) → 아이콘·숫자·상태.
+// front의 바 자리와 초상 안쪽이 **알파 0**이어야 밑에서 올라온 채움이 보인다 — 자산의 유일한 필수 규칙.
+//
+// 좌표는 전부 **판 바깥 모서리 기준 논리 px**. 아래 기본값 = 지금 절차 생성 배치와 같은 값이라
+// 자산이 없어도 한 코드로 돈다. 그림이 다른 배치로 오면 hud.json만 그림에 맞춰 다시 재면 된다.
+const HUD_DEF = {
+  plate:    { w: 362, h: 96 },
+  portrait: { cx: 32, cy: 38, r: 30, shape: 'diamond' },
+  badge:    { cx: 32, cy: 70, r: 10, show: true },
+  name:     { x: 92, y: 12 },
+  bars: [ { x: 92, y: 17, w: 250, h: 17 },
+          { x: 92, y: 38, w: 232, h: 12 },
+          { x: 92, y: 53, w: 214, h: 12 } ],
+  icons:    { x: 92, y: 67, size: 24, gap: 6 },
+};
+const HUD = { ready: false, L: HUD_DEF, back: null, front: null, center: null, mirrorForB: true };
+(function loadHudArt(){
+  const dir = 'hud/' + (_qs.get('hud') || '');
+  fetch(dir + 'hud.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(m => {
+      const get = f => new Promise(res => {
+        if (!f) return res(null);
+        const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = dir + f;
+      });
+      const pl = m.plate || {}, ce = m.center || {};
+      return Promise.all([get(pl.back), get(pl.front), get(ce.img)]).then(([b, f, c]) => {
+        if (!b && !f) return;                       // 판 그림이 하나도 없으면 절차 생성 유지
+        HUD.back = b; HUD.front = f; HUD.center = c;
+        HUD.mirrorForB = pl.mirrorForB !== false;
+        HUD.L = Object.assign({}, HUD_DEF, m);      // 없는 항목은 기본 배치로 메운다
+        HUD.centerBox = c ? { w: ce.w || 240, h: ce.h || 84 } : null;
+        HUD.ready = true;
+      });
+    })
+    .catch(() => {});                               // 자산 없음 → 지금 그림 그대로(폴백)
+})();
+// 판 그림 한 장. B는 좌우 반전해서 같은 파일을 쓴다(비대칭 장식을 따로 그리고 싶으면 mirrorForB:false)
+function drawPlateImg(im, px, py, w, h, dir){
+  if (!im) return;
+  ctx.save();
+  if (dir < 0 && HUD.mirrorForB){ ctx.translate(px * 2 + w, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(im, px, py, w, h);
+  ctx.restore();
+}
+
+const HP_COL = { a: ['#bcdcff', '#5b9be0', '#2a5b96', '#173c66'],
+                 b: ['#ffc0b6', '#e0685f', '#9e2f27', '#5c1b16'] };
+const ST_COL = ['#ffe8ae', '#d8a23c', '#93661a', '#54390c'];
+const GD_COL = ['#d6ebfb', '#7fa5c8', '#476884', '#27394b'];
+
+function fighterPlate(ox, dir, s){
+  const L = HUD.L, art = HUD.ready;
+  const PW2 = L.plate.w, PH2 = L.plate.h;
+  const P = { x: dir > 0 ? ox : ox - PW2, y: HUD_BY - 8 };   // 판 바깥 모서리 = 배치 원점
+  // 논리 배치 → 화면 좌표. B는 판 안에서 좌우로 접는다(폭 0을 주면 점 좌표)
+  const LX = (lx, lw) => dir > 0 ? P.x + lx : P.x + PW2 - lx - (lw || 0);
+  const LY = ly => P.y + ly;
+  const crit = s.hp > 0 && s.hp < 0.25;
+  const pulse = 0.6 + 0.4 * Math.sin(t * 6.0);
+
+  // ① 뒤판
+  if (art) drawPlateImg(HUD.back, P.x, P.y, PW2, PH2, dir);
+  else oxbloodPanel(P.x, P.y, PW2, PH2, dir);
+
+  // ② 초상 — 자산이 있으면 링은 앞판이 그리므로 내용만 얹는다
+  const pt = L.portrait;
+  drawPortrait(LX(pt.cx, 0), LY(pt.cy), pt.r, s, dir, art ? pt.shape : 'diamond', !art);
+
+  // ③ 바 채움 — 홈은 자산이면 뒤판에 이미 그려져 있다
+  const rows = L.bars.map((b, i) => Object.assign({}, b,
+    i === 0 ? { v: s.hp, c: HP_COL[s.who ? 'b' : 'a'], ghost: s.ghost }
+    : i === 1 ? { v: s.st, c: ST_COL }
+    : { v: s.gd, c: GD_COL, brk: s.gd <= 0.02 }));
+  for (const r of rows){
+    const bx = LX(r.x, r.w), by = LY(r.y);
+    if (!art) barTrough(bx, by, r.w, r.h, dir);
+    if (r.ghost !== undefined) barGhost(bx, by, r.w, r.h, dir, Math.max(0, Math.min(1, r.ghost)), r.v);
+    if (r.brk) hatch(bx, by, r.w, r.h, 0, getCSS('--blood-bright'));
+    else barFill(bx, by, r.w, r.h, dir, r.v, r.c);
+  }
+
+  // ④ 앞판 — 테두리·초상 링·아이콘 칸. 채움 위에 얹혀야 '끼워진' 것으로 보인다
+  if (art) drawPlateImg(HUD.front, P.x, P.y, PW2, PH2, dir);
+  else for (const r of rows)
+    gild(() => barPath(LX(r.x, r.w), LY(r.y), r.w, r.h, dir), r.h > 13 ? 3.2 : 2.6, 1,
+         LY(r.y) - 1, LY(r.y) + r.h + 1);
+
+  // ⑤ 글자·아이콘·상태 — 언제나 코드가 그린다(자산은 크롬만 맡는다)
+  ctx.textAlign = dir > 0 ? 'left' : 'right';
+  ctx.font = '700 12px ' + getCSS('--font-display');
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1.7px';
+  ctx.fillStyle = '#d8c9a6';
+  let nm = s.name;
+  while (nm.length > 3 && ctx.measureText(nm).width > rows[0].w - 20) nm = nm.slice(0, -1);
+  ctx.fillText(nm === s.name ? nm : nm + '…', LX(L.name.x, 0), LY(L.name.y));
+  ctx.letterSpacing = '0px';
+
+  for (const r of rows){          // 수치 — 뾰족한 끝 안쪽에 붙는다
+    const bx = LX(r.x, r.w), by = LY(r.y), big = r.h > 13;
+    ctx.textAlign = dir > 0 ? 'right' : 'left';
+    ctx.font = '700 ' + (big ? 11 : 9) + 'px ' + getCSS('--font-body');
+    const tx = dir > 0 ? bx + r.w - r.h * 0.9 : bx + r.h * 0.9;
+    const ty = by + r.h - (big ? 4.5 : 3);
+    const txt = Math.round(r.v * 100) + '%';
+    ctx.fillStyle = 'rgba(12,8,5,0.85)'; ctx.fillText(txt, tx + 1, ty + 1);
+    ctx.fillStyle = '#f4ead6';          ctx.fillText(txt, tx, ty);
+  }
+  if (crit){                      // 위급 — HP 테두리 3겹 맥동
+    const r0 = rows[0], bx = LX(r0.x, r0.w), by = LY(r0.y);
+    ctx.strokeStyle = getCSS('--blood-bright');
+    for (let i = 0; i < 3; i++){
+      ctx.lineWidth = 1.6; ctx.globalAlpha = pulse * (0.6 - i * 0.17);
+      barPath(bx - 1 - i * 1.8, by - 1 - i * 1.8, r0.w + 2 + i * 3.6, r0.h + 2 + i * 3.6, dir); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const ic = L.icons;
+  let n = 0;
+  const put = (id, col, ready, hot) => {
+    const gx = LX(ic.x + n * (ic.size + ic.gap), ic.size);
+    iconSlot(gx, LY(ic.y), ic.size, id, col, ready, hot, art); n++;
+  };
+  put(WPN_ICON[s.weapon] || 'sword', '#e8dcc0', 1, false);
+  put(TAC_ICON[s.tactic] || 'scales', '#c0ab80', 1, false);
+  for (const sk2 of (s.skills || []).slice(0, 5)){
+    const rf = readyFrac(s.who, sk2.Tag, sk2.Cd);
+    put(SKILL_ICON[sk2.Tag] || (sk2.Passive ? 'star' : 'bolt'),
+        sk2.Passive ? '#9ad39a' : '#f0cd7c', rf, rf >= 1 && s.hotTag === sk2.Tag);
+  }
+  for (let i = 0; i < s.bleed; i++){           // 출혈 — 이름 옆 마름모
+    const r0 = rows[0];
+    const dx = LX(r0.x + r0.w - 8 - i * 11, 0), dy = LY(r0.y - 9);
+    ctx.fillStyle = getCSS('--blood-bright');
+    ctx.beginPath(); ctx.moveTo(dx, dy - 4); ctx.lineTo(dx + 3.5, dy);
+    ctx.lineTo(dx, dy + 4); ctx.lineTo(dx - 3.5, dy); ctx.closePath(); ctx.fill();
+  }
+}
+
+// 중앙 하단 시계 — 레퍼런스의 ROUND 블록 구조를 그대로 옮긴다:
+// 작은 금빛 캡스 라벨 / 가는 금선 / 큰 세리프 숫자 / 아래 문장(紋章) + 좌우 금 날개.
+function drawClock(){
+  const lim = doc.Meta.MatchTimeSec || 180;
+  const left = Math.max(0, lim - t);
+  const cx = W / 2, top = H - 96;
+  const urgent = left <= 15;
+  const pulse = 0.72 + 0.28 * Math.sin(t * 5.0);
+  ctx.save();
+  ctx.textAlign = 'center';
+  // 받침 — 아래로 좁아지는 사다리꼴. 좌우 판과 다른 실루엣이라 눈이 바로 구분한다
+  const trap = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - 52, top); ctx.lineTo(cx + 52, top);
+    ctx.lineTo(cx + 36, top + 66); ctx.lineTo(cx - 36, top + 66); ctx.closePath();
+  };
+  const art = HUD.ready && HUD.center;
+  if (art){
+    const cb = HUD.centerBox;
+    ctx.drawImage(HUD.center, cx - cb.w / 2, top, cb.w, cb.h);
+  } else {
+  const g = ctx.createLinearGradient(0, top, 0, top + 66);
+  g.addColorStop(0, 'rgba(48,17,15,0.92)'); g.addColorStop(1, 'rgba(10,6,5,0.96)');
+  trap(); ctx.fillStyle = g; ctx.fill();
+  gild(trap, 3, 1, top, top + 66);
+  // 좌우 날개 — 바깥으로 뻗는 금빛 깃 3겹
+  ctx.lineCap = 'round';
+  for (const d of [-1, 1]) for (let i = 0; i < 4; i++){
+    const x0 = cx + d * 50, y0 = top + 10 + i * 11, len = 62 - i * 13;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + d * len * 0.55, y0 - 12, x0 + d * len, y0 + 4);
+    ctx.lineWidth = 2.6; ctx.strokeStyle = 'rgba(0,0,0,0.72)'; ctx.stroke();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = i === 0 ? GOLD_HI : getCSS('--gold-deep'); ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  }
+  // 라벨 — 레퍼런스의 'ROUND' 자리. 로마 비문체 캡스라 장식처럼 읽힌다
+  ctx.font = '700 9px ' + getCSS('--font-display');
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '3px';
+  ctx.fillStyle = getCSS('--gold-deep'); ctx.fillText('TEMPVS', cx + 1.5, top + 15);
+  ctx.letterSpacing = '0px';
+  // 가는 금선 — 레퍼런스와 같은 자리. **경과에 따라 좌우로 줄어든다**(원래 링이 있었는데
+  // 반지름 30이 라벨을 관통했다 — 사다리꼴 안에 들어갈 자리가 없다)
+  const frac = Math.max(0, Math.min(1, left / lim));
+  ctx.strokeStyle = '#3a2c19'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 27, top + 20.5); ctx.lineTo(cx + 27, top + 20.5); ctx.stroke();
+  ctx.strokeStyle = urgent ? getCSS('--blood-bright') : getCSS('--gold');
+  ctx.globalAlpha = urgent ? pulse : 0.9; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(cx - 27 * frac, top + 20.5); ctx.lineTo(cx + 27 * frac, top + 20.5); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // 숫자 — 금 그러데이션 + 검은 그림자. 15초 이하면 혈적색 맥동
+  const num = String(Math.ceil(left));
+  ctx.font = '900 34px ' + getCSS('--font-display');
+  ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillText(num, cx + 1.5, top + 51.5);
+  if (urgent){
+    ctx.globalAlpha = pulse; ctx.fillStyle = getCSS('--blood-bright');
+  } else {
+    const ng = ctx.createLinearGradient(0, top + 26, 0, top + 51);
+    ng.addColorStop(0, '#f8e6b4'); ng.addColorStop(0.55, getCSS('--gold')); ng.addColorStop(1, '#8a6a2a');
+    ctx.fillStyle = ng;
+  }
+  ctx.fillText(num, cx, top + 50);
+  ctx.globalAlpha = 1;
+  // 아래 문장 — 방패꼴 금 배지
+  const sy = top + 64, crest = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - 9, sy - 3); ctx.lineTo(cx + 9, sy - 3); ctx.lineTo(cx + 9, sy + 4);
+    ctx.quadraticCurveTo(cx, sy + 14, cx - 9, sy + 4); ctx.closePath();
+  };
+  if (!art){
+    crest(); ctx.fillStyle = 'rgba(14,8,6,0.95)'; ctx.fill();
+    gild(crest, 2.2, 1, sy - 3, sy + 14);
+    ctx.fillStyle = getCSS('--gold');
+    ctx.beginPath(); ctx.moveTo(cx, sy + 1); ctx.lineTo(cx + 3.4, sy + 4.4);
+    ctx.lineTo(cx, sy + 7.8); ctx.lineTo(cx - 3.4, sy + 4.4); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawBottomHud(fr){
+  const f = fr.f, g = fr.g, k = fr.k;
+  const ip = (a, b) => a + (b - a) * k;
+  const MA = doc.Meta.A, MB = doc.Meta.B;
+  // 최근 0.9초 안에 발동한 스킬. decisions는 시간순이므로 창을 벗어나면 **끊는다**
+  const hot = who => {
+    for (let i = decisions.length - 1; i >= 0; i--){
+      const d = decisions[i];
+      if (d.t > t) continue;
+      if (t - d.t > 0.9) break;
+      if (d.who !== who) continue;
+      const m = /^(?:SKILL|PASV)_(.+)$/.exec(d.tag || ''); if (m) return m[1];
+    }
+    return null;
+  };
+  ctx.save();
+  scrim(H - 122, H, 0, 0.7);
+  fighterPlate(20, +1, { who:0, name:MA.Name, col:getCSS('--a'),
+    weapon:MA.Weapon, tactic:MA.Tactic, skills:MA.Skills, spr:spriteFor(MA.Weapon), hotTag:hot(0),
+    hp:ip(f.HpPctA, g.HpPctA), st:ip(f.StamPctA, g.StamPctA),
+    gd:ip(f.GuardPctA ?? 1, g.GuardPctA ?? 1), ghost:hpGhost('HpPctA'), bleed:f.BleedA||0 });
+  fighterPlate(W - 20, -1, { who:1, name:MB.Name, col:getCSS('--b'),
+    weapon:MB.Weapon, tactic:MB.Tactic, skills:MB.Skills, spr:spriteFor(MB.Weapon), hotTag:hot(1),
+    hp:ip(f.HpPctB, g.HpPctB), st:ip(f.StamPctB, g.StamPctB),
+    gd:ip(f.GuardPctB ?? 1, g.GuardPctB ?? 1), ghost:hpGhost('HpPctB'), bleed:f.BleedB||0 });
+  drawClock();
+  ctx.restore();
+}
+
+// 출혈 표시: 발밑에 떨어지는 핏방울(스택 수만큼) + 스택 점. t로 애니메이션(스크럽 안전).
+function drawBleed(fx, fy, sc, stacks){
+  ctx.save();
+  for(let i=0;i<stacks;i++){
+    const ph=((t*1.4 + i*0.37) % 1);          // 0→1 낙하 위상
+    const dx=fx + (i-(stacks-1)/2)*9*sc;
+    const dy=fy - 46*sc + ph*46*sc;            // 몸통에서 바닥으로
+    ctx.globalAlpha=0.85*(1-ph*0.5);
+    ctx.fillStyle='#c0241c';
+    ctx.beginPath(); ctx.ellipse(dx, dy, 2.0*sc, 3.0*sc, 0,0,7); ctx.fill();
+  }
+  // (머리 위 핏색 도트는 제거 — 스택 수는 HP바 아래 디버프 아이콘이 보여준다)
+  ctx.restore();
+}
+
+// ── 전투 피드백 픽토그램·표식 (캔버스 벡터, 스크럽 안전) ──
+// 데미지 숫자: 한글 없이 색·크기·표식·스파크만으로 종류 구분
+function glyphShield(cx,cy,r,col){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.8; ctx.lineJoin='round';
+  ctx.beginPath(); ctx.moveTo(cx,cy-r); ctx.lineTo(cx+0.75*r,cy-0.6*r); ctx.lineTo(cx+0.6*r,cy+0.5*r);
+  ctx.quadraticCurveTo(cx,cy+1.05*r,cx-0.6*r,cy+0.5*r); ctx.lineTo(cx-0.75*r,cy-0.6*r); ctx.closePath(); ctx.stroke(); ctx.restore(); }
+function glyphSwords(cx,cy,r,col){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.8; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.moveTo(cx+r,cy-r); ctx.lineTo(cx-r,cy+r); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx-r,cy+0.5*r); ctx.lineTo(cx-0.5*r,cy+r); ctx.moveTo(cx+r,cy+0.5*r); ctx.lineTo(cx+0.5*r,cy+r); ctx.stroke(); ctx.restore(); }
+function drawDamage(x, y, age, life, p){
+  const u = age/life; if (u>=1) return;
+  const fade = u<0.7 ? 1 : (1-u)/0.3;              // 끝 30%에서만 페이드 — 포물선 낙하가 보이게
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.lineJoin='round';
+  // 전체적으로 작고 반투명 — 눈에 거슬리지 않게. 윤곽선(strokeText) 없이 부드러운 그림자로만 가독성.
+  let size=13, col='#f4ecdd', glyph=null, gcol, alpha=0.72;
+  if (p.crit){ size=17; col='#ff5d5d'; }
+  else if (p.counter){ size=13; col='#ffd24a'; glyph='swords'; gcol='#ffe08a'; }
+  else if (p.guard){ size=11; col='#6fa8dc'; glyph='shield'; gcol='#9bc4ec'; alpha=0.6; }
+  else if (p.armor){ size=12; col='#9aa3af'; }
+  ctx.globalAlpha = fade*alpha;
+  let scl=1; if (p.crit && u<0.12) scl = 1 + (0.12-u)/0.12*0.2;    // 치명타 스케일 펀치(등장 순간)
+  const txt='−'+p.dmg;
+  ctx.font='bold '+Math.round(size*scl)+'px "Pretendard Variable",system-ui';
+  if (glyph){ const w=ctx.measureText(txt).width, glx=x-w/2-size*0.5, gly=y-size*0.34;
+    if (glyph==='swords') glyphSwords(glx,gly,size*0.44,gcol); else glyphShield(glx,gly,size*0.42,gcol); }
+  ctx.shadowColor='rgba(0,0,0,0.38)'; ctx.shadowBlur=3; ctx.shadowOffsetY=1;   // 윤곽선 대신 최소 그림자
+  if (p.crit){ ctx.shadowColor='rgba(255,80,80,0.35)'; ctx.shadowBlur=5; }
+  ctx.fillStyle=col; ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+// 상태이상·무기 픽토그램 — 중심(cx,cy), 반경 r, 색 col
+function statGlyph(kind, cx, cy, r, col){ ctx.save(); ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.8; ctx.lineCap='round'; ctx.lineJoin='round';
+  switch(kind){
+    case 'down':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.85*r); ctx.lineTo(cx,cy+0.3*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.5*r,cy-0.15*r); ctx.lineTo(cx,cy+0.4*r); ctx.lineTo(cx+0.5*r,cy-0.15*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.8*r,cy+0.85*r); ctx.lineTo(cx+0.8*r,cy+0.85*r); ctx.stroke(); break;
+    case 'bleed':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.95*r);
+      ctx.bezierCurveTo(cx+0.9*r,cy+0.15*r, cx+0.55*r,cy+0.95*r, cx,cy+0.95*r);
+      ctx.bezierCurveTo(cx-0.55*r,cy+0.95*r, cx-0.9*r,cy+0.15*r, cx,cy-0.95*r); ctx.fill(); break;
+    case 'guardbreak':
+      ctx.beginPath(); ctx.moveTo(cx,cy-0.9*r); ctx.lineTo(cx+0.72*r,cy-0.55*r); ctx.lineTo(cx+0.58*r,cy+0.5*r);
+      ctx.quadraticCurveTo(cx,cy+1.02*r,cx-0.58*r,cy+0.5*r); ctx.lineTo(cx-0.72*r,cy-0.55*r); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.12*r,cy-0.6*r); ctx.lineTo(cx+0.16*r,cy-0.05*r); ctx.lineTo(cx-0.14*r,cy+0.22*r); ctx.lineTo(cx+0.1*r,cy+0.7*r); ctx.stroke(); break;
+    case 'poise':
+      ctx.beginPath(); ctx.moveTo(cx-0.6*r,cy-0.35*r); ctx.lineTo(cx,cy-0.85*r); ctx.lineTo(cx+0.6*r,cy-0.35*r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-0.6*r,cy+0.4*r); ctx.lineTo(cx,cy-0.1*r); ctx.lineTo(cx+0.6*r,cy+0.4*r); ctx.stroke(); break;
+    case 'stam':
+      for (let i=-1;i<=1;i++){ const yy=cy+i*0.5*r; ctx.beginPath(); ctx.moveTo(cx-0.85*r,yy); ctx.lineTo(cx+0.45*r,yy);
+        ctx.arc(cx+0.45*r,yy-0.2*r,0.2*r,1.57,-1.57,true); ctx.stroke(); } break;
+  }
+  ctx.restore(); }
+function wpnGlyph(w, cx, cy, r, col){ ctx.save(); ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.7; ctx.lineCap='round'; ctx.lineJoin='round';
+  const L=(a,b,c,d)=>{ctx.beginPath();ctx.moveTo(cx+a*r,cy+b*r);ctx.lineTo(cx+c*r,cy+d*r);ctx.stroke();};
+  switch(w){
+    case 'WPN_HAMMER': ctx.beginPath(); ctx.rect(cx-0.75*r,cy-0.95*r,1.5*r,0.55*r); ctx.fill(); L(0,-0.4,0,0.95); break;
+    case 'WPN_AXE': ctx.beginPath(); ctx.moveTo(cx-0.05*r,cy-0.95*r); ctx.quadraticCurveTo(cx+0.95*r,cy-0.7*r,cx+0.5*r,cy+0.1*r);
+      ctx.lineTo(cx-0.05*r,cy-0.05*r); ctx.closePath(); ctx.fill(); L(-0.05,-0.95,-0.05,0.95); break;
+    case 'WPN_SWORD': L(0,-0.95,0,0.5); L(-0.4,0.5,0.4,0.5); L(0,0.5,0,0.95); break;
+    case 'WPN_GREATSWORD': ctx.lineWidth=2.6; L(0,-0.98,0,0.45); ctx.lineWidth=1.7; L(-0.5,0.45,0.5,0.45); L(0,0.45,0,0.98); break;
+    case 'WPN_DUALBLADES': L(-0.65,-0.9,-0.65,0.55); L(0.65,-0.9,0.65,0.55); break;
+    case 'WPN_SPEAR': L(0,-0.98,0,0.98); ctx.beginPath(); ctx.moveTo(cx,cy-0.98*r); ctx.lineTo(cx-0.28*r,cy-0.55*r); ctx.lineTo(cx+0.28*r,cy-0.55*r); ctx.closePath(); ctx.fill(); break;
+    case 'WPN_WHIP': ctx.beginPath(); ctx.moveTo(cx-0.8*r,cy-0.6*r); ctx.quadraticCurveTo(cx+0.65*r,cy-0.3*r,cx-0.15*r,cy+0.3*r);
+      ctx.quadraticCurveTo(cx-0.85*r,cy+0.7*r,cx+0.75*r,cy+0.9*r); ctx.stroke(); break;
+    case 'WPN_SHIELD': ctx.beginPath(); ctx.moveTo(cx,cy-0.9*r); ctx.lineTo(cx+0.72*r,cy-0.55*r); ctx.lineTo(cx+0.58*r,cy+0.5*r);
+      ctx.quadraticCurveTo(cx,cy+1.02*r,cx-0.58*r,cy+0.5*r); ctx.lineTo(cx-0.72*r,cy-0.55*r); ctx.closePath(); ctx.stroke(); break;
+    case 'star': ctx.beginPath(); for(let i=0;i<10;i++){ const ang=-1.5708+i*Math.PI/5, rr=(i%2?0.42:1)*r;
+      ctx.lineTo(cx+Math.cos(ang)*rr, cy+Math.sin(ang)*rr);} ctx.closePath(); ctx.fill(); break;
+    default: ctx.beginPath(); ctx.arc(cx,cy,0.4*r,0,7); ctx.fill();
+  }
+  ctx.restore(); }
+// 롤식 디버프 아이콘 스트립 (HP바 아래) — 방사형 쿨다운 스윕 + 스택 + 카테고리 테두리색
+function drawStatusStrip(cx, hpTopY, bleed, who){
+  const list=[];
+  for (const s of statuses){ if (s.who!==who) continue; const age=t-s.t, dur=STATDUR[s.kind]||1.2;
+    if (age<0||age>dur) continue; list.push({kind:s.kind, rem:1-age/dur, age}); }
+  if (bleed>0) list.push({kind:'bleed', rem:-1, stack:bleed, age:1});
+  if (!list.length) return;
+  const sz=15, gap=3, total=list.length*sz+(list.length-1)*gap;
+  let x=Math.round(cx-total/2), y=Math.round(hpTopY+11);
+  ctx.save(); ctx.textBaseline='alphabetic';
+  for (const it of list){ const col=STATCOL[it.kind];
+    const pop = it.age<0.2 ? 1+(1-it.age/0.2)*0.6 : 1;   // 등장 슬램
+    const s2=sz*pop, ox=x-(s2-sz)/2, oy=y-(s2-sz)/2;
+    ctx.fillStyle='#160f08'; roundRect(ox,oy,s2,s2,3); ctx.fill();
+    ctx.save(); roundRect(ox,oy,s2,s2,3); ctx.clip();
+    statGlyph(it.kind, ox+s2/2, oy+s2/2, s2*0.42, col);
+    if (it.rem>=0){ const el=1-it.rem; ctx.beginPath(); ctx.moveTo(ox+s2/2,oy+s2/2);
+      ctx.arc(ox+s2/2, oy+s2/2, s2, -1.5708, -1.5708+el*6.2832); ctx.closePath();
+      ctx.fillStyle='rgba(6,4,2,0.60)'; ctx.fill(); }
+    ctx.restore();
+    ctx.lineWidth=1.5; ctx.strokeStyle=col; roundRect(ox+0.75,oy+0.75,s2-1.5,s2-1.5,2.5); ctx.stroke();
+    if (it.stack>1){ ctx.textAlign='right'; ctx.font='bold 9px "Pretendard Variable",system-ui';
+      ctx.lineWidth=2.4; ctx.strokeStyle='#000'; ctx.strokeText(it.stack, ox+s2, oy+s2+1);
+      ctx.fillStyle='#fff'; ctx.fillText(it.stack, ox+s2, oy+s2+1); }
+    x+=sz+gap;
+  }
+  ctx.restore(); }
+// CC 발생 순간 — 아이콘이 크게 터진다(글자 없음). 상체 위치에서 링과 함께.
+function drawStatusBurst(px_, py_, who){
+  for (const s of statuses){ if (s.who!==who) continue; const age=t-s.t; if (age<0||age>0.5) continue;
+    const col=STATCOL[s.kind]; if (!col) continue;
+    const pr=age/0.5, al=(1-pr)*0.95;
+    ctx.save(); ctx.globalAlpha=al; ctx.strokeStyle=col; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(px_, py_, 9+pr*26, 0, 7); ctx.stroke();
+    statGlyph(s.kind, px_, py_, 16*(0.5+pr*0.8), col);
+    ctx.restore();
+  } }
+// 스킬 컷인 — 각진 플레이트 + 무기 다이아 배지 + 금빛 와이프 (Zone 4, 시전자 위)
+// ax=어깨 바깥 앵커, side=+1이면 오른쪽으로 뻗음.
+// 강조는 장식(글로우·섬광)이 아니라 '진입 모션 자체'로 — 더 멀리서·더 길게·감속하며 들어오고,
+// 투명하게 시작해 도착하면서 또렷해진다(이동이 눈에 밟히게).
+function drawCutin(ax, yTop, side, name, weapon, pasv, age, dur){
+  const travelT=0.34;                                   // 진입 시간(길수록 잘 보인다)
+  const inP=Math.min(1, age/travelT), ease=1-Math.pow(1-inP,3);   // 감속(ease-out)
+  const fadeIn=Math.min(1, age/0.14);                   // 투명 → 또렷
+  const outP=age>dur-0.35?Math.max(0,(dur-age)/0.35):1;
+  const al=Math.min(fadeIn,outP)*(0.55+0.45*ease);      // 이동 중엔 살짝 투명, 도착하면 100%
+  if (al<=0) return;
+  const acc = pasv?'#9bc4ec':'#d2ab55', h = pasv?18:22, skew=5;
+  const nameFont='bold '+(pasv?10:11.5)+'px "Noto Serif KR","Pretendard Variable",serif';
+  ctx.save(); ctx.globalAlpha=al; ctx.textBaseline='alphabetic';
+  ctx.font=nameFont;
+  const nameW=ctx.measureText(name).width, badgeW=h, padL=7, padR=11;
+  const plateW=padL+nameW+padR, totalW=badgeW+plateW;
+  const slide=(1-ease)*46*side;                         // 바깥 먼 곳에서 스윽 (20 → 46px)
+  const x0=Math.round((side>0 ? ax : ax-totalW) + slide);
+  const bcx=x0+badgeW/2, bcy=yTop+h/2, px0=x0+badgeW-1;
+  ctx.fillStyle='#161009'; ctx.strokeStyle=acc; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(bcx,yTop-2); ctx.lineTo(x0+badgeW+2,bcy); ctx.lineTo(bcx,yTop+h+2); ctx.lineTo(x0-2,bcy); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(px0+skew,yTop); ctx.lineTo(px0+plateW+skew,yTop);
+  ctx.lineTo(px0+plateW-skew,yTop+h); ctx.lineTo(px0-skew,yTop+h); ctx.closePath();
+  ctx.fillStyle='rgba(20,14,7,0.95)'; ctx.fill(); ctx.strokeStyle=acc; ctx.lineWidth=1.5; ctx.stroke();
+  wpnGlyph(pasv?'star':weapon, bcx, bcy, h*0.26, acc);
+  ctx.textAlign='left';
+  if (pasv){                                            // 패시브는 이름만(작게) — 청색이 이미 종류를 말한다
+    ctx.textBaseline='middle'; ctx.fillStyle='#f4ecdd'; ctx.font=nameFont;
+    ctx.fillText(name, px0+padL, bcy); ctx.textBaseline='alphabetic';
+  } else {
+    ctx.globalAlpha=al*0.85; ctx.fillStyle=acc; ctx.font='bold 7px "Pretendard Variable",system-ui';
+    ctx.fillText(WPN[weapon]||'무기', px0+padL, yTop+8);
+    ctx.globalAlpha=al; ctx.fillStyle='#f4ecdd'; ctx.font=nameFont;
+    ctx.fillText(name, px0+padL, yTop+h-5);
+  }
+  const wipeW=(plateW-4)*Math.min(1, age/0.4);
+  ctx.strokeStyle=acc; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px0-skew+2,yTop+h-1); ctx.lineTo(px0-skew+2+wipeW,yTop+h-1); ctx.stroke();
+  ctx.restore(); }
+// 감정 색 분류 — 공격/자신=붉음, 위축/신중=청, 과시/기회=금, 그 외=바랜 오커
+function emoColor(tag){
+  if (/ENRAGED|RAGED|RECKLESS|CRUEL|NEMESIS|HUNT|VENGE|CONFIDENT/.test(tag)) return '#e0685f';
+  if (/FEAR|FLINCH|WARY|DREAD|PRESSURE|INFERIOR|TRAUMA/.test(tag))           return '#9bc4ec';
+  if (/SHOWTIME|BOLD|EXPLOIT|TAUNT|RIVAL|ENVY|OBSESSION|HUBRIS|MOTIVATED/.test(tag)) return '#d2ab55';
+  return '#c9b189';
+}
+// 감정·의도 칩 (Zone 3) — 머리 위 작은 반투명 칩, 감정색 도트. 최하 우선순위(작고 조용).
+function drawEmotionChip(cx, topY, text, tag, age, dur){
+  const inP=Math.min(1, age/0.18), outP=age>dur-0.3?Math.max(0,(dur-age)/0.3):1, al=Math.min(inP,outP)*0.92;
+  if (al<=0) return;
+  const col=emoColor(tag), rise=(1-inP)*5;
+  ctx.save(); ctx.globalAlpha=al; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.font='bold 11px "Pretendard Variable",system-ui';
+  const tw=ctx.measureText(text).width, dot=5, padL=8, gap=4, padR=9, h=17, w=padL+dot+gap+tw+padR;
+  const x0=Math.round(cx-w/2), y0=Math.round(topY-rise), cyc=y0+h/2;
+  ctx.fillStyle='rgba(20,14,7,0.72)'; roundRect(x0,y0,w,h,8); ctx.fill();
+  ctx.globalAlpha=al*0.7; ctx.strokeStyle=col; ctx.lineWidth=1; roundRect(x0+0.5,y0+0.5,w-1,h-1,7.5); ctx.stroke();
+  ctx.globalAlpha=al; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(x0+padL+dot/2, cyc, dot/2, 0, 7); ctx.fill();
+  ctx.fillStyle='#e8dcc4'; ctx.fillText(text, x0+padL+dot+gap, cyc+0.5);
+  ctx.restore();
+}
+// 전술 배너 — 라니스타 지시(order, 금·강조) / 적 AI 전술 전환(adapt, 강철청). 커맨드 이중 셰브런.
+function drawTacticBanner(cx, yTop, kind, tacName, age, dur){
+  const inP=Math.min(1, age/0.16), outP=age>dur-0.35?Math.max(0,(dur-age)/0.35):1, al=Math.min(inP,outP);
+  if (al<=0) return;
+  const order = kind==='order', acc = order?'#e6c063':'#8fb0cf', kindTxt = order?'라니스타 지시':'전술 전환';
+  const h=26, leftPad=10, chevW=11, textGap=8, rightPad=14, slide=(1-inP)*-8;
+  ctx.save(); ctx.globalAlpha=al; ctx.textBaseline='alphabetic';
+  ctx.font='bold 13px "Noto Serif KR","Pretendard Variable",serif'; const nameW=ctx.measureText(tacName).width;
+  ctx.font='bold 8px "Pretendard Variable",system-ui'; const kindW=ctx.measureText(kindTxt).width;
+  const w=leftPad+chevW+textGap+Math.max(nameW,kindW)+rightPad, x0=Math.round(cx-w/2), y0=Math.round(yTop+slide);
+  ctx.fillStyle='rgba(18,12,6,0.95)'; roundRect(x0,y0,w,h,5); ctx.fill();
+  ctx.strokeStyle=acc; ctx.lineWidth=1.5; roundRect(x0+0.75,y0+0.75,w-1.5,h-1.5,4.5); ctx.stroke();
+  ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round'; const cvx=x0+leftPad, cvy=y0+h/2;
+  for (let i=0;i<2;i++){ const ox=cvx+i*5; ctx.beginPath(); ctx.moveTo(ox,cvy-4); ctx.lineTo(ox+4,cvy); ctx.lineTo(ox,cvy+4); ctx.stroke(); }
+  const tx=x0+leftPad+chevW+textGap;
+  ctx.textAlign='left'; ctx.globalAlpha=al*0.9; ctx.fillStyle=acc; ctx.font='bold 8px "Pretendard Variable",system-ui';
+  ctx.fillText(kindTxt, tx, y0+10);
+  ctx.globalAlpha=al; ctx.fillStyle='#f4ecdd'; ctx.font='bold 13px "Noto Serif KR","Pretendard Variable",serif';
+  ctx.fillText(tacName, tx, y0+h-6);
+  ctx.restore();
 }
 
 // ── 렌더 ──
 function render(){
   ctx.clearRect(0,0,W,H);
-  // 핏 바닥 (타원) + 가장자리 링
-  ctx.fillStyle='#171b22';
-  ctx.beginPath(); ctx.ellipse(CX,CY,RX,RY,0,0,7); ctx.fill();
-  ctx.strokeStyle='#2a3340'; ctx.lineWidth=2; ctx.stroke();
-  const edge=(R()-1.5)/R();
-  ctx.strokeStyle='#222a35'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.ellipse(CX,CY,RX*edge,RY*edge,0,0,7); ctx.stroke();
+  // 타격 임팩트 → 화면 흔들림 + 좌우 기울기(틸트) (t로부터 결정 — 스크럽 안전). 장면 전체에 적용.
+  let shx=0, shy=0, tilt=0;
+  const CAMSHAKE = SET.camzoom !== false;   // 설정 '카메라 흔들림'에서 끌 수 있음 (mor_settings.camzoom=false)
+  for (const im of impacts){ const age=t-im.t;
+    if (age>=0 && age<=0.22){ const d=1-age/0.22, m=im.mag*d*d;
+      shx += Math.sin(age*185+im.t*31)*m;
+      shy += Math.cos(age*152+im.t*27)*m*0.55; }
+    // 피격 카메라 틸트 — 좌우로 기울었다 감쇠 진동으로 복귀. 약공(mag 작음)은 제곱 스케일로 매우 작게.
+    if (CAMSHAKE){
+      const life=0.34;
+      if (age>=0 && age<=life){ const d=1-age/life;
+        const amp=Math.min(1, im.mag/13); const strength=amp*amp;    // 강타 13→1.0 · 약공 2.2→0.03
+        const dir=((im.t*971|0)&1)?1:-1;                             // 피격마다 좌/우 방향 교차
+        tilt += Math.sin(age*38) * 0.055 * strength * d * dir;        // 최대 ~3°, age=0에서 0으로 시작(부드러운 진입)
+      }
+    }
+  }
+  // ── 카메라 (연출 전용): 줌 모드는 ZOOM배 확대하며 두 선수 중점을 화면 중앙(CX,CY)에 두고 부드럽게 추적.
+  //    기본 모드는 아레나 중심 고정·등배. sim 위치/밸런스 무관. (피격 연출=틸트, 줌 아님)
+  {
+    const cf=frameAt(t), ck=cf.k;
+    let mx, my;
+    if (focusIdx!==null){   // #11 쓰러진 패자 한 명에게 카메라 고정·확대
+      mx = focusIdx===0 ? cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck : cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck;
+      my = focusIdx===0 ? cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck : cf.f.By+(cf.g.By-cf.f.By)*ck;
+    } else {
+      mx=((cf.f.Ax+(cf.g.Ax-cf.f.Ax)*ck)+(cf.f.Bx+(cf.g.Bx-cf.f.Bx)*ck))/2;
+      my=((cf.f.Ay+(cf.g.Ay-cf.f.Ay)*ck)+(cf.f.By+(cf.g.By-cf.f.By)*ck))/2;
+    }
+    const tgt = (focusIdx!==null||viewMode==='zoom') ? proj(mx,my) : {x:CX,y:CY};
+    const zTgt = focusIdx!==null ? (introMode?2.3:2.9) : viewMode==='zoom' ? ZoomFollow : 1.0;   // 인트로는 조금 넉넉히
+    const lerp = focusIdx!==null ? 0.06 : 0.12;   // 줌인은 더 천천히
+    // ▼ 줌인 프레이밍 노브: 발밑(바닥점)이 아니라 전신이 담기게 타겟을 위로. 값=발이 화면 중앙에서 내려갈 px.
+    const FocusLiftPx = introMode ? 100 : 55;
+    camLift = focusIdx!==null ? FocusLiftPx : (viewMode==='zoom' ? ZoomLiftPx : 0);
+    if (camX===null){ camX=tgt.x; camY=tgt.y; camZoom=zTgt; }
+    camZoom += (zTgt-camZoom)*lerp;
+    // 부각을 줌 배율에 연동 — 줌이 부드럽게 들어가는 동안 바닥도 같이 눕는다(전환 팝 없음).
+    // 패자 줌인(2.9배)은 1로 클램프되어 가장 낮은 시점이 된다.
+    zoomFrac = Math.max(0, Math.min(1, (camZoom - 1) / Math.max(0.001, ZoomFollow - 1)));
+    CamTilt = TiltBasic + (TiltZoom - TiltBasic) * zoomFrac;
+    RY = RX * CamTilt;
+    camX += (tgt.x-camX)*lerp; camY += (tgt.y-camY)*lerp;
+    // 화면 밖(아레나 void)이 과하게 보이지 않게 추적 중심을 아레나 안으로 클램프
+    const halfW=(W/2)/camZoom, halfH=(H/2)/camZoom;
+    const mgnX=Math.max(0, RX-halfW+30), mgnY=Math.max(0, RY-halfH+20);
+    camX=Math.min(CX+mgnX, Math.max(CX-mgnX, camX));
+    camY=Math.min(CY+mgnY, Math.max(CY-mgnY, camY));
+  }
+  // ── 월드층 시작 (PIXEL): ctx를 저해상 캔버스로 돌린다. 기본 변환에 1/PX을 걸어두므로
+  //    아래 드로우 코드는 지금까지처럼 화면 좌표(W·H·CX·CY)를 그대로 쓰면 된다.
+  ctx = wctx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, wcv.width, wcv.height);
+  ctx.scale(1/PX, 1/PX);
+  // ── 경기장 배경 ──────────────────────────────────────────────────────────
+  // 돌리 시퀀스가 있으면 그걸 쓴다([15]§10.17). 없으면 옛 방식(2장 크로스페이드)으로 폴백.
+  // **돌리 프레임은 줌이 이미 구워져 있다** — 그래서 scale(camZoom)을 걸면 두 번 확대된다.
+  // 카메라 변환을 직접 조립하되 배율만 빼고 팬(pan)은 줌만큼 곱해 넣는다.
+  if (dolly.ready){
+    const N = dolly.frames.length;
+    const fi = Math.min(N - 1, Math.max(0, Math.round(zoomFrac * (N - 1))));
+    const fr = dolly.frames[fi];
+    // 프레임에 구워진 줌과 실제 camZoom의 **잔여 배율**을 보정한다. 두 가지를 한꺼번에 푼다:
+    //  ① 프레임이 24단계로 양자화돼 생기는 오차
+    //  ② 패자 줌인(2.9배)처럼 ZoomFollow를 넘어서는 구간 — 보정이 없으면 배경만 1.6에서 멈춘다
+    const frameZoom = 1 + (ZoomFollow - 1) * (fi / Math.max(1, N - 1));
+    const ex = camZoom / frameZoom;
+    ctx.save();
+    ctx.translate(shx, shy);
+    ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt);
+    ctx.translate(camZoom * (CX - camX), camZoom * (CY - camY) + camLift);
+    ctx.scale(ex, ex);
+    // 프레임이 가로로 오버스캔돼 있으면(카메라 팬 대비) 그만큼 넓게, 중심을 맞춰 그린다.
+    // 세로는 오버스캔이 없다 — 팬이 0이라 필요 없었다.
+    // 오버스캔은 가로·세로 각각 붙는다(가로=팬 대비, 세로=camLift 대비, §10.19).
+    // 베이크가 `--res 940`(= W)으로 굽히므로 **프레임 픽셀 = 논리 px**다. 그래서 그대로 쓴다.
+    // ※ 베이크 해상도를 바꾸면 이 등식이 깨진다 — blockout.py의 --res는 W와 같아야 한다.
+    const fw = fr.width, fh = fr.height;
+    ctx.drawImage(fr, -CX - (fw - W) / 2, -CY - (fh - H) / 2, fw, fh);
+    // 관중은 배경 위에 **매 프레임** 그린다(§10.19). 위 변환의 원점이 이미 아레나 중심이다:
+    //   프레임 좌상단이 (-CX-(fw-W)/2, -CY-(fh-H)/2)이고 그 안에서 아레나 중심은
+    //   ((fw-W)/2 + CX, (fh-H)/2 + CY) 이므로 합치면 정확히 (0, 0).
+    // 배율은 frameZoom이다 — 이 변환에는 이미 scale(ex)가 걸려 있고 ex·frameZoom = camZoom이다.
+    // camZoom을 넘기면 두 번 곱해진다.
+    paintCrowd(ctx, CamTilt, frameZoom, t, fw / 2, fh / 2);
+    ctx.restore();
+  }
+  ctx.save(); ctx.translate(shx, shy);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
+  if (!dolly.ready){
+    // 부각별 프리렌더 2장을 zoomFrac으로 겹친다(전환 중 중간 각도 근사)
+    ctx.drawImage(bgBasic, 0, 0, W, H);
+    if (zoomFrac > 0.001){
+      ctx.save(); ctx.globalAlpha = zoomFrac; ctx.drawImage(bgZoom, 0, 0, W, H); ctx.restore();
+    }
+    // 폴백에서도 관중은 매 프레임. 이 변환에는 scale(camZoom)이 이미 걸려 있으므로 배율은 1이다.
+    ctx.save(); ctx.translate(CX, CY);
+    paintCrowd(ctx, CamTilt, 1, t, W / 2, H / 2);
+    ctx.restore();
+  }
+  // 혈흔 데칼: 유효 타격이 떨어진 자리의 모래 얼룩 — t 필터(스크럽 안전), 시간이 갈수록 전장이 물든다
+  // 발자국: 파인 자국(어둡게) + 광원 쪽 둔덕(밝게). 방향은 LDIR 하나에서만 나온다
+  if (tracks.length){
+    ctx.save();
+    for (const s of tracks){ if (s.t > t) continue;
+      const p = proj(s.wx, s.wy), sc = 0.75+0.5*depthN(s.wy);
+      ctx.globalAlpha = 0.15; ctx.fillStyle = '#6b4f2e';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, 3.4*sc, 1.5*sc, s.a, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.09; ctx.fillStyle = '#f2e0ba';
+      ctx.beginPath(); ctx.ellipse(p.x+LDIR.x*1.3*sc, p.y+LDIR.y*1.3*sc, 3.0*sc, 1.2*sc, s.a, 0, 7); ctx.fill();
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  if (stains.length){
+    ctx.save();
+    for (const s of stains){ if (s.t > t) continue;
+      const age = Math.min(1, (t-s.t)/0.5);
+      ctx.globalAlpha = 0.15*age;
+      ctx.fillStyle = '#5c1210';
+      let sd2 = s.seed; const rnd2 = ()=>{ sd2=(sd2*1103515245+12345)&0x7fffffff; return (sd2%1000)/1000; };
+      for (let i=0;i<4;i++){
+        ctx.beginPath();
+        ctx.ellipse(s.x+(rnd2()-0.5)*s.r*2.2, s.y+(rnd2()-0.5)*s.r*0.8,
+                    s.r*(0.4+rnd2()*0.6), s.r*(0.15+rnd2()*0.2), 0, 0, 7);
+        ctx.fill();
+      }
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
 
   const fr=frameAt(t), f=fr.f, g=fr.g, k=fr.k;
   const ax=f.Ax+(g.Ax-f.Ax)*k, ay=f.Ay+(g.Ay-f.Ay)*k;
   const bx=f.Bx+(g.Bx-f.Bx)*k, by=f.By+(g.By-f.By)*k;
-  const pa=proj(ax,ay), pb=proj(bx,by);
-  const faceA = ax<=bx?1:-1, faceB=-faceA;
   const gap=Math.hypot(ax-bx, ay-by);
 
-  // 간격선
-  ctx.save(); ctx.globalAlpha=.4; ctx.strokeStyle='#5b6470'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  // 바라보기: 동속 락스텝의 미세 X교차로 매 틱 뒤집히지 않게 히스테리시스 적용(buildFacing). +1 = A가 좌·상대가 우.
+  const faceA = f._faceA ?? (bx>=ax ? 1 : -1), faceB = -faceA;
+  // 위치 충실: 각자 진짜 투영 좌표로 그린다. (옛 중점대칭 gapShow 과장은 고정 선수가 상대 따라 움직이는
+  // 아티팩트를 만들어 제거 — 위치 충실 우선.) 스프라이트 미러(facing)만 히스테리시스로 안정.
+  const tpa = proj(ax, ay), tpb = proj(bx, by);
+  // 완전히 겹칠 때만 최소 분리 넛지(두 스프라이트가 뭉쳐 보이는 것 방지). 그 외엔 실제 좌표 그대로.
+  // 넛지는 '안 움직이는 쪽(이번 프레임 Move 아님 — 도발·경직 등)'을 고정하고 움직이는 쪽만 밀어 → 고정 선수는 화면서도 고정.
+  { const dxs = tpb.x - tpa.x, MINSEP = 22, ad = Math.abs(dxs);
+    if (ad < MINSEP){ const s=(dxs>=0?1:-1), aMove=f.StateA==='Move', bMove=f.StateB==='Move';
+      if (!aMove && bMove)      tpb.x = tpa.x + s*MINSEP;            // A 고정 → B만 밀기
+      else if (!bMove && aMove) tpa.x = tpb.x - s*MINSEP;            // B 고정 → A만 밀기
+      else { const mid=(tpa.x+tpb.x)/2; tpa.x = mid - s*MINSEP/2; tpb.x = mid + s*MINSEP/2; } } } // 둘 다 → 대칭
+  // B. 상대 공격 시 시각 반응 — 피격 측이 교전선 방향으로 살짝 밀림
+  if (f.StateA==='Active' && gap<2.5) tpb.x += faceA*12;
+  if (f.StateB==='Active' && gap<2.5) tpa.x -= faceA*12;
+  // 대치(clinch) 판정 — 얼어붙은 핀 구간을 걷기 대신 idle 스탠스로 그리기 위함 (연출 전용)
+  const clinch = f._clinch === true && !postGame;
+
+  // 위치 스무딩 — 잔여 떨림 흡수 (disc로 큰 점프는 이미 없음)
+  if (!vScrA){ vScrA={x:tpa.x,y:tpa.y}; vScrB={x:tpb.x,y:tpb.y}; }
+  const SM = 0.3;
+  vScrA.x+=(tpa.x-vScrA.x)*SM; vScrA.y+=(tpa.y-vScrA.y)*SM;
+  vScrB.x+=(tpb.x-vScrB.x)*SM; vScrB.y+=(tpb.y-vScrB.y)*SM;
+  const pa={x:vScrA.x,y:vScrA.y}, pb={x:vScrB.x,y:vScrB.y};
+
+  // (간격선은 UI층으로 옮겼다 — 아래 합성 이후)
+
+  // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에) + 유닛별 플로팅 HUD
+  const frameDt = Math.max(g.Time - f.Time, 0.016);
+  // 대치 구간은 걷기(제자리 비비기) 대신 idle 스탠스로 — 두 선수가 간 보며 맞선 연출. 공격하면 clinch=false라 정상 복귀.
+  const smA = clinch ? 'Idle' : smoothMoveState(0, f.StateA);
+  const smB = clinch ? 'Idle' : smoothMoveState(1, f.StateB);
+  const wphA = (f._wphA??0) + (((g._wphA??0)-(f._wphA??0))*k);  // 누적 걷기 위상 보간(단조)
+  const wphB = (f._wphB??0) + (((g._wphB??0)-(f._wphB??0))*k);
+  const A={p:pa, sy:ay, st:smA, kind:f.KindA, face:faceA, wdir:f._wdirA, wph:wphA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0, name:doc.Meta.A.Name, hp:f.HpPctA, velX:g.Ax-f.Ax, velMs:Math.abs(g.Ax-f.Ax)/frameDt, ph:f._phA, flash:hitFlashAt(0), spr:spriteFor(doc.Meta.A.Weapon), bleed:(f.BleedA||0), size:(doc.Meta.A.SizeScale||1)};
+  const B={p:pb, sy:by, st:smB, kind:f.KindB, face:faceB, wdir:f._wdirB, wph:wphB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1, name:doc.Meta.B.Name, hp:f.HpPctB, velX:g.Bx-f.Bx, velMs:Math.abs(g.Bx-f.Bx)/frameDt, ph:f._phB, flash:hitFlashAt(1), spr:spriteFor(doc.Meta.B.Weapon), bleed:(f.BleedB||0), size:(doc.Meta.B.SizeScale||1)};
+  // postGame: 승자 도발 · 패자 다운 포즈
+  if (postGame && doc.Result.Winner >= 0){
+    if (doc.Result.Winner === 0){ A.st='Taunt'; B.st='Down'; }
+    else { A.st='Down'; B.st='Taunt'; }
+  }
+  // 깊이 정렬은 한 번만 하고 월드층·UI층이 같은 순서를 쓴다.
+  const drawOrder = [A,B].sort((m,n)=>m.sy-n.sy);
+  const FS = FIGH/120;   // 그림자·혈흔 등 '캐릭터 단위' 장식은 키가 커진 만큼 같이 커져야 한다
+  for (const u of drawOrder){
+    const sc=(0.8+0.4*depthN(u.sy))*(u.size||1);   // 거인 등 특성 크기 배율
+    u._sc = sc;
+    if (u.spr){ drawGround(u.p.x, u.p.y, sc*FS, u.reach, u.col); drawSprite(u.spr, u.p.x, u.p.y, sc, u.st, u.kind, u.face, u.velX, u.who, u.velMs, u.ph, u.flash, u.wdir, u.wph); }
+    else drawFighter(u.p.x, u.p.y, sc*FS, u.st, u.face, u.col, u.reach);
+    if (u.bleed > 0) drawBleed(u.p.x, u.p.y, sc*FS, u.bleed);
+  }
+
+  // ── 월드층 끝 → 화면에 정수배 확대 합성. 이후 UI는 풀해상으로 같은 카메라 변환 위에 그린다.
+  ctx.restore();
+  ctx = screenCtx;
+  ctx.setTransform(CANVAS_S, 0, 0, CANVAS_S, 0, 0);   // fitCanvas가 걸어둔 DPR 배율로 복원
+  ctx.imageSmoothingEnabled = false;          // 니어리스트 — 정수배라 픽셀이 균일하게 커진다
+  ctx.drawImage(wcv, 0, 0, W, H);
+  ctx.imageSmoothingEnabled = true;           // UI·글자는 다시 부드럽게
+  ctx.save(); ctx.translate(shx, shy);
+  ctx.translate(CX, CY); if (tilt) ctx.rotate(tilt); ctx.scale(camZoom, camZoom); ctx.translate(-camX, -camY + camLift/camZoom);
+  // 간격선 — 11px 글자라 저해상으로 내려가면 못 읽는다. 월드층에서 UI층으로 옮겼다(선이 발밑 위로 온다).
+  ctx.save(); ctx.globalAlpha=.35; ctx.strokeStyle='#5a4129'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.restore();
-  ctx.fillStyle='#7b8694'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillStyle='#6e4f31'; ctx.font='11px system-ui'; ctx.textAlign='center';
   ctx.fillText(`${gap.toFixed(1)}m`, (pa.x+pb.x)/2, (pa.y+pb.y)/2-6);
+  // 이름표·상태 스트립은 글자라 저해상으로 내려가면 못 읽는다 → UI층
+  for (const u of drawOrder){
+    const top = u.p.y - (FIGH*0.83)*u._sc - 16;
+    unitTag(u.p.x, top, u.name, u.hp, u.col);
+    drawStatusStrip(u.p.x, top, u.bleed, u.who);   // 롤식 디버프 아이콘 스트립 (HP바 아래)
+  }
+  // 승리 오버레이
+  if (postGame && doc.Result.Winner >= 0){
+    const winner = doc.Result.Winner;
+    const prog = Math.min(postGameElapsed / 0.8, 1);
+    const wname = winner===0 ? doc.Meta.A.Name : doc.Meta.B.Name;
+    const wcol  = winner===0 ? getCSS('--a') : getCSS('--b');
+    ctx.save();
+    ctx.globalAlpha = prog * 0.45; ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = prog; ctx.textAlign='center';
+    ctx.font='900 44px Cinzel,"Noto Serif KR","Pretendard Variable",serif'; ctx.fillStyle=wcol;
+    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=18; ctx.shadowOffsetY=2;
+    ctx.fillText(wname, W/2, H*0.36);
+    ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+    ctx.font='700 20px "Noto Serif KR","Pretendard Variable",serif'; ctx.fillStyle=getCSS('--gold');
+    ctx.fillText('— 승리 —', W/2, H*0.36+30);
+    ctx.font='14px "Pretendard Variable",system-ui'; ctx.fillStyle='#f0e6d6'; ctx.globalAlpha=prog*0.8;
+    ctx.fillText(doc.Result.Reason, W/2, H*0.36+54);
+    ctx.restore();
+  }
 
-  // 깊이 정렬 (뒤→앞 그려 앞쪽이 위에)
-  const A={p:pa, sy:ay, st:f.StateA, face:faceA, col:getCSS('--a'), reach:doc.Meta.A.Range, who:0};
-  const B={p:pb, sy:by, st:f.StateB, face:faceB, col:getCSS('--b'), reach:doc.Meta.B.Range, who:1};
-  for (const u of [A,B].sort((m,n)=>m.sy-n.sy))
-    drawFighter(u.p.x, u.p.y, 0.8+0.4*depthN(u.sy), u.st, u.face, u.col, u.reach);
-
-  // 팝업 / Decision 핀
+  // 팝업 / Decision 핀 (HUD 위로)
   const sp = who => who===0?pa:pb;
   ctx.textAlign='center';
+  // CC 발생 순간 아이콘 폭발(글자 없음) — 상체 위치
+  for (const who of [0,1]){ const s=sp(who); drawStatusBurst(s.x, s.y-58, who); }
+  // 데미지 숫자 — 한글 없이 색·크기·표식만. 캐릭터를 가리지 않게 '바깥쪽 어깨'에서 시작해
+  // 포물선으로 솟았다 낙하. 시작 방향 = 상대 기준 서 있는 쪽(상대 좌측이면 좌측 어깨). u로만 위치 → 스크럽 안전.
   for (const p of popups){ const age=t-p.t; if(age<0||age>p.life)continue;
-    const a=1-age/p.life, s=sp(p.who);
-    ctx.globalAlpha=a; ctx.fillStyle=p.col; ctx.font='bold 15px system-ui';
-    ctx.fillText(p.text, s.x, s.y-58-(p.rise*(1-a))); ctx.globalAlpha=1; }
-  for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who);
-    ctx.fillStyle=d.who===0?getCSS('--a'):getCSS('--b'); ctx.globalAlpha=.92;
-    const txt='🧠 '+d.tag; ctx.font='bold 12px system-ui'; const w=ctx.measureText(txt).width+14;
-    roundRect(s.x-w/2, s.y-92, w, 19, 6); ctx.fill();
-    ctx.fillStyle='#0c0f14'; ctx.fillText(txt, s.x, s.y-78); ctx.globalAlpha=1; }
+    const s=sp(p.who), other=(p.who===0?pb:pa), u=age/p.life;
+    const side = (s.x>=other.x) ? 1 : -1;
+    const jit = ((p.t*137.5)%1) - 0.5;                    // 연타 겹침 방지(결정론적 미세 산개)
+    const shX = s.x + side*(28 + u*15 + jit*7);           // 어깨 → 바깥으로 드리프트
+    const up  = 239*u - 284*u*u;                          // 투사체 포물선(솟았다 낙하)
+    const shY = s.y - 72 - up + jit*5;
+    drawDamage(shX, shY, age, p.life, p); }
+  for (const d of decisions){ if(t<d.t||t>d.t+d.dur)continue; const s=sp(d.who), age=t-d.t;
+    const isSkill=d.tag&&d.tag.startsWith('SKILL_');   // 무기 액티브([7]) 자동 발동
+    const isPasv=d.tag&&d.tag.startsWith('PASV_');    // 성격 패시브([7]§5) proc
+    // 스킬·패시브 = 각진 컷인 플레이트(무기 다이아 배지). 지시·전환·감정과 시각 언어를 분리.
+    if (isSkill || isPasv){
+      const wpn = d.who===0?doc.Meta.A.Weapon:doc.Meta.B.Weapon;
+      const nm  = isSkill ? (SKILLKR[d.tag.slice(6)]||d.tag.slice(6)) : (SKILLKR[d.tag.slice(5)]||d.tag.slice(5));
+      const other = d.who===0?pb:pa, side = (s.x>=other.x) ? 1 : -1;   // 상대 반대편 = 어깨 바깥
+      // 층은 buildPopups에서 시작 시각 기준으로 확정(assignCutinLevels) — 아래가 사라져도 내려오지 않는다.
+      const up = d.lvl || 0;
+      drawCutin(s.x + side*34, s.y-92 - up*27, side, nm, wpn, isPasv, t-d.t, d.dur); ctx.globalAlpha=1; continue;
+    }
+    if (d.tag && d.tag.startsWith('TACTIC_')){   // 라니스타 지시 — 눈에 띄는 커맨드 배너
+      drawTacticBanner(s.x, s.y-146, 'order', (TAC[d.tag.slice(7)]||d.tag.slice(7)), age, d.dur); ctx.globalAlpha=1; continue; }
+    if (d.tag && d.tag.startsWith('ADAPT_')){    // 적 진영 자기 판단 — 같은 배너·강철청으로 구분
+      drawTacticBanner(s.x, s.y-146, 'adapt', (TAC['TAC_'+d.tag.slice(6)]||d.tag.slice(6)), age, d.dur); ctx.globalAlpha=1; continue; }
+    // 감정·의도(+관계) — 머리 위 작은 반투명 칩(최하 우선순위)
+    drawEmotionChip(s.x, s.y-130, (TAGKR[d.tag]||d.tag), d.tag, age, d.dur); ctx.globalAlpha=1; }
+
+  // 타격 스파크/플래시 (피격 측 몸통에서 터짐). 무게 있는 타격일수록 크게.
+  for (const im of impacts){ const age=t-im.t, life=im.kind==='ko'?0.5:0.26; if(age<0||age>life) continue;
+    const s=sp(im.who), cy=s.y-46, a=1-age/life, gr=0.5+age*2.8;
+    const big = im.kind==='ko'?54 : im.kind==='down'?38 : im.kind==='guard'?15 : 30;
+    ctx.save(); ctx.lineCap='round';
+    ctx.globalAlpha=a*a*0.7; ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(s.x, cy, big*0.42*gr, 0, 7); ctx.fill();       // 흰 코어 플래시
+    ctx.globalAlpha=a*0.5; ctx.fillStyle=im.col;
+    ctx.beginPath(); ctx.arc(s.x, cy, big*0.6*gr, 0, 7); ctx.fill();        // 색 플래시
+    ctx.globalAlpha=a; ctx.strokeStyle=im.col; ctx.lineWidth=im.kind==='guard'?2:3.5;
+    const n = im.kind==='ko'?11 : im.kind==='guard'?4 : 7, r0=5, r1=big*gr;
+    for(let i=0;i<n;i++){ const ang=im.t*7.3+i*(6.283/n);
+      ctx.beginPath();
+      ctx.moveTo(s.x+Math.cos(ang)*r0, cy+Math.sin(ang)*r0*0.7);
+      ctx.lineTo(s.x+Math.cos(ang)*r1, cy+Math.sin(ang)*r1*0.7); ctx.stroke(); }
+    ctx.restore(); }
+  ctx.globalAlpha=1;
+
+  ctx.restore(); // 화면 흔들림 종료
+
+  // KO 슬로모 비네트: 결정타의 시간이 느려지는 동안 화면 가장자리가 어두워진다 (t 파생 — 스크럽 안전). 막판 결착=더 짙게·오래.
+  if (koSlowT >= 0){
+    const d = t - koSlowT;
+    const span = koClutch ? 1.1 : 0.7, depth = koClutch ? 0.72 : 0.5, ir = koClutch ? 0.24 : 0.32;
+    if (d > -0.15 && d < span){
+      const a = d < 0 ? (d+0.15)/0.15 : 1-(d/span);
+      const vg = ctx.createRadialGradient(W/2, H/2, H*ir, W/2, H/2, H*0.78);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,`rgba(18,4,2,${(depth*a).toFixed(3)})`);
+      ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
+      if (koClutch && d > -0.05 && d < 0.5){   // 결정적 순간 백색 섬광
+        ctx.fillStyle = `rgba(255,248,232,${(0.28*(1-Math.abs(d)/0.5)).toFixed(3)})`; ctx.fillRect(0,0,W,H);
+      }
+    }
+  }
+
+  drawCrowdMeter(fr);
+  drawBottomHud(fr);
 
   setBar('hpA', f.HpPctA); setBar('hpB', f.HpPctB);
   setBar('stA', f.StamPctA); setBar('stB', f.StamPctB);
@@ -276,36 +2567,149 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function setBar(id,p){ document.getElementById(id).style.width = Math.max(0,Math.min(1,p))*100+'%'; }
-function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+// 토큰 조회는 getComputedStyle이라 싸지 않다. HUD가 프레임당 수십 번 읽으므로 1회만 캐시한다.
+const _cssMemo = {};
+function getCSS(v){
+  let x = _cssMemo[v];
+  if (x === undefined) x = _cssMemo[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  return x;
+}
 
 // ── 재생 루프 ──
 function tick(now){
   if (playing && frames){
     const dt = (now-lastWall)/1000; lastWall = now;
-    t += dt*speed;
-    if (t >= duration){ t = duration; setPlaying(false); }
+    if (now >= hitstopUntil){            // 히트스톱 중이 아니면 진행
+      let adv = dt*speed;
+      // KO 슬로모션: 결정타 전후 구간은 시간이 느려진다 (마지막 일격의 무게). 막판 결착=더 깊고 길게.
+      if (koSlowT >= 0){
+        const pre = koClutch ? 0.35 : 0.15, post = koClutch ? 0.9 : 0.5, scl = koClutch ? 0.14 : 0.25;
+        if (t > koSlowT - pre && t < koSlowT + post) adv *= scl;
+      }
+      // 무게 있는 타격 직전까지만 전진 → 그 지점에서 짧게 정지(임팩트에 눈을 멈추게).
+      for (const im of impacts){ if (im.stop>0 && im.t>t && im.t<=t+adv){ adv=im.t-t; hitstopUntil=now+im.stop; break; } }
+      const prevT = t;
+      t += adv;
+      // 하이라이트: 임팩트 구간 밖이면 다음 구간으로 점프 (사이의 대치는 생략)
+      if (hlMode && hlWins.length){
+        const jumped = hlSkip(t);
+        if (jumped > t + 0.01){ t = jumped; lastSfxT = t; }   // 점프 구간의 밀린 sfx 폭주 방지
+      }
+      playSfxRange(prevT > t ? t : prevT, t);   // 지나간 이벤트 효과음 (합성)
+      if (t >= duration){
+        t = duration; setPlaying(false);
+        revealWinner();   // 재생 완료 — 이제 승자 공개 (스포일러 방지)
+        postMatchEnded(); // 게임 셸에 통지 → 결과창
+        if (doc?.Result?.Winner >= 0){ postGame=true; postGameElapsed=0; }
+      }
+    }
+  } else if (postGame && frames){
+    const dt = (now-lastWall)/1000; lastWall = now;
+    postGameElapsed += dt;
+    if (postGameElapsed >= TAUNT_DUR) postGame = false;
   } else lastWall = now;
   if (frames) render();
+  // 실시간 재생 시각을 부모 셸에 보고 (라이브 화면의 실시간 전술 변경이 현재 시각을 알도록) — 10Hz 스로틀
+  if (frames && window.parent !== window && now - lastLiveReport > 100){
+    lastLiveReport = now; window.parent.postMessage({liveNow: t}, '*');
+  }
   requestAnimationFrame(tick);
 }
+let lastLiveReport = 0;
 function setPlaying(p){ playing = p && t < duration;
-  document.getElementById('play').textContent = playing ? '⏸ 일시정지' : '▶ 재생';
+  document.getElementById('play').textContent = playing ? '{pause} 일시정지' : '▶ 재생';
   if (playing && t>=duration) t=0; }
 
 // ── 입력 ──
-document.getElementById('play').onclick = ()=>{ if (t>=duration) t=0; setPlaying(!playing); };
-document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false); };
+document.getElementById('play').onclick = ()=>{ if (introMode){ endIntro(); return; } if (t>=duration) t=0; setPlaying(!playing); };
+cv.addEventListener('click', ()=>{ if (introMode) endIntro(); });   // 인트로 중 클릭 = 건너뛰고 전투 시작
+document.getElementById('scrub').oninput = e=>{ t = e.target.value/1000*duration; setPlaying(false);
+  if (t >= duration - 0.01){ revealWinner(); postMatchEnded(); } };   // 끝까지 스크럽 = 관전 종료 취급
 document.getElementById('speed').onchange = e=>{ speed = parseFloat(e.target.value); };
+// 설정: 기본 배속 적용 (index.html 설정 모달 → localStorage)
+if (SET.speed){ speed = parseFloat(SET.speed) || 1;
+  const sel = document.getElementById('speed'); if ([...sel.querySelectorAll('button')].some(o=>o.dataset.v==String(SET.speed))) sel.value = String(SET.speed); }
+document.getElementById('viewmode').onclick = e=>{ viewMode = viewMode==='basic' ? 'zoom' : 'basic';
+  e.target.textContent = viewMode==='zoom' ? '줌 추적' : '기본 화면'; };
+// 기본이 줌 추적이라 버튼 라벨도 초기 상태에 맞춘다
+document.getElementById('viewmode').textContent = viewMode==='zoom' ? '줌 추적' : '기본 화면';
 const fileEl = document.getElementById('file');
 document.getElementById('drop').onclick = ()=> fileEl.click();
 fileEl.onchange = e=>{ const f=e.target.files[0]; if(f) f.text().then(load); };
 const stage = document.getElementById('stage');
 stage.ondragover = e=>{ e.preventDefault(); };
 stage.ondrop = e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) f.text().then(load); };
-window.onkeydown = e=>{ if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); } };
+// 시네마 모드([15]§10.18): ?cinema=1 로 들어오거나 C 키로 토글.
+// 무대 크기 감시가 setInterval로 돌고 있으므로(fitStageBox) 토글 후 한 번 불러 즉시 맞춘다.
+// 시네마 = UI를 걷는 것 + **모니터 전체화면**(브라우저 크롬까지 없앤다).
+// requestFullscreen은 사용자 제스처 안에서만 허용되므로, 키/버튼에서 부를 때만 실제로 걸린다.
+// ?cinema=1 자동 진입은 UI만 걷고 전체화면은 사용자가 C를 누를 때 붙는다 — 막히면 조용히 넘긴다.
+function setCinema(on, gesture){
+  document.body.classList.toggle('cinema', !!on);
+  if (gesture){
+    try {
+      if (on && !document.fullscreenElement) document.documentElement.requestFullscreen();
+      else if (!on && document.fullscreenElement) document.exitFullscreen();
+    } catch(_){}
+  }
+  fitStageBox(); fitCanvas();
+}
+// 전체화면을 빠져나가도(F11·Esc) 시네마 레이아웃은 유지한다 — 시네마가 기본 상태이기 때문이다.
+// 예전엔 여기서 setCinema(false)를 했는데, 기본이 시네마가 된 지금은 Esc 한 번에 기본값이
+// 풀려 버린다. 시네마를 끄는 길은 '시네마 종료' 버튼 하나로 명시한다.
+document.addEventListener('fullscreenchange', () => { fitStageBox(); fitCanvas(); });
 
-// 같은 폴더에서 http로 열렸으면 자동 로드 시도 (file://에선 조용히 실패)
-fetch('viewer.json').then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{});
+// ── 시네마 기본 진입([15]§10.21) ─────────────────────────────────────────────
+// requestFullscreen은 **사용자 제스처 안에서만** 허용된다. 그래서 두 단계로 나눈다:
+//   ① 로드 즉시 시네마 레이아웃 — UI를 걷고 무대를 뷰포트에 꽉 채운다(제스처 불필요).
+//   ② 첫 클릭/키 입력에 모니터 전체화면을 붙인다 — 한 번만 시도하고, 막히면 조용히 넘긴다.
+// Photino 셸에는 브라우저 크롬이 없으므로 ①만으로도 이미 전체화면이다.
+function attachFullscreen(){
+  window.removeEventListener('pointerdown', attachFullscreen);
+  window.removeEventListener('keydown', attachFullscreen);
+  if (document.body.classList.contains('cinema') && !document.fullscreenElement){
+    const p = document.documentElement.requestFullscreen();
+    if (p && p.catch) p.catch(()=>{});
+  }
+}
+if (_qs.get('cinema') !== '0'){
+  setCinema(true);
+  window.addEventListener('pointerdown', attachFullscreen);
+  window.addEventListener('keydown', attachFullscreen);
+}
+
+// 컨트롤 자동 숨김 — 입력이 멎으면 물러난다. 컨트롤 위에 커서가 있는 동안은 타이머를 멈춘다
+// (조작 중에 버튼이 사라지면 안 된다).
+// 개발자 패널 토글 — ?dev=1 로도 열린다(스크립트 검증용)
+function setDev(on){
+  const b = document.body;
+  b.classList.toggle('devon', on === undefined ? !b.classList.contains('devon') : !!on);
+  fitStageBox(); fitCanvas();
+}
+if (_qs.get('dev') === '1') setDev(true);
+
+const ctrlEl = document.getElementById('devbar');
+let idleT = 0;
+function wake(){
+  document.body.classList.remove('idle');
+  clearTimeout(idleT);
+  idleT = setTimeout(()=> document.body.classList.add('idle'), 2600);
+}
+['pointermove','pointerdown','keydown','wheel'].forEach(ev =>
+  window.addEventListener(ev, wake, {passive:true}));
+ctrlEl.addEventListener('pointerenter', ()=>{ clearTimeout(idleT); document.body.classList.remove('idle'); });
+ctrlEl.addEventListener('pointerleave', wake);
+wake();
+window.onkeydown = e=>{
+  if(e.code==='Space'){ e.preventDefault(); document.getElementById('play').click(); }
+  else if(e.code==='KeyC'){ setCinema(!document.body.classList.contains('cinema'), true); }
+  else if(e.code==='KeyD'){ setDev(); }
+  else if(e.code==='Escape' && document.body.classList.contains('cinema')){ setCinema(false, true); }
+};
+
+// 스프라이트 시트(있으면) + 매치 데이터 자동 로드 (http일 때만; file://에선 조용히 실패 → 실루엣/드롭)
+loadDefaultSprites().finally(()=>
+  fetch('viewer.json', {cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(load).catch(()=>{}));
 requestAnimationFrame(tick);
 </script>
 </body>

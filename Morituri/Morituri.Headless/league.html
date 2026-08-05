@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MORITURI · 리그</title>
+<link rel="stylesheet" href="theme.css">
+<script src="ui.js"></script>
+<style>
+  /* 기본 토큰은 theme.css — 여기엔 관계 그래프 전용 색만 */
+  :root{ --nem:#e0685f; --fear:#9b6fd1; --rival:#e0a24c; --envy:#d16fa0; --obs:#c94fc9; --resp:#6fbf8f; --friend:#5b9be0; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 var(--font-body); }
+  #wrap{ max-width:1040px; margin:0 auto; padding:16px 16px 48px; }
+  h1{ font-family:var(--font-display); font-size:15px; margin:0; color:var(--gold); letter-spacing:.12em; font-weight:700;
+      display:inline-flex; align-items:center; gap:8px; }
+  h2{ font-size:12.5px; color:var(--gold); margin:26px 0 10px; letter-spacing:.1em; font-weight:700;
+      border-bottom:1px solid var(--line-soft); padding-bottom:5px; }
+  header{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; padding-bottom:6px; }
+  .sub{ color:var(--dim); font-size:12px; }
+  #divTabs button{ flex:1; padding:8px; border-radius:var(--r1); font-weight:700; cursor:pointer;
+                   background:var(--panel); color:var(--dim); border:1px solid var(--line);
+                   display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:border-color .15s,color .15s; }
+  #divTabs button:hover{ border-color:var(--gold-deep); color:var(--ink); }
+  #divTabs button.cur{ background:linear-gradient(180deg,#e0bd6a,var(--gold) 55%,#b8923f); color:#231604;
+                       border-color:#8a6a2a; text-shadow:0 1px 0 rgba(255,240,200,.35); }
+  #divTabs button.cur span{ color:#4a3a12; }
+  #champ{ background:linear-gradient(90deg,rgba(210,171,85,.13),rgba(210,171,85,.03) 55%), var(--panel);
+          border:1px solid var(--gold-deep); border-radius:var(--r2); box-shadow:var(--sh1);
+          padding:14px 18px; margin-top:12px; display:flex; align-items:center; gap:14px; }
+  #champ .crown{ color:var(--gold); display:flex; }
+  #champ .crown svg{ width:36px; height:36px; }
+  #champ .who{ font-family:var(--font-display); font-size:22px; font-weight:800; color:var(--gold); letter-spacing:.03em; }
+  #champ .meta{ color:var(--dim); font-size:12px; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line-soft); }
+  th{ color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  tr:hover td{ background:rgba(210,171,85,0.05); }
+  td{ font-variant-numeric:tabular-nums; }
+  .rank{ color:var(--gold); font-weight:700; width:28px; }
+  .nm{ font-weight:700; }
+  .bd{ color:var(--dim); font-size:11px; }
+  .win{ color:var(--grn); } .los{ color:#c98f8f; }
+  .streakUp{ color:var(--grn); } .streakDn{ color:#c98f8f; }
+  .famebar{ background:rgba(0,0,0,.4); border-radius:4px; height:8px; overflow:hidden; min-width:60px;
+            border:1px solid var(--line-soft); }
+  .famebar > i{ display:block; height:100%; background:linear-gradient(90deg,var(--gold-deep),var(--gold)); }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+  .card{ background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--r1);
+         padding:10px 12px; border-left:3px solid var(--gold); box-shadow:var(--sh1); }
+  .card .vs{ font-weight:700; } .card .res{ color:var(--gold); font-size:12px; margin-top:3px; }
+  .card .sc{ float:right; color:var(--dim); font-size:11px; }
+  .story{ display:flex; flex-direction:column; gap:4px; }
+  .ev{ padding:5px 10px; border-radius:var(--r1); background:var(--panel); font-size:13px; border:1px solid var(--line-soft); }
+  .ev.revenge{ border-left:3px solid var(--nem); } .ev.upset{ border-left:3px solid var(--rival); } .ev.comeback{ border-left:3px solid var(--gold); }
+  /* 경기 결과 목록 */
+  #matchlog{ display:flex; flex-direction:column; gap:3px; max-height:320px; overflow:auto; }
+  .ml{ display:flex; gap:10px; align-items:baseline; padding:4px 10px; border-radius:var(--r1); background:var(--panel);
+       font-size:13px; cursor:var(--cur-hand); border:1px solid transparent; transition:background .12s,border-color .12s; }
+  .ml:hover{ background:var(--panel2); border-color:var(--line); }
+  .ml.mine{ border-left:3px solid var(--gold); }
+  .ml .rd{ color:var(--dim); font-size:11px; min-width:44px; }
+  .ml .win{ color:var(--gold); font-weight:600; margin-left:auto; }
+  .ml .ko{ font-size:11px; color:var(--dim); }
+  .sub{ color:var(--dim); font-size:11px; font-weight:400; }
+  .legend{ display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--dim); margin-bottom:6px; }
+  .legend span{ display:inline-flex; align-items:center; gap:4px; }
+  .legend i{ width:14px; height:3px; border-radius:2px; display:inline-block; }
+  svg.graph{ width:100%; height:auto; background:radial-gradient(circle at 50% 46%, #2a2016, #17110a); border-radius:var(--r2);
+             border:1px solid var(--line-soft); }
+  .node circle{ fill:var(--panel2); stroke:var(--gold-deep); stroke-width:1.5; }
+  .node text{ fill:var(--ink); font-size:13px; font-weight:700; text-anchor:middle; }
+  #drop{ border:2px dashed var(--line); border-radius:var(--r2); padding:40px; text-align:center; color:var(--dim); margin-top:20px; cursor:var(--cur-hand); }
+  .empty{ color:var(--dim); font-style:italic; padding:6px 8px; }
+</style>
+</head>
+<body class="fresco">
+<div id="wrap">
+  <header>
+    <h1><svg class="ic lg"><use href="icons.svg#arena"/></svg>MORITURI · 리그</h1>
+    <span class="sub" id="sub">season.json 로딩…</span>
+  </header>
+  <div id="content" hidden>
+    <div id="divTabs" style="display:flex;gap:8px;margin:4px 0 10px"></div>
+    <div id="champ"></div>
+    <div id="phaseFlow" style="margin:12px 0 4px"></div>
+
+    <h2>{calendar} 시즌 달력 <span class="sub" id="calSub"></span></h2>
+    <div class="legend" id="kindLegend" style="margin-bottom:8px">
+      <span><i style="background:var(--dim)"></i>정규 라운드로빈</span>
+      <span><i style="background:#c9a84c"></i>{fest} 이벤트 빅매치</span>
+      <span><i style="background:#d86a9e"></i>{masks} 사투르날리아 대항전</span>
+      <span><i style="background:#e0685f"></i>{skull} 처형전</span>
+      <span><i style="background:#c94fc9"></i>{trophy} 챔피언십 컵</span>
+      <span><i style="background:#e0a24c"></i>{scales} 우승 결정전</span>
+      <span><i style="background:#5b9be0"></i>{arena} 황제의 초청전</span>
+      <span><i style="background:#6fbf8f"></i>{speech} 도전·흥행전</span>
+    </div>
+    <div id="calendar" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+
+    <h2 id="cupHead" hidden>{trophy} 챔피언십 컵 대진표</h2>
+    <div id="cupBracket" hidden style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"></div>
+
+    <h2>순위 (정규 시즌)</h2>
+    <table id="standings"><thead><tr><th>#</th><th>선수</th><th>빌드</th><th>승-패-무</th><th>승점</th><th>연속</th></tr></thead><tbody></tbody></table>
+
+    <div class="grid2">
+      <div>
+        <h2>명성 리더보드</h2>
+        <table id="fame"><thead><tr><th>선수</th><th>명성</th><th>인기</th><th>통산</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <h2>{fest} 이벤트 매치 (자동 편성)</h2>
+        <div class="cards" id="events"></div>
+      </div>
+    </div>
+
+    <h2>경기 결과 <span class="sub" id="mlHint"></span></h2>
+    <div id="matchlog"></div>
+
+    <h2>관계 그래프 (누적)</h2>
+    <div class="legend" id="legend"></div>
+    <svg id="graph" class="graph" viewBox="0 0 620 620"></svg>
+
+    <h2>시즌 서사</h2>
+    <div class="story" id="story"></div>
+
+    <div class="grid2" id="historyWrap" hidden>
+      <div>
+        <h2>{crown} 역대 챔피언</h2>
+        <table id="champs"><thead><tr><th>시즌</th><th>챔피언</th><th>전적</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <h2>{ludus} 명예의 전당 <span class="sub">(은퇴)</span></h2>
+        <table id="hall"><thead><tr><th>이름</th><th>명성</th><th>통산</th><th>은퇴</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+  <label id="drop">season.json을 여기로 끌어다 놓기 (또는 <code>dotnet run -- season 6 1 serve</code> 후 이 페이지가 자동 로드)
+    <input type="file" id="file" accept=".json" hidden></label>
+</div>
+<script>
+const RELCOLOR = {'원수':'--nem','두려움':'--fear','라이벌':'--rival','질투':'--envy','집착':'--obs','존경':'--resp','친구':'--friend'};
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+// ── 디비전 페이지 전환 (1부 콜로세움 / 2부 투기장) — 순위·리더보드·경기결과를 부별로 ──
+let curDiv = 1, curDoc = null;
+const DIVN = {1:'{ludus} 1부 콜로세움', 2:'{swords} 2부 투기장'};
+function setDiv(d){ curDiv = d; renderDivision(); }
+function renderDivision(){
+  const d = curDoc; if (!d) return;
+  const all = d.Fighters, divOf = {};
+  all.forEach(f=> divOf[f.Name] = f.Division||1);
+  const divs = [...new Set(all.map(f=>f.Division||1))].sort();
+  if (!divs.includes(curDiv)) curDiv = divs[0];
+
+  document.getElementById('divTabs').innerHTML = divs.length>1 ? divs.map(v=>
+    `<button onclick="setDiv(${v})" class="${v===curDiv?'cur':''}">`+
+    `${DIVN[v]||v+'부'} <span style="font-weight:400">${all.filter(f=>(f.Division||1)===v).length}인</span></button>`).join('') : '';
+
+  const fs = all.filter(f=>(f.Division||1)===curDiv);
+  const inProgress = d.Completed === false;
+
+  // 부 선두/챔피언 배너
+  const st = [...fs].sort((a,b)=> b.Points-a.Points || b.W-a.W);
+  const lead = st[0];
+  if (lead) document.getElementById('champ').innerHTML =
+    `<div class="crown"><svg><use href="icons.svg#${inProgress?'laurel':'crown'}"/></svg></div><div><div class="who">${lead.Name}</div>`+
+    `<div class="meta">${DIVN[curDiv]} · 시즌 ${d.SeasonNo} ${inProgress?'현재 선두':'챔피언'} · ${lead.W}승 ${lead.L}패 · 승점 ${lead.Points} · 명성 ${lead.Fame}</div></div>`;
+
+  // 순위 (부 내)
+  document.querySelector('#standings tbody').innerHTML = st.map((f,i)=>{
+    const stk = f.Streak>0?`<span class="streakUp">${f.Streak}연승</span>`: f.Streak<0?`<span class="streakDn">${-f.Streak}연패</span>`:'-';
+    return `<tr><td class="rank">${i+1}</td><td class="nm">${f.Name}${i===0?' <svg class="ic" style="color:var(--gold)"><use href="icons.svg#crown"/></svg>':''}</td>`+
+      `<td class="bd">${f.Weapon}·${f.Tactic}·${f.Personality}</td>`+
+      `<td><span class="win">${f.W}</span>-<span class="los">${f.L}</span>-${f.D}</td><td>${f.Points}</td><td>${stk}</td></tr>`;
+  }).join('');
+
+  // 명성 (부 내)
+  const fm = [...fs].sort((a,b)=>b.Fame-a.Fame);
+  const maxF = Math.max(1,...fm.map(f=>f.Fame));
+  document.querySelector('#fame tbody').innerHTML = fm.map(f=>
+    `<tr><td class="nm">${f.Name}</td>`+
+    `<td><div class="famebar"><i style="width:${100*f.Fame/maxF}%"></i></div><span class="bd">${f.Fame}</span></td>`+
+    `<td class="bd">${f.Popularity}</td><td class="bd">${f.CW}-${f.CL}-${f.CD}</td></tr>`).join('');
+
+  // 경기 결과 (부 내 — 출전자 소속으로 필터, 컵·전시 등 교차 카드는 항상 표시)
+  const ml = (d.MatchLog||[]).filter(m=> (divOf[m.A]||1)===curDiv || (divOf[m.B]||1)===curDiv);
+  const inShell = window.parent !== window;
+  document.getElementById('mlHint').textContent = ml.length ? (inShell ? '(클릭 = 관전)' : `(${ml.length}경기)`) : '';
+  document.getElementById('matchlog').innerHTML = [...ml].reverse().map(m=>
+    `<div class="ml${m.IsPlayerMatch?' mine':''}" onclick="watchIt(${m.Idx})">`+
+    `<span class="rd">${m.IsEvent?'{fest}':'R'+m.Round}</span><span>${m.A} vs ${m.B}</span>`+
+    `<span class="win">${m.Winner}</span><span class="ko">${m.Reason==='KO'?'KO':m.Reason==='Judgement'?'판정':'무'}</span></div>`).join('')
+    || '<div class="empty">아직 경기 없음</div>';
+
+  renderCalendar(divOf);   // 달력도 선택된 부만 (탭 전환 시 함께 갱신)
+}
+
+// ── 시즌 달력(상시): 선택된 부(리그)의 일정만 월별로 — 치른 경기(승자·클릭=관전) + 남은 경기(예정) ──
+// #4 진짜 달력: 월별 30일 그리드(6열). 경기일 셀에 카드, 내 루두스 경기 강조. divOf = 이름→부(renderDivision 제공).
+function renderCalendar(divOf){
+  const d = curDoc; if (!d) return;
+  divOf = divOf || (()=>{ const m={}; (d.Fighters||[]).forEach(f=>m[f.Name]=f.Division||1); return m; })();
+  // 선택된 부의 선수가 하나라도 낀 경기만(교차 카드는 어느 쪽이든 낀 부에 표시)
+  const cal = (d.Calendar || []).filter(c=> (divOf[c.A]||1)===curDiv || (divOf[c.B]||1)===curDiv);
+  document.getElementById('calSub').textContent = cal.length ? `${DIVN[curDiv]||curDiv+'부'} · AUC ${d.Auc||''} · ${cal.filter(c=>c.Winner).length}/${cal.length}경기 · ● 내 루두스${d.CurMonth?` · ● 오늘 ${d.CurMonth} ${d.CurDay}일`:''}` : (DIVN[curDiv]||'');
+  if (!cal.length){ document.getElementById('calendar').innerHTML = '<div class="empty">이 리그 일정 없음</div>'; return; }
+  const months = [...new Set(cal.map(c=>c.Month))];
+  const kindIcon = c => c.Kind==='cup_final'?'{crown}':c.Kind==='cup_sf'?'{trophy}':c.Kind==='tiebreak'?'{scales}':c.Kind==='gauntlet'?'{arena}':c.Kind==='proposal'?'{speech}':
+    (c.Kind||'').startsWith('fest_')?'{masks}':c.Format==='execution'?'{skull}':c.Kind==='event'?'{fest}':'';
+  // 경기 종류 색(범례와 동일) — 셀 안 항목의 왼쪽 스트립으로 종류를 한눈에
+  const kindColor = c => c.Kind==='cup_final'||c.Kind==='cup_sf'?'#c94fc9':c.Kind==='tiebreak'?'#e0a24c':c.Kind==='gauntlet'?'#5b9be0':
+    (c.Kind||'').startsWith('fest_')?'#d86a9e':c.Kind==='proposal'?'#6fbf8f':c.Format==='execution'?'#e0685f':c.Kind==='event'?'#c9a84c':'transparent';
+  const kindName = c => c.Kind==='cup_final'?'챔피언십 컵 결승':c.Kind==='cup_sf'?'챔피언십 컵 4강':c.Kind==='tiebreak'?'우승 결정전':
+    c.Kind==='fest_final'?'사투르날리아 대항전 결승':c.Kind==='fest_sf'?'사투르날리아 대항전 4강':c.Kind==='fest_qf'?'사투르날리아 대항전 8강':
+    c.Kind==='gauntlet'?'황제의 초청전':c.Kind==='proposal'?'도전·흥행전':c.Format==='execution'?'처형전':
+    c.Kind==='event'?'이벤트 빅매치':'정규 라운드로빈';
+  const inShell = window.parent !== window;
+  const DAYS = 30, COLS = 6;
+  document.getElementById('calendar').innerHTML = months.map(m=>{
+    const es = cal.filter(c=>c.Month===m);
+    const byDay = {}; es.forEach(c=>{ (byDay[c.Day]=byDay[c.Day]||[]).push(c); });
+    let cells = '';
+    for (let day=1; day<=DAYS; day++){
+      const list = byDay[day]||[];
+      const mine = list.some(c=>c.IsPlayerMatch), isNext = list.some(c=>c.IsNext), done = list.length && list.every(c=>c.Winner);
+      const isToday = d.CurMonth===m && d.CurDay===day;   // 현재 로마력 날짜
+      const bg = mine ? 'rgba(201,168,76,.16)' : isToday ? 'rgba(201,168,76,.09)' : list.length ? 'var(--panel2,#241c12)' : 'transparent';
+      const border = isNext ? '1px solid var(--gold,#c9a84c)' : isToday ? '1px solid var(--gold-deep,#8a6a2a)' : mine ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--line-soft,#3a2d1d)';
+      const inner = list.map(c=>{
+        const clickable = c.Winner && inShell;
+        const fire = !c.Winner && c.Hype>=70 ? '{flame}' : !c.Winner && c.Hype>=35 ? '{glory}' : '';
+        const hot = c.Hot ? '<span title="연승이 걸린 경기" style="color:#ff9d5d">{bolt}</span>' : '';
+        const tIcon = kindIcon(c) || (c.Title ? c.Title.split(' ')[0]+' ' : '');   // 타이틀전 라벨(#5) 아이콘
+        const kc = kindColor(c);
+        const tip = [kindName(c), c.Title, !c.Winner&&c.Hype?`흥행 기대치 ${c.Hype}`:'', c.Hot?'연승 걸림':'', clickable?'클릭=재관전':''].filter(Boolean).join(' · ');
+        return `<div ${clickable?`onclick="watchIt(${c.Idx})"`:''} style="${clickable?'cursor:pointer;':''}${kc!=='transparent'?`border-left:3px solid ${kc};padding-left:3px;margin:1px 0;border-radius:2px;background:rgba(255,255,255,.02)`:''}" ${tip?`title="${plainTip(tip)}"`:''}>
+          <div style="font-size:10px;line-height:1.15;${c.IsPlayerMatch?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--ink,#e8dcc8)'}">${tIcon}${fire}${hot}${c.A}<br>vs ${c.B}</div>
+          <div style="font-size:9px;color:${c.Winner?'var(--win,#7ec97e)':(c.IsNext?'var(--gold,#c9a84c)':'var(--dim,#8a7a5a)')}">${c.Winner?('{trophy}'+c.Winner):(c.IsNext?'▶다음':'예정')}</div></div>`;
+      }).join('');
+      cells += `<div style="min-height:52px;padding:3px;border-radius:5px;background:${bg};border:${border};overflow:hidden"${isToday?' title="오늘"':''}>
+        <div style="font-size:9px;${isToday?'color:var(--gold,#c9a84c);font-weight:700':'color:var(--dim,#8a7a5a)'}">${day}${isToday?' ● 오늘':''}</div>${inner}</div>`;
+    }
+    return `<div style="flex:1;min-width:300px;background:var(--panel,#2f2418);border-radius:10px;padding:8px 10px">
+      <div style="color:var(--gold,#c9a84c);font-weight:700;font-size:13px;border-bottom:1px solid var(--line-soft,#3a2d1d);padding-bottom:3px;margin-bottom:5px">${m} <span style="font-weight:400;color:var(--dim,#8a7a5a);font-size:11px">${es.length}경기</span></div>
+      <div style="display:grid;grid-template-columns:repeat(${COLS},1fr);gap:3px">${cells}</div></div>`;
+  }).join('');
+}
+
+// 시즌 진행 단계 흐름 — 정규 라운드로빈 → 이벤트 빅매치 → 챔피언십 컵 → (동률 시 결정전). 현재 단계 강조.
+function renderPhaseFlow(d){
+  const cal = d.Calendar||[], el = document.getElementById('phaseFlow'); if (!el) return;
+  const of = kinds => cal.filter(c=>kinds.includes(c.Kind||'regular'));
+  const phase = (label, icon, list, color)=>{
+    if (!list.length) return '';
+    const done = list.filter(c=>c.Winner).length, isNow = list.some(c=>c.IsNext);
+    return `<div style="flex:1;min-width:130px;padding:8px 12px;border-radius:8px;border:1px solid ${isNow?color:'var(--line-soft)'};
+      background:${isNow?'rgba(201,168,76,.10)':'var(--panel)'};border-left:4px solid ${color}">
+      <div style="font-weight:700;font-size:12.5px;color:${isNow?'var(--gold)':'var(--ink)'}">${icon} ${label}${isNow?' ◀ 진행 중':''}</div>
+      <div class="sub" style="margin-top:2px">${done}/${list.length}경기 ${done===list.length?'✓ 종료':''}</div></div>`;
+  };
+  const parts = [
+    phase('정규 라운드로빈','{swords}', of(['regular']), '#8a7a5a'),
+    phase('사투르날리아 대항전','{masks}', of(['fest_qf','fest_sf','fest_final']), '#d86a9e'),
+    phase('이벤트 빅매치','{fest}', of(['event','proposal']), '#c9a84c'),
+    phase('우승 결정전','{scales}', of(['tiebreak']), '#e0a24c'),
+    phase('챔피언십 컵','{trophy}', of(['cup_sf','cup_final']), '#c94fc9'),
+    phase('황제의 초청전','{arena}', of(['gauntlet']), '#5b9be0'),
+  ].filter(Boolean);
+  el.innerHTML = parts.length ? `<div class="sub" style="margin-bottom:4px">시즌 진행 단계 — 각 경기의 의미</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">${parts.join('<div style="display:flex;align-items:center;color:var(--gold-deep)">→</div>')}</div>` : '';
+}
+
+// {trophy} 챔피언십 컵 토너먼트 표 — 4강 2경기 → 결승 → 챔피언 (달력 항목에서 파생)
+function renderCupBracket(d){
+  const cal = d.Calendar||[];
+  const sfs = cal.filter(c=>c.Kind==='cup_sf');
+  const fin = cal.find(c=>c.Kind==='cup_final');
+  const head=document.getElementById('cupHead'), box=document.getElementById('cupBracket');
+  if (!sfs.length){ head.hidden=true; box.hidden=true; return; }
+  head.hidden=false; box.hidden=false;
+  const slot=(name,won,champ)=>`<div style="padding:5px 12px;border:1px solid ${won?'var(--gold)':'var(--line-soft)'};border-radius:6px;margin:2px 0;background:${won?'rgba(201,168,76,.14)':'var(--panel)'};font-weight:${won?700:400};color:${won?'var(--gold)':'var(--ink)'};font-size:13px;min-width:120px">${champ?'{crown} ':''}${name||'?'}</div>`;
+  const match=(c,label)=> c?`<div><div class="sub" style="margin-bottom:2px">${label}${c.Winner?'':' · 예정'}</div>${slot(c.A,c.Winner===c.A)}${slot(c.B,c.Winner===c.B)}</div>`
+                         :`<div><div class="sub" style="margin-bottom:2px">${label} · 미정</div>${slot('4강 승자')}${slot('4강 승자')}</div>`;
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">${match(sfs[0],'4강 ①')}${match(sfs[1],'4강 ②')}</div>
+    <div style="color:var(--gold-deep);font-size:20px">→</div>
+    ${match(fin,'결승')}
+    ${fin&&fin.Winner?`<div style="color:var(--gold-deep);font-size:20px">→</div><div>${slot(fin.Winner,true,true)}<div class="sub" style="text-align:center;margin-top:2px">컵 챔피언</div></div>`:''}`;
+}
+
+function load(d){
+  document.getElementById('drop').hidden = true;
+  document.getElementById('content').hidden = false;
+  const inProgress = d.Completed === false;   // 구 파일(필드 없음)은 완료 취급
+  const prog = inProgress && d.TotalMatches ? `${d.Matches}/${d.TotalMatches}경기 진행중` : `${d.Matches}경기`;
+  document.getElementById('sub').textContent = `시즌 ${d.SeasonNo} · ${prog} (정규 라운드로빈 ×${d.Rounds} + 이벤트)`;
+
+  curDoc = d;
+  renderDivision();   // 순위·명성·경기결과·달력을 선택된 부로 렌더(달력은 renderDivision이 호출)
+  renderPhaseFlow(d);    // 시즌 진행 단계 흐름 — 각 경기의 의미(정규→이벤트→컵)
+  renderCupBracket(d);   // {trophy} 컵 토너먼트 표 — 종류 가시화
+
+  // 이벤트 매치
+  const ev = document.getElementById('events');
+  ev.innerHTML = d.Events.length ? d.Events.map(m=>
+    `<div class="card"><span class="sc">흥행 ${m.Score.toFixed(0)}</span><div class="vs">${m.A} vs ${m.B}</div>`+
+    `<div class="res">→ ${m.Winner} 승${m.Ko?' (KO)':''}</div></div>`).join('') : '<div class="empty">없음</div>';
+
+  // 세계 역사: 역대 챔피언 + 명예의 전당 (은퇴자, 명성순)
+  const champs = d.Champions||[], hall = d.Hall||[];
+  document.getElementById('historyWrap').hidden = !(champs.length || hall.length);
+  document.querySelector('#champs tbody').innerHTML = [...champs].reverse().map(c=>
+    `<tr style="${c.IsPlayer?'color:var(--gold);font-weight:700':''}"><td>S${c.SeasonNo}</td><td>${c.Name}${c.IsPlayer?' ★':''}</td><td class="bd">${c.Record}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="empty">아직 없음</td></tr>';
+  document.querySelector('#hall tbody').innerHTML = hall.map(h=>
+    `<tr><td class="nm">${h.Name}</td><td>${h.Fame}</td><td class="bd">${h.Career}</td><td class="bd">S${h.RetiredSeason}·${h.Age}세</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">아직 없음</td></tr>';
+
+  drawGraph(d);
+
+  // 서사
+  const icon = {revenge:'{swords} 복수', upset:'★ 이변', comeback:'{flame} 대역전'};
+  const s = document.getElementById('story');
+  const ordered = [...d.Story].sort((a,b)=>(a.Kind==='revenge'?0:1)-(b.Kind==='revenge'?0:1));
+  s.innerHTML = ordered.slice(0,20).map(e=>`<div class="ev ${e.Kind}">${e.Text}</div>`).join('') || '<div class="empty">없음</div>';
+}
+
+function drawGraph(d){
+  // 노드 = 선수(원형 배치). 엣지 = 적대·라이벌·집착·질투 관계(방향성, 색=종류, 굵기=강도).
+  const names = d.Fighters.map(f=>f.Name);
+  const N = names.length, cx=310, cy=310, R=228;
+  const pos = {};
+  names.forEach((nm,i)=>{ const a=-Math.PI/2 + i*2*Math.PI/N; pos[nm]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
+
+  const show = new Set(['원수','두려움','라이벌','집착','질투']);
+  const edges = d.Relations.filter(r=>show.has(r.Type) && Math.abs(r.Affinity)>=35)
+                           .sort((a,b)=>Math.abs(b.Affinity)-Math.abs(a.Affinity)).slice(0,20);
+
+  let svg = `<defs>`;
+  for(const t in RELCOLOR) svg += `<marker id="ar_${t}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${css(RELCOLOR[t])}"/></marker>`;
+  svg += `</defs>`;
+  for(const e of edges){
+    const p=pos[e.Self], q=pos[e.Opp]; if(!p||!q) continue;
+    const dx=q.x-p.x, dy=q.y-p.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
+    const off=12, mx=(p.x+q.x)/2+nx*off*2, my=(p.y+q.y)/2+ny*off*2;   // 방향 구분 곡선
+    const c=css(RELCOLOR[e.Type]), w=1+Math.min(3,Math.abs(e.Affinity)/40);
+    const sx=p.x+dx/len*26, sy=p.y+dy/len*26, ex=q.x-dx/len*26, ey=q.y-dy/len*26;
+    svg += `<path d="M${sx} ${sy}Q${mx} ${my} ${ex} ${ey}" fill="none" stroke="${c}" stroke-width="${w}" opacity="0.75" marker-end="url(#ar_${e.Type})"/>`;
+  }
+  for(const nm of names){ const p=pos[nm];
+    svg += `<g class="node"><circle cx="${p.x}" cy="${p.y}" r="24"/><text x="${p.x}" y="${p.y+4}">${nm.slice(0,4)}</text></g>`;
+  }
+  document.getElementById('graph').innerHTML = svg;
+  document.getElementById('legend').innerHTML = [...show].map(t=>`<span><i style="background:${css(RELCOLOR[t])}"></i>${t}</span>`).join('');
+}
+
+function watchIt(idx){ if (window.parent !== window) window.parent.postMessage({watchIdx: idx}, '*'); }
+
+// 로드: 서버면 fetch, 아니면 드래그드롭
+fetch('season.json', {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(load).catch(()=>{
+  document.getElementById('sub').textContent = 'season.json을 끌어다 놓으세요';
+});
+const fileEl=document.getElementById('file'), dropEl=document.getElementById('drop');
+dropEl.onclick=()=>fileEl.click();
+fileEl.onchange=e=>{ const f=e.target.files[0]; if(f) f.text().then(t=>load(JSON.parse(t))); };
+['dragover','drop'].forEach(ev=>dropEl.addEventListener(ev,e=>e.preventDefault()));
+dropEl.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) f.text().then(t=>load(JSON.parse(t))); });
+</script>
+</body>
+</html>

@@ -28,7 +28,35 @@ Morituri/Morituri.Headless/viewer.json
 match.json
 highlights.json
 viewer.json
+world.json
+Morituri/world.json
+Morituri/Morituri.Headless/world.json
+season.json
+Morituri/season.json
+Morituri/Morituri.Headless/season.json
 Morituri/Morituri.Headless/matchup_report.csv
+
+# ── 테스트 결과 ──
+Morituri/Morituri.Sim.Tests/TestResults/
 
 # ── 로컬 프리뷰 설정 (디버그 뷰어 서빙용, 머신별) ──
 .claude/launch.json
+
+# ── 게시 산출물 (dotnet publish) ──
+Morituri/publish/
+publish/
+*.bak
+
+# ── 파이썬 도구 캐시 (tools/build_cursors.py) ──
+__pycache__/
+*.pyc
+
+# ── 스프라이트 베이크 원본 3D 에셋 (Mixamo 라이선스·28MB — 산출된 시트만 추적) ──
+Morituri/tools/spritebake/source/
+
+# ── 아레나 블록아웃 렌더 산출물([15]§10.8) — 스크립트로 재생성됨 ──
+Morituri/tools/arenabake/*.png
+Morituri/tools/arenabake/*.jpg
+
+# 돌리 시퀀스 중간 산출물(PNG) — JPEG만 배포한다
+Morituri/tools/arenabake/dolly_*.png

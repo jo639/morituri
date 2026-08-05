@@ -1,0 +1,244 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MORITURI theme.css — 디자인 시스템 단일 출처
+   아트 디렉션: "로마 프레스코 + 피와 모래" (세피아·골드 심화)
+   index.html / league.html / viewer.html / melee.html 공유.
+   :root 토큰은 여기가 유일한 정의처 — 각 HTML의 중복 :root는 제거됨.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 폰트 (전부 OFL — fonts/OFL_*.txt) ── */
+@font-face{
+  font-family:"Pretendard Variable";
+  src:url("fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight:45 920; font-display:swap;
+}
+@font-face{
+  font-family:"Cinzel";
+  src:url("fonts/CinzelVariable.woff2") format("woff2-variations");
+  font-weight:400 900; font-display:swap;
+}
+@font-face{
+  font-family:"Noto Serif KR";
+  src:url("fonts/NotoSerifKR-700.woff2") format("woff2");
+  font-weight:700; font-display:swap;
+}
+@font-face{
+  font-family:"Noto Serif KR";
+  src:url("fonts/NotoSerifKR-900.woff2") format("woff2");
+  font-weight:900; font-display:swap;
+}
+
+/* ── 디자인 토큰 ── */
+:root{
+  /* 팔레트 — 기존 9변수 이름 유지, 값 정제(배경 명도↓ → 골드 대비↑) */
+  --bg:#191209;        /* 바닥: 어두운 흙·그을음 */
+  --panel:#281e12;     /* 패널: 프레스코 벽면 */
+  --panel2:#342818;    /* 한 단 밝은 패널 */
+  --panel3:#41321e;    /* 인터랙티브·호버 면 */
+  --ink:#f2e8d4;       /* 본문: 석회 아이보리 */
+  --dim:#a8946f;       /* 보조 텍스트: 바랜 오커 */
+  --gold:#d2ab55;      /* 주 강조: 금박 */
+  --gold-deep:#8a6a2a; /* 금박 그늘 */
+  --a:#5b9be0;         /* 진영 A(청) */
+  --b:#e0685f;         /* 진영 B(적) */
+  --grn:#8fc98f;       /* 긍정·성장 */
+  --blood:#8a1f1a;     /* 피: 위험·죽음·처형 */
+  --blood-bright:#c3372c;
+  --glory:#c94ca8;     /* 영광(하드화폐) — 기존 #c94ca8 승계 */
+  --bronze:#a67c4e;    /* 동상·차분한 금속 */
+  --line:#493823;      /* 표준 경계선(기존 하드코딩 #4a3a26 승계) */
+  --line-soft:#3a2c19;
+
+  /* 타이포 */
+  --font-body:"Pretendard Variable",system-ui,"Segoe UI","Malgun Gothic",sans-serif;
+  --font-display:"Cinzel","Noto Serif KR",serif;
+
+  /* 형태 스케일 */
+  --r1:6px; --r2:10px; --r3:14px;
+  --sh1:0 1px 3px rgba(0,0,0,.4);
+  --sh2:0 6px 24px rgba(0,0,0,.55);
+
+  /* 질감 — 프레스코 그레인(노이즈)·비네트 */
+  --noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* ── 전역 기반 ── */
+html{ scrollbar-color:var(--line) transparent; }
+body{
+  font-family:var(--font-body);
+  font-synthesis:none;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+/* 프레스코 바닥: 기본색 + 비네트 + 그레인 */
+body.fresco{
+  background:
+    var(--noise),
+    radial-gradient(ellipse at 50% 0%, rgba(210,171,85,.05), transparent 55%),
+    radial-gradient(ellipse at 50% 115%, #0d0905 0%, transparent 60%),
+    var(--bg);
+}
+
+/* ── 타이포 유틸 ── */
+.display{ font-family:var(--font-display); font-weight:700; letter-spacing:.04em; }
+.tnum{ font-variant-numeric:tabular-nums; }
+
+/* ── 포커스 링(키보드 내비) ── */
+:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; border-radius:2px; }
+
+/* ══ 커서 — 원본 사진에서 뽑은 32px PNG ═══════════════════════════════
+   기본 = 장식 창끝, 클릭 가능 = 월계 가지. 이전에는 SVG로 옮겨 그렸으나
+   라니스타 요청으로 제공 사진을 그대로 쓴다(SVG판은 git 이력에 있다).
+
+   ★ 이 블록의 base64는 손으로 고치지 말 것. 생성처는 tools/build_cursors.py
+     하나다. 사진·각도·크기를 바꾸면 그 스크립트를 돌린 뒤 Debug·Release를
+     모두 빌드해야 실제 화면에 반영된다(소스만 고치면 옛 산출물이 남는다).
+
+   출처: 참고/cursor_arrow.png · 참고/cursor_laurel.png (각 128px 안팎)
+   가공 파이프라인(Pillow):
+     1) 배경 제거 — 테두리 영역성장 + 배경색 표본과의 전역 색차 이중 조건.
+        이웃 색차만 보면 피사체 경계의 안티에일리어싱 램프를 타고 안쪽까지
+        걸어 들어가 날 가장자리가 점선처럼 파인다(실측 내부 구멍 1222화소
+        → 이중 조건 + 구멍 메우기로 4화소).
+     2) 회전은 창끝에만, 스크립트의 rotate() 인자로. 월계는 원본이 이미
+        좌상향이라 손대지 않는다. 좌우 반전하면 끝이 오른쪽으로 가서 커서
+        관례에 어긋난다(한 번 틀렸다가 되돌림).
+     3) 프리멀티플라이 후 LANCZOS 축소 — 안 하면 투명 경계에 배경색
+        헤일로가 남는다. 그 뒤 언프리멀티플라이.
+     4) 알파 팽창 1px로 어두운 테두리(#1a1208) — 밝은 패널 위 실루엣 보존.
+   금지 = 창끝 채도 25%·명도 85% + 피빛 고리/사선, 대기 = 창끝 + 모래시계.
+
+   hotspot은 스크립트가 매번 계산해 박는다(최상단 불투명 행의 가운데).
+   회전각을 바꾸면 뾰족한 끝이 움직이므로 하드코딩하면 조준점이 어긋난다.
+   파일 대신 base64인 이유: 새 정적 자산은 csproj Link를 빠뜨리면 빌드
+   출력에 복사되지 않아 조용히 옛것이 남는다. */
+:root{
+  --cur-arrow:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAGQklEQVR4nOWWaWwcZxnHfzOzc+yMvV6f8RHHJnEcmrhpDlAOCdSUtpSKliMKAlQhEShFVYUQgtIWFMTRViCoQIRKBdEqQS2pkmLS4IY0ztGQ1FadJo2vJrGTje3Elq/17s7uzs6NHBEU8c3O8YX/h9HzjGbe9/c+7/89hJ8/+ViYC1R2vvxH8k54Xzpnt4cht03i4MUh7rt7PU8+8xN0RThYasg/kCMR8bYB2Pksx050sfmzn+RPO16kulz8VdyQdmuqrN0WAMOQuXx5hF/+ZjtNNQt4Y9crrFi+/ItxXTxjRJUFAiDcSoBQlTDUCNm8w8Gj72N5Cju3P8W993+muSQqDpcUa2tvYf+IJ473EHgOuq7TPzCI7YicH57i+Wce4ZuPPaHoMifjxerDtwxgZiZ1KG8mqakq59TpM0wmk6iKzonOPr6xZRXbfvYUUVnYGzfkrZJ0870p+kHYgetSpEcpjcfYsXMXqiJTHCuj7UAXD65bxAu/f5aoIv05rkeek+WIdFMBvCDslYQQv5BhYV0dI6NjvN8zyILaGqpqGmhr7+au6gh/feN3LKytfrpUl1pVRZZvHoAX9AynA/KpcRZW6GjRIg4dPYas6ESkgGUtq9h7qB9xaoxX//A9GhsbHirVxVOaKhfdFADHDy9dupRgbHwKLRIiKwrZnEVrayuz1TZTE6y4s4U9+0/T3XuWl577OmvWfqylVJdGinSl9kaXqej7gZVOp867XoCmRFBVBUUzOPxOJzkb4qUV5PN5ljY3cfq8yZF3TvLjRz/BAw8+FI9p4oWSYm31DVUgEpFD1wtbBQGyyUk00ccPQtxQYF/bQRBlLCuHH0L9ojp6hgu0vvUuX727gq2PPq7pMqdihrp+3gBBEGC7we4xEzKZLPEo2LaLrhucuzjEu51d5HI5sqZJwcpTV1PBUCrCa3s72Vif4fHvfBtDFTriRfKXZgcxZwDP93G84Fzi4iCmZRMVHEIBVE1FVTXePnyCeGklgiBimibRqM7KO+/AilTw2x1HKcoM8OzTXyOmq6+XGcqP5gwAEPhhfno6OSKICsW6hhB4eF7A7MYzMTXD3rZ24vFS0pks/WfPMzQ0QsyQKamo5GjXOcyxYbY9sRlDV34xLwAkKXC94HXb9bAsG8kr4HoevudRXGzQ13+WRCJxFSYqeVSrJmFqlIYSh/ryKMc6+ujr/ZCv3D93P4rXgoLr/yUvxHB9kHBxHPfqFBRsF98POHKsk+qYRDaTZs/BbnpHMlw2NZJBGcW1SzGDIqSiqjkDRGYfs0b0fEb7e7tZuaQaIxIyOVsJIUTCZ0GJSjZf4NzFUSRFRVI17t20HtMzEEXx6v/T01O8feLM/AFchJnx8fEpeVldhScJeI5N1vUo12DochLLCyn4Il/+3D0ULJv+DwfoONlDKucu+09bQRCEmXlPgShKvusHbyrRKJIkkM/nkEOL1EyajyxZTEN97VUP/KO9k3V3NSL5Dps2bURTlYWBEBlwfAYdn4l5VWBWYRjiesE+VynZipiivkxH8iyKGhrYsH41I1cmSKZMrGyGRGKM4dEJYmYeVQp35wKn1vdCez53WfF6ANsL3/vgdDem5SEHBRRNp2V5Ey+8uJNDx7u4o2khM2mT9z4Y4IGNK4gQ0rS0ucxQ5R+K0vxOafFacNUHXjAxeuVKpixuEFVlauob+ds//4UXiN+dnpq+sqalmY82L2EqbTI8mmRlcx2KnUKTxZ/qaqTxhgBmJYih53r+m7qqsKihETcSY2JisjNtedsdn20v72pjzfKlLKis4HDXOfzAQ48q3LNhJbrCHkWW53xlEq9PwlDC88PjQWwRpdU1HNi/j6wdbHZsx0/n3VeSafP7HT0XWLFsMVnLprN7iKoygwsXR6mqqlxbrAnPzxVA+N8XUUVqiCrilmt5Muv++lqsqbJaZkjZbz3y+cj+w51cSIzyqY83ESuJkkrbdPRdOn15MrtmXqvgmizHH7Ic/7+dXi/H9e1sIfzCrn1H9m1Y3cLU1AxXJlOkCz5FsRiSOHcjinP5eNaolkNbKpVKKPFKli+ppbyyisbFTWxctwrP94K5AgjMQ7oqLYobcmLLw58W4/EYifEc7QfeCnIFb3M67/19Pm3yf6t/A0sG1dbSw2AHAAAAAElFTkSuQmCC") 1 0, default;
+  --cur-hand:url("data:image/png;base64,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") 1 0, pointer;
+  --cur-no:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAETUlEQVR4nM2WW2gcVRjH/3PmvjvbTdI1SbNJa2IJSUrSQu1FqWKxDyk+qREkqIh96EMRbakiFgN5EkRE0AdfxJeC4Jui0JeYNpJkkyiNMc1mt7lubm2u3d3szO5mzhmZLVuWmGyCnY3+YYY5c87M//d953xnBu9eukhfOn/eKPZ64ooiN2KPReZm50lLy8vKK6+2aKosDblV5R1CuL0DMAwdHR2deOG5Z3HtkzZIkvitW1W/EQRe2BOA4iIvEokEunv7cbi6Cl99/QUq/BUX3arSI0nivoIDDA2PMEWWMBWZxsLCIsy0ibZrH6CpqemES5HHFUWuLCjA8vLKA0kSM41bXV0AOEQic7jwdivOnn3Rp8rSjNulnioYgGHoYc6iOOivwMhoCPF4AkXF+zEzdw/N586g9Y03IYlCwO1SXysIAGXWr0bSgMBzkGUJv3V3w7JMeDweBEPjqCorwuUr79kQP2huVxshnKMlQkzT7IwlDKRSKXi9XoTDdxEcDaOoqBiaZx9Gx6agx9bQ9vEVeDSt3a2q1wWB550DoHRweHgE8XgM9lsFUcLAwB9YWLgHI6nDt9+HYGgCtweHcPnSBZSWlba6VeWmKIouRwCoSVfisdgkLAuiSCCKIhJGEr2BACRJxtraGvx+P1ajSXR0daP53POoq6s741blIUcACM9blLIOcAR2Zi2LQZZljARDmSyk0ilEIhHs87hAqYXxsQk01tXg9OlnnnIEwLIsbJjm96vR9cw62EinMh0c4dDXN4BYNIpkUkc4HILIExsZM/P3oakPS/dxJdgAJqW3p6emUX3ID3sqTHMDIi9AT6xjcXEJjDEk9DSOHa0Cx3EgAo/JyVnnACilsaWlxeXDNQd9YAzrCR0yT0AZw3RkFidPHocWjSLQ/zsmJqdeZ4zNWpaVdgKAZE6Ep5Syn1RVgSRLEDhA0zScePo4eJ5g7O44ZHu3ZNTeDz4Fxw2YlA44BmA9nIYfTYsDBwslxV7UN9Sj8+YtHGmoz0yDXQ3l5aV2RVQLPP+R/YxjAIwxG6A/OBKCosjw+Z7Az7/cgGnS60SQUFlZicjMPEqKvNBcEkSBbxd44cl8L/7sUIWVe+QFsGWa5tLyyjLKD/jxIJapiO+oZV3t7em+f+zoEfCiiDvBEFyqCw31tXCpcg+20HaG293nchua2/U5TwihjDEjmWynlMVdqnLK49ECDXW1+HPoDupqa0AIwbqeTg4O/aVuNslefxlf7cvte99T8uiL+uH0/CNfIXfQekK/upkwlU73C7pxQ1G15qrKA9CNJMrKypDciP4jwq2Mc2X32SD22CwEwQ6ilFnJdPqtQKBXr6mpRlNjI6hFMDExwbBLZaPPzUJWHBxQvuhzTbP92Xt2FnbMwONoK/PNIv+lecEAdmtuy7Hfq61qPN+a2HUV/FvtFHlWAhySHVG+LXe7jYiDw8oHsdm8IADbgWw2/t/obyrgAQFoXZUNAAAAAElFTkSuQmCC") 1 0, not-allowed;
+  --cur-wait:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEo0lEQVR4nMWXW2wUVRzGvzlnLjs7271CaynWUow1VNtQhPZBSRAxNVpBEyJBVEKiqDGG+EA0Gkz1wUsM0UiMPKgBSQRe0KoUJGwRgUKBUhZ2YUsv9AJbaLeX3e3sdHcuZooly4ZyCbv1e5iZc86c+X7zP+f8zwy+2PCu9spLy+L5bks0x8o/iikW6ejsJa+vWWl5bc0bthwL8Tklbg2lZOoA5NER7KqrxwvVVdj47WaIAv3BJbHf8xzLTglAvisHsWgUu/c3YW6JB3W7NqHogcK1LokeES28PesA/5wK6pLAIdjWgc6eAWhx4Mdv3sP8BZXznSJpt1mFmVkFuHKlb1gUrkV7d/1e6OBwvq0fn6x7Hs/WLJ1mtzA9TptQmTWA0VG5ldNkPFSUhxOnzyEcUeCcXoBzFyNYvbQMb76zDlaeOeqy8csZJgsAqmZ4FTkCiSYhiAL27vMC2hjsTg+OnelFWUECn37+EUSe7HTZ+A2UkoxikISqN1ySNShyHG6nCy1nWnHSF4TH44LN4cGxQBjMQDu2bHwLbkdOrVtit/EcSzMJ0HLyhB+xkTAEJgnKW+A92ITunhAUOYbcvOk4fLYfhxrPYtOHy1EwI3+lS6IHRIGzZgRAVY3w8PBwJ3R9fBg4XkBMjuMv72HwgojBgQHMKipE54iI7fXNWF1TgbLy8scdVuLLCABDqaFqxn6DYSFQBoaehMUi4ESLH109IchKAu3tbcizEyR1BoHABSx5xIFFTy6ZnREAwzAwltR/6RphMKaMQR2Lm9VgCIH3wGFEBvuhxsLw+3wQqQGVSDjfNYJcUcmEP1gTIKEap9outKK8eBo4IwFZJRBZBnJkCKHLIagGg6E4i/nFJSAMAcMx8LdezQgAYx4oYWiuQ+h7bmH5tIt9I+iLaXAQBeGogoQKLF44D5GhMLquxBAItq3QdaPX5I4p6vF7BSDjFIRqSU2vs1pFWAUKG+KwO5xY9EQVCCXw+4OQOAJOHTXzwWc6wx1XVOOeza8DXBsG/bcIsYEYGvLdNsybW4pf/9yHqrkl6L3cj4HwIIoLPCgqKpwlUO19w9Ay4Y/xTUDXNSRU0tRyyo/SmQ5ITje27PgDSVXfpnPOVbNnFSHY0Y1li2cgPBxFN0dqE5RujWnaxcke/OXbc4zU8vrvAjfNoMzEhTkP7nNZ1FUvViPQPYjGxsafEjr9QOKM02tfrsnb8fvfmG5nUZjnhpxk0Oi7EAoNKTNuZ5yudBAmteDJ4b+ilBJN0/RoXK1NanrUbuUrPQ7p6GNlD+NI0xlUlRbAIBT9CqscPOYTJzP/entHc2rbuhXFFTeDYHAbsSxl3BK7+6klT1eHOgPjHQpm3o9L4ajiPXRSTDevXlSK3MLrXjfoancz9jT4b4AgtwNQVc2IjemvNnj3yXNKHsSCygoosCB4/pw+WR/T6E7qTGVka514+/SwN9d/fD0UFc/UNqcPhxmFKfn8TTVPF8m28dYtP9/yHpJNgIlQp66ArACs/29GpxpNZpo6/uY54z8fezbXVEwstXRjc4mmtzGZNDdXg2lyS8AG/90lorvVPaViZFB3uhn97/oXJyv+EUR4Aj0AAAAASUVORK5CYII=") 1 0, progress;
+}
+html,body{ cursor:var(--cur-arrow); }
+/* 클릭 가능 — 인라인 style·CSS 규칙 양쪽의 cursor:pointer를 함께 덮는다.
+   인라인 선언이 시트 규칙을 이기므로 !important가 필요하다.
+   ui.js가 클릭 카드·행에 role=button을 부여하므로 대부분 [role=button]으로 잡힌다.
+   비활성 요소는 :not()으로 아예 제외한다 — 순서로 이기려 하면 안 된다.
+   :is()의 특이도는 인자 중 최댓값이라 클릭가능(a[href]=0,1,1)이 금지(.disabled=0,1,0)를
+   이겨버린다. 실제로 disabled 버튼에 금빛 손이 뜨는 걸 확인하고 이 방식으로 바꿨다. */
+:is(a[href],button,summary,label,select,[role="button"],[onclick],
+    [style*="cursor:pointer"],[style*="cursor: pointer"]
+   ):not([disabled]):not([aria-disabled="true"]):not(.disabled){ cursor:var(--cur-hand) !important; }
+:is([disabled],.disabled,[aria-disabled="true"],
+    [style*="not-allowed"]){ cursor:var(--cur-no) !important; }
+:is([aria-busy="true"],[style*="cursor:progress"]){ cursor:var(--cur-wait) !important; }
+/* 입력은 네이티브 I빔 유지 — 캐럿 위치를 읽는 데는 그쪽이 정확하다 */
+:is(textarea,input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]):not([type=range])){ cursor:text !important; }
+
+/* ── 커스텀 스크롤바 (WebView2=Chromium) ── */
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:var(--line); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover{ background:var(--gold-deep); border:2px solid transparent; background-clip:padding-box; }
+
+/* ═══ 컴포넌트 ═══ */
+
+/* ── 버튼 3계열 ── */
+.btn{
+  font:inherit; cursor:pointer; user-select:none;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:7px 14px; border-radius:var(--r1);
+  background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+  transition:border-color .15s, background .15s, transform .06s, box-shadow .15s;
+}
+.btn:hover{ border-color:var(--gold-deep); background:var(--panel3); }
+.btn:active{ transform:translateY(1px); }
+.btn:disabled{ opacity:.4; cursor:default; transform:none; }
+
+/* G9 잠긴 이유 말하기 — 비활성 버튼은 왜 안 되는지 침묵하면 안 된다.
+   disabled는 클릭 이벤트를 못 받지만 :hover는 받으므로 CSS만으로 성립(JS·핸들러 0).
+   쓰는 쪽: <button disabled data-why="영광이 모자란다 (12 필요)"> */
+[data-why][disabled], [data-why].disabled{ position:relative; overflow:visible; }
+/* 말풍선은 버튼 '아래'로 — 이 버튼들의 조상은 overflow-x:hidden + overflow-y:auto 스크롤 컨테이너다.
+   위로 띄우면 컨테이너 상단에 잘린다(G13과 같은 함정). 가로 넘침은 줄바꿈+최대폭으로 막는다. */
+[data-why][disabled]::after, [data-why].disabled::after{
+  content:attr(data-why); position:absolute; left:0; top:calc(100% + 7px);
+  transform:translateY(-3px);
+  padding:6px 10px; border-radius:var(--r1,6px); pointer-events:none;
+  white-space:normal; width:max-content; max-width:230px; text-align:left;
+  background:#1b1610; color:#e8d9b0; border:1px solid var(--gold-deep);
+  font-size:11px; font-weight:600; letter-spacing:.01em; line-height:1.4;
+  box-shadow:0 6px 18px rgba(0,0,0,.55);
+  opacity:0; transition:opacity var(--dur-fast,.12s) var(--ease-out,ease), transform var(--dur-fast,.12s) var(--ease-out,ease);
+  z-index:40;
+}
+[data-why][disabled]::before, [data-why].disabled::before{     /* 말풍선 꼬리 */
+  content:''; position:absolute; left:14px; top:calc(100% + 2px);
+  transform:translateY(-3px);
+  border:5px solid transparent; border-bottom-color:var(--gold-deep);
+  pointer-events:none; opacity:0;
+  transition:opacity var(--dur-fast,.12s) var(--ease-out,ease), transform var(--dur-fast,.12s) var(--ease-out,ease);
+  z-index:40;
+}
+[data-why][disabled]:hover::after, [data-why].disabled:hover::after,
+[data-why][disabled]:hover::before, [data-why].disabled:hover::before{
+  opacity:1; transform:translateY(0);
+}
+.btn.primary{
+  background:linear-gradient(180deg,#e0bd6a,var(--gold) 55%,#b8923f);
+  color:#231604; border-color:#8a6a2a; font-weight:800;
+  text-shadow:0 1px 0 rgba(255,240,200,.35); box-shadow:var(--sh1);
+}
+.btn.primary:hover{ background:linear-gradient(180deg,#ecca79,#dcb75f 55%,#c29c46); border-color:#a07c31; }
+.btn.ghost{ background:none; }
+.btn.ghost:hover{ background:rgba(210,171,85,.07); }
+.btn.danger{ background:linear-gradient(180deg,#7c231d,var(--blood)); color:#f5ded6; border-color:#5c1512; font-weight:700; }
+.btn.danger:hover{ background:linear-gradient(180deg,#932b25,#a02a22); border-color:#7c231d; }
+
+/* ── 카드 ── */
+.card-t{
+  background:linear-gradient(180deg,rgba(210,171,85,.045),transparent 40%), var(--panel);
+  border:1px solid var(--line-soft); border-radius:var(--r2);
+  box-shadow:var(--sh1);
+}
+
+/* ── 칩·태그 ── */
+.tag-t{ font-size:11px; color:var(--gold); border:1px solid var(--gold-deep); border-radius:4px; padding:0 6px; }
+
+/* ── 골드 헤어라인 구분선 ── */
+.hairline{ border:0; height:1px; background:linear-gradient(90deg,transparent,var(--gold-deep),transparent); }
+
+/* ── 아이콘 ── */
+.ic{ width:1em; height:1em; vertical-align:-.125em; flex:0 0 auto; }
+
+/* 가로 스크롤 전면 금지(라니스타 규약) — 게임 어디에도 가로 스크롤바는 없다 */
+html, body{ overflow-x:hidden; }
+
+/* R3: 모션 토큰 — 모든 새 전환은 이 세 박자와 두 곡선만 쓴다 */
+:root{
+  --dur-fast:.1s; --dur-mid:.22s; --dur-slow:.4s;
+  --ease-out:cubic-bezier(.2,.7,.3,1); --ease-snap:cubic-bezier(.6,.05,.3,1);
+}
+
+/* R1: 커스텀 폼 컨트롤 — 브라우저 기본 select/checkbox 대체 (ui.js가 .value/.checked API를 붙인다) */
+.seg{ display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; vertical-align:middle; }
+.seg button{ background:transparent; border:0; border-right:1px solid var(--line); color:var(--dim);
+  padding:4px 11px; cursor:pointer; font:inherit; font-size:12px; font-weight:700; transition:color .12s, background .12s; }
+.seg button:last-child{ border-right:0; }
+.seg button:hover{ color:var(--ink); }
+.seg button.cur{ background:var(--gold); color:#241b0e; }
+.sw{ position:relative; width:38px; height:20px; border-radius:12px; border:1px solid var(--line); background:var(--panel2);
+  cursor:pointer; display:inline-block; vertical-align:middle; padding:0; flex:0 0 auto; transition:background .15s, border-color .15s; }
+.sw::after{ content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%;
+  background:var(--dim); transition:left .15s, background .15s; }
+.sw.on{ background:#463414; border-color:var(--gold); }
+.sw.on::after{ left:19px; background:var(--gold); }
+.ic.lg{ width:1.25em; height:1.25em; vertical-align:-.2em; }
+
+/* ── 모션 프리미티브 (≤200ms, 절제) ── */
+@keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+@keyframes popIn{ 0%{transform:scale(.96);opacity:0} 100%{transform:scale(1);opacity:1} }
+@keyframes riseIn{ from{transform:translateY(6px);opacity:0} to{transform:none;opacity:1} }
+.anim-fade{ animation:fadeIn .18s ease both; }
+.anim-pop{ animation:popIn .16s cubic-bezier(.2,.9,.3,1.2) both; }
+.anim-rise{ animation:riseIn .2s ease both; }
+
+/* 리빌 연출(DDD) keyframes는 index.html <style>이 단일 출처 (rvFlip/rvPop/rvGlow/rvShake/thumbRock) */

@@ -56,6 +56,70 @@ public class MatchSimTests
     }
 
     [Test]
+    public void TraitGen_RespectsCountDistributionAndExclusion()
+    {
+        // 부여 개수 0(15%)/1(50%)/2(25%)/3(8%)/4(2%) + 상반 배타(같은 축 반대극성 공존 금지) — 결정론.
+        var rng = new Morituri.Sim.Core.SimRandom(12345);
+        var counts = new int[6];
+        for (int i = 0; i < 5000; i++)
+        {
+            var ids = TraitGen.Roll(rng);
+            counts[ids.Length]++;
+            // 배타 검증: 같은 ExclAxis에서 +/− 동시 보유 없음
+            var defs = ids.Select(TraitTable.Get).ToList();
+            foreach (var g in defs.Where(t => t.ExclAxis.Length > 0).GroupBy(t => t.ExclAxis))
+                Assert.That(g.Select(t => t.ExclPolarity).Distinct().Count() <= 1, Is.True,
+                    $"상반 특성 공존: {string.Join(",", ids)}");
+            Assert.That(ids.Distinct().Count(), Is.EqualTo(ids.Length), "중복 특성");
+        }
+        Assert.That(counts[0] / 5000.0, Is.EqualTo(0.15).Within(0.03), "0개 부여 ≈15%");
+        Assert.That(counts[1] / 5000.0, Is.EqualTo(0.50).Within(0.04), "1개 부여 ≈50%");
+        Assert.That(counts[2] / 5000.0, Is.EqualTo(0.25).Within(0.04), "2개 부여 ≈25%");
+        Assert.That(counts[3] / 5000.0, Is.EqualTo(0.08).Within(0.03), "3개 부여 ≈8%");
+        Assert.That(counts[4] / 5000.0, Is.EqualTo(0.02).Within(0.02), "4개 부여 ≈2%");
+    }
+
+    [Test]
+    public void Trait_GiantBoostsHpAndRange_FleetReducesHp()
+    {
+        // 거인: HP·사거리↑(생성 시 파생스탯 반영). 결정론적으로 스탯 변화만 확인(런타임 노출은 프레임으로).
+        var giant = new FighterDef("거인", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_CALM",
+            new[] { "TRT_GIANT" });
+        var plain = new FighterDef("기본", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_CALM");
+        // 거인은 HP·사거리 우위라 동일 빌드(검·압박·냉철) 거울에서 평균 이상 승률이어야 함
+        int giantWins = 0, decided = 0;
+        for (ulong s = 1; s <= 200; s++)
+        {
+            var r = new MatchSim().Run(giant, plain, s);
+            if (r.Winner == 0) { giantWins++; decided++; } else if (r.Winner == 1) decided++;
+        }
+        Assert.That((float)giantWins / decided, Is.GreaterThan(0.55f), "거인(HP·사거리↑)이 기본보다 유리해야 함");
+    }
+
+    [Test]
+    public void Bleed_AxeAppliesAndStacks_NonBleedWeaponDoesNot()
+    {
+        // 출혈(문서[7]§2): 도끼 클린 히트 → BleedApplied, 최대 3스택까지 누적. 검(BleedDps=0)은 출혈 없음.
+        var axe   = new FighterDef("도끼", FighterStats.Baseline, "WPN_AXE",   "TAC_BRAWLER", "PER_CRUEL");
+        var sword = new FighterDef("검",   FighterStats.Baseline, "WPN_SWORD", "TAC_COUNTER", "PER_CALM");
+
+        bool axeBled = false, reached3 = false, swordBled = false;
+        for (ulong seed = 1; seed <= 30; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(axe, sword, seed, ev);
+            foreach (var b in ev.OfType<BleedApplied>())
+            {
+                if (b.Attacker == 0) { axeBled = true; if (b.Stacks >= 3) reached3 = true; }
+                if (b.Attacker == 1) swordBled = true; // 검은 출혈 안 시킴
+            }
+        }
+        Assert.That(axeBled, Is.True, "도끼 클린 히트는 출혈을 일으켜야 함");
+        Assert.That(reached3, Is.True, "30경기 내 3스택까지 누적돼야 함");
+        Assert.That(swordBled, Is.False, "검(BleedDps=0)은 출혈을 일으키면 안 됨");
+    }
+
+    [Test]
     public void Personality_RecklessTrigger_FiresInLowHpMatches()
     {
         // 충동적(HP≤30%) 트리거가 실제 경기에서 발화하는지 — 100시드 중 1회 이상이면 배선 OK
@@ -67,6 +131,25 @@ public class MatchSimTests
             fired = events.OfType<Decision>().Any(d => d.ReasonTag == "RECKLESS");
         }
         Assert.That(fired, Is.True, "100경기 동안 RECKLESS 트리거가 한 번도 안 터지면 배선 오류");
+    }
+
+    [Test]
+    public void Taunt_EnragesOpponent_RagedEventEmitted()
+    {
+        // 도발이 상대 심리에 영향(A): 도발 발동 → 상대에 RAGED(분노) Decision이 따라붙는다.
+        var arrogant = new FighterDef("오만", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_ARROGANT");
+        var rival    = new FighterDef("도전", FighterStats.Baseline, "WPN_SWORD", "TAC_PRESSURE", "PER_RECKLESS");
+        bool taunted = false, raged = false;
+        for (ulong seed = 1; seed <= 500 && !(taunted && raged); seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(arrogant, rival, seed, ev);
+            var d = ev.OfType<Decision>().ToList();
+            if (d.Any(x => x.ReasonTag == "TAUNT")) taunted = true;
+            if (d.Any(x => x.ReasonTag == "RAGED")) raged = true;
+        }
+        Assert.That(taunted, Is.True, "오만함 도발이 500경기 내 한 번은 발동해야 함");
+        Assert.That(raged, Is.True, "도발당한 상대에 RAGED(분노)가 배선돼야 함");
     }
 
     [Test]
@@ -101,10 +184,10 @@ public class TriggerEvalTests
         float selfHp = 1f, float oppHp = 1f, int consecHits = 0, bool oppHeavyWindup = false,
         bool oppDown = false, float sinceCrit = 999f, float timeRemain = 1f,
         float oppGauge = 1f, float stamina = 1f, float reserve = 0.2f, int sameWhiff = 0, float deficit = 0f,
-        bool oppStaggered = false)
+        bool oppStaggered = false, float secSinceTaunted = 999f)
         => new(selfHp, oppHp, selfHp > oppHp + 0.05f, consecHits, oppHeavyWindup, oppDown,
                sinceCrit, timeRemain, oppGauge, stamina, reserve, sameWhiff, deficit,
-               OppStaggeredPerceived: oppStaggered);
+               OppStaggeredPerceived: oppStaggered, SecSinceTaunted: secSinceTaunted);
 
     [Test]
     public void Reckless_FiresAtOrBelow30PctHp()
@@ -134,6 +217,35 @@ public class TriggerEvalTests
     }
 
     [Test]
+    public void WasTaunted_FiresOnlyWithinRageWindow()
+    {
+        // C: 도발 반응 트리거는 분노 창(5초) 안에서만 발동, 도발 이력 없으면(999s) 미발동.
+        var rule = Array.Find(PersonalityTable.Calm.Rules, r => r.Cond == TriggerCondition.WasTaunted)!;
+        Assert.That(TriggerEval.Matches(rule, Ctx(secSinceTaunted: 1f)), Is.True);
+        Assert.That(TriggerEval.Matches(rule, Ctx(secSinceTaunted: 6f)), Is.False, "분노 창 밖");
+        Assert.That(TriggerEval.Matches(rule, Ctx()), Is.False, "도발 이력 없음");
+    }
+
+    [Test]
+    public void TauntReaction_DiffersByPersonality()
+    {
+        // C 보완: 같은 도발 베이스(A) 위에서 성격별 반응 방향이 갈린다 — 증폭/중화/위축.
+        Directive WithRage(PersonalityDef p)
+        {
+            var d = Directive.From(TacticsTable.Pressure);
+            d.Apply(ParamMod.Add(TParam.Aggression, 0.25f));      // A 베이스 분노
+            d.Apply(ParamMod.Add(TParam.CommitThreshold, -0.10f));
+            var rule = Array.Find(p.Rules, r => r.Cond == TriggerCondition.WasTaunted);
+            if (rule != null) foreach (var m in rule.Mods) d.Apply(m);
+            return d;
+        }
+        var bare = Directive.From(TacticsTable.Pressure);
+        Assert.That(WithRage(PersonalityTable.Reckless).Aggression, Is.GreaterThan(bare.Aggression), "충동: 분노 증폭");
+        Assert.That(WithRage(PersonalityTable.Calm).Aggression, Is.EqualTo(bare.Aggression).Within(1e-5), "냉철: 분노 중화");
+        Assert.That(WithRage(PersonalityTable.Coward).PreferredDistance, Is.GreaterThan(bare.PreferredDistance), "겁쟁이: 위축(거리↑)");
+    }
+
+    [Test]
     public void Coward_ReactsToHeavyWindupOnly()
     {
         var rule = PersonalityTable.Coward.Rules[0];
@@ -148,14 +260,6 @@ public class TriggerEvalTests
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.15f, deficit: 0.10f)), Is.True);
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.15f, deficit: -0.10f)), Is.False, "이기고 있으면 발동 안 함");
         Assert.That(TriggerEval.Matches(rule, Ctx(timeRemain: 0.50f, deficit: 0.10f)), Is.False, "시간 여유 있으면 발동 안 함");
-    }
-
-    [Test]
-    public void Vengeful_IsDormantInPhase1()
-    {
-        var rule = PersonalityTable.Vengeful.Rules[0];
-        Assert.That(TriggerEval.Matches(rule, Ctx(selfHp: 0.01f, deficit: 0.99f)), Is.False,
-            "복수심은 Phase 2 관계 시스템 입력 전까지 항상 비활성");
     }
 
     [Test]
@@ -249,6 +353,73 @@ public class FairnessRegressionTests
             Assert.That(f.HpPctA, Is.InRange(0f, 1f));
             Assert.That(f.HpPctB, Is.InRange(0f, 1f));
         }
+    }
+
+    // ── 자율 전술 전환(AI) ──────────────────────────────────────────────
+    // 라니스타 없는 선수는 경기 중 제 풀 안에서 전술을 갈아탄다. 풀 미지정이면 평가 자체가 없어야 한다.
+
+    private static List<string> AdaptTags(List<SimEvent> ev, int fighter) =>
+        ev.OfType<Decision>().Where(d => d.FighterId == fighter && d.ReasonTag.StartsWith("ADAPT_"))
+          .Select(d => d.ReasonTag).ToList();
+
+    [Test]
+    public void Adapt_WithoutPool_NeverSwitches()
+    {
+        // 매트릭스·기존 시뮬 격리의 계약: AdaptPool을 안 주면 자율 전환은 존재하지 않는다.
+        for (ulong seed = 1; seed <= 20; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(FighterDef.Berserker, FighterDef.Tactician, seed, ev);
+            Assert.That(AdaptTags(ev, 0).Count + AdaptTags(ev, 1).Count, Is.EqualTo(0), $"seed {seed}");
+        }
+    }
+
+    [Test]
+    public void Adapt_StaysInPool_AndCapsAtTwoPerMatch()
+    {
+        string[] pool = { "TAC_BRAWLER", "TAC_DEFENDER", "TAC_ZONER" };
+        var a = new FighterDef("적응형", FighterStats.Baseline, "WPN_SWORD", "TAC_BRAWLER", "PER_CALM", AdaptPool: pool);
+        int fired = 0;
+        for (ulong seed = 1; seed <= 30; seed++)
+        {
+            var ev = new List<SimEvent>();
+            new MatchSim().Run(a, FighterDef.Tactician, seed, ev);
+            var tags = AdaptTags(ev, 0);
+            Assert.That(tags.Count, Is.LessThan(3), $"seed {seed}: 경기당 상한 2회");
+            foreach (var t in tags)
+                Assert.That(pool.Contains("TAC_" + t.Substring(6)), Is.True, $"seed {seed}: 풀 밖 전술 {t}");
+            fired += tags.Count;
+        }
+        Assert.That(fired, Is.GreaterThan(0), "30판 중 한 번도 안 바꾸면 기능이 죽은 것");
+    }
+
+    [Test]
+    public void Adapt_ReadsTheSituation_LosingGoesSafe_WinningGoesIn()
+    {
+        // 같은 풀·같은 성격인데 판이 다르면 반대쪽으로 간다 — 이게 '상황을 본다'의 조작적 정의.
+        var weakStats = FighterStats.Baseline with { Atk = 45f, Def = 45f, HpMax = 480f, Spd = 60f, Rct = 55f };
+        var strongStats = FighterStats.Baseline with { Atk = 95f, Def = 90f, HpMax = 900f, Spd = 85f, Rct = 85f };
+        string[] pool = { "TAC_BRAWLER", "TAC_DEFENDER" };
+
+        int safe = 0, aggro = 0;
+        for (ulong seed = 1; seed <= 40; seed++)
+        {
+            // 밀리는 쪽: 난전으로 시작해 얻어맞는다 → 지키는 쪽으로 가야 한다.
+            var underdog = new FighterDef("약자", weakStats, "WPN_SWORD", "TAC_BRAWLER", "PER_CALM", AdaptPool: pool);
+            var bully = new FighterDef("강자", strongStats, "WPN_SWORD", "TAC_PRESSURE", "PER_CRUEL");
+            var e1 = new List<SimEvent>();
+            new MatchSim().Run(underdog, bully, seed, e1);
+            safe += AdaptTags(e1, 0).Count(t => t == "ADAPT_DEFENDER");
+
+            // 압도하는 쪽: 지키기로 시작했지만 상대가 지치고 빈사다 → 들어가야 한다.
+            var closer = new FighterDef("강자", strongStats, "WPN_SWORD", "TAC_DEFENDER", "PER_CALM", AdaptPool: pool);
+            var prey = new FighterDef("약자", weakStats, "WPN_SWORD", "TAC_BRAWLER", "PER_RECKLESS");
+            var e2 = new List<SimEvent>();
+            new MatchSim().Run(closer, prey, seed, e2);
+            aggro += AdaptTags(e2, 0).Count(t => t == "ADAPT_BRAWLER");
+        }
+        Assert.That(safe, Is.GreaterThan(0), "밀리는 쪽이 끝까지 난전을 고집하면 상황을 안 보는 것");
+        Assert.That(aggro, Is.GreaterThan(0), "이기는 쪽이 끝까지 웅크리면 상황을 안 보는 것");
     }
 
     [Test]

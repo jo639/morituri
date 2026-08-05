@@ -8,16 +8,75 @@ using Morituri.Sim.Serialization;
 // 사용: dotnet run -- [N]                       배치 통계 (매치업당 N경기, 기본 1000)
 //       dotnet run -- replay [매치업] [시드]     경기 한 판 텍스트 중계
 //                     매치업: berserker(기본) | mirror | cruel | arrogant
+//                            | b:무기/전술/성격:무기/전술/성격  (빌드 직접 지정, 빈 필드=기본값, B생략=거울)
+//                              예: b:WHIP/ZONER/SHOWMAN:AXE/BRAWLER/CRUEL  /  b:/PRESSURE/ARROGANT
 //       dotnet run -- matrix [N]                상성 매트릭스 5×5 + matchup_report.csv (칸당 N경기, 기본 1000)
 //       dotnet run -- export [매치업] [시드]    경기 1판 → match.json (MatchRecord, 역사 DB 입력)
 //       dotnet run -- viewer [매치업] [시드]    경기 1판 → viewer.json (위치 프레임 포함, viewer.html이 재생)
+//                     매치업은 replay와 동일 (b:무기/전술/성격 빌드 지정 가능)
 //       dotnet run -- highlights [N]            명경기 자동 태깅 → highlights.json
+//       dotnet run -- emotionprobe [N]          감정(T10) 엔진 검증 — 감정 유무 승률·행동 델타 (기본 500)
+//       dotnet run -- emotiongen [N]            감정 발생률 점검 — 전 성격쌍 × N시드 감정 생성 빈도 (기본 30)
+//       dotnet run -- relations [N]             관계(T11) 메타 데모 — 라운드로빈 누적 관계 그래프·복수전 후보 (기본 20)
+//       dotnet run -- season [rounds] [seed] [fresh] [serve]  Phase 3 시즌 — 순위·관계·감정·명성·서사.
+//                     world.json 영속(재실행=누적, fresh=초기화) · season.json 내보냄 · serve=league.html 대시보드 서버
+
+if (args.Length > 0 && args[0] == "oddsprobe")
+{
+    // 배당 캘리브레이션: 시드 세계의 캐스트로 예측식 후보 비교
+    Directory.SetCurrentDirectory(Path.GetTempPath());
+    ulong ws = args.Length > 1 && ulong.TryParse(args[1], out ulong opw) ? opw : 777;
+    int sims = args.Length > 2 && int.TryParse(args[2], out int ops) ? ops : 80;
+    new Game(1, ws, fresh: true, interactive: false, playerless: true).OddsProbe(sims);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "skillprobe")
+{
+    // dotnet run -- skillprobe [경기수] [스킬필터]  — 필터를 주면 그 스킬만(반복 튜닝용)
+    SkillProbe.Run(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 60,
+                   args.Length > 2 ? args[2] : null);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "skillfreq")
+{
+    SkillFreq.Run(args.Length > 1 && int.TryParse(args[1], out int fg) ? fg : 40);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "designlint")
+{
+    Environment.Exit(DesignLint.Run(args));
+    return;
+}
+
+if (args.Length > 0 && args[0] == "health")
+{
+    HealthCheck.Run(
+        args.Length > 1 && int.TryParse(args[1], out int hs) ? hs : 5,
+        args.Length > 2 && int.TryParse(args[2], out int hn) ? hn : 50);
+    return;
+}
 
 if (args.Length > 0 && args[0] == "matrix")
 {
     int games = args.Length > 1 && int.TryParse(args[1], out int g) ? g : 1000;
     string wpn = args.Length > 2 ? (args[2].StartsWith("WPN_") ? args[2] : "WPN_" + args[2].ToUpper()) : "WPN_SWORD";
     MatrixReport.Run(games, "matchup_report.csv", wpn);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "stallprobe")
+{
+    OrcusProbe.Stall(args.Length > 1 && int.TryParse(args[1], out int sn) ? sn : 200,
+                     args.Length > 2 ? (args[2].StartsWith("WPN_") ? args[2] : "WPN_" + args[2].ToUpper()) : "WPN_SWORD");
+    return;
+}
+
+if (args.Length > 0 && args[0] == "orcusprobe")
+{
+    OrcusProbe.Run(args.Length > 1 && int.TryParse(args[1], out int on) ? on : 2000);
     return;
 }
 
@@ -30,6 +89,78 @@ if (args.Length > 0 && args[0] == "weaponprobe")
 if (args.Length > 0 && args[0] == "sigmatrix")
 {
     Analysis.SignatureMatrix(args.Length > 1 && int.TryParse(args[1], out int sg) ? sg : 500);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "parryprobe")
+{
+    Analysis.ParryProbe(args.Length > 1 && int.TryParse(args[1], out int pp) ? pp : 300);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "emotionprobe")
+{
+    EmotionProbe.Run(args.Length > 1 && int.TryParse(args[1], out int ep) ? ep : 500);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "emotiongen")
+{
+    EmotionProbe.GenRate(args.Length > 1 && int.TryParse(args[1], out int eg) ? eg : 30);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "relations")
+{
+    RelationProbe.Run(args.Length > 1 && int.TryParse(args[1], out int rl) ? rl : 20);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "season")
+{
+    int rounds = args.Length > 1 && int.TryParse(args[1], out int sr) ? sr : 6;
+    ulong sseed = args.Length > 2 && ulong.TryParse(args[2], out ulong ss) ? ss : 1;
+    bool fresh = args.Any(a => a == "fresh");   // world.json 무시하고 새 세계 시작
+    bool serve = args.Any(a => a == "serve");   // season.json 내보내고 league.html 서버 기동
+    Game.RunCli(rounds, sseed, fresh, serve);   // W1: Season.Run을 상태 기계 Game이 흡수
+    return;
+}
+
+if (args.Length > 0 && args[0] == "tune")
+{
+    Tune.Run(args.Length > 1 && int.TryParse(args[1], out int tg) ? tg : 100);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "tunetac")
+{
+    int ttg = args.Length > 1 && int.TryParse(args[1], out int a1) ? a1 : 60;
+    int ttp = args.Length > 2 && int.TryParse(args[2], out int a2) ? a2 : 2;
+    Tune.RunDescent(ttg, ttp);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "spacingprobe")
+{
+    Analysis.SpacingProbe(args.Length > 1 && int.TryParse(args[1], out int spp) ? spp : 20);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "statgen")
+{
+    StatGenReport.Run(args.Length > 1 && int.TryParse(args[1], out int sgn) ? sgn : 20000);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "taunt")
+{
+    TauntProbe.Run(args.Length > 1 && int.TryParse(args[1], out int tn) ? tn : 8000);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "tauntfreq")
+{
+    TauntFrequencyProbe.Run(args.Length > 1 && int.TryParse(args[1], out int tfn) ? tfn : 3000);
     return;
 }
 
@@ -93,12 +224,16 @@ if (args.Length > 0 && args[0] == "highlights")
 
 if (args.Length > 0 && args[0] == "viewer")
 {
-    // 디버그 2D 뷰어용 JSON (위치 프레임 포함). viewer.html이 끌어다 놓아 재생한다 (M4-a).
+    // dotnet run -- viewer [매치업] [경기시드] [천부시드A] [천부시드B]
+    // 천부시드 생략 시 천부·잠재력 정보 없이 생성 (기존 동작 유지)
     string matchup = args.Length > 1 ? args[1] : "berserker";
     ulong seed = args.Length > 2 && ulong.TryParse(args[2], out ulong vs) ? vs : 1;
-    string outPath = args.Length > 3 ? args[3] : "viewer.json";
+    ulong? talentA = args.Length > 3 && ulong.TryParse(args[3], out ulong ta) ? ta : null;
+    ulong? talentB = args.Length > 4 && ulong.TryParse(args[4], out ulong tb) ? tb : talentA; // B 생략 시 A 시드 재사용
+    string outPath = "viewer.json";
     var (va, vb) = Replay.Pick(matchup);
-    ViewerExport.Run(va, vb, seed, outPath);
+    ViewerExport.Run(va, vb, seed, outPath, talentA, talentB);
+    ViewerServer.Serve(Directory.GetCurrentDirectory());
     return;
 }
 

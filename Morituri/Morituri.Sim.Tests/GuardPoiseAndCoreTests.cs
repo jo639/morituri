@@ -39,9 +39,9 @@ public class GuardAndPoiseTests
     [Test]
     public void Guard_WhipBarelyScratchesGauge()
     {
-        // 채찍 GuardCrush 0.10 — 가드 깎기로는 방패검을 못 연다 (가드 우회가 채찍의 길)
+        // 채찍 GuardCrush 0.10 — 가드 깎기로는 방패를 못 연다 (가드 우회가 채찍의 길)
         float raw = CombatMath.RawDamage(WeaponTable.Whip, C.MotionMultHeavy, Avg); // 30×1.5×1.7=76.5
-        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.SwordShield, C); // 108.8
+        float shieldGauge = CombatMath.GuardGaugeMax(Avg, WeaponTable.Shield, C); // 108.8
         var r = CombatMath.ResolveGuardHit(raw, WeaponTable.Whip, shieldGauge, 95f, C);
 
         Assert.That(r.IsGuardBreak, Is.False);
