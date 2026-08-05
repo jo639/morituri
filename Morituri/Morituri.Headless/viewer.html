@@ -1718,9 +1718,13 @@ function headBox(spr){
   return (spr._head = { x: fr.x + Math.max(0, Math.min(fr.w - side, cxl - side / 2)),
                         y: fr.y + Math.max(0, minY - fr.h * 0.035), s: side });
 }
-function drawPortrait(cx, cy, r, s, dir){
+// shape = 'diamond' | 'circle' · chrome = 테두리와 배지틀을 여기서 그릴 것인가.
+// 자산이 있으면 그 장식은 앞판 그림이 맡는다 — 여기서는 내용만 올린다.
+function drawPortrait(cx, cy, r, s, dir, shape, chrome){
+  const round = shape === 'circle';
+  const ring = k => round ? (ctx.beginPath(), ctx.arc(cx, cy, k, 0, 7)) : diamond(cx, cy, k);
   ctx.save();
-  diamond(cx, cy, r - 2); ctx.clip();
+  ring(r - 2); ctx.clip();
   // 배경은 순검정이 아니라 따뜻한 돌빛 + 진영색 역광. 어두운 스프라이트가 검정 위에선 안 갈린다
   const bg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
   bg.addColorStop(0, 'rgba(82,64,44,0.97)'); bg.addColorStop(1, 'rgba(14,9,6,0.97)');
@@ -1744,25 +1748,31 @@ function drawPortrait(cx, cy, r, s, dir){
   ctx.fillStyle = 'rgba(0,0,0,0.35)';           // 아래쪽 비네트 — 얼굴이 위로 뜬다
   ctx.fillRect(cx - r, cy + r * 0.35, r * 2, r);
   ctx.restore();
-  gild(() => diamond(cx, cy, r), 4, 1, cy - r, cy + r);   // 두꺼운 금 마름모 테
+  if (chrome){
+  gild(() => ring(r), 4, 1, cy - r, cy + r);   // 두꺼운 금 마름모 테
   ctx.strokeStyle = s.col; ctx.globalAlpha = 0.65; ctx.lineWidth = 1;
-  diamond(cx, cy, r - 5); ctx.stroke(); ctx.globalAlpha = 1;
+  ring(r - 5); ctx.stroke(); ctx.globalAlpha = 1;
   ctx.fillStyle = getCSS('--gold');             // 네 꼭짓점 스터드
-  for (const [dx, dy] of [[0,-1],[1,0],[0,1],[-1,0]]){
+  if (!round) for (const [dx, dy] of [[0,-1],[1,0],[0,1],[-1,0]]){
     ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, 2.1, 0, 7); ctx.fill();
   }
+  }
   // 아래 꼭짓점 배지 — 레퍼런스의 레벨 자리. 지금은 선수 번호(레벨 개념이 아직 없다)
-  const by = cy + r + 2;
-  gild(() => diamond(cx, by, 10), 2.4, 1, by - 10, by + 10);
-  ctx.fillStyle = 'rgba(12,8,5,0.95)'; diamond(cx, by, 7.5); ctx.fill();
+  const bd = HUD.L.badge || {};
+  if (bd.show === false) return;
+  const by = cy + r + 2, br = bd.r || 10;
+  if (chrome){
+    gild(() => diamond(cx, by, br), 2.4, 1, by - br, by + br);
+    ctx.fillStyle = 'rgba(12,8,5,0.95)'; diamond(cx, by, br - 2.5); ctx.fill();
+  }
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = '900 11px ' + getCSS('--font-display');
   ctx.fillStyle = GOLD_HI; ctx.fillText(String(s.who + 1), cx, by + 0.5);
   ctx.textBaseline = 'alphabetic';
 }
 // 아이콘 칸 — 팔각 금테 + 새까만 인셋. ready<1이면 12시부터 **시계방향**으로 밝아진다
-function iconSlot(x, y, sz, id, col, ready, hot){
-  octPath(x, y, sz, sz, 5); ctx.fillStyle = '#0b0806'; ctx.fill();
+function iconSlot(x, y, sz, id, col, ready, hot, art){
+  if (!art){ octPath(x, y, sz, sz, 5); ctx.fillStyle = '#0b0806'; ctx.fill(); }
   const im = iconImg(id, col);
   if (im && im.complete && im.naturalWidth){
     const p = 4, s = sz - p * 2;
@@ -1778,7 +1788,7 @@ function iconSlot(x, y, sz, id, col, ready, hot){
       ctx.restore();
     }
   }
-  gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0, y, y + sz);
+  if (!art) gild(() => octPath(x, y, sz, sz, 5), ready >= 1 ? 2.4 : 2, ready >= 1 ? 1 : 0, y, y + sz);
   if (hot){                                     // 방금 발동 — 금빛 외곽이 한 겹 더
     ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.6;
     octPath(x - 2, y - 2, sz + 4, sz + 4, 6); ctx.stroke();
@@ -1786,69 +1796,132 @@ function iconSlot(x, y, sz, id, col, ready, hot){
 }
 
 // 4단: 상단 하이라이트 / 상부 본색 / (하드 스텝) 하부 그늘 / 밑바닥 반사광
+// ── HUD 크롬 자산([15]§10.29) — 그림이 있으면 그림, 없으면 절차 생성 ────────────
+// 레퍼런스는 손으로 그린 래스터다. 캔버스 벡터로는 붓질·긁힘·깊은 인그레이빙이 안 나온다(§10.28).
+// 그래서 **크롬(장식)만 자산으로 빼고 데이터(채움·쿨타임·숫자)는 코드가 계속 그린다.**
+// 층 샌드위치: back(판·홈) → 초상 → 바 채움 → front(테두리·링·칸) → 아이콘·숫자·상태.
+// front의 바 자리와 초상 안쪽이 **알파 0**이어야 밑에서 올라온 채움이 보인다 — 자산의 유일한 필수 규칙.
+//
+// 좌표는 전부 **판 바깥 모서리 기준 논리 px**. 아래 기본값 = 지금 절차 생성 배치와 같은 값이라
+// 자산이 없어도 한 코드로 돈다. 그림이 다른 배치로 오면 hud.json만 그림에 맞춰 다시 재면 된다.
+const HUD_DEF = {
+  plate:    { w: 362, h: 96 },
+  portrait: { cx: 32, cy: 38, r: 30, shape: 'diamond' },
+  badge:    { cx: 32, cy: 70, r: 10, show: true },
+  name:     { x: 92, y: 12 },
+  bars: [ { x: 92, y: 17, w: 250, h: 17 },
+          { x: 92, y: 38, w: 232, h: 12 },
+          { x: 92, y: 53, w: 214, h: 12 } ],
+  icons:    { x: 92, y: 67, size: 24, gap: 6 },
+};
+const HUD = { ready: false, L: HUD_DEF, back: null, front: null, center: null, mirrorForB: true };
+(function loadHudArt(){
+  const dir = 'hud/' + (_qs.get('hud') || '');
+  fetch(dir + 'hud.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(m => {
+      const get = f => new Promise(res => {
+        if (!f) return res(null);
+        const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = dir + f;
+      });
+      const pl = m.plate || {}, ce = m.center || {};
+      return Promise.all([get(pl.back), get(pl.front), get(ce.img)]).then(([b, f, c]) => {
+        if (!b && !f) return;                       // 판 그림이 하나도 없으면 절차 생성 유지
+        HUD.back = b; HUD.front = f; HUD.center = c;
+        HUD.mirrorForB = pl.mirrorForB !== false;
+        HUD.L = Object.assign({}, HUD_DEF, m);      // 없는 항목은 기본 배치로 메운다
+        HUD.centerBox = c ? { w: ce.w || 240, h: ce.h || 84 } : null;
+        HUD.ready = true;
+      });
+    })
+    .catch(() => {});                               // 자산 없음 → 지금 그림 그대로(폴백)
+})();
+// 판 그림 한 장. B는 좌우 반전해서 같은 파일을 쓴다(비대칭 장식을 따로 그리고 싶으면 mirrorForB:false)
+function drawPlateImg(im, px, py, w, h, dir){
+  if (!im) return;
+  ctx.save();
+  if (dir < 0 && HUD.mirrorForB){ ctx.translate(px * 2 + w, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(im, px, py, w, h);
+  ctx.restore();
+}
+
 const HP_COL = { a: ['#bcdcff', '#5b9be0', '#2a5b96', '#173c66'],
                  b: ['#ffc0b6', '#e0685f', '#9e2f27', '#5c1b16'] };
 const ST_COL = ['#ffe8ae', '#d8a23c', '#93661a', '#54390c'];
 const GD_COL = ['#d6ebfb', '#7fa5c8', '#476884', '#27394b'];
 
 function fighterPlate(ox, dir, s){
-  const BY = HUD_BY;
-  const X = (x0, w) => dir > 0 ? ox + x0 : ox - x0 - w;
-  const PW2 = 362, BX = 92, HPW = 250, STW = 232, GDW = 214;
+  const L = HUD.L, art = HUD.ready;
+  const PW2 = L.plate.w, PH2 = L.plate.h;
+  const P = { x: dir > 0 ? ox : ox - PW2, y: HUD_BY - 8 };   // 판 바깥 모서리 = 배치 원점
+  // 논리 배치 → 화면 좌표. B는 판 안에서 좌우로 접는다(폭 0을 주면 점 좌표)
+  const LX = (lx, lw) => dir > 0 ? P.x + lx : P.x + PW2 - lx - (lw || 0);
+  const LY = ly => P.y + ly;
   const crit = s.hp > 0 && s.hp < 0.25;
   const pulse = 0.6 + 0.4 * Math.sin(t * 6.0);
 
-  oxbloodPanel(dir > 0 ? ox : ox - PW2, BY - 8, PW2, 96, dir);   // 아이콘 행까지 덮는다
-  drawPortrait(X(0, 64) + 32, BY + 30, 30, s, dir);
+  // ① 뒤판
+  if (art) drawPlateImg(HUD.back, P.x, P.y, PW2, PH2, dir);
+  else oxbloodPanel(P.x, P.y, PW2, PH2, dir);
 
+  // ② 초상 — 자산이 있으면 링은 앞판이 그리므로 내용만 얹는다
+  const pt = L.portrait;
+  drawPortrait(LX(pt.cx, 0), LY(pt.cy), pt.r, s, dir, art ? pt.shape : 'diamond', !art);
+
+  // ③ 바 채움 — 홈은 자산이면 뒤판에 이미 그려져 있다
+  const rows = L.bars.map((b, i) => Object.assign({}, b,
+    i === 0 ? { v: s.hp, c: HP_COL[s.who ? 'b' : 'a'], ghost: s.ghost }
+    : i === 1 ? { v: s.st, c: ST_COL }
+    : { v: s.gd, c: GD_COL, brk: s.gd <= 0.02 }));
+  for (const r of rows){
+    const bx = LX(r.x, r.w), by = LY(r.y);
+    if (!art) barTrough(bx, by, r.w, r.h, dir);
+    if (r.ghost !== undefined) barGhost(bx, by, r.w, r.h, dir, Math.max(0, Math.min(1, r.ghost)), r.v);
+    if (r.brk) hatch(bx, by, r.w, r.h, 0, getCSS('--blood-bright'));
+    else barFill(bx, by, r.w, r.h, dir, r.v, r.c);
+  }
+
+  // ④ 앞판 — 테두리·초상 링·아이콘 칸. 채움 위에 얹혀야 '끼워진' 것으로 보인다
+  if (art) drawPlateImg(HUD.front, P.x, P.y, PW2, PH2, dir);
+  else for (const r of rows)
+    gild(() => barPath(LX(r.x, r.w), LY(r.y), r.w, r.h, dir), r.h > 13 ? 3.2 : 2.6, 1,
+         LY(r.y) - 1, LY(r.y) + r.h + 1);
+
+  // ⑤ 글자·아이콘·상태 — 언제나 코드가 그린다(자산은 크롬만 맡는다)
   ctx.textAlign = dir > 0 ? 'left' : 'right';
   ctx.font = '700 12px ' + getCSS('--font-display');
   if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1.7px';
   ctx.fillStyle = '#d8c9a6';
   let nm = s.name;
-  while (nm.length > 3 && ctx.measureText(nm).width > HPW - 20) nm = nm.slice(0, -1);
-  ctx.fillText(nm === s.name ? nm : nm + '…', dir > 0 ? ox + BX : ox - BX, BY + 4);
+  while (nm.length > 3 && ctx.measureText(nm).width > rows[0].w - 20) nm = nm.slice(0, -1);
+  ctx.fillText(nm === s.name ? nm : nm + '…', LX(L.name.x, 0), LY(L.name.y));
   ctx.letterSpacing = '0px';
 
-  // 레퍼런스처럼 **바가 틀을 꿉 채운다.** 얄은 바 + 넓은 홈은 웹 프로그레스바로 보인다
-  const rows = [
-    { w: HPW, h: 17, y: BY + 9,  v: s.hp, c: HP_COL[s.who ? 'b' : 'a'], ghost: s.ghost, num: s.hp },
-    { w: STW, h: 12, y: BY + 30, v: s.st, c: ST_COL, num: s.st },
-    { w: GDW, h: 12, y: BY + 45, v: s.gd, c: GD_COL, num: s.gd, brk: s.gd <= 0.02 },
-  ];
-  for (const r of rows){
-    const bx = X(BX, r.w);
-    barTrough(bx, r.y, r.w, r.h, dir);
-    if (r.ghost !== undefined) barGhost(bx, r.y, r.w, r.h, dir, Math.max(0, Math.min(1, r.ghost)), r.v);
-    if (r.brk) hatch(bx, r.y, r.w, r.h, 0, getCSS('--blood-bright'));
-    else barFill(bx, r.y, r.w, r.h, dir, r.v, r.c);
-    gild(() => barPath(bx, r.y, r.w, r.h, dir), r.h > 13 ? 3.2 : 2.6, 1, r.y - 1, r.y + r.h + 1);
-    // 수치 — 레퍼런스처럼 뾰족한 끝 안쪽에 붙는다
+  for (const r of rows){          // 수치 — 뾰족한 끝 안쪽에 붙는다
+    const bx = LX(r.x, r.w), by = LY(r.y), big = r.h > 13;
     ctx.textAlign = dir > 0 ? 'right' : 'left';
-    ctx.font = '700 ' + (r.h > 13 ? 11 : 9) + 'px ' + getCSS('--font-body');
-    ctx.fillStyle = 'rgba(12,8,5,0.85)';
+    ctx.font = '700 ' + (big ? 11 : 9) + 'px ' + getCSS('--font-body');
     const tx = dir > 0 ? bx + r.w - r.h * 0.9 : bx + r.h * 0.9;
-    const ty = r.y + r.h - (r.h > 13 ? 4.5 : 3);
-    ctx.fillText(Math.round(r.num * 100) + '%', tx + 1, ty + 1);
-    ctx.fillStyle = '#f4ead6';
-    ctx.fillText(Math.round(r.num * 100) + '%', tx, ty);
+    const ty = by + r.h - (big ? 4.5 : 3);
+    const txt = Math.round(r.v * 100) + '%';
+    ctx.fillStyle = 'rgba(12,8,5,0.85)'; ctx.fillText(txt, tx + 1, ty + 1);
+    ctx.fillStyle = '#f4ead6';          ctx.fillText(txt, tx, ty);
   }
-  if (crit){                                   // 위급 — HP 테두리 3겹 맥동
-    const bx = X(BX, HPW);
+  if (crit){                      // 위급 — HP 테두리 3겹 맥동
+    const r0 = rows[0], bx = LX(r0.x, r0.w), by = LY(r0.y);
     ctx.strokeStyle = getCSS('--blood-bright');
     for (let i = 0; i < 3; i++){
       ctx.lineWidth = 1.6; ctx.globalAlpha = pulse * (0.6 - i * 0.17);
-      barPath(bx - 1 - i * 1.8, BY + 8 - i * 1.8, HPW + 2 + i * 3.6, 19 + i * 3.6, dir); ctx.stroke();
+      barPath(bx - 1 - i * 1.8, by - 1 - i * 1.8, r0.w + 2 + i * 3.6, r0.h + 2 + i * 3.6, dir); ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
-  // 아이콘 행 — 초상 아래. 레퍼런스와 같은 자리다
-  const SZ = 24, GAP = 6, iy = BY + 59;
+  const ic = L.icons;
   let n = 0;
   const put = (id, col, ready, hot) => {
-    const gx = dir > 0 ? ox + BX + n * (SZ + GAP) : ox - BX - SZ - n * (SZ + GAP);
-    iconSlot(gx, iy, SZ, id, col, ready, hot); n++;
+    const gx = LX(ic.x + n * (ic.size + ic.gap), ic.size);
+    iconSlot(gx, LY(ic.y), ic.size, id, col, ready, hot, art); n++;
   };
   put(WPN_ICON[s.weapon] || 'sword', '#e8dcc0', 1, false);
   put(TAC_ICON[s.tactic] || 'scales', '#c0ab80', 1, false);
@@ -1858,10 +1931,11 @@ function fighterPlate(ox, dir, s){
         sk2.Passive ? '#9ad39a' : '#f0cd7c', rf, rf >= 1 && s.hotTag === sk2.Tag);
   }
   for (let i = 0; i < s.bleed; i++){           // 출혈 — 이름 옆 마름모
-    const dx = (dir > 0 ? ox + BX + HPW - 8 : ox - BX - HPW + 8) - dir * i * 11;
+    const r0 = rows[0];
+    const dx = LX(r0.x + r0.w - 8 - i * 11, 0), dy = LY(r0.y - 9);
     ctx.fillStyle = getCSS('--blood-bright');
-    ctx.beginPath(); ctx.moveTo(dx, BY - 4); ctx.lineTo(dx + 3.5, BY);
-    ctx.lineTo(dx, BY + 4); ctx.lineTo(dx - 3.5, BY); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(dx, dy - 4); ctx.lineTo(dx + 3.5, dy);
+    ctx.lineTo(dx, dy + 4); ctx.lineTo(dx - 3.5, dy); ctx.closePath(); ctx.fill();
   }
 }
 
@@ -1881,6 +1955,11 @@ function drawClock(){
     ctx.moveTo(cx - 52, top); ctx.lineTo(cx + 52, top);
     ctx.lineTo(cx + 36, top + 66); ctx.lineTo(cx - 36, top + 66); ctx.closePath();
   };
+  const art = HUD.ready && HUD.center;
+  if (art){
+    const cb = HUD.centerBox;
+    ctx.drawImage(HUD.center, cx - cb.w / 2, top, cb.w, cb.h);
+  } else {
   const g = ctx.createLinearGradient(0, top, 0, top + 66);
   g.addColorStop(0, 'rgba(48,17,15,0.92)'); g.addColorStop(1, 'rgba(10,6,5,0.96)');
   trap(); ctx.fillStyle = g; ctx.fill();
@@ -1896,6 +1975,7 @@ function drawClock(){
     ctx.lineWidth = 1.2; ctx.strokeStyle = i === 0 ? GOLD_HI : getCSS('--gold-deep'); ctx.stroke();
   }
   ctx.lineCap = 'butt';
+  }
   // 라벨 — 레퍼런스의 'ROUND' 자리. 로마 비문체 캡스라 장식처럼 읽힌다
   ctx.font = '700 9px ' + getCSS('--font-display');
   if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '3px';
@@ -1929,11 +2009,13 @@ function drawClock(){
     ctx.moveTo(cx - 9, sy - 3); ctx.lineTo(cx + 9, sy - 3); ctx.lineTo(cx + 9, sy + 4);
     ctx.quadraticCurveTo(cx, sy + 14, cx - 9, sy + 4); ctx.closePath();
   };
-  crest(); ctx.fillStyle = 'rgba(14,8,6,0.95)'; ctx.fill();
-  gild(crest, 2.2, 1, sy - 3, sy + 14);
-  ctx.fillStyle = getCSS('--gold');
-  ctx.beginPath(); ctx.moveTo(cx, sy + 1); ctx.lineTo(cx + 3.4, sy + 4.4);
-  ctx.lineTo(cx, sy + 7.8); ctx.lineTo(cx - 3.4, sy + 4.4); ctx.closePath(); ctx.fill();
+  if (!art){
+    crest(); ctx.fillStyle = 'rgba(14,8,6,0.95)'; ctx.fill();
+    gild(crest, 2.2, 1, sy - 3, sy + 14);
+    ctx.fillStyle = getCSS('--gold');
+    ctx.beginPath(); ctx.moveTo(cx, sy + 1); ctx.lineTo(cx + 3.4, sy + 4.4);
+    ctx.lineTo(cx, sy + 7.8); ctx.lineTo(cx - 3.4, sy + 4.4); ctx.closePath(); ctx.fill();
+  }
   ctx.restore();
 }
 function drawBottomHud(fr){

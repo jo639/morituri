@@ -37,6 +37,9 @@
     <Content Include="..\Morituri.Headless\ui.js" Link="ui.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Morituri.Headless\sprites\**" LinkBase="sprites" CopyToOutputDirectory="PreserveNewest" />
+    <!-- HUD 크롬 자산([15]§10.29) — 없으면 뷰어가 절차 생성으로 폴백하므로 비어 있어도 된다 -->
+    <Content Include="..\Morituri.Headless\hud\**" Exclude="..\Morituri.Headless\hud\test\**"
+             LinkBase="hud" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

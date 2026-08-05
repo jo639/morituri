@@ -1,0 +1,57 @@
+{
+  "scale": 3,
+  "plate": {
+    "back": "plate_back.png",
+    "front": "plate_front.png",
+    "w": 362,
+    "h": 96,
+    "mirrorForB": true
+  },
+  "center": {
+    "img": "center.png",
+    "w": 240,
+    "h": 84
+  },
+  "portrait": {
+    "cx": 32,
+    "cy": 38,
+    "r": 30,
+    "shape": "circle"
+  },
+  "badge": {
+    "cx": 32,
+    "cy": 70,
+    "r": 10,
+    "show": true
+  },
+  "name": {
+    "x": 92,
+    "y": 12
+  },
+  "bars": [
+    {
+      "x": 92,
+      "y": 17,
+      "w": 250,
+      "h": 17
+    },
+    {
+      "x": 92,
+      "y": 38,
+      "w": 232,
+      "h": 12
+    },
+    {
+      "x": 92,
+      "y": 53,
+      "w": 214,
+      "h": 12
+    }
+  ],
+  "icons": {
+    "x": 92,
+    "y": 67,
+    "size": 24,
+    "gap": 6
+  }
+}
